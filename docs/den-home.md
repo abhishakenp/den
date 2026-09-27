@@ -7,8 +7,12 @@ den creates `~/.den` the first time it runs (after the first window is on screen
   plugins/      <id>.dylib, or a source folder <id>/*.swift
   themes/       <name>.json or <name>.toml theme presets
   config.toml   settings, shortcuts, site-search keywords
-  logs/         plugins.log (loads, reloads, builds), build-<id>.log, den.log (launches and quits)
+  logs/         plugins.log (loads, reloads, builds), build-<id>.log, den.log (launches and quits), updater.log
+  updates/      managed plugin updates (plugins/<id>.dylib + <id>.json) and the developer updater's state
+  src/          the developer updater's clean checkout of main (not watched)
 ```
+
+Updates, channels and `scripts/updater.sh` / `scripts/release.sh` are covered in [updates.md](updates.md).
 
 Set `DEN_HOME` to use another folder. `--no-den-home` ignores it entirely (`scripts/snapshots.sh` and `scripts/measure-memory.sh` pass it, so your plugins don't change their results).
 
@@ -21,6 +25,7 @@ A plugin is an Embedded Swift dylib built with `cordis-build` (see [host-api.md]
 | 5 (wins) | `--dev-plugins <dir>/<id>.dylib` | yes |
 | 4 | `~/.den/plugins/<id>/*.swift`, compiled by den | yes |
 | 3 | `~/.den/plugins/<id>.dylib` | yes |
+| 2.5 | `~/.den/updates/plugins/<id>.dylib` (managed: plugin updates, gated by host API) | yes |
 | 2 | `~/Library/Application Support/den/Plugins/<id>.dylib` (older location, still read) | no, only at launch |
 | 1 | `den.app/Contents/PlugIns/<id>.dylib` (bundled) | no |
 

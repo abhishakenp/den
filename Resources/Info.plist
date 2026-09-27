@@ -16,6 +16,11 @@
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticTermination</key><false/>
+  <!-- Host updates (Sparkle). The updates plugin schedules checks; Sparkle never checks on its own. -->
+  <key>SUFeedURL</key><string>https://raw.githubusercontent.com/abhishakenp/den/main/updates/appcast.xml</string>
+  <key>SUPublicEDKey</key><string>UNsZIwddapFh5BCXdYV9aqdxHczVYNydfhYFcsuFzFU=</string>
+  <key>SUEnableAutomaticChecks</key><false/>
+  <key>SUAutomaticallyUpdate</key><false/>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

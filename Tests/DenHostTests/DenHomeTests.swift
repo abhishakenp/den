@@ -1,4 +1,5 @@
 import Cordis
+import CryptoKit
 import CordisValue
 import Foundation
 import Testing
@@ -225,5 +226,56 @@ struct DenHomeTests {
     make(tcs.appendingPathComponent("swift-6.10.0-RELEASE.xctoolchain"))
     #expect(SourceCompiler.findToolchain(env: [:], home: base)?.lastPathComponent == "swift-6.10.0-RELEASE.xctoolchain")
     #expect(SourceCompiler.findToolchain(env: ["CORDIS_TOOLCHAIN": base.appendingPathComponent("nope").path], home: base) == nil)
+  }
+
+  // MARK: Updates
+
+  @Test func pluginDownloadsAreVerifiedBySha256AndEdDSA() {
+    let key = Curve25519.Signing.PrivateKey()
+    let pub = key.publicKey.rawRepresentation.base64EncodedString()
+    let data = Data("plugin bytes".utf8)
+    let sha = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    let sig = try! key.signature(for: data).base64EncodedString()
+    #expect(UpdatesService.verify(data, sha256: sha, signature: sig, publicKey: pub) == nil)
+    #expect(UpdatesService.verify(data + Data([0]), sha256: sha, signature: sig, publicKey: pub) == "sha256 mismatch")
+    let other = Curve25519.Signing.PrivateKey().publicKey.rawRepresentation.base64EncodedString()
+    #expect(UpdatesService.verify(data, sha256: sha, signature: sig, publicKey: other) == "bad signature")
+    #expect(UpdatesService.verify(data, sha256: sha, signature: sig, publicKey: nil) == "no public key to verify against")
+    #expect(UpdatesService.verify(Data(), sha256: sha, signature: sig, publicKey: pub) == "empty download")
+  }
+
+  @Test func managedPluginsArePlacedWithPreviousKeptAndGatedByHostAPI() throws {
+    let home = tempHome()
+    let dir = home.managedPlugins
+    #expect(UpdatesService.place(Data("v1".utf8), id: "tabs", in: dir, meta: ["hostAPI": 7, "version": "1", "sha256": "a"]) == nil)
+    #expect(UpdatesService.place(Data("v2".utf8), id: "tabs", in: dir, meta: ["hostAPI": 8, "version": "2", "sha256": "b"]) == nil)
+    let dylib = dir.appendingPathComponent("tabs.dylib")
+    #expect(try String(contentsOf: dylib, encoding: .utf8) == "v2")
+    #expect(try String(contentsOf: dir.appendingPathComponent("tabs.prev.dylib"), encoding: .utf8) == "v1")
+    // v2 was built for host API 8.
+    #expect(LivePlugins.managedCompatible(dylib, hostAPI: 8) == .ok)
+    #expect(LivePlugins.managedCompatible(dylib, hostAPI: 7) == .deferred(needs: 8))
+    #expect(LivePlugins.managedCompatible(dylib, hostAPI: 9) == .superseded(builtFor: 8))
+    #expect(LivePlugins.managedCompatible(dylib, hostAPI: nil) == .ok)
+    #expect(LivePlugins.launchFiles(home, hostAPI: 7).isEmpty)
+    #expect(LivePlugins.launchFiles(home, hostAPI: 8).map(\.lastPathComponent) == ["tabs.dylib"])
+
+    let svc = UpdatesService(host: ServiceHost(), home: home, build: DenBuild(hostAPI: 8), publicKey: nil)
+    var activated: [String] = []
+    svc.activate = { activated.append($0); return true }
+    #expect(svc.handle(method: "rollbackPlugin", args: ["id": "tabs"])["restored"] == true)
+    #expect(try String(contentsOf: dylib, encoding: .utf8) == "v1")
+    #expect(LivePlugins.managedCompatible(dylib, hostAPI: 7) == .ok)
+    #expect(activated == ["tabs.dylib"])
+    // No previous build left: rollback removes the managed copy (the bundled one takes over).
+    #expect(svc.handle(method: "rollbackPlugin", args: ["id": "tabs"])["restored"] == false)
+    #expect(!FileManager.default.fileExists(atPath: dylib.path))
+    #expect(svc.handle(method: "installPlugin", args: ["id": "tabs", "url": "http://insecure"]).isError)
+  }
+
+  @Test func updaterPathsAreClassified() {
+    let c = LivePlugins.classify(["/h/.den/updates/state.json", "/h/.den/updates/plugins/tabs.dylib", "/h/.den/updates/plugins/theme.json",
+                                  "/h/.den/updates/plugins/tabs.prev.dylib", "/h/.den/updates/plugins/.tabs.dylib.tmp"], root: "/h/.den")
+    #expect(c.updaterState && c.dylibs == ["tabs.dylib", "theme.dylib"])
   }
 }

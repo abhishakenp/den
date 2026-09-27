@@ -34,7 +34,7 @@ public final class PluginLoader {
       .appendingPathComponent("den/Plugins", isDirectory: true)
   }
 
-  static func dylibs(in dir: URL?) -> [URL] {
+  nonisolated static func dylibs(in dir: URL?) -> [URL] {
     guard let dir, let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return [] }
     return names.filter { $0.hasSuffix(".dylib") }.sorted().map { dir.appendingPathComponent($0) }
   }

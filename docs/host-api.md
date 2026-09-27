@@ -133,7 +133,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `newTabRow` | `id`, `title?` | `click` |
 | `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `headers?` (default true; false draws one flat list), `inputMode?: search\|go` (caret color), `banner?: {text, secondary, primary}` (the default-browser banner), `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]` | `input {text}`, `select {row}` (arrow keys, or hovering a row after the mouse moves), `submit {row, query, modifiers}`, `tab {query}`, `dismiss`, `banner {button: try\|set\|close}` |
 | `dialog` | `id`, `title`, `message?`, `icon?`, `iconStyle?: accent\|destructive\|plain`, `buttons: [{id, title, style: default\|cancel\|destructive\|secondary, default?, keycap?}]`, `checkbox?` | `button {button, checked}`. Return presses the `default` button (or the one with `default: true`), Esc the `cancel` one |
-| `toast` | `text`, `icon?`, `duration?` (ms) | – |
+| `toast` | `text`, `icon?`, `duration?` (ms; 0 = until dismissed), `id?`, `action?` (button label) | `ui.action {id, action: "toast"}` when the button is clicked |
 | `library` | `id`, `title?`, `query?`, `placeholder?`, `clearTitle?`, `empty?`, `items: [{id, title, url?, subtitle?, icon?, closedAt?}]` | `input {text}`, `restore {item}`, `clear`, `dismiss` |
 | `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss {reason?}` |
 
@@ -262,6 +262,23 @@ Chords are bound as main-menu items. That way they work while a web page has foc
 - Each namespace (plugin id) is one `Codec`-encoded file at `~/Library/Application Support/den/storage/<ns>.cvalue`.
 - Writes are atomic.
 
+## updates
+
+The native half of updating. All policy lives in the `updates` plugin ([updates.md](updates.md)).
+
+| Method | Args | Returns |
+|---|---|---|
+| `info` | – | `{version, build, commit, hostAPI, builtAt, crashed: [id], sparkle, publicKey}` |
+| `state` | – | the follow-main updater's `~/.den/updates/state.json`, or null |
+| `fetch` | `url` (https), `etag?`, `json?` | `{pending}`. Emits `updates.fetched {url, status, etag, body, value?, bytes, error}` (304 when the ETag matches) |
+| `plugins` | – | `[{id, file, layer, sha256}]` for the loaded plugins |
+| `installPlugin` | `id, url, sha256, signature, version, hostAPI, permissions?` | `{pending}`. Verifies sha256 + EdDSA (`SUPublicEDKey`), places the file in `~/.den/updates/plugins` (keeping `.prev`) and loads it. Emits `updates.pluginInstalled {id, ok, active, error?}` |
+| `rollbackPlugin` | `id` | `{ok, restored}` |
+| `kickUpdater` | – | ok. Runs the follow-main LaunchAgent now |
+| `sparkleConfigure` / `sparkleCheck` / `sparkleReply` | `channel` / `userInitiated?` / `choice: install\|later\|skip` | ok |
+
+Events: `updates.stateChanged {state}`, `updates.fetched`, `updates.pluginInstalled`, `updates.sparkle {phase: checking|none|found|downloading|ready|installing|error, version?, error?}`.
+
 ## config
 
 `~/.den/config.toml` and `~/.den/themes` ([den-home.md](den-home.md)). Nothing is read until after the first window, so a call during launch gets the empty config, and the real one arrives with the events.
@@ -297,6 +314,9 @@ Lets a plugin hide features whose provider isn't loaded.
 | `defaultBrowser` | – | `{bundleId, name, isDefault}`: the app that opens https links now |
 | `info` | – | `{bundleId, version, launchMs}` |
 | `copy` | `text` | ok. Puts the text on the general pasteboard |
+| `state` | – | `{active, idleSeconds, keyIdleSeconds}`: whether den is frontmost, and the time since any input or a key press |
+| `relaunch` | `background?` | ok. Quits cleanly (no quit dialog) and starts den again. With `background`, it doesn't take focus |
+| `setAbout` | `credits` | ok. Text for the About panel |
 
 Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`.
 

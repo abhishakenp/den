@@ -211,8 +211,8 @@ public final class UIService: HostService {
       }
     }
     let ms = Int(tree.num("duration", Double(Tokens.toastDefaultDurationMs)))
-    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(ms)) { [weak self, weak t] in
-      guard let t else { return }
+    let dismiss: () -> Void = { [weak self, weak t] in
+      guard let t, t.superview != nil, t.alphaValue > 0 else { return }
       NSAnimationContext.runAnimationGroup({ c in
         c.duration = 0.2
         t.animator().alphaValue = 0
@@ -224,6 +224,14 @@ public final class UIService: HostService {
         }
       })
     }
+    if t.hasAction {
+      let id = tree.str("id")
+      t.onAction = { [weak self] in
+        self?.host.emit("ui.action", ["id": .string(id), "action": "toast"])
+        dismiss()
+      }
+    }
+    if ms > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(ms)) { dismiss() } }
   }
 
   /// `overlay.library` slot: the Archive / Library sheet over the content area.

@@ -24,6 +24,13 @@ public struct DenHome: Sendable, Equatable {
   public var themes: URL { root.appendingPathComponent("themes", isDirectory: true) }
   public var config: URL { root.appendingPathComponent("config.toml") }
   public var logs: URL { root.appendingPathComponent("logs", isDirectory: true) }
+  /// Plugin updates (release OTA or the follow-main updater): `<id>.dylib` + `<id>.json`.
+  public var updates: URL { root.appendingPathComponent("updates", isDirectory: true) }
+  public var managedPlugins: URL { updates.appendingPathComponent("plugins", isDirectory: true) }
+  /// Written by scripts/updater.sh (follow-main): deployed commit, host install pending, …
+  public var updaterState: URL { updates.appendingPathComponent("state.json") }
+  /// The follow-main updater's clean checkout. Not watched.
+  public var source: URL { root.appendingPathComponent("src", isDirectory: true) }
 
   /// Compiled source plugins. Outside `~/.den` so builds never trigger the `~/.den` watcher.
   public var buildCache: URL {
@@ -37,7 +44,7 @@ public struct DenHome: Sendable, Equatable {
   /// Creates the folders, and a commented config.toml if there is none. Idempotent.
   public func ensureLayout() {
     let fm = FileManager.default
-    for d in [plugins, themes, logs] { try? fm.createDirectory(at: d, withIntermediateDirectories: true) }
+    for d in [plugins, themes, logs, managedPlugins] { try? fm.createDirectory(at: d, withIntermediateDirectories: true) }
     if !fm.fileExists(atPath: config.path) { try? Data(Self.defaultConfig.utf8).write(to: config, options: .atomic) }
   }
 

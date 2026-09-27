@@ -96,6 +96,8 @@ scripts/install.sh           # verified build (bundle + swift test) -> /Applicat
 scripts/dev-sync.sh          # keep the installed den on the latest code: plugins hot-swap, host changes reinstall
 ```
 
+Updates: release channels (Sparkle for the app, signed hot-swapped plugins) or, for developers, `scripts/updater.sh install` to follow `main`. See [docs/updates.md](docs/updates.md).
+
 Extend den from `~/.den`: drop in plugins (prebuilt `.dylib` or a folder of `.swift` files den compiles), themes and `config.toml`. Changes apply live. See [docs/den-home.md](docs/den-home.md).
 
 The host API that plugins code against is in [docs/host-api.md](docs/host-api.md).

@@ -17,6 +17,7 @@ import os
 //   --measure-launch               print ms from process start to first window on screen, then quit
 //   --storage <dir>                storage root (default ~/Library/Application Support/den/storage)
 //   --no-den-home                  ignore ~/.den (no user plugins, themes, config; nothing watched)
+//   --relaunched [--background]    started by app.relaunch / an update; --background doesn't take focus
 //
 // ~/.den (DEN_HOME overrides it): plugins, themes and config.toml, watched and hot-reloaded
 // after the first window (docs/den-home.md). SIGTERM quits cleanly without the quit dialog.
@@ -50,6 +51,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   let home: DenHome? = CommandLine.arguments.contains("--no-den-home") ? nil : DenHome()
   var config: ConfigService?
   var live: LivePlugins?
+  var updates: UpdatesService?
+  var sparkle: DenSparkle?
+  /// Set when an update quits den: skip the quit dialog.
+  var quittingForUpdate = false
+  var background: Bool { args.contains("--relaunched") && args.contains("--background") }
   var sigterm: DispatchSourceSignal?
   lazy var sessionLog: DenLog? = home.map { DenLog(url: $0.logs.appendingPathComponent("den.log")) }
 
@@ -107,11 +113,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let c = ConfigService(host: runtime.host, home: home) { [unowned runtime] s, m, a in runtime!.call(s, m, a) }
       runtime.provide(c)
       config = c
+      // Native half of updates (nothing is read until a plugin asks). Policy: the updates plugin.
+      let u = UpdatesService(host: runtime.host, home: home, build: DenBuild.running)
+      u.loadedFiles = { [unowned runtime] in runtime!.plugins.plugins.map { ($0.id, $0.path) } }
+      u.activate = { [weak self] name in
+        guard let self, let live = self.live else { return false }
+        live.refresh(name)
+        let id = String(name.dropLast(6))
+        return self.runtime.plugins.plugin(id)?.state == .active
+      }
+      if Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil {
+        let sp = DenSparkle(service: u)
+        sp.willInstall = { [weak self] in self?.quittingForUpdate = true }
+        u.sparkle = sp
+        sparkle = sp
+      }
+      runtime.provide(u)
+      updates = u
     }
-    let outcome = loader.loadAll(home: home.map(LivePlugins.launchFiles) ?? [], dev: arg("--dev-plugins").map { URL(fileURLWithPath: $0) },
+    runtime.app.relaunchHandler = { [weak self] background in self?.relaunch(background: background) }
+    let hostAPI = DenBuild.running.hostAPI
+    let outcome = loader.loadAll(home: home.map { LivePlugins.launchFiles($0, hostAPI: hostAPI) } ?? [], dev: arg("--dev-plugins").map { URL(fileURLWithPath: $0) },
                                  disabled: home.map(ConfigService.disabledPlugins) ?? [])
     trace("plugins")
     if traceOn || !outcome.failed.isEmpty { print("plugins loaded=\(outcome.loaded) failed=\(outcome.failed) crashed=\(outcome.crashed)") }
+    updates?.crashed = outcome.crashed
     if let text = PluginLoader.crashToast(outcome.crashed) {
       runtime.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(text), "icon": "sf:exclamationmark.triangle.fill", "duration": 6000]])
     }
@@ -126,17 +152,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     trace("setup")
     let w = runtime.window.window
-    w.makeKeyAndOrderFront(nil)
-    trace("orderFront")
-    NSApp.activate()
-    trace("activate")
+    if background {
+      // Relaunched by an update while the user works elsewhere: come back without taking focus.
+      w.orderFront(nil)
+    } else {
+      w.makeKeyAndOrderFront(nil)
+      trace("orderFront")
+      NSApp.activate()
+      trace("activate")
+    }
     w.displayIfNeeded()
     trace("display")
     DispatchQueue.main.async { trace("nextRunloop") }
     // Never keep pages waiting if the window server is slow to report the window visible.
     DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.runtime.content.releaseWebViews() }
-    // The window server reports the window visible -> first frame is on screen.
-    if w.occlusionState.contains(.visible) {
+    // The window server reports the window visible -> first frame is on screen. (In the
+    // background it may stay covered, so don't wait for that.)
+    if w.occlusionState.contains(.visible) || background {
       firstFrame()
     } else {
       visibleObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in
@@ -199,6 +231,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       if let e = config?.errors.first(where: { $0.hasPrefix("config.toml") }) { self?.live?.toast(e) }
     }
     live.themesChanged = { [weak config] in config?.reloadThemes() }
+    live.hostAPI = DenBuild.running.hostAPI
+    live.updaterStateChanged = { [weak self] in self?.updates?.stateChanged() }
     self.live = live
     home.ensureLayout()
     config.start()
@@ -207,6 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     sessionLog?.write(String(format: "launch pid=%d firstWindowEpochMs=%.0f firstWindowMs=%.1f %@", getpid(), firstWindowEpochMs, firstWindowMs, sessionSummary()))
   }
 
+  // thin-host: feature-specific, migrate to plugin (reads tabs/spaces to log the session)
   /// One line describing the restorable session: spaces, tabs, selection, and a signature of
   /// every tab's id and URL (equal before a quit and after the relaunch when state survived).
   func sessionSummary() -> String {
@@ -346,7 +381,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    runtime?.app.shouldTerminate() ?? .terminateNow
+    if quittingForUpdate { return .terminateNow }
+    return runtime?.app.shouldTerminate() ?? .terminateNow
+  }
+
+  /// `app.relaunch`: a detached shell waits for this process to exit, then opens the bundle
+  /// again (`-g`: without taking focus). The quit is clean (session saved, no quit dialog).
+  func relaunch(background: Bool) {
+    let bundle = Bundle.main.bundlePath
+    let flags = background ? "--relaunched --background" : "--relaunched"
+    let script = "while /bin/kill -0 \(getpid()) 2>/dev/null; do /bin/sleep 0.05; done; /usr/bin/open \(background ? "-g " : "")\"$0\" --args \(flags)"
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/bin/sh")
+    p.arguments = ["-c", script, bundle]
+    do { try p.run() } catch { return }
+    sessionLog?.write("relaunch requested background=\(background)")
+    quittingForUpdate = true
+    NSApp.terminate(nil)
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

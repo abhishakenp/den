@@ -419,3 +419,21 @@ These points follow from facts verified earlier or read in the code:
 7. **The first frame.** The window shell, a default palette and enough of the renderer to draw the sidebar must exist before any plugin has applied. Plugins fill the regions afterwards.
 
 Everything else is feature policy and belongs in a plugin, whatever its current location. That includes every string, threshold, timer duration, heuristic, prompt, URL, menu item, layout composition and Arc measurement.
+
+---
+
+## Markers and the updates feature
+
+Feature-specific host code is marked with one line, so `git grep "thin-host:"` lists what's left to migrate:
+
+```swift
+// thin-host: feature-specific, migrate to plugin
+```
+
+Marked so far: `ConfigService.apply()` (shortcuts and keywords), `LivePlugins.toast` (load and build failure strings), and `main.swift` `sessionSummary()`.
+
+Updates ([updates.md](../updates.md)) follow the rule from the start:
+
+- **The `updates` plugin** holds the policy and UI: channel, schedule, what to install, rollbacks, when to relaunch, every string (toast, About text) and the Check for Updates… command.
+- **The host `updates` service** does only native work: ETag fetch, sha256 + EdDSA verification, atomic file placement, the Sparkle bridge, `launchctl`.
+- **Generic blocks** that any plugin can use: `app.state`, `app.relaunch`, `app.setAbout` and a toast action button.

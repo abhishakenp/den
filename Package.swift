@@ -10,7 +10,9 @@ let package = Package(
     .library(name: "DenHost", targets: ["DenHost"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/abhishakenp/cordis-swift", from: "0.1.2")
+    .package(url: "https://github.com/abhishakenp/cordis-swift", from: "0.1.2"),
+    // Host updates (EdDSA-signed appcast). Embedded into den.app/Contents/Frameworks by scripts/bundle.sh.
+    .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
   ],
   targets: [
     .target(
@@ -22,7 +24,7 @@ let package = Package(
     ),
     .executableTarget(
       name: "Den",
-      dependencies: ["DenHost", .product(name: "CordisValue", package: "cordis-swift")]
+      dependencies: ["DenHost", .product(name: "CordisValue", package: "cordis-swift"), .product(name: "Sparkle", package: "Sparkle")]
     ),
     // Plugin logic compiled as normal Swift so it can be tested against the real host services.
     // The same files are compiled as Embedded Swift plugins by scripts/bundle.sh (cordis-build).
@@ -30,7 +32,7 @@ let package = Package(
       name: "PluginCores",
       dependencies: [.product(name: "CordisValue", package: "cordis-swift")],
       path: "Plugins",
-      sources: ["Shared/Env.swift", "spaces/SpacesCore.swift", "tabs/TabsCore.swift", "commandbar/CommandBarCore.swift", "peek/PeekCore.swift", "theme/ThemeRules.swift", "theme/ThemeCore.swift", "quit/QuitCore.swift", "Shared/Web.swift", "connections/ConnectionsCore.swift", "slack/SlackCore.swift", "github/GitHubCore.swift", "briefing/BriefingCore.swift", "previews/PreviewsCore.swift", "previews/Cards.swift", "previews/Providers.swift"],
+      sources: ["Shared/Env.swift", "spaces/SpacesCore.swift", "tabs/TabsCore.swift", "commandbar/CommandBarCore.swift", "peek/PeekCore.swift", "theme/ThemeRules.swift", "theme/ThemeCore.swift", "quit/QuitCore.swift", "updates/UpdatesCore.swift", "Shared/Web.swift", "connections/ConnectionsCore.swift", "slack/SlackCore.swift", "github/GitHubCore.swift", "briefing/BriefingCore.swift", "previews/PreviewsCore.swift", "previews/Cards.swift", "previews/Providers.swift"],
       swiftSettings: [.swiftLanguageMode(.v5)]
     ),
     .testTarget(

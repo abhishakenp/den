@@ -105,6 +105,7 @@ public final class ConfigService: HostService {
 
   // MARK: Applying
 
+  // thin-host: feature-specific, migrate to plugin (shortcuts -> commands, keywords -> command bar engines)
   func apply() {
     // Shortcuts: rebind from scratch.
     for c in boundChords { _ = call("keys", "unbind", ["chord": .string(c)]) }

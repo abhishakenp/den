@@ -129,7 +129,8 @@ public enum MainMenu {
     let appItem = NSMenuItem()
     main.addItem(appItem)
     let app = NSMenu(title: "den")
-    app.addItem(withTitle: "About den", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+    let about = app.addItem(withTitle: "About den", action: #selector(AboutPanel.show(_:)), keyEquivalent: "")
+    about.target = AboutPanel.shared
     app.addItem(.separator())
     let services = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
     services.submenu = NSMenu()
@@ -189,6 +190,9 @@ public enum MainMenu {
 ///   defaultBrowser               -> {bundleId, name, isDefault}: the app that opens https links now
 ///   info                         -> {bundleId, version, launchMs}
 ///   copy {text}                  -> puts text on the general pasteboard
+///   state                        -> {active, idleSeconds, keyIdleSeconds}: frontmost, and time since any input / a key press
+///   relaunch {background?}       -> quits cleanly (no quit dialog) and relaunches; `background` doesn't take focus
+///   setAbout {credits}           -> text shown in the About panel
 /// Events: app.quitRequested, app.closeRequested, app.openURL {urls: [string]}, app.activate
 @MainActor
 public final class AppService: HostService {
@@ -202,6 +206,8 @@ public final class AppService: HostService {
   var forceClose = false
   var buffered: [String] = []
   public var launchMs: Double?
+  /// Set by the app (main.swift): quits and relaunches the bundle. `true` = in the background.
+  public var relaunchHandler: ((Bool) -> Void)?
   /// Reads and sets the system default browser. Tests swap in a fake so they never touch macOS.
   public var browserDefaults = BrowserDefaults.system
 
@@ -255,6 +261,18 @@ public final class AppService: HostService {
     case "info":
       return ["bundleId": .string(Bundle.main.bundleIdentifier ?? ""), "version": .string(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"),
               "launchMs": launchMs.map { .double($0) } ?? .null]
+    case "state":
+      // Generic signals for plugins that schedule work around the user (e.g. updates).
+      let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+      let keyIdle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+      return ["active": .bool(NSApp.isActive), "idleSeconds": .double(idle), "keyIdleSeconds": .double(keyIdle)]
+    case "relaunch":
+      // Quits cleanly (no quit dialog) and starts this app bundle again; `background` keeps the
+      // new instance from taking focus.
+      guard relaunchHandler != nil else { return .error("app: relaunch is not available") }
+      relaunchHandler?(args.flag("background"))
+    case "setAbout":
+      AboutPanel.shared.credits = args.str("credits")
     default:
       return .error("app: unknown method '\(method)'")
     }
@@ -283,6 +301,21 @@ public final class AppService: HostService {
     } else {
       buffered += list
     }
+  }
+}
+
+/// The About panel: the standard one, plus credits text a plugin sets (`app.setAbout`).
+@MainActor
+public final class AboutPanel: NSObject {
+  public static let shared = AboutPanel()
+  public var credits = ""
+  @objc public func show(_ sender: Any?) {
+    var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
+    if !credits.isEmpty {
+      options[.credits] = NSAttributedString(string: credits, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+    }
+    NSApp.activate()
+    NSApp.orderFrontStandardAboutPanel(options: options)
   }
 }
 

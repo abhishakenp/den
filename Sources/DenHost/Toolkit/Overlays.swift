@@ -216,12 +216,17 @@ final class Keycap: NSView {
 
 // MARK: - Toast
 
-/// {type:"toast", id?, text, icon?, duration?: ms}. Theme-tinted pill; auto-dismisses.
+/// {type:"toast", id?, text, icon?, duration?: ms, action?: "Restart"}. Theme-tinted pill;
+/// auto-dismisses. With `action`, a button at the end emits `ui.action {id, action: "toast"}` and
+/// closes the toast; `duration: 0` keeps it until then.
 @MainActor
 final class ToastView: FlippedView, Themable {
   let icon = IconView()
   let label = makeLabel(size: 13, weight: .medium)
+  let actionLabel = makeLabel(size: 13, weight: .semibold)
+  let divider = NSView()
   var color: NSColor = .black
+  var onAction: (() -> Void)?
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -233,26 +238,52 @@ final class ToastView: FlippedView, Themable {
     layer?.shadowOffset = CGSize(width: 0, height: -3)
     addSubview(icon)
     addSubview(label)
+    divider.wantsLayer = true
+    divider.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.3).cgColor
+    addSubview(divider)
+    addSubview(actionLabel)
   }
   required init?(coder: NSCoder) { fatalError() }
+
+  var hasAction: Bool { !actionLabel.stringValue.isEmpty }
 
   func update(_ v: Value, palette p: Palette) {
     label.stringValue = v.str("text")
     icon.spec = v.str("icon")
     icon.isHidden = icon.spec.isEmpty
+    actionLabel.stringValue = v.str("action")
+    actionLabel.isHidden = !hasAction
+    divider.isHidden = !hasAction
     apply(p)
   }
+
+  override func mouseDown(with event: NSEvent) {
+    guard hasAction else { return super.mouseDown(with: event) }
+    let p = convert(event.locationInWindow, from: nil)
+    if p.x >= divider.frame.minX - 4 { onAction?() }
+  }
+  override func resetCursorRects() {
+    if hasAction { addCursorRect(NSRect(x: divider.frame.minX, y: 0, width: bounds.width - divider.frame.minX, height: bounds.height), cursor: .pointingHand) }
+  }
+  override var mouseDownCanMoveWindow: Bool { false }
   func apply(_ p: Palette) {
     layer?.backgroundColor = p.toast.cgColor
     label.textColor = .white
+    actionLabel.textColor = .white
     icon.tint = .white
   }
-  var contentWidth: CGFloat { ceil(label.textWidth) + (icon.isHidden ? 40 : 64) }
+  var actionWidth: CGFloat { hasAction ? ceil(actionLabel.textWidth) + 25 : 0 }
+  var contentWidth: CGFloat { ceil(label.textWidth) + (icon.isHidden ? 40 : 64) + actionWidth }
   override func layout() {
     super.layout()
     var x: CGFloat = 16
     if !icon.isHidden { icon.frame = NSRect(x: x, y: (bounds.height - 15) / 2, width: 15, height: 15); x += 24 }
-    label.frame = NSRect(x: x, y: (bounds.height - 17) / 2, width: bounds.width - x - 14, height: 17)
+    label.frame = NSRect(x: x, y: (bounds.height - 17) / 2, width: bounds.width - x - 14 - actionWidth, height: 17)
+    if hasAction {
+      let ax = bounds.width - 14 - ceil(actionLabel.textWidth)
+      actionLabel.frame = NSRect(x: ax, y: (bounds.height - 17) / 2, width: ceil(actionLabel.textWidth) + 2, height: 17)
+      divider.frame = NSRect(x: ax - 12, y: 9, width: 1, height: bounds.height - 18)
+    }
     layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Tokens.toastCornerRadius, cornerHeight: Tokens.toastCornerRadius, transform: nil)
   }
 }
