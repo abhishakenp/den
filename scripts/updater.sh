@@ -117,19 +117,21 @@ cmd_status() {
   tail -5 $LOG 2>/dev/null
 }
 
-# swift test [filter]; a test that fails is re-run once on its own (UI tests that drive real
-# events can be flaky under load). Deploys need every test to pass, first time or on the re-run.
+# swift test [filter]. UI and WebKit tests can be flaky under heavy load, so: a run that
+# crashed (no summary) is run again whole, once; then tests that failed are re-run once on their
+# own. Deploys need every test to pass by then.
 run_tests() {
-  local out=$STAGE/test.log
+  local out=$STAGE/test.log filter=$1
   mkdir -p $STAGE
-  (cd $SRC && swift test ${1:+--filter "$1"} > $out 2>&1); local rc=$?
+  (cd $SRC && swift test ${filter:+--filter "$filter"} > $out 2>&1); local rc=$?
   cat $out >> $LOG
   (( rc == 0 )) && return 0
   if ! grep -q "Test run with" $out; then
-    # The test process died (a crash stops every test after it): run the same set again, whole.
     log "test run did not finish; running it again once"
-    (cd $SRC && swift test ${1:+--filter "$1"} >> $LOG 2>&1)
-    return
+    (cd $SRC && swift test ${filter:+--filter "$filter"} > $out 2>&1); rc=$?
+    cat $out >> $LOG
+    (( rc == 0 )) && return 0
+    grep -q "Test run with" $out || return 1
   fi
   local failed=(${(f)"$(sed -nE 's/^✘ Test ([A-Za-z0-9_]+)\(.*\) failed.*/\1/p' $out | sort -u)"})
   (( ${#failed} )) || return 1
