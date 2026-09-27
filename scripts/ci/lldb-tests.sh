@@ -10,10 +10,13 @@ helper=$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/libexec/swift/
 [[ -x $helper && -f $bundle ]] || { echo "no $helper or $bundle"; exit 2; }
 # What `swift test` adds: Testing.framework / XCTest live in the platform's developer dirs.
 platform=$(xcode-select -p)/Platforms/MacOSX.platform/Developer
+out=$(mktemp)
 lldb --batch \
   -o "settings set target.env-vars DYLD_FRAMEWORK_PATH=$platform/Library/Frameworks DYLD_LIBRARY_PATH=$platform/usr/lib" \
   -o 'settings set target.process.stop-on-exec false' \
   -o 'process handle SIGPIPE -n true -p true -s false' \
   -o run \
   -k 'thread backtrace all' -k 'register read' -k 'quit 1' \
-  -- "$helper" --test-bundle-path "$bundle" "$bundle" --testing-library swift-testing "$@"
+  -- "$helper" --test-bundle-path "$bundle" "$bundle" --testing-library swift-testing "$@" 2>&1 | tee "$out"
+# lldb's own status says nothing about the tests: pass only if the process exited 0.
+grep -q 'exited with status = 0 ' "$out"

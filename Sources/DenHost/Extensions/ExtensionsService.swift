@@ -40,6 +40,12 @@ public final class ExtensionsService: NSObject, HostService {
   public private(set) var controller: WKWebExtensionController?
   var contexts: [String: WKWebExtensionContext] = [:]
   var loadErrors: [String: String] = [:]
+  /// Last load or grant change per extension id, and unloads waiting out `rulesGrace` (see `retire`).
+  var rulesTouchedAt: [String: Date] = [:]
+  var retiring: [String: Task<Void, Never>] = [:]
+  var retireTokens: [String: Int] = [:]
+  var retireCount = 0
+  static let rulesGrace: TimeInterval = 5
   var ready = false
   var waiters: [() -> Void] = []
   lazy var mainWindow = ExtWindow(svc: self)
@@ -313,9 +319,13 @@ public final class ExtensionsService: NSObject, HostService {
   /// Loads one installed extension into the controller, restoring its grants.
   func load(_ e: InstalledExtension) async {
     guard let c = controller else { return }
-    if let old = contexts.removeValue(forKey: e.id) { try? c.unload(old) }
+    if let old = contexts.removeValue(forKey: e.id) { retire(old, id: e.id, from: c) }
+    // A context with this id may still be loaded, waiting out its grace period: same baseURL.
+    if let pending = retiring[e.id] { await pending.value }
     do {
       let ext = try await WKWebExtension(resourceBaseURL: URL(fileURLWithPath: registry.path(e), isDirectory: true))
+      // Disabled or removed while the package was read (toggle off/on, then Remove): don't load it.
+      guard registry.item(e.id)?.enabled == true, contexts[e.id] == nil else { return }
       let ctx = WKWebExtensionContext(for: ext)
       ctx.uniqueIdentifier = e.id
       // A stable origin, so the extension's own storage survives relaunches.
@@ -323,6 +333,7 @@ public final class ExtensionsService: NSObject, HostService {
       ctx.isInspectable = true
       applyGrants(ctx, e)
       try c.load(ctx)
+      rulesTouchedAt[e.id] = Date()
       contexts[e.id] = ctx
       loadErrors[e.id] = nil
     } catch {
@@ -331,8 +342,35 @@ public final class ExtensionsService: NSObject, HostService {
     }
   }
 
+  /// Unloads a context that `contexts` no longer lists, once WebKit's async rule load is done.
+  /// WebKit (seen on macOS 26.6) loads a context's declarativeNetRequest rules asynchronously after
+  /// `load(_:)` and after grant changes: WebExtensionContext::loadDeclarativeNetRequestRules →
+  /// WebExtensionDeclarativeNetRequestSQLiteStore::getRulesWithRuleIDs, whose completion runs on the
+  /// main queue. Unloading the context before it lands makes that completion dereference null
+  /// (EXC_BAD_ACCESS at 0x24) in whatever runs next. There is no public "rules loaded" signal, so
+  /// the unload waits until `rulesGrace` after the last load or grant change; the task keeps the
+  /// context and the controller alive until then. `load` waits for a pending retirement of its id.
+  func retire(_ ctx: WKWebExtensionContext, id: String, from c: WKWebExtensionController, then done: (@MainActor () -> Void)? = nil) {
+    let wait = (rulesTouchedAt[id].map { Self.rulesGrace - Date().timeIntervalSince($0) } ?? 0)
+    let previous = retiring[id]
+    retireCount += 1
+    let token = retireCount
+    retiring[id] = Task { @MainActor [weak self] in
+      await previous?.value
+      if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+      try? c.unload(ctx)
+      done?()
+      guard let self, self.retireTokens[id] == token else { return }
+      self.retiring[id] = nil
+      self.retireTokens[id] = nil
+      if self.contexts[id] == nil { self.rulesTouchedAt[id] = nil }
+    }
+    retireTokens[id] = token
+  }
+
   /// Grants what the user approved: API permissions, and host access by the site access mode.
   func applyGrants(_ ctx: WKWebExtensionContext, _ e: InstalledExtension) {
+    rulesTouchedAt[e.id] = Date()
     var perms: [WKWebExtension.Permission: Date] = [:]
     for p in e.granted { perms[WKWebExtension.Permission(rawValue: p)] = .distantFuture }
     ctx.grantedPermissions = perms
@@ -378,7 +416,8 @@ public final class ExtensionsService: NSObject, HostService {
   func configuration(for url: String) -> WKWebViewConfiguration? {
     guard url.hasPrefix("webkit-extension://") else { return nil }
     if controller == nil, hasAnything { ensureController() }
-    guard let u = URL(string: url), let ctx = controller?.extensionContext(for: u) else { return nil }
+    guard let u = URL(string: url), let ctx = controller?.extensionContext(for: u),
+          contexts[ctx.uniqueIdentifier] === ctx else { return nil }  // not one waiting to unload (retire)
     return ctx.webViewConfiguration
   }
 
@@ -658,9 +697,10 @@ public final class ExtensionsService: NSObject, HostService {
     guard let e = registry.item(id) else { return .error("webext: no extension '\(id)'") }
     if ui.popupFor == id { ui.close() }
     if let ctx = contexts.removeValue(forKey: id), let c = controller {
-      try? c.unload(ctx)
-      c.fetchDataRecord(ofTypes: WKWebExtensionController.allExtensionDataTypes, for: ctx) { rec in
-        if let rec { c.removeData(ofTypes: WKWebExtensionController.allExtensionDataTypes, from: [rec]) {} }
+      retire(ctx, id: id, from: c) {
+        c.fetchDataRecord(ofTypes: WKWebExtensionController.allExtensionDataTypes, for: ctx) { rec in
+          if let rec { c.removeData(ofTypes: WKWebExtensionController.allExtensionDataTypes, from: [rec]) {} }
+        }
       }
     }
     if e.sourceKind != .home { try? FileManager.default.removeItem(at: registry.folder(id)) }
@@ -681,7 +721,7 @@ public final class ExtensionsService: NSObject, HostService {
       Task { await load(registry.item(id) ?? e); changed() }
     } else if let ctx = contexts.removeValue(forKey: id) {
       if ui.popupFor == id { ui.close() }
-      try? controller?.unload(ctx)
+      if let c = controller { retire(ctx, id: id, from: c) }
     }
     changed()
     return .ok
@@ -777,6 +817,7 @@ public final class ExtensionsService: NSObject, HostService {
           $0.grantedPatterns = Array(Set($0.grantedPatterns + patterns.filter { $0.contains("://") || $0 == "<all_urls>" })).sorted()
         }
         self.registry.save()
+        self.rulesTouchedAt[ctx.uniqueIdentifier] = Date()  // WebKit reloads DNR rules on the grant (see retire)
       }
       done(ok)
     }
