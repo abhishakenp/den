@@ -105,3 +105,34 @@ extension ComponentTests {
     #expect(got.last?["id"] == "t" && got.last?["action"] == "menu" && got.last?["value"] == "move:work")
   }
 }
+
+extension ComponentTests {
+  @Test func dialogVariantsLayoutAndKeys() throws {
+    let rt = Self.runtime()
+    var got: [Value] = []
+    rt.host.on("ui.action") { got.append($0) }
+    // Quit sheet (spec §5): 450x248, secondary button on the left, Cancel + Quit packed right 7 pt apart.
+    _ = rt.call("ui", "set", ["slot": "dialog", "tree": HostScenarios.dialogs["dialogQuit"]!])
+    rt.window.window.contentView?.layoutSubtreeIfNeeded()
+    let d = rt.ui.dialog
+    d.layoutSubtreeIfNeeded()
+    #expect(d.frame.size == CGSize(width: 450, height: 248))
+    let b = d.buttons.map(\.frame)
+    #expect(b[0].minX == 27.5 && abs(b[2].maxX - 422.5) < 0.01 && abs(b[2].minX - b[1].maxX - 7) < 0.01)
+    #expect(abs(b[0].width - 176) <= 1.5 && abs(b[1].width - 110) <= 1.5 && abs(b[2].width - 86) <= 1.5)  // spec §5 widths
+    #expect(d.hero.isHidden && d.icon.frame.width == 62)
+    // Destructive confirm flagged default: Return presses it, Esc presses Cancel.
+    _ = rt.call("ui", "set", ["slot": "dialog", "tree": HostScenarios.dialogs["dialogDeleteSpace"]!])
+    d.layoutSubtreeIfNeeded()
+    #expect(!d.hero.isHidden && d.hero.frame.width == 76)
+    #expect(d.buttons[1].keycap.text == "↩" && d.buttons[0].keycap.text == "ESC")
+    let ret = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+                               characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+    d.keyDown(with: ret)
+    #expect(got.last?["id"] == "deleteSpace" && got.last?["value"]["button"] == "delete")
+    d.cancelOperation(nil)
+    #expect(got.last?["value"]["button"] == "cancel")
+    _ = rt.call("ui", "set", ["slot": "dialog", "tree": HostScenarios.dialogs["dialogClearArchive"]!])
+    #expect(d.title.stringValue == "Clear the Archive?" && d.frame.height > 248 - 1)
+  }
+}

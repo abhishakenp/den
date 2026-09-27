@@ -251,14 +251,19 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
 
 // MARK: - Dialog
 
-/// {type:"dialog", id, title, message?, icon?, buttons: [{id, title, style: default|cancel|destructive|secondary}], checkbox?: {id, title, checked}}
-/// action (id = dialog id): button {button, checked}. Return/Escape press the default/cancel buttons.
+/// {type:"dialog", id, title, message?, icon?, iconStyle?: accent|destructive|plain,
+///  buttons: [{id, title, style: default|cancel|destructive|secondary, default?, keycap?}], checkbox?: {id, title, checked}}
+/// action (id = dialog id): button {button, checked}. Return presses the `default` style button or the
+/// button flagged `default: true` (e.g. a destructive confirm); Escape presses the cancel button.
+/// Icons: `app:icon` draws at 62 pt (quit sheet, spec §5); any other icon is a 76 pt hero icon
+/// (spec §5 "Dialog hero icons"): an `sf:` symbol on a tinted disc.
 /// Layout follows Arc's quit sheet (spec §5): left-aligned icon and title, buttons in a row at the
 /// bottom right, each with its keyboard hint as a keycap.
 @MainActor
 final class DialogView: PanelView {
   let icon = IconView()
-  let title = makeLabel(size: 17, weight: .semibold)  // estimate: size UNVERIFIED
+  let hero = FlippedView()
+  let title = NSTextField(wrappingLabelWithString: "")
   let message = NSTextField(wrappingLabelWithString: "")
   var buttons: [PillButton] = []
   var checkbox: NSButton?
@@ -269,7 +274,10 @@ final class DialogView: PanelView {
     self.emit = emit
     super.init(radius: Tokens.dialogCornerRadius)
     message.font = .systemFont(ofSize: 13)
-    [icon, title, message].forEach { surface.addSubview($0) }
+    title.font = .systemFont(ofSize: 18, weight: .medium)  // PX: 13 pt cap height on arc_quit_dialog.png
+    hero.wantsLayer = true
+    hero.layer?.cornerRadius = Tokens.dialogHeroIconSize / 2
+    [hero, icon, title, message].forEach { surface.addSubview($0) }
   }
   required init?(coder: NSCoder) { fatalError() }
 
@@ -277,13 +285,14 @@ final class DialogView: PanelView {
     node = v
     icon.spec = v.str("icon")
     icon.isHidden = icon.spec.isEmpty
+    hero.isHidden = icon.isHidden || icon.spec == "app:icon"
     title.stringValue = v.str("title")
     message.stringValue = v.str("message")
     message.isHidden = message.stringValue.isEmpty
     buttons.forEach { $0.removeFromSuperview() }
     buttons = v.list("buttons").enumerated().map { i, b in
       let style = b.str("style", "secondary")
-      let key = style == "default" ? "↩" : (style == "cancel" ? "esc" : "")
+      let key = b["keycap"].string ?? (Self.isDefault(b) ? "↩" : (style == "cancel" ? "ESC" : ""))
       let btn = PillButton(title: b.str("title"), style: style, keycap: key) { [weak self] in self?.pressed(i) }
       surface.addSubview(btn)
       return btn
@@ -305,7 +314,14 @@ final class DialogView: PanelView {
     surface.layer?.backgroundColor = p.popover.cgColor
     title.textColor = p.text
     message.textColor = p.secondaryText
-    icon.tint = p.accent
+    let tint: NSColor
+    switch node.str("iconStyle", "accent") {
+    case "destructive": tint = p.destructive
+    case "plain": tint = p.text
+    default: tint = p.accentStrong
+    }
+    icon.tint = tint
+    hero.layer?.backgroundColor = tint.withAlphaComponent(p.dark ? 0.2 : 0.12).cgColor  // estimate
     buttons.forEach { $0.apply(p) }
   }
 
@@ -314,10 +330,12 @@ final class DialogView: PanelView {
     emit(node.str("id", "dialog"), "button", ["button": .string(spec.str("id")), "checked": .bool(checkbox?.state == .on)])
   }
 
+  static func isDefault(_ b: Value) -> Bool { b["default"].bool ?? (b.str("style") == "default") }
+
   /// Return / Escape trigger the default / cancel buttons.
   override func keyDown(with event: NSEvent) {
     let styles = node.list("buttons").map { $0.str("style") }
-    if event.keyCode == 36 || event.keyCode == 76, let i = styles.firstIndex(of: "default") { pressed(i); return }
+    if event.keyCode == 36 || event.keyCode == 76, let i = node.list("buttons").firstIndex(where: Self.isDefault) { pressed(i); return }
     if event.keyCode == 53, let i = styles.firstIndex(of: "cancel") { pressed(i); return }
     super.keyDown(with: event)
   }
@@ -329,14 +347,18 @@ final class DialogView: PanelView {
   var messageHeight: CGFloat {
     message.isHidden ? 0 : message.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: Tokens.dialogWidth - 2 * Tokens.dialogPadding, height: 1000)).height
   }
+  var titleHeight: CGFloat {
+    max(22, ceil(title.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: Tokens.dialogWidth - 2 * Tokens.dialogPadding, height: 1000)).height))
+  }
+  var iconSize: CGFloat { icon.spec == "app:icon" ? Tokens.dialogIconSize : Tokens.dialogHeroIconSize }
 
   var contentHeight: CGFloat {
     // Spec §5: 450x248 with icon (62) at 38, title at 117, no message.
     let pad = Tokens.dialogPadding
-    var h = pad + (icon.isHidden ? 0 : Tokens.dialogIconSize + 17) + 22
+    var h = pad + (icon.isHidden ? 0 : iconSize + 17) + titleHeight
     if !message.isHidden { h += 8 + messageHeight }
     if checkbox != nil { h += 30 }
-    h += 33 + Tokens.dialogButtonHeight + pad
+    h += 33 + Tokens.dialogButtonHeight + Tokens.dialogButtonInset
     return max(icon.isHidden ? 0 : 248, h)
   }
 
@@ -344,14 +366,33 @@ final class DialogView: PanelView {
     super.layout()
     let pad = Tokens.dialogPadding, w = bounds.width - 2 * pad
     var y = pad
-    if !icon.isHidden { icon.frame = NSRect(x: pad, y: y, width: Tokens.dialogIconSize, height: Tokens.dialogIconSize); y += Tokens.dialogIconSize + 17 }
-    title.frame = NSRect(x: pad, y: y, width: w, height: 22); y += 22
+    if !icon.isHidden {
+      let s = iconSize
+      if hero.isHidden {
+        icon.frame = NSRect(x: pad, y: y, width: s, height: s)
+      } else {
+        hero.frame = NSRect(x: pad, y: y, width: s, height: s)
+        let g = Tokens.dialogHeroGlyphSize
+        icon.frame = NSRect(x: pad + (s - g) / 2, y: y + (s - g) / 2, width: g, height: g)
+      }
+      y += s + 17
+    }
+    let th = titleHeight
+    title.frame = NSRect(x: pad, y: y, width: w, height: th); y += th
     if !message.isHidden { message.frame = NSRect(x: pad, y: y + 8, width: w, height: messageHeight); y += 8 + messageHeight }
     if let c = checkbox { c.sizeToFit(); c.frame.origin = NSPoint(x: pad - 2, y: y + 8) }
-    // Buttons: one row, right-aligned, 7 pt apart, bottom padding 38.
-    var x = bounds.width - pad
-    let by = bounds.height - pad - Tokens.dialogButtonHeight
-    for b in buttons.reversed() {
+    // Buttons: one row, 28 pt from the sides and bottom (PX). Cancel/default buttons pack to the
+    // right 7 pt apart (spec §5); a leading secondary button ("Quit, and don’t ask again") sits left.
+    let inset = Tokens.dialogButtonInset
+    var x = bounds.width - inset
+    let by = bounds.height - inset - Tokens.dialogButtonHeight
+    let specs = node.list("buttons")
+    var trailing = buttons
+    if buttons.count > 1, let first = specs.first, first.str("style", "secondary") == "secondary", !Self.isDefault(first) {
+      trailing = Array(buttons.dropFirst())
+      buttons[0].frame = NSRect(x: inset, y: by, width: buttons[0].preferredWidth, height: Tokens.dialogButtonHeight)
+    }
+    for b in trailing.reversed() {
       let bw = b.preferredWidth
       x -= bw
       b.frame = NSRect(x: x, y: by, width: bw, height: Tokens.dialogButtonHeight)
@@ -364,6 +405,8 @@ final class DialogView: PanelView {
 @MainActor
 final class Keycap: NSView {
   var text = "" { didSet { needsDisplay = true } }
+  var font = NSFont.systemFont(ofSize: 11, weight: .medium)
+  var border: NSColor?
   var fill: NSColor = NSColor(white: 0, alpha: 0.05)
   var fg: NSColor = .secondaryLabelColor
   func apply(_ p: Palette, onAccent: Bool) {
@@ -371,11 +414,13 @@ final class Keycap: NSView {
     fg = onAccent ? NSColor(white: 1, alpha: 0.9) : p.panelSecondaryText
     needsDisplay = true
   }
-  var preferredWidth: CGFloat { max(21, ceil((text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium)]).width) + 10) }
+  var preferredWidth: CGFloat { max(21, ceil((text as NSString).size(withAttributes: [.font: font]).width) + 10) }
   override func draw(_ dirtyRect: NSRect) {
     fill.setFill()
-    NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill()
-    let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: fg]
+    let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
+    path.fill()
+    if let border { border.setStroke(); path.lineWidth = 1; path.stroke() }
+    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: fg]
     let sz = (text as NSString).size(withAttributes: attrs)
     (text as NSString).draw(at: NSPoint(x: (bounds.width - sz.width) / 2, y: (bounds.height - sz.height) / 2), withAttributes: attrs)
   }
@@ -435,49 +480,73 @@ final class BackdropView: NSView {
 /// Dialog button: primary (#3139FB) for the default action, subtle otherwise, with an optional keycap.
 @MainActor
 final class PillButton: FlippedView, Themable {
-  let label = makeLabel(size: 13, weight: .medium)
+  let label = makeLabel(size: 13)  // PX: "Quit, and don’t ask again" is 150 pt of ink = SF 13 regular
   let keycap = Keycap()
   let style: String
   let action: () -> Void
   var fill: NSColor = .gray
   var border: NSColor?
   var pressedDown = false { didSet { needsDisplay = true } }
+  var hovering = false { didSet { needsDisplay = true } }
+  var hoverFill: NSColor?
+  var pressedFill: NSColor?
   init(title: String, style: String, keycap key: String = "", action: @escaping () -> Void) {
     self.style = style
     self.action = action
     super.init(frame: .zero)
     label.stringValue = title
     keycap.text = key
+    keycap.font = .systemFont(ofSize: key == "↩" ? 13 : 10, weight: .bold)  // PX: "ESC" is 20.5 pt wide, 8 pt caps
     keycap.isHidden = key.isEmpty
     addSubview(label)
     addSubview(keycap)
   }
   required init?(coder: NSCoder) { fatalError() }
-  var preferredWidth: CGFloat { ceil(label.textWidth) + 32 + (keycap.isHidden ? 0 : keycap.preferredWidth + 8) }
+  // PX: 12.5 pt side padding, 8 pt label-to-keycap gap (176 / 110 / 86 pt buttons in spec §5).
+  var preferredWidth: CGFloat { ceil(label.textWidth - 2) + 25 + (keycap.isHidden ? 0 : keycapWidth + 8) }
+  var keycapWidth: CGFloat { max(28, ceil((keycap.text as NSString).size(withAttributes: [.font: keycap.font]).width) + 14) }
   func apply(_ p: Palette) {
     border = nil
     switch style {
     case "default": fill = p.primaryButton; label.textColor = .white
-    case "destructive": fill = p.destructive; label.textColor = .white
+    case "destructive":
+      // Spec §3 DestructiveButtonFace #F53714, hover #DD3112, pressed #D02F11.
+      fill = p.destructive; label.textColor = .white
+      hoverFill = NSColor(srgbRed: 0xDD / 255, green: 0x31 / 255, blue: 0x12 / 255, alpha: 1)
+      pressedFill = NSColor(srgbRed: 0xD0 / 255, green: 0x2F / 255, blue: 0x11 / 255, alpha: 1)
     default:
-      fill = p.pillFill
-      border = NSColor(white: p.dark ? 1 : 0, alpha: 0.12)  // estimate
-      label.textColor = p.text
+      // PX (dark, arc_quit_dialog.png): fill (48,47,99), 1 pt border (99,98,174). Light: estimate.
+      fill = p.dark ? NSColor(srgbRed: 48 / 255, green: 47 / 255, blue: 99 / 255, alpha: 1) : p.primaryButton.withAlphaComponent(0.08)
+      border = p.dark ? NSColor(srgbRed: 99 / 255, green: 98 / 255, blue: 174 / 255, alpha: 1) : p.primaryButton.withAlphaComponent(0.28)
+      label.textColor = p.dark ? .white : p.text
     }
-    keycap.apply(p, onAccent: style == "default" || style == "destructive")
+    keycap.apply(p, onAccent: true)
+    // PX: keycaps are white α≈0.12 over their button ((78,76,122) on (48,47,99); (70,77,251) on blue).
+    keycap.fill = (style == "default" || style == "destructive" || p.dark) ? NSColor(white: 1, alpha: 0.12) : p.primaryButton.withAlphaComponent(0.1)
+    keycap.border = style == "default" ? NSColor(white: 1, alpha: 0.35) : nil  // estimate: outlined ↩ cap on the primary button
+    keycap.fg = (style == "default" || style == "destructive" || p.dark) ? NSColor(white: 1, alpha: 0.75) : p.primaryButton.withAlphaComponent(0.8)
     needsDisplay = true
   }
   override func layout() {
-    let lw = ceil(label.textWidth) + 2
-    label.frame = NSRect(x: 16, y: (bounds.height - 17) / 2, width: lw, height: 17)
-    keycap.frame = NSRect(x: 16 + lw + 6, y: (bounds.height - 20) / 2, width: keycap.preferredWidth, height: 20)
+    let lw = ceil(label.textWidth)
+    label.frame = NSRect(x: 10.5, y: (bounds.height - 17) / 2, width: lw + 4, height: 17)  // the cell insets text by 2
+    keycap.frame = NSRect(x: bounds.width - 12.5 - keycapWidth, y: (bounds.height - 20) / 2, width: keycapWidth, height: 20)
   }
   override func draw(_ dirtyRect: NSRect) {
-    let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)  // estimate: radius
-    (pressedDown ? fill.blended(withFraction: 0.15, of: .black) ?? fill : fill).setFill()
+    let r = Tokens.dialogButtonCornerRadius
+    let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: r, yRadius: r)
+    let f = pressedDown ? (pressedFill ?? fill.blended(withFraction: 0.15, of: .black) ?? fill) : (hovering ? (hoverFill ?? fill) : fill)
+    f.setFill()
     path.fill()
     if let border { border.setStroke(); path.lineWidth = 1; path.stroke() }
   }
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    trackingAreas.forEach(removeTrackingArea)
+    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+  override func mouseEntered(with event: NSEvent) { hovering = true }
+  override func mouseExited(with event: NSEvent) { hovering = false }
   override func mouseDown(with event: NSEvent) { pressedDown = true }
   override func mouseUp(with event: NSEvent) {
     pressedDown = false

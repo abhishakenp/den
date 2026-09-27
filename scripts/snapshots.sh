@@ -27,6 +27,13 @@ host() { # name scenario appearance
 host theme-picker themePicker light
 host theme-picker-dark themePicker dark
 host theme-picker-empty-dark themePickerEmpty dark
+host quit-dialog dialogQuit light
+host quit-dialog-dark dialogQuit dark
+for v in DeleteSpace DeleteFolder ClearArchive; do
+  n=$(echo $v | sed -E 's/([a-z])([A-Z])/\1-\2/g' | tr A-Z a-z)
+  host dialog-$n dialog$v light
+  host dialog-$n-dark dialog$v dark
+done
 # Native menus are separate windows: open one and capture it through its own window id.
 menu() { # name appearance
   build/den.app/Contents/MacOS/Den --storage "$store" --appearance "$2" --scenario contextMenu --stay &

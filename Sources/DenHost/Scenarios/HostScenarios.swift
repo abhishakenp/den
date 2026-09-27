@@ -8,7 +8,7 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -19,6 +19,10 @@ public enum HostScenarios {
       seedSidebar(rt, appearance: appearance, colors: empty ? [] : accent)
       showContent(rt)
       themePicker(rt, colors: empty ? [] : ["#b98cff", "#ff9fc8"], appearance: appearance)
+    case "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive":
+      seedSidebar(rt, appearance: appearance)
+      showContent(rt)
+      rt.call("ui", "set", ["slot": "dialog", "tree": dialogs[name]!])
     case "contextMenu":
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
@@ -59,6 +63,23 @@ public enum HostScenarios {
     let id = page(rt, id: "t1", title: "Example Domain", body: "This page is local HTML rendered by den's scenario runner, so snapshots never need the network.")
     rt.call("content", "show", ["panes": [.string(id)]])
   }
+
+  /// The dialog variants plugins show (den's own wording; layout per spec §5).
+  static let dialogs: [String: Value] = [
+    "dialogQuit": ["type": "dialog", "id": "quit", "icon": "app:icon", "title": "Quit den?", "buttons": [
+      ["id": "always", "title": "Quit, and don’t ask again", "style": "secondary"],
+      ["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "quit", "title": "Quit", "style": "default"],
+    ]],
+    "dialogDeleteSpace": ["type": "dialog", "id": "deleteSpace", "icon": "sf:trash", "iconStyle": "destructive",
+      "title": "Delete the “Personal” space?", "message": "Its tabs and folders move to the Archive. You can undo this with ⌘Z.",
+      "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "delete", "title": "Delete Space", "style": "destructive", "default": true]]],
+    "dialogDeleteFolder": ["type": "dialog", "id": "deleteFolder", "icon": "sf:folder.badge.minus", "iconStyle": "destructive",
+      "title": "Delete the “Reading” folder?", "message": "The tabs inside it move to the Archive.",
+      "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "delete", "title": "Delete Folder", "style": "destructive", "default": true]]],
+    "dialogClearArchive": ["type": "dialog", "id": "clearArchive", "icon": "sf:archivebox", "iconStyle": "destructive",
+      "title": "Clear the Archive?", "message": "Every archived tab is removed for good. This can’t be undone.",
+      "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "clear", "title": "Clear Archive", "style": "destructive", "default": true]]],
+  ]
 
   static let tabMenu: Value = [
     ["id": "copy", "title": "Copy Link", "icon": "sf:link", "key": "cmd+shift+c"],

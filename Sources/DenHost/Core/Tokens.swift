@@ -81,8 +81,12 @@ public enum Tokens {
   public static let dialogCornerRadius: CGFloat = 26.5  // spec §5
   public static let dialogPadding: CGFloat = 38  // spec §5: icon at (38,38), title at (38,117)
   public static let dialogIconSize: CGFloat = 62  // spec §5
+  public static let dialogHeroIconSize: CGFloat = 76  // spec §5: dialog hero icons 76x76
+  public static let dialogHeroGlyphSize: CGFloat = 36  // estimate
   public static let dialogButtonHeight: CGFloat = 38  // spec §5 (37–40)
   public static let dialogButtonGap: CGFloat = 7  // spec §5
+  public static let dialogButtonInset: CGFloat = 27.5  // PX: button row 27.5 pt from the sides and bottom
+  public static let dialogButtonCornerRadius: CGFloat = 6  // PX: rough fit on arc_quit_dialog.png
   public static let dialogBackdropAlpha: CGFloat = 0.55  // spec §3/§5
   public static let toastHeight: CGFloat = 36  // estimate
   public static let toastCornerRadius: CGFloat = 10  // estimate

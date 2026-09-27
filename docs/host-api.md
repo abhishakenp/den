@@ -115,7 +115,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
 | `newTabRow` | `id`, `title?` | `click` |
 | `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]` | `input {text}`, `select {row}`, `submit {row, query, modifiers}`, `tab {query}`, `dismiss` |
-| `dialog` | `id`, `title`, `message?`, `icon?` (`app:icon` for the app icon), `buttons: [{id, title, style: default\|cancel\|destructive\|secondary}]`, `checkbox?` | `button {button, checked}` (Return/Esc press the default/cancel button) |
+| `dialog` | `id`, `title`, `message?`, `icon?`, `iconStyle?: accent\|destructive\|plain`, `buttons: [{id, title, style: default\|cancel\|destructive\|secondary, default?, keycap?}]`, `checkbox?` | `button {button, checked}`. Return presses the `default` button (or the one with `default: true`), Esc the `cancel` one |
 | `toast` | `text`, `icon?`, `duration?` (ms) | – |
 | `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss` |
 
@@ -143,6 +143,23 @@ ui.set {slot: "popover", tree: {type: "themePicker", id: "theme", anchor: "space
 - **Live preview.** Every drag step emits `change`, whose value has the same shape as `window.setTheme` args, so the plugin can pass it straight through. `commit` follows when a drag ends or after a click.
 - **Haptics.** A tick when a dot is grabbed, when it crosses each 4-dot cell, at each 10% of intensity and at each grain step.
 - **Dismiss.** Esc or a click outside emits `dismiss`; the plugin clears the slot (`tree: null`).
+
+### Dialogs
+
+Every variant uses Arc's quit-sheet layout (spec §5): 450 wide, 26.5 pt continuous radius, #151C30 / #FAFBFF body over a black α0.55 dim, icon at (38, 38), title in SF 18 medium. The buttons sit 27.5 pt from the sides and bottom, 38 tall. `cancel` and `default` buttons pack to the right 7 pt apart, and a leading `secondary` button sits on the left. Each button shows its key as a keycap (`ESC`, `↩`).
+
+- **Icons.** `app:icon` draws the app icon at 62 pt. Any other icon (`sf:trash`) becomes a 76 pt hero icon: the symbol on a disc tinted by `iconStyle`.
+- **Button styles.** `default` is BrandBlue #3139FB. `destructive` is #F53714 (hover #DD3112, pressed #D02F11). `secondary` and `cancel` are (48,47,99) with a (99,98,174) border in dark mode.
+- **Variants** (see `--scenario dialogQuit|dialogDeleteSpace|dialogDeleteFolder|dialogClearArchive`, text in `HostScenarios.dialogs`):
+
+| Variant | Tree |
+|---|---|
+| Quit | `icon: "app:icon"`, buttons secondary "Quit, and don’t ask again", cancel, default "Quit" |
+| Delete space | `icon: "sf:trash"`, `iconStyle: "destructive"`, message, buttons cancel + `{style: "destructive", default: true}` |
+| Delete folder | same, `icon: "sf:folder.badge.minus"` |
+| Clear Archive | same, `icon: "sf:archivebox"` |
+
+Arc has no close-window confirmation (spec §5: Shift-Cmd-W closes a window with tabs silently), so den has none either.
 
 ## keys
 
