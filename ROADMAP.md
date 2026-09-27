@@ -1,6 +1,6 @@
 # Roadmap
 
-Everything we want in den, as checklists. Items marked _(research)_ are still waiting on notes in [`docs/research/`](docs/research/).
+Everything we want in den, as checklists. Research behind each section is in [`docs/research/`](docs/research/).
 
 ## Principles
 
@@ -25,10 +25,14 @@ Every item below has to respect these. If a feature can't, it gets redesigned or
 
 ## Web engine (WebKit)
 
+Details and sources: [Apple platform notes](docs/research/apple-platform.md).
+
 - [ ] Tab model on `WKWebView`
-- [ ] Profiles with isolated data stores _(research: OS version)_
-- [ ] Tab suspension: unload idle tabs, keep snapshot, restore on focus
-- [ ] Session restore and crash recovery
+- [ ] Profiles with isolated data stores (`WKWebsiteDataStore(forIdentifier:)`, macOS 14+)
+- [ ] Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard (save state + snapshot, destroy the web view, recreate on focus)
+- [ ] Session restore and crash recovery (page state save/restore needs macOS 26)
+- [ ] Apple Pay exception: skip den's injected scripts on checkout pages, since any injection disables Apple Pay
+- [ ] Web push notifications: not supported in `WKWebView`; decide on a workaround or skip
 - [ ] Downloads
 - [ ] Find in page
 - [ ] Printing and PDF viewing
@@ -70,7 +74,7 @@ Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 - [ ] Native messaging bridge (password managers)
 - [ ] Built-in ad/tracker blocker: filter lists compiled to content rule lists (e.g. `adblock-rust` or AdGuard's `SafariConverterLib`), plus CSS hiding and scriptlets
 - [ ] uBlock Origin Lite works (full uBlock Origin can't, since WebKit has no blocking `webRequest`)
-- [ ] Decide minimum macOS: 15.4 (extension API) or 26
+- [ ] Decide minimum macOS: 15.4 (extensions work, no on-device AI) or 26 (everything, including AI and page state restore)
 
 ## Connections and daily briefing (Dia-style)
 
@@ -88,7 +92,8 @@ Details and sources: [Dia notes](docs/research/dia.md).
 
 AI in den is Apple's on-device model, used only for the daily briefing and the personalized feed. No chat, no agent, nothing sent to a cloud model. Anything else is left to plugins.
 
-- [ ] Summarize and prioritize connection data with Apple's Foundation Models framework, on device _(research: apple-platform — OS version, context limits)_
+- [ ] Summarize and prioritize connection data with Apple's Foundation Models framework, on device (macOS 26+)
+- [ ] Fit the model's small context (4,096 tokens on macOS 26): summarize each source separately, then combine the summaries
 - [ ] Model loads only while generating a briefing or ranking the feed, then is released
 - [ ] Model output is text and todos only: no tools, cannot click, send or open anything
 - [ ] Every summary item links to its source message, PR or event
@@ -97,11 +102,13 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 ## Apple integration
 
-- [ ] Passkeys and password AutoFill _(research: what third-party browsers can access)_
+- [ ] Passkeys for all sites: apply early for Apple's browser passkey entitlement (reviewed by Apple)
+- [ ] Passwords: no API reads iCloud Keychain / the Passwords app, so rely on password manager extensions (1Password, Bitwarden) and decide whether den ships its own vault
+- [ ] "Save password?" prompt via the form-submit callback (macOS 27)
 - [ ] Native look: vibrancy, SF Symbols, system accent colors
 - [ ] Shortcuts / App Intents / Spotlight
 - [ ] Handoff
-- [ ] Sync via iCloud (no den server)
+- [ ] Sync via iCloud / CloudKit (no den server; Talos browser does this)
 
 ## Privacy and security
 
@@ -112,7 +119,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 ## Performance
 
 - [ ] Memory and energy budgets per feature
-- [ ] Benchmarks against Safari, Arc, Dia, Zen (measured, published)
+- [ ] Benchmarks against Safari, Arc, Dia, Zen (measured, published). WebKit alone isn't proof of efficiency: the one careful independent test found Chrome used less battery than Safari
 - [ ] Startup time budget
 
 ## Import

@@ -43,8 +43,8 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 
 | # | Step | Status |
 |---|------|--------|
-| 1 | Research Arc, Dia, Zen, WebKit, extension support, plugin design | 🟡 In progress |
-| 2 | Feature and architecture design | ❌ |
+| 1 | Research Arc, Dia, Zen, WebKit, extension support, plugin design | ✅ |
+| 2 | Feature and architecture design | 🟡 In progress |
 | 3 | Plugin host and app skeleton | ❌ |
 | 4 | Core browsing: tabs, sidebar, spaces, profiles | ❌ |
 | 5 | Extensions and content blocking | ❌ |
