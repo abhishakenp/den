@@ -430,7 +430,7 @@ Feature-specific host code is marked with one line, so `git grep "thin-host:"` l
 // thin-host: feature-specific, migrate to plugin
 ```
 
-Marked so far: `ConfigService.apply()` (shortcuts and keywords), `LivePlugins.toast` (load and build failure strings), and `main.swift` `sessionSummary()`.
+Marked so far: `ConfigService.apply()` (shortcuts and keywords), `LivePlugins.toast` (load and build failure strings), and `main.swift` `sessionSummary()`, `CommandBarView` (row, banner and framing; the launcher's index, ranking, aliases, settings and strings are already in the `commandbar` plugin) and `LauncherSettingsStub` in `CommandBarScenarios.swift` (a snapshot-only settings registry). The launcher added only generic blocks to the host: row `shortcut` keycaps and a `toggle` switch, the bar's `right`/`back` actions, `window.focusMini`, `app.showAbout` and `payload` in `keys.list`.
 
 Updates ([updates.md](../updates.md)) follow the rule from the start:
 

@@ -9,6 +9,7 @@ import CordisValue
 ///   setTitle {title}                            get -> {width, hidden, page, fullScreen, dark}
 ///   openMini {webview, space?, width?, height?} -> {id}   Little Arc window (spec §8) hosting one web view
 ///   updateMini {id, space?}                     closeMini {id}                listMini -> [{id, webview, key}]
+///   focusMini {id}                              brings that Little Arc window to the front
 /// Events: window.sidebarResized {width}, window.sidebarVisibility {hidden}, window.sidebarReveal {revealed},
 ///   window.miniAction {id, webview, action: open|copy}, window.miniClosed {id, webview}
 @MainActor
@@ -45,6 +46,7 @@ public final class WindowService: HostService {
     case "openMini": return mini.open(args)
     case "updateMini": return mini.update(args)
     case "closeMini": return mini.close(args)
+    case "focusMini": return mini.focus(args)
     case "listMini":
       return .array(mini.windows.values.sorted { $0.id < $1.id }.map {
         ["id": .string($0.id), "webview": .string($0.webview), "key": .bool($0.panel.isKeyWindow)]
@@ -102,7 +104,7 @@ public final class KeysService: NSObject, HostService {
       unbind(args.str("chord").lowercased())
     case "list":
       return .array(bindings.values.sorted { $0.chord < $1.chord }.map {
-        ["chord": .string($0.chord), "event": .string($0.event), "title": .string($0.title), "menu": .string($0.menu)]
+        ["chord": .string($0.chord), "event": .string($0.event), "title": .string($0.title), "menu": .string($0.menu), "payload": $0.payload]
       })
     default:
       return .error("keys: unknown method '\(method)'")
@@ -193,6 +195,7 @@ public enum MainMenu {
 ///   state                        -> {active, idleSeconds, keyIdleSeconds}: frontmost, and time since any input / a key press
 ///   relaunch {background?}       -> quits cleanly (no quit dialog) and relaunches; `background` doesn't take focus
 ///   setAbout {credits}           -> text shown in the About panel
+///   showAbout                    -> shows the About panel
 /// Events: app.quitRequested, app.closeRequested, app.openURL {urls: [string]}, app.activate
 @MainActor
 public final class AppService: HostService {
@@ -273,6 +276,8 @@ public final class AppService: HostService {
       relaunchHandler?(args.flag("background"))
     case "setAbout":
       AboutPanel.shared.credits = args.str("credits")
+    case "showAbout":
+      AboutPanel.shared.show(nil)
     default:
       return .error("app: unknown method '\(method)'")
     }

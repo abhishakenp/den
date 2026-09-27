@@ -94,8 +94,12 @@ struct PeekTests {
     for _ in 0..<100 where web.isLoading || web.url?.host != "www.a.test" { try await Task.sleep(for: .milliseconds(50)) }
     try await Task.sleep(for: .milliseconds(300))
     let win = try #require(web.window)
+    // Under a loaded full-suite run the content may not be laid out yet; a point outside the web
+    // view can land on the sidebar's resize handle, whose drag loop then waits for a real mouse-up.
+    win.contentView?.layoutSubtreeIfNeeded()
     let p = web.convert(NSPoint(x: web.bounds.midX, y: web.bounds.midY), to: nil)
     let target = try #require(win.contentView?.superview?.hitTest(p) ?? win.contentView?.hitTest(p))
+    try #require(target === web || target.isDescendant(of: web), "the click must land on the web view")
     for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
       let e = try #require(NSEvent.mouseEvent(with: type, location: p, modifierFlags: .shift, timestamp: ProcessInfo.processInfo.systemUptime,
                                               windowNumber: win.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))

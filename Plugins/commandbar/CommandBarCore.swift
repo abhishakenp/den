@@ -32,6 +32,7 @@ final class CommandBarCore {
     var keywords: [String]
     var shortcut: String
     var owner: String?  // plugin id; the command goes away when that plugin is no longer active
+    var aliases: [String] = []  // other names that match as well as the title ("prefs" → Settings)
   }
 
   /// What picking a row does.
@@ -45,6 +46,11 @@ final class CommandBarCore {
     case archived(String, String)  // archive id, url
     case scope(Int)  // enter an engine's site search
     case rename(String)  // tab id; the query is the new title
+    case setting(String)  // setting key: toggles, drills into a choice, or opens its pane
+    case pane(String)  // settings pane id
+    case option(String, Int)  // setting key, option index
+    case window(String)  // Little Arc window id
+    case shortcut(String)  // key chord: runs its binding
   }
 
   struct Row {
@@ -58,6 +64,9 @@ final class CommandBarCore {
     var key = ""  // usage key for ranking
     var score = 0
     var strength = 0  // how well the text matched (no usage): decides the tier, so rows don't jump while typing
+    var shortcut = ""  // drawn as keycaps ("⌘⇧C")
+    var toggle: Bool? = nil  // a switch showing a setting's state
+    var drill = false  // Tab / → opens its options or settings in the bar
   }
 
   enum Scope: Equatable {
@@ -67,6 +76,9 @@ final class CommandBarCore {
     case rename(String)  // tab id
     case archive
     case split  // pick what opens on the right
+    case options(String)  // a setting's options (setting key)
+    case pane(String)  // one settings pane's settings
+    case shortcuts  // every key binding
   }
 
   struct Usage {
@@ -95,6 +107,12 @@ final class CommandBarCore {
   static let reservedSuggestions = 2
   /// A match at least this good (prefix, word prefix, keyword or host) ranks above web suggestions.
   static let strongMatch = 60
+  /// A den row this good (the query starts its title or an alias) goes above "Search Google".
+  static let topHitMatch = 90
+  /// Row and section-header heights in the host (`Tokens.commandBarRowHeight`, `M.headerHeight`):
+  /// the rows and headers of one bar share `maxRows` rows of height.
+  static let rowCost = 50
+  static let headerCost = 28
   /// Default-browser banner: "×" hides it for 14 days (den choice); "Try for a week" asks after 7.
   static let bannerSnoozeMs: Int64 = 14 * 86_400_000
   static let trialMs: Int64 = 7 * 86_400_000
@@ -126,6 +144,15 @@ final class CommandBarCore {
   var currentBrowser = ""
   var currentBrowserName = ""
   var trialTimer = false
+  // Launcher index (CommandLauncher.swift): rebuilt when the bar opens and when commands or
+  // settings change, never per keystroke.
+  var index: [IndexEntry] = []
+  var indexValid = false
+  var backStack: [(Scope, String)] = []  // where Backspace in an empty field goes back to (scope, query)
+  // Per-open caches of other services' state, dropped on their change events.
+  var tabsCache: [Value]? = nil
+  var selectedCache: Value? = nil
+  var windowsCache: [Value]? = nil
 
   init(env: PluginEnv) { self.env = env }
 
@@ -144,6 +171,19 @@ final class CommandBarCore {
       if isOpen { render() }
     }
     env.on("ui.action") { [self] v in if v.s("id") == Self.trialDialog { trialAnswered(v["value"].s("button")) } }
+    // Other plugins' state, cached while the bar is open.
+    for e in ["tabs.changed", "tabs.selected", "spaces.changed", "spaces.current"] {
+      env.on(e) { [self] _ in
+        tabsCache = nil
+        selectedCache = nil
+        indexValid = false  // tab commands depend on the selected tab
+      }
+    }
+    env.on("window.miniClosed") { [self] _ in windowsCache = nil }
+    env.on("settings.changed") { [self] _ in
+      indexValid = false
+      if isOpen { render() }
+    }
     checkTrial()
   }
 
@@ -192,14 +232,23 @@ final class CommandBarCore {
       if registered[id] == nil { registeredOrder.append(id) }
       registered[id] = Command(
         id: id, title: args.s("title"), icon: args.sOpt("icon") ?? "sf:command", keywords: args.a("keywords").compactMap { $0.string },
-        shortcut: args.s("shortcut"), owner: args.sOpt("owner"))
+        shortcut: args.s("shortcut"), owner: args.sOpt("owner"), aliases: args.a("aliases").compactMap { $0.string })
+      indexValid = false
       if isOpen { render() }
     case "unregister":
       registered[args.s("id")] = nil
       registeredOrder.removeAll { $0 == args.s("id") }
+      indexValid = false
     case "list":
       return .array(commands().map { c in
-        ["id": .string(c.id), "title": .string(c.title), "icon": .string(c.icon), "shortcut": .string(c.shortcut), "owner": .str(c.owner)]
+        ["id": .string(c.id), "title": .string(c.title), "icon": .string(c.icon), "shortcut": .string(c.shortcut), "owner": .str(c.owner),
+         "aliases": .array(c.aliases.map { .string($0) })]
+      })
+    case "search":
+      // The launcher's den matches for a query, best first (tests, scripts and other plugins).
+      if !isOpen { indexValid = false }
+      return .array(launcherMatches(trim(args.s("q")), limit: Int(args.i("limit", 20))).map { m in
+        ["id": .string(index[m.0].rowId), "title": .string(index[m.0].title), "strength": .int(Int64(m.1))]
       })
     case "run":
       let id = args.s("id")
@@ -236,6 +285,9 @@ final class CommandBarCore {
     case .rename: return "rename"
     case .archive: return "archive"
     case .split: return "split"
+    case let .options(k): return "options:" + k
+    case let .pane(p): return "pane:" + p
+    case .shortcuts: return "shortcuts"
     }
   }
 
@@ -250,6 +302,7 @@ final class CommandBarCore {
     let reopen = isOpen
     mode = m
     scope = .main
+    backStack = []
     editURL = ""
     if m == "edit" {
       editURL = q ?? selectedTab().s("url")
@@ -259,6 +312,7 @@ final class CommandBarCore {
     }
     selected = ""
     isOpen = true
+    dropCaches()
     shownSuggestions = []
     requestSuggestions()
     // Clearing first makes the host treat it as a fresh open, which selects the text (Cmd-L).
@@ -274,6 +328,8 @@ final class CommandBarCore {
     rows = []
     sections = []
     shownSuggestions = []
+    backStack = []
+    dropCaches()
     env.call("suggest", "cancel")
     env.call("ui", "set", ["slot": .string(Self.slot), "tree": .null])
   }
@@ -310,7 +366,15 @@ final class CommandBarCore {
       if let r = row { pick(r, shift: mods.contains("shift")) }
     case "tab":
       if let q = value["query"].string { query = q }
-      tabKey()
+      if !drillSelected() { tabKey() }
+    case "right":
+      // → at the end of the text: drills into the selected settings row (otherwise nothing).
+      if let q = value["query"].string { query = q }
+      if let r = value["row"].string, !r.isEmpty { selected = r }
+      _ = drillSelected()
+    case "back":
+      // Backspace in an empty field: out of a drilled-in scope.
+      back()
     case "dismiss":
       close()
     case "banner":
@@ -344,8 +408,13 @@ final class CommandBarCore {
     case let .scope(i):
       setScope(.engine(i), query: "")
       return
-    case let .command(id) where id == "den.renameTab" || id == "den.viewArchive" || id == "den.splitRight":
+    case let .command(id) where id == "den.renameTab" || id == "den.viewArchive" || id == "den.splitRight" || id == "den.shortcuts":
       run(id)  // these continue inside the bar
+      return
+    case let .setting(key) where pickSettingInBar(key):
+      return
+    case let .pane(id) where !available("settings"):
+      drill(pane: id)
       return
     default:
       break
@@ -373,6 +442,18 @@ final class CommandBarCore {
       if peek { env.call("peek", "open", ["url": .string(u)]) } else { env.call("tabs", "restore", ["id": .string(id)]) }
     case let .rename(id):
       env.call("tabs", "rename", ["id": .string(id), "title": .string(trim(r.title))])
+    case let .setting(key):
+      pickSetting(key)
+    case let .pane(id):
+      bump("pane:" + id, title: "", url: "")
+      env.call("settings", "open", ["id": .string(id)])
+    case let .option(key, i):
+      pickOption(key, i)
+    case let .window(id):
+      bump("win:" + id, title: "", url: "")
+      env.call("window", "focusMini", ["id": .string(id)])
+    case let .shortcut(chord):
+      runShortcut(chord)
     case .scope:
       break
     }
@@ -414,6 +495,8 @@ final class CommandBarCore {
     var needsTab: Bool
     var service: String?  // hidden unless this service exists
     var listener: String?  // hidden unless someone listens to this event
+    var aliases: [String] = []
+    var method: String? = nil  // a destination: picking it calls `service.method`
   }
 
   static let builtins: [Builtin] = [
@@ -430,6 +513,23 @@ final class CommandBarCore {
     Builtin(id: "den.reload", title: "Reload Page", icon: "sf:arrow.clockwise", keywords: ["refresh"], shortcut: "⌘R", needsTab: true, service: "webviews"),
     Builtin(id: "den.splitRight", title: "Split Right", icon: "sf:rectangle.split.2x1", keywords: ["split view", "side by side"], shortcut: "", needsTab: true, service: "peek"),
     Builtin(id: "den.quit", title: "Quit den", icon: "sf:power", keywords: ["exit", "close"], shortcut: "⌘Q", needsTab: false, service: "app"),
+    // Destinations: den's own screens. Each is hidden until the service that owns it is loaded.
+    Builtin(id: "den.settings", title: "Settings", icon: "sf:gearshape", keywords: ["general", "customize"], shortcut: "", needsTab: false,
+            service: "settings", aliases: ["preferences", "prefs", "options", "config", "configuration"], method: "open"),
+    Builtin(id: "den.extensions", title: "Extensions", icon: "sf:puzzlepiece.extension", keywords: ["web extensions", "safari"], shortcut: "",
+            needsTab: false, service: "extensions", aliases: ["addons", "add-ons", "plugins"], method: "open"),
+    Builtin(id: "den.downloads", title: "Downloads", icon: "sf:arrow.down.circle", keywords: ["files", "saved"], shortcut: "", needsTab: false,
+            service: "downloads", aliases: ["dl", "dls"], method: "open"),
+    Builtin(id: "den.history", title: "History", icon: "sf:clock.arrow.circlepath", keywords: ["visited", "recent pages"], shortcut: "",
+            needsTab: false, service: "history", method: "open"),
+    Builtin(id: "den.library", title: "Library", icon: "sf:books.vertical", keywords: ["closed tabs", "restore"], shortcut: "", needsTab: false,
+            service: "tabs", aliases: ["archive"], method: "library"),
+    Builtin(id: "den.passwords", title: "Passwords", icon: "sf:key", keywords: ["accounts", "autofill"], shortcut: "", needsTab: false,
+            service: "passwords", aliases: ["logins", "credentials", "keychain"], method: "open"),
+    Builtin(id: "den.shortcuts", title: "Keyboard Shortcuts", icon: "sf:keyboard", keywords: ["keys", "bindings", "hotkeys"], shortcut: "",
+            needsTab: false, service: "keys", aliases: ["shortcuts", "keybindings"]),
+    Builtin(id: "den.about", title: "About den", icon: "sf:info.circle", keywords: ["version", "build"], shortcut: "", needsTab: false,
+            service: "app"),
   ]
 
   func builtin(_ id: String) -> Builtin? { Self.builtins.first { $0.id == id } }
@@ -447,7 +547,7 @@ final class CommandBarCore {
       if b.needsTab && tab.isNull { continue }
       if let s = b.service, known ? !services.contains(s) : !available(s) { continue }
       if let l = b.listener, !env.call("plugins", "listening", ["event": .string(l)]).b("listening") { continue }
-      var c = Command(id: b.id, title: b.title, icon: b.icon, keywords: b.keywords, shortcut: b.shortcut, owner: nil)
+      var c = Command(id: b.id, title: b.title, icon: b.icon, keywords: b.keywords, shortcut: b.shortcut, owner: nil, aliases: b.aliases)
       if b.id == "den.pinTab", tab.s("kind") != "today" {
         c.title = "Unpin Tab"
         c.icon = "sf:pin.slash"
@@ -527,8 +627,17 @@ final class CommandBarCore {
       setScope(.split, query: "")
     case "den.quit":
       env.call("app", "quit", ["confirm": true])
+    case "den.shortcuts":
+      if !isOpen {
+        isOpen = true
+        mode = "new"
+      }
+      backStack.append((scope, query))
+      setScope(.shortcuts, query: "")
+    case "den.about":
+      showAbout()
     default:
-      break
+      if let b = builtin(id), let s = b.service, let m = b.method { env.call(s, m) }
     }
   }
 
@@ -547,14 +656,36 @@ final class CommandBarCore {
 
   // MARK: - Data
 
-  func selectedTab() -> Value {
-    guard let id = env.call("tabs", "selected")["id"].string else { return .null }
-    for t in allTabs() where t.s("id") == id { return t }
-    return .null
+  func dropCaches() {
+    tabsCache = nil
+    selectedCache = nil
+    windowsCache = nil
+    indexValid = false
   }
 
-  /// Open tabs in every space (favorites once), flattening folders and splits.
+  func selectedTab() -> Value {
+    if isOpen, let c = selectedCache { return c }
+    var found: Value = .null
+    if let id = env.call("tabs", "selected")["id"].string {
+      for t in allTabs() where t.s("id") == id {
+        found = t
+        break
+      }
+    }
+    if isOpen { selectedCache = found }
+    return found
+  }
+
+  /// Open tabs in every space (favorites once), flattening folders and splits. Cached while the
+  /// bar is open (until a tabs or spaces event), so typing doesn't re-read every space.
   func allTabs() -> [Value] {
+    if isOpen, let c = tabsCache { return c }
+    let out = readTabs()
+    if isOpen { tabsCache = out }
+    return out
+  }
+
+  func readTabs() -> [Value] {
     var out: [Value] = []
     var seen: [String] = []
     func add(_ items: [Value]) {
@@ -747,6 +878,12 @@ final class CommandBarCore {
       if !q.isEmpty { top = goRows(q) }
       let sel = selectedTab().s("id")
       secs = [("", top), ("Tabs", tabRows(q, limit: 6).filter { $0.act != .tab(sel) })]
+    case let .options(key):
+      secs = [(settingTitle(key), optionRows(key, q))]
+    case let .pane(id):
+      secs = [(paneTitle(id), paneRows(id, q))]
+    case .shortcuts:
+      secs = [("Keyboard Shortcuts", shortcutRows(q))]
     }
     sections = secs.filter { !$0.1.isEmpty }
     rows = sections.flatMap { $0.1 }
@@ -776,45 +913,69 @@ final class CommandBarCore {
   }
 
   /// Main results, in tiers so rows keep their place while typing and when web suggestions
-  /// arrive: go/search rows, strong local matches (tabs, history, actions, spaces), web
-  /// suggestions, then weak local matches. At most `maxRows`; two rows stay reserved for
-  /// suggestions, so their arrival never pushes a strong match out.
+  /// arrive: a top hit (a den command or setting whose title or alias starts with the query) above
+  /// the go/search rows, then strong local matches (den, Settings, tabs, history, spaces, windows),
+  /// web suggestions, then weak local matches. Rows and section headers share one height budget
+  /// (`maxRows` rows); room for two suggestions stays reserved, so their arrival never pushes a
+  /// strong match out.
   func mainResults(_ q: String) -> [(String, [Row])] {
     if q.isEmpty {
       // Nothing typed (Cmd-T): the most recent tabs, then suggested actions, like Arc.
       let tabs = allTabs().sorted { $0.i("lastActive") > $1.i("lastActive") }
       let sel = selectedTab().s("id")
-      let recent = Array(tabs.filter { $0.s("id") != sel }.prefix(5).map { tabRow($0, score: 0) })
-      return [("Tabs", recent), ("Actions", commandRows("", limit: Self.maxRows - recent.count))]
+      let recent = Array(tabs.filter { $0.s("id") != sel }.prefix(4).map { tabRow($0, score: 0) })
+      let budget = Self.maxRows * Self.rowCost - 2 * Self.headerCost - recent.count * Self.rowCost
+      return [("Tabs", recent), ("den", commandRows("", limit: budget / Self.rowCost))]
     }
-    let go = goRows(q)
+    var go = goRows(q)
     let openURLs = allTabs().map { URLs.normalize($0.s("url")) }
+    var den = launcherRows(q, settings: false, limit: 4)
+    var settings = launcherRows(q, settings: true, limit: 4)
+    // Top hit (Raycast/Arc): a well-matched den row goes above "Search Google".
+    if let hit = topHit(q, den.first, settings.first) {
+      den.removeAll { $0.id == hit.id }
+      settings.removeAll { $0.id == hit.id }
+      go.insert(hit, at: 0)
+    }
     let local: [(String, [Row])] = [
+      ("den", den),
+      ("Settings", settings),
       ("Tabs", tabRows(q, limit: 3)),
       ("History", historyRows(q, exclude: openURLs)),
-      ("Actions", commandRows(q, limit: 3)),
       ("Spaces", spaceRows(q)),
+      ("Windows", windowRows(q)),
     ]
     let sugg = suggestionRows(q)
-    let reserve = suggestible(q) ? min(Self.reservedSuggestions, Self.maxSuggestions) : 0
-    var left = Self.maxRows - go.count
+    let reserve = suggestible(q) ? Self.headerCost + min(Self.reservedSuggestions, Self.maxSuggestions) * Self.rowCost : 0
+    var left = Self.maxRows * Self.rowCost - go.count * Self.rowCost
     var out: [(String, [Row])] = [("", go)]
+    /// Adds up to `rows` to section `title` (merged into an earlier one of the same name) while
+    /// `limit` points last; a new header costs `headerCost`.
+    func add(_ title: String, _ rows: [Row], _ limit: inout Int) {
+      guard !rows.isEmpty else { return }
+      var i = out.firstIndex { $0.0 == title }
+      var taken: [Row] = []
+      for r in rows {
+        let cost = Self.rowCost + (i == nil && taken.isEmpty ? Self.headerCost : 0)
+        guard cost <= limit, cost <= left else { break }
+        limit -= cost
+        left -= cost
+        taken.append(r)
+      }
+      guard !taken.isEmpty else { return }
+      if i == nil {
+        out.append((title, []))
+        i = out.count - 1
+      }
+      out[i!].1 += taken
+    }
     // Strong local matches, leaving room for the reserved suggestions.
     var strongLeft = max(0, left - reserve)
-    for (title, rs) in local {
-      let strong = Array(rs.filter { $0.strength >= Self.strongMatch }.prefix(strongLeft))
-      strongLeft -= strong.count
-      left -= strong.count
-      out.append((title, strong))
-    }
-    let shown = Array(sugg.prefix(min(left, Self.maxSuggestions)))
-    left -= shown.count
-    out.append(("Suggestions", shown))
-    for (title, rs) in local {
-      let weak = Array(rs.filter { $0.strength < Self.strongMatch }.prefix(max(0, left)))
-      left -= weak.count
-      out.append((title, weak))
-    }
+    for (title, rs) in local { add(title, rs.filter { $0.strength >= Self.strongMatch }, &strongLeft) }
+    var suggLeft = Self.headerCost + Self.maxSuggestions * Self.rowCost
+    add("Suggestions", sugg, &suggLeft)
+    var weakLeft = left
+    for (title, rs) in local { add(title, rs.filter { $0.strength < Self.strongMatch }, &weakLeft) }
     return out
   }
 
@@ -911,13 +1072,18 @@ final class CommandBarCore {
     return Self.top(out, limit)
   }
 
+  /// Commands only (actions mode and the empty bar), matched through the launcher index.
   func commandRows(_ q: String, limit: Int) -> [Row] {
+    ensureIndex()
+    let wq = Matcher.words(q)
     var out: [Row] = []
-    for (n, c) in commands().enumerated() {
-      guard let m = Self.match(q, title: c.title, keywords: c.keywords) else { continue }
-      // Empty query (actions mode): most used first, then the built-in order.
-      let s = (q.isEmpty ? 0 : m) + usageScore("cmd:" + c.id) - (q.isEmpty ? n : 0)
-      out.append(Row(id: "cmd:" + c.id, icon: c.icon, title: c.title, accessory: c.shortcut, act: .command(c.id), key: "cmd:" + c.id, score: s, strength: m))
+    var n = 0
+    for e in index where e.kind == .command {
+      n += 1
+      guard let m = Matcher.score(wq, e) else { continue }
+      // Empty query: most used first, then the built-in order.
+      let s = (q.isEmpty ? 0 : m) + usageScore(e.usageKey) - (q.isEmpty ? n : 0)
+      out.append(entryRow(e, strength: m, score: s))
     }
     return Self.top(out, limit)
   }
@@ -1059,6 +1225,9 @@ final class CommandBarCore {
     case .rename: return "Tab name"
     case .archive: return "Search archived tabs…"
     case .split: return "Open on the right…"
+    case let .options(k): return settingTitle(k)
+    case let .pane(p): return "Search " + paneTitle(p) + " settings…"
+    case .shortcuts: return "Search shortcuts…"
     }
   }
 
@@ -1072,7 +1241,9 @@ final class CommandBarCore {
         var v: Value = ["id": .string(r.id), "icon": .string(r.icon), "title": .string(r.title)]
         if !r.subtitle.isEmpty { v.put("subtitle", .string(r.subtitle)) }
         if !r.accessory.isEmpty { v.put("accessory", .string(r.accessory)) }
-        // Tab rows always show their arrow keycap; other rows show ↩ when selected.
+        if !r.shortcut.isEmpty { v.put("shortcut", .string(r.shortcut)) }
+        if let on = r.toggle { v.put("toggle", .bool(on)) }
+        // Tab and settings rows always show their arrow keycap; other rows show ↩ when selected.
         let cap = r.keycap.isEmpty && r.id == selected ? "↩" : r.keycap
         if !cap.isEmpty { v.put("keycap", .string(cap)) }
         list.append(v)
@@ -1091,8 +1262,8 @@ final class CommandBarCore {
         "banner": banner,
         "type": "commandBar", "id": .string(Self.barId), "query": .string(query), "replaceQuery": .bool(replace), "placeholder": .string(placeholder),
         "selected": .string(selected), "sections": .array(secs),
-        // Arc's bar is one flat list; other scopes keep their section headers.
-        "headers": .bool(scope != .main),
+        // Section headers (den, Settings, Tabs, Suggestions…); the go/search rows have none.
+        "headers": true,
         // Caret and selection color follow the mode (Go for URL-shaped input, else Search).
         "inputMode": .string(Self.url(from: trim(query)) != nil ? "go" : "search"),
       ],

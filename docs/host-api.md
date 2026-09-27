@@ -29,6 +29,7 @@ The code lives in `Sources/DenHost/Services/`. `DenRuntime` registers every serv
 | `updateMini` | `id`, `space?` | ok |
 | `closeMini` | `id` | ok. The web view is detached, not closed |
 | `listMini` | – | `[{id, webview, key}]`. `key` is true for the key window (the peek plugin's ⌘O acts on it) |
+| `focusMini` | `id` | ok. Brings that Little Arc window to the front (the command bar's Windows rows) |
 
 Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `window.sidebarReveal {revealed}`, `window.miniAction {id, webview, action: open|copy}`, `window.miniClosed {id, webview}`.
 
@@ -131,7 +132,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `folder` | `id`, `title`, `icon?`, `open`, `children`, `editing?` | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel` |
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
 | `newTabRow` | `id`, `title?` | `click` |
-| `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `headers?` (default true; false draws one flat list), `inputMode?: search\|go` (caret color), `banner?: {text, secondary, primary}` (the default-browser banner), `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]` | `input {text}`, `select {row}` (arrow keys, or hovering a row after the mouse moves), `submit {row, query, modifiers}`, `tab {query}`, `dismiss`, `banner {button: try\|set\|close}` |
+| `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `headers?` (default true; false draws one flat list), `inputMode?: search\|go` (caret color), `banner?: {text, secondary, primary}` (the default-browser banner), `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?, shortcut?, toggle?}]}]`. `shortcut` ("⇧⌘C") is drawn one keycap per key; `toggle` (bool) draws a switch | `input {text}`, `select {row}` (arrow keys, or hovering a row after the mouse moves), `submit {row, query, modifiers}`, `tab {query}`, `right {row, query}` (→ with the caret at the end), `back` (Backspace in an empty field), `dismiss`, `banner {button: try\|set\|close}` |
 | `dialog` | `id`, `title`, `message?`, `icon?`, `iconStyle?: accent\|destructive\|plain`, `buttons: [{id, title, style: default\|cancel\|destructive\|secondary, default?, keycap?}]`, `checkbox?` | `button {button, checked}`. Return presses the `default` button (or the one with `default: true`), Esc the `cancel` one |
 | `toast` | `text`, `icon?`, `duration?` (ms; 0 = until dismissed), `id?`, `action?` (button label) | `ui.action {id, action: "toast"}` when the button is clicked |
 | `library` | `id`, `title?`, `query?`, `placeholder?`, `clearTitle?`, `empty?`, `items: [{id, title, url?, subtitle?, icon?, closedAt?}]` | `input {text}`, `restore {item}`, `clear`, `dismiss` |
@@ -245,7 +246,7 @@ Arc has no close-window confirmation (spec §5: Shift-Cmd-W closes a window with
 |---|---|---|
 | `bind` | `chord` (e.g. `cmd+shift+k`, `ctrl+1`, `cmd+opt+left`), `event`, `title?`, `menu?` (File/Edit/View/Tabs/Spaces/Window/any), `payload?` | ok. Emits `event {chord, payload}` |
 | `unbind` | `chord` | ok |
-| `list` | – | `[{chord, event, title, menu}]` |
+| `list` | – | `[{chord, event, title, menu, payload}]` |
 
 Chords are bound as main-menu items. That way they work while a web page has focus, and the standard Edit and Window shortcuts keep working.
 
@@ -317,6 +318,7 @@ Lets a plugin hide features whose provider isn't loaded.
 | `state` | – | `{active, idleSeconds, keyIdleSeconds}`: whether den is frontmost, and the time since any input or a key press |
 | `relaunch` | `background?` | ok. Quits cleanly (no quit dialog) and starts den again. With `background`, it doesn't take focus |
 | `setAbout` | `credits` | ok. Text for the About panel |
+| `showAbout` | – | ok. Shows the About panel (the command bar's "About den") |
 
 Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`.
 

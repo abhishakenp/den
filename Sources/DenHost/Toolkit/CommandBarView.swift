@@ -1,11 +1,16 @@
 import AppKit
 import CordisValue
 
+// thin-host: feature-specific, migrate to plugin. The bar's row fields (icon, title, subtitle,
+// accessory, keycap, shortcut keycaps, toggle switch, section headers) are generic list/row
+// primitives; the banner and the command-bar framing are feature-specific. All launcher logic
+// (index, ranking, aliases, settings, strings) already lives in Plugins/commandbar.
 /// Arc's Command Bar (spec §2), drawn by the host from the `commands` plugin's tree.
 ///
 /// {type:"commandBar", id, query, replaceQuery?, placeholder?, selected: rowId, headers?: bool,
-///  inputMode?: "search"|"go", sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]}
-/// actions (id = bar id): input {text}, select {row}, submit {row, query, modifiers}, tab {query}, dismiss
+///  inputMode?: "search"|"go", sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?, shortcut?, toggle?}]}]}
+/// actions (id = bar id): input {text}, select {row}, submit {row, query, modifiers}, tab {query},
+///   right {row, query} (→ at the end of the text), back (Backspace in an empty field), dismiss
 ///
 /// Geometry is in panel coordinates (the 1 pt border included), from the AX frames in
 /// docs/reference/arc-ui-spec.md §2 (panel at x 352, y 295 in the dump):
@@ -85,6 +90,9 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     let icon = IconView()
     let title = makeLabel(size: 13.5), subtitle = makeLabel(size: 13.5), accessory = makeLabel(size: 13.5)
     let keycap = Keycap()
+    /// A command's shortcut, one keycap per key ("⇧⌘C" → ⇧ ⌘ C), Raycast-style (den choice).
+    var shortcutCaps: [Keycap] = []
+    let toggle = Switch()
     var rowId = ""
     var selected = false { didSet { if selected != oldValue { needsDisplay = true } } }
     var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
@@ -96,7 +104,31 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       super.init(frame: frame)
       [title, subtitle, accessory].forEach { $0.font = M.rowFont }
       keycap.font = .systemFont(ofSize: 11, weight: .semibold)
-      [icon, title, subtitle, accessory, keycap].forEach { addSubview($0) }
+      toggle.isHidden = true
+      [icon, title, subtitle, accessory, keycap, toggle].forEach { addSubview($0) }
+    }
+    /// One keycap per character of `text` (modifier glyphs and the key; "Space" stays whole).
+    func setShortcut(_ text: String) {
+      var keys: [String] = []
+      var word = ""
+      for ch in text {
+        if ch.isASCII && (ch.isLetter || ch.isNumber) {
+          word.append(ch)
+        } else {
+          if !word.isEmpty { keys.append(word) }
+          word = ""
+          if ch != " " { keys.append(String(ch)) }
+        }
+      }
+      if !word.isEmpty { keys.append(word) }
+      while shortcutCaps.count > keys.count { shortcutCaps.removeLast().removeFromSuperview() }
+      while shortcutCaps.count < keys.count {
+        let k = Keycap()
+        k.font = .systemFont(ofSize: 11, weight: .medium)
+        shortcutCaps.append(k)
+        addSubview(k)
+      }
+      for (k, t) in zip(shortcutCaps, keys) { k.text = t }
     }
     required init?(coder: NSCoder) { fatalError() }
     /// Spec §2: highlight inset 10 horizontally and 2 vertically inside the 50 pt row, radius 6.
@@ -121,6 +153,19 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
         let kw = max(21, keycap.preferredWidth)
         keycap.frame = NSRect(x: right - kw, y: (h - 21) / 2, width: kw, height: 21)
         right -= kw + 8
+      }
+      if !toggle.isHidden {
+        toggle.frame = NSRect(x: right - Switch.size.width, y: (h - Switch.size.height) / 2, width: Switch.size.width, height: Switch.size.height)
+        right -= Switch.size.width + 10
+      }
+      if !shortcutCaps.isEmpty {
+        // Shortcut keycaps (den choice, Raycast-like): 21 pt caps, 3 pt apart.
+        for k in shortcutCaps.reversed() {
+          let kw = max(21, k.preferredWidth)
+          k.frame = NSRect(x: right - kw, y: (h - 21) / 2, width: kw, height: 21)
+          right -= kw + 3
+        }
+        right -= 7
       }
       let aw = accessory.stringValue.isEmpty ? 0 : ceil(accessory.textWidth) + 4  // label cells pad 2 per side
       accessory.frame = NSRect(x: right - aw, y: (h - 18) / 2, width: aw, height: 18)
@@ -257,6 +302,25 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
   }
 
+  /// A setting's on/off state on its row, drawn as a small macOS-style switch (den's own; Arc's bar
+  /// has no settings rows). Display only: Enter or a click on the row flips it.
+  final class Switch: NSView {
+    static let size = NSSize(width: 28, height: 16)
+    var on = false { didSet { if on != oldValue { needsDisplay = true } } }
+    var onFill: NSColor = .controlAccentColor, offFill: NSColor = .quaternaryLabelColor, knob: NSColor = .white
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+      let b = bounds
+      (on ? onFill : offFill).setFill()
+      NSBezierPath(roundedRect: b, xRadius: b.height / 2, yRadius: b.height / 2).fill()
+      let d = b.height - 3
+      let x = on ? b.maxX - 1.5 - d : b.minX + 1.5
+      knob.setFill()
+      NSBezierPath(ovalIn: NSRect(x: x, y: 1.5, width: d, height: d)).fill()
+    }
+  }
+
   /// The 1 pt border as its measured two-pixel ramp: an outer and an inner half-point stroke.
   /// Drawn (not a layer border) so it also shows in `--snapshot` renders; ignores the mouse.
   final class Border: NSView {
@@ -343,6 +407,9 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       r.subtitle.stringValue = rv.str("subtitle")
       r.accessory.stringValue = rv.str("accessory")
       r.keycap.text = rv.str("keycap")
+      r.setShortcut(rv.str("shortcut"))
+      r.toggle.isHidden = rv["toggle"].bool == nil
+      r.toggle.on = rv.flag("toggle")
       r.onClick = { [weak self, rid = r.rowId] in self?.submit(rid, modifiers: []) }
       r.onHover = { [weak self, rid = r.rowId] in self?.hover(rid, at: NSEvent.mouseLocation) }
       r.toolTip = rv.str("subtitle").isEmpty ? nil : rv.str("subtitle")
@@ -418,6 +485,16 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       r.keycap.fg = r.selected ? .white : c.secondary
       r.keycap.border = nil
       r.keycap.needsDisplay = true
+      for k in r.shortcutCaps {
+        k.fill = r.keycap.fill
+        k.fg = r.keycap.fg
+        k.needsDisplay = true
+      }
+      // On: the theme's selection color (white on the selected row); off: a quiet ink track.
+      r.toggle.onFill = r.selected ? NSColor(white: 1, alpha: 0.9) : c.selection
+      r.toggle.knob = r.selected && r.toggle.on ? c.selection : .white
+      r.toggle.offFill = r.selected ? NSColor(white: 1, alpha: 0.28) : NSColor(white: c.dark ? 1 : 0, alpha: c.dark ? 0.22 : 0.14)
+      r.toggle.needsDisplay = true
     }
     for h in headers { h.textColor = c.secondary }
     banner.apply(p)
@@ -506,6 +583,15 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       submit(selected, modifiers: mods)
     case #selector(NSResponder.cancelOperation(_:)): emit(barId, "dismiss", .null)
     case #selector(NSResponder.insertTab(_:)): emit(barId, "tab", ["query": .string(input.stringValue)])
+    case #selector(NSResponder.moveRight(_:)):
+      // → with the caret at the end: the plugin may drill into the selected row's options.
+      let r = textView.selectedRange()
+      guard r.length == 0, r.location >= (input.stringValue as NSString).length else { return false }
+      emit(barId, "right", ["row": .string(selected), "query": .string(input.stringValue)])
+    case #selector(NSResponder.deleteBackward(_:)):
+      // Backspace in an empty field: back out of a drilled-in list.
+      guard input.stringValue.isEmpty else { return false }
+      emit(barId, "back", .null)
     default: return false
     }
     return true

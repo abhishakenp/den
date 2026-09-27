@@ -13,6 +13,7 @@ public enum HostScenarios {
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
     if let w = commandBar(name, runtime: rt) { return w }
+    if let w = launcher(name, runtime: rt) { return w }
     if ConnectionScenarios.names.contains(name) {
       ConnectionScenarios.apply(name, runtime: rt)
       return rt.window.window

@@ -89,9 +89,10 @@ Injects: `tabs`, `spaces`, `ui`, `keys`, `content`, `storage`. It also calls `pe
 
 | Method | Args | Returns |
 |---|---|---|
-| `register` | `id`, `title`, `icon?`, `keywords?`, `shortcut?` (display text, e.g. `⌘⌥N`), `owner?` (the calling plugin's id) | ok. With `owner`, the command is dropped once that plugin is no longer active (cordis doesn't tell a service who called it, so plugins pass their own id) |
+| `register` | `id`, `title`, `icon?`, `keywords?`, `aliases?` (other names that match like the title, e.g. `prefs`), `shortcut?` (display text, e.g. `⌘⌥N`, drawn as keycaps), `owner?` (the calling plugin's id) | ok. With `owner`, the command is dropped once that plugin is no longer active (cordis doesn't tell a service who called it, so plugins pass their own id) |
 | `unregister` | `id` | ok |
-| `list` | – | `[{id, title, icon, shortcut, owner}]`: the commands that can run right now |
+| `list` | – | `[{id, title, icon, shortcut, owner, aliases}]`: the commands that can run right now |
+| `search` | `q`, `limit?` (20) | `[{id, title, strength}]`: the launcher's den matches (commands, settings panes, settings; row ids `cmd:`, `pane:`, `set:`), best first |
 | `run` | `id` | ok |
 | `open` | `mode: new\|edit` (Cmd-T / Cmd-L), `query?` | ok. `edit` defaults the query to the selected tab's URL, text selected |
 | `close` | – | ok |
@@ -105,15 +106,39 @@ Owns: the `overlay.commandBar` slot, and Cmd-T and Cmd-L (pressing the same one 
 
 **One input** (ids `commandBar` for the node and its actions):
 - The first rows: `Reload` (Cmd-L with the URL unchanged), `<url> — Open URL` when the text looks like a URL, `<query> — Search Google` (the default engine), and `Search <site> — Press Tab` when the text is a site-search keyword.
-- Then one flat list (no headers in the main scope), in tiers so rows keep their place while typing: strong local matches (prefix, word prefix, keyword or host) from **Tabs** (open tabs in every space, "Switch to Tab"; picking one selects it, never duplicates), **History** (pages opened from the bar, then archived tabs), **Actions** and **Spaces**; then up to 4 **web suggestions** (the host `suggest` service; two rows are always kept for them, so their arrival never pushes a local match out); then weak (substring) local matches. At most 8 rows. Suggestions already on screen keep their order while the next answer is pending; a suggestion that looks like a domain opens it (`— Open URL`).
+- **Top hit.** A den command, destination or setting whose title or alias starts with the query (2+ characters, not a URL) goes above `Search Google`: "extensions" → Extensions, "prefs" → Settings, "dl" → Downloads, "dark" → Dark mode for websites. Otherwise `Search Google` stays first.
+- Then sections with headers, in tiers so rows keep their place while typing: strong local matches (prefix, word prefix, alias, initials, keyword or host) from **den** (commands and destinations), **Settings** (panes and settings), **Tabs** (open tabs in every space, "Switch to Tab"; picking one selects it, never duplicates), **History** (pages opened from the bar, then archived tabs), **Spaces** and **Windows** (Little Arc windows; picking one calls `window.focusMini`); then up to 4 **Suggestions** (the host `suggest` service; room for two is always kept, so their arrival never pushes a local match out); then weak (substring, fuzzy) local matches, in their section. Rows (50 pt) and headers (28 pt) share the height of 8 rows. Suggestions already on screen keep their order while the next answer is pending; a suggestion that looks like a domain opens it (`— Open URL`).
 - Nothing typed (Cmd-T): the 5 most recent tabs, then suggested actions.
 - **Default-browser banner** (Arc's, at the bottom of the bar in the main scope): shown while `app.defaultBrowser` says den isn't the default, read lazily when the bar opens and cached until `app.defaultBrowser` fires. "Set den as default" calls `app.setDefaultBrowser`. "Try for a week" stores the current default's bundle id (`browserTrial {previous, name, start}`) and sets den; 7 days later (checked at start and hourly while a trial runs) a dialog asks "Keep den as your default browser?" with Keep / Switch back (`app.setDefaultBrowser {bundleId: previous}`). "×" hides the banner for 14 days (`bannerSnoozedUntil`; a den choice, Arc's snooze length is unknown).
-- **Tab** scopes to a site-search keyword (`g`, `yt`, `gh`, `w`, `maps`, `x` by default), otherwise toggles actions-only mode.
+- **Tab** on a setting or settings pane drills into it (below); otherwise it scopes to a site-search keyword (`g`, `yt`, `gh`, `w`, `maps`, `x` by default), or toggles actions-only mode.
 - **Enter** runs the selected row. **Shift-Enter** opens URLs, searches and history in Peek (`peek.open`) when the peek plugin is loaded. Arrow keys and hover move the selection.
 - With Cmd-L, a picked URL or search navigates the current tab instead of opening a new one.
-- **Ranking:** a match score (title prefix > word prefix > keyword > host > substring; every word must match) plus frecency (uses weighted 100/80/60/40/20/10 by age < 1/4/14/31/90 days/older). Storage ns `commandbar`, keys `usage`, `engines`, `browserTrial` and `bannerSnoozedUntil`.
+- **Ranking:** a match score (title prefix or exact alias 100 > alias prefix 95 > phrase inside the title 90 > word prefix 70 > initials 65 ("dm" → Dark Mode) > keyword 60 > settings section 50 > substring 40 > letters in order 25; every word must match) plus frecency (uses weighted 100/80/60/40/20/10 by age < 1/4/14/31/90 days/older; commands `cmd:<id>`, settings `set:<key>`, panes `pane:<id>`). Storage ns `commandbar`, keys `usage`, `engines`, `browserTrial` and `bannerSnoozedUntil`.
 
 **Built-in commands** (ids `den.*`), hidden when what they need isn't there: New Space, Rename Tab (edits the title in the bar), Pin/Unpin Tab, Duplicate Tab, Copy URL, Copy URL as Markdown, Clear Today Tabs, View Archive (lists the archive in the bar; picking restores), Toggle Sidebar, Edit Theme (emits `spaces.editTheme`; shown only while something listens), Reload Page, Split Right (needs `peek`; pick the tab or URL for the right pane) and Quit den (`app.quit`).
+
+**Destinations** (also `den.*` commands, each hidden until its service is loaded; picking one calls `<service>.<method>`): Settings (`settings.open`; aliases preferences, prefs, options, config), Extensions (`extensions.open`; addons, add-ons, plugins), Downloads (`downloads.open`; dl), History (`history.open`), Library (`tabs.library`; archive), Passwords (`passwords.open`; logins, credentials, keychain), Keyboard Shortcuts (every `keys.list` binding in the bar, chords as keycaps; picking one emits its event) and About den (`app.showAbout`). Connections… and Daily Briefing are registered by their plugins.
+
+**Launcher index.** Commands, destinations, settings panes and settings are indexed when the bar opens (and again after `register`, `unregister` or `settings.changed`), never per keystroke. Each entry keeps its title, aliases, keywords and section in lowercase UTF-8 plus a 37-bit character mask, so a keystroke splits the query once, rejects most entries with one AND, and scores the rest with byte compares; the best rows are kept by insertion (no full sort). With 500 entries (91 registered commands, 30 panes × 12 settings), measured by `LauncherTests.perKeystrokeLatencyWith500Entries` in an optimized build: index build 2.0 ms per open; den + Settings matching 0.09 ms mean, 0.25 ms p95 per keystroke.
+
+**Settings in the bar.**
+- A setting row shows its icon, title, `— Settings › <pane>` and its state: a switch for a toggle, the current option for a choice.
+- **Enter** on a toggle flips it (`settings.set`) and toasts "<title>: On"; on a choice it lists the options in the bar; on anything else, and on a pane row, it opens that pane (`settings.open {id, key?}`).
+- **Tab** or **→** (caret at the end) on a setting lists its options (On / Off for a toggle; the current one is checked), on a pane its settings. **Backspace** in the empty field goes back.
+
+### Proposed: `settings` service
+
+Another plugin is building the Settings window and its `settings` service (`settings.register {id, title, icon, schema}`); it hadn't landed when the launcher was written, so the command bar codes against this minimal read/write surface. Anything with the same shape works:
+
+| Method | Args | Returns |
+|---|---|---|
+| `list` | – | `[{id, title, icon, keywords?, schema: [{key, title, type: toggle\|choice\|…, value, options?: [{value, title}], icon?, keywords?}]}]`: every registered pane with current values |
+| `set` | `key`, `value` | ok, then `settings.changed {key, value}` |
+| `open` | `id?` (pane), `key?` (setting to reveal) | ok. Shows the Settings window |
+
+Event: `settings.changed {key?, value?}` (the bar re-indexes).
+
+Until a `settings` service exists, the bar reaches den's existing plugin settings through each plugin's own `settings` method (thin adapter, `CommandBarCore.pluginSettings`): Links (Peek for links to other sites, Little Arc for links from other apps), Tabs (archive today tabs after, unload inactive tabs after) and Briefing (morning briefing). Their panes drill in the bar instead of opening a window. Once the service loads, its registry is the only source.
 
 ## `peek` (plugin `peek`)
 

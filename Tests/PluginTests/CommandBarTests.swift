@@ -220,7 +220,7 @@ struct CommandBarTests {
     #expect(h.bar.list("sections").first?.str("title") == "Actions")
     h.type("side")
     #expect(h.barRows.map { $0.str("title") } == ["Toggle Sidebar"])
-    #expect(h.barRows.first?.str("accessory") == "⌘S")
+    #expect(h.barRows.first?.str("shortcut") == "⌘S")
     h.action("commandBar", "tab", ["query": "side"])
     #expect(h.rt.call("commands", "state")["scope"] == "main")
     #expect(h.barRowIds.first == "search")
@@ -321,8 +321,8 @@ struct CommandBarTests {
     h.type("easel")
     let row = h.barRows.first { $0.str("id") == "cmd:notes.new" }
     #expect(row?.str("title") == "New Note")
-    #expect(row?.str("accessory") == "⌘⌥N")
-    #expect(h.bar.list("sections").contains { $0.str("title") == "Actions" })
+    #expect(row?.str("shortcut") == "⌘⌥N")
+    #expect(h.bar.list("sections").contains { $0.str("title") == "den" })
     h.submit("cmd:notes.new")
     #expect(h.events.last?.0 == "commands.run")
     #expect(h.events.last?.1.s("id") == "notes.new")
@@ -430,9 +430,11 @@ struct CommandBarTests {
     #expect(!before.contains { $0.hasPrefix("sugg:") })
     await h.answerSuggestions(["swi", "swiggy", "swift", "switch 2", "swimming", "swiss"])
     let after = h.barRowIds
-    // Everything that was on screen keeps its position; suggestions come after the strong tab matches.
+    // Everything that was on screen keeps its position; suggestions come after the strong tab matches
+    // (as many as fit under their "Suggestions" header).
     #expect(Array(after.prefix(before.count)) == before)
-    #expect(after.filter { $0.hasPrefix("sugg:") } == ["sugg:swiggy", "sugg:swift", "sugg:switch 2", "sugg:swimming"])
+    #expect(after.filter { $0.hasPrefix("sugg:") } == ["sugg:swiggy", "sugg:swift", "sugg:switch 2"])
+    #expect(h.bar.list("sections").last?.str("title") == "Suggestions")
     #expect(after.count <= CommandBarCore.maxRows)
     let sugg = h.barRows.first { $0.str("id") == "sugg:swift" }!
     #expect(sugg.str("icon") == "sf:magnifyingglass")
@@ -478,21 +480,20 @@ struct CommandBarTests {
     #expect(!h.barRowIds.contains { $0.hasPrefix("sugg:") })
   }
 
-  @Test func emptyStateShowsRecentTabsThenSuggestedActionsAsOneFlatList() {
+  @Test func emptyStateShowsRecentTabsThenSuggestedActions() {
     let h = Harness()
     h.startCommandBar()
     h.key("cmd+t")
     let secs = h.bar.list("sections")
-    #expect(secs.map { $0.str("title") } == ["Tabs", "Actions"])
-    #expect(h.bar.flag("headers") == false)  // Arc's main list has no headers
+    #expect(secs.map { $0.str("title") } == ["Tabs", "den"])
+    #expect(h.bar.flag("headers") == true)
     let tabs = secs[0].list("rows"), actions = secs[1].list("rows")
-    #expect(!tabs.isEmpty && tabs.count <= 5)
+    #expect(!tabs.isEmpty && tabs.count <= 4)
     #expect(tabs.allSatisfy { $0.str("accessory") == "Switch to Tab" && $0.str("keycap") == "→" })
     #expect(!actions.isEmpty)
-    #expect(tabs.count + actions.count == CommandBarCore.maxRows)
-    // Other scopes keep their headers.
-    h.action("commandBar", "tab", ["query": ""])
-    #expect(h.bar.flag("headers") == true)
+    // Rows and the two headers fill the bar's height: 6 rows + 2 x 28 pt fit in 8 rows.
+    #expect((tabs.count + actions.count) * CommandBarCore.rowCost + 2 * CommandBarCore.headerCost <= CommandBarCore.maxRows * CommandBarCore.rowCost)
+    #expect(tabs.count + actions.count == 6)
   }
 
   // MARK: - Default-browser banner

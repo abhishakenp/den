@@ -249,6 +249,13 @@ final class MiniWindows {
     return .ok
   }
 
+  /// Brings a Little Arc window to the front and makes it key (the command bar's Windows rows).
+  func focus(_ args: Value) -> Value {
+    guard let m = windows[args.str("id")] else { return .error("window: unknown mini window '\(args.str("id"))'") }
+    m.panel.makeKeyAndOrderFront(nil)
+    return .ok
+  }
+
   func noteURL(_ v: Value) {
     for m in windows.values where m.webview == v.str("id") {
       let rec = webviews?.record(m.webview)

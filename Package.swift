@@ -32,7 +32,7 @@ let package = Package(
       name: "PluginCores",
       dependencies: [.product(name: "CordisValue", package: "cordis-swift")],
       path: "Plugins",
-      sources: ["Shared/Env.swift", "spaces/SpacesCore.swift", "tabs/TabsCore.swift", "commandbar/CommandBarCore.swift", "peek/PeekCore.swift", "theme/ThemeRules.swift", "theme/ThemeCore.swift", "quit/QuitCore.swift", "updates/UpdatesCore.swift", "Shared/Web.swift", "connections/ConnectionsCore.swift", "slack/SlackCore.swift", "github/GitHubCore.swift", "briefing/BriefingCore.swift", "previews/PreviewsCore.swift", "previews/Cards.swift", "previews/Providers.swift"],
+      sources: ["Shared/Env.swift", "spaces/SpacesCore.swift", "tabs/TabsCore.swift", "commandbar/CommandBarCore.swift", "commandbar/CommandIndex.swift", "commandbar/CommandLauncher.swift", "peek/PeekCore.swift", "theme/ThemeRules.swift", "theme/ThemeCore.swift", "quit/QuitCore.swift", "updates/UpdatesCore.swift", "Shared/Web.swift", "connections/ConnectionsCore.swift", "slack/SlackCore.swift", "github/GitHubCore.swift", "briefing/BriefingCore.swift", "previews/PreviewsCore.swift", "previews/Cards.swift", "previews/Providers.swift"],
       swiftSettings: [.swiftLanguageMode(.v5)]
     ),
     .testTarget(
