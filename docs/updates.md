@@ -108,7 +108,7 @@ Each check:
 
 ## Gatekeeper without notarization
 
-den is signed ad hoc (`codesign --sign -`). No Developer ID is set up yet, and notarization is postponed.
+No Developer ID is set up yet, and notarization is postponed. `scripts/bundle.sh` (which `scripts/release.sh` runs) signs ad hoc (`codesign --sign -`) unless a local signing identity exists (below).
 
 - **Local builds:** run `scripts/make-signing-identity.sh` once. It creates a self-signed "den Local Signing" code-signing identity in the login keychain, and `scripts/bundle.sh` then signs with it (`DEN_SIGN_IDENTITY` overrides). The designated requirement becomes that certificate plus the bundle id, the same on every rebuild, so Keychain and TCC grants survive rebuilds.
 

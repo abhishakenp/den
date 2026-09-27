@@ -39,6 +39,7 @@ Up to four pages side by side, saved as one row in the sidebar.
 - **⌃⇧=** adds an empty pane and opens the command bar to fill it.
 - **Split Right** in the Tabs menu or the command bar.
 - **Open in Split View** on a Peek.
+- **Drag a tab onto another tab's row** in the sidebar (its middle): the two become a split, the dragged tab on the right.
 - **Drag a tab onto a split's row** in the sidebar (its middle) to add it as another pane.
 
 **Use it:**

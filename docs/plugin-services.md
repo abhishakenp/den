@@ -42,7 +42,7 @@ Owns: the sidebar `spaceHeader` and `footer` slots, the window theme per space p
 
 Injects: `spaces`, `webviews`, `content`, `ui`, `storage`, `keys`, `window`, `app`.
 
-Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, customTitle?, url, pinnedUrl?, favicon?, webviewId, lastActive, audio}`.
+Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, customTitle?, url, pinnedUrl?, favicon?, webviewId, lastActive, audio, muted}`.
 - Favorites are shared across all spaces, so their `spaceId` is `null`.
 - A pinned or favorite tab whose `url` differs from its `pinnedUrl` shows the "/" drift marker.
 
@@ -68,7 +68,7 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 | `deleteFolder` | `id` | ok. Archives the tabs inside it (the menu confirms first) |
 | `split` | `ids` (tab ids), `layout: horizontal\|vertical\|grid` (default horizontal), `focus?` | `{id}` of the split. If one of the tabs is already in a split, the others join it, next to their neighbour in `ids`; otherwise a new split takes the first tab's place. At most 4 tabs. Selects `focus` (default: the last id) |
 | `unsplit` | `id`: a split id ("Separate All Tabs"), or a tab id (only that tab leaves, placed after the split) | ok |
-| `settings` | `archiveAfterMs?` (0 = never, default 12 h), `suspendAfterMs?` (0 = never, default 5 min: then the page is discarded, see below) | `{archiveAfterMs, suspendAfterMs}` |
+| `settings` | `archiveAfterMs?` (0 = never, default 24 h), `suspendAfterMs?` (0 = never, default 5 min: then the page is discarded, see below) | `{archiveAfterMs, suspendAfterMs}` |
 | `library` | `open?` (default true) | ok. Opens (or closes) the Library sheet |
 | `pillButtons` | `webview`, `owner` (the calling plugin), `buttons: [{id, icon, tooltip?, active?}]` (`[]` removes) | ok. Another plugin's page actions in the URL pill while that web view's tab is selected (the `pagetools` Reader and Translate buttons). A click emits `ui.action {id: <button id>, action: click, value: {webview}}` |
 
@@ -91,10 +91,10 @@ Owns:
 - the sidebar `header` (URL pill and nav buttons), `favorites`, `pinned` and `today` slots, and the `overlay.library` sheet
 - the content layout for the selected tab
 - tab shortcuts: Cmd-W, Cmd-Shift-T, Cmd-D, Cmd-Shift-K, Cmd-1…9, Ctrl-Tab, Cmd-Opt-↑/↓, Cmd-[ and Cmd-], plus Ctrl-Z (undo sidebar action, as in Arc's "Use ⌃Z to undo" toast), Cmd-R, Cmd-. (stop), Cmd-S (sidebar) and Cmd-Shift-C (copy URL)
-- auto-archive of idle today tabs (12 h by default, configurable, and it can be turned off)
+- auto-archive of idle today tabs (24 h by default, configurable, and it can be turned off)
 - discarding of idle tabs through `webviews.suspend`: a tab that has been off screen for `suspendAfterMs` (5 min by default, checked every minute) is discarded; the host keeps only its URL, history and scroll (~1 KB) and a snapshot on disk, and its WebContent process exits. The host refuses tabs that play media, are in picture in picture, use the camera or microphone, or hold unsaved form input; they're asked again on the next check
 - tab mute: the speaker on a tab row or favorite tile (and "Mute Tab" / "Unmute Tab" in its menu) calls `webviews.setMuted`; the state lasts while the tab lives. Arc's mute shortcut isn't documented anywhere den's research found, so there is none yet
-- the mini player's "back to tab" (`media.backToTab` selects the tab). Its setting is in the command bar's Settings › Tabs ("Mini player when you leave a playing video", `media.settings`)
+- the mini player's "back to tab" (`media.backToTab` selects the tab). Its setting is `media.settings {autoMiniPlayer}`; the command bar lists it under Settings › Tabs ("Mini player when you leave a playing video") only in its fallback for when no `settings` service is loaded, and nothing registers it with the host `settings` service, so the app has no switch for it yet
 - **drop onto a tab** (Arc, Jan 2024): dropping a tab on the middle half of another tab row or favorite tile makes a split of the two where the target lives, the dragged tab as the right, focused pane; a dragged split takes the tab in. Rows carry `dropInto` and the split hint icon; Ctrl-Z undoes it
 
 ## `commands` (plugin `commandbar`)
@@ -131,7 +131,7 @@ Owns: the `overlay.commandBar` slot, and Cmd-T and Cmd-L (pressing the same one 
 
 **Built-in commands** (ids `den.*`), hidden when what they need isn't there: New Space, Rename Tab (edits the title in the bar), Pin/Unpin Tab, Duplicate Tab, Copy URL, Copy URL as Markdown, Clear Today Tabs, View Archive (lists the archive in the bar; picking restores), Toggle Sidebar, Edit Theme (emits `spaces.editTheme`; shown only while something listens), Reload Page, Split Right (needs `peek`; pick the tab or URL for the right pane) and Quit den (`app.quit`).
 
-**Destinations** (also `den.*` commands, each hidden until its service is loaded; picking one calls `<service>.<method>`): Settings (`settings.open`; aliases preferences, prefs, options, config), Extensions (`extensions.open`; addons, add-ons, plugins), Downloads (`downloads.open`; dl), History (`history.open`), Library (`tabs.library`; archive), Passwords (`passwords.open`; logins, credentials, keychain), Keyboard Shortcuts (every `keys.list` binding in the bar, chords as keycaps; picking one emits its event) and About den (`app.showAbout`). Connections… and Daily Briefing are registered by their plugins.
+**Destinations** (also `den.*` commands, each hidden until its service is loaded; picking one calls `<service>.<method>`): Settings (`settings.open`; aliases preferences, prefs, options, config), Extensions (`extensions.open`; addons, add-ons, plugins), Downloads (`downloads.open`; dl), History (`history.open`), Library (`tabs.library`; archive), Passwords (`passwords.open`; logins, credentials, keychain), Keyboard Shortcuts (every `keys.list` binding in the bar, chords as keycaps; picking one emits its event) and About den (`app.showAbout`). Connections… and Daily Briefing are registered by their plugins. Nothing provides `downloads`, `history` or `passwords` services today, so those three destinations stay hidden; the `passwords` plugin registers its own "Passwords…" command (`passwords.open`) instead.
 
 **Launcher index.** Commands, destinations, settings panes and settings are indexed when the bar opens (and again after `register`, `unregister` or `settings.changed`), never per keystroke. Each entry keeps its title, aliases, keywords and section in lowercase UTF-8 plus a 37-bit character mask, so a keystroke splits the query once, rejects most entries with one AND, and scores the rest with byte compares; the best rows are kept by insertion (no full sort). With 500 entries (91 registered commands, 30 panes × 12 settings), measured by `LauncherTests.perKeystrokeLatencyWith500Entries` in an optimized build: index build 2.0 ms per open; den + Settings matching 0.09 ms mean, 0.25 ms p95 per keystroke.
 
@@ -140,23 +140,23 @@ Owns: the `overlay.commandBar` slot, and Cmd-T and Cmd-L (pressing the same one 
 - **Enter** on a toggle flips it (`settings.set`) and toasts "<title>: On"; on a choice it lists the options in the bar; on anything else, and on a pane row, it opens that pane (`settings.open {id, key?}`).
 - **Tab** or **→** (caret at the end) on a setting lists its options (On / Off for a toggle; the current one is checked), on a pane its settings. **Backspace** in the empty field goes back.
 
-### Proposed: `settings` service
+### The `settings` service (shipped, host)
 
-Another plugin is building the Settings window and its `settings` service (`settings.register {id, title, icon, schema}`); it hadn't landed when the launcher was written, so the command bar codes against this minimal read/write surface. Anything with the same shape works:
+The Settings window and its `settings` service are in the host ([host-api.md](host-api.md#settings)). The command bar uses this part of it:
 
 | Method | Args | Returns |
 |---|---|---|
-| `list` | – | `[{id, title, icon, keywords?, schema: [{key, title, type: toggle\|choice\|…, value, options?: [{value, title}], icon?, keywords?}]}]`: every registered pane with current values |
-| `set` | `key`, `value` | ok, then `settings.changed {key, value}` |
+| `list` | – | `[{id, title, icon, order, schema: [{key: "<id>.<key>", title, type: toggle\|choice\|…, value, options?: [{value, title}], keywords?}]}]`: every section with current values (a pane's `keywords` and a setting's `icon` are read when present, but the host sends neither) |
+| `set` | `key` (dotted, `<id>.<key>`), `value` | ok, then `settings.changed {id, key, value}` |
 | `open` | `id?` (pane), `key?` (setting to reveal) | ok. Shows the Settings window |
 
-Event: `settings.changed {key?, value?}` (the bar re-indexes).
+Event: `settings.changed {id, key, value}` (the bar re-indexes).
 
-Until a `settings` service exists, the bar reaches den's existing plugin settings through each plugin's own `settings` method (thin adapter, `CommandBarCore.pluginSettings`): Links (Peek for links to other sites, Little Arc for links from other apps), Tabs (archive today tabs after, unload inactive tabs after) and Briefing (morning briefing). Their panes drill in the bar instead of opening a window. Once the service loads, its registry is the only source.
+Without a `settings` service (the host always provides one, so only in stripped-down setups), the bar falls back to each plugin's own `settings` method (thin adapter, `CommandBarCore.pluginSettings`): Links (Peek for links to other sites, Little Arc for links from other apps), Tabs (archive today tabs after, unload inactive tabs after, and the `media` mini player) and Briefing (morning briefing). Their panes drill in the bar instead of opening a window. When the service is loaded, its registry is the only source.
 
 ## `peek` (plugin `peek`)
 
-Injects: `tabs`, `spaces`, `webviews`, `content`, `ui`, `keys`, `window`, `storage`.
+Injects: `tabs`, `spaces`, `webviews`, `content`, `ui`, `keys`, `window`, `storage`, `app`.
 
 | Method | Args | Returns |
 |---|---|---|
@@ -190,7 +190,7 @@ Injects: `ui`, `storage`, `tabs`, `spaces`. Calls `commands` when it exists. Dia
 
 | Method | Args | Returns |
 |---|---|---|
-| `register` | `id`, `title`, `icon`, `domain`, `signIn` (URL), `owner` | ok. Called by provider plugins |
+| `register` | `id`, `title`, `icon`, `domain`, `signIn` (URL), `owner?` (not read) | ok. Called by provider plugins; registering the same `id` again replaces it |
 | `list` | – | `[{id, title, icon, domain, connected, pending?, account?, profile?, teams?, since?}]` |
 | `get` | `id` | one entry of `list` |
 | `connect` | `id`, `url?`, `profile?` (default: current space's) | ok. Probes first; if not signed in, opens `signIn` in a tab and probes every 3 s and when that tab finishes loading (15 min limit), then toasts "X connected". Several Slack workspaces open the sheet with the picker |
@@ -282,7 +282,7 @@ Injects `pagestyle`, `webviews`, `ui`, `storage`; calls `commands`, `content` an
 - **`den.dark` sheet** for sites that stay light: `filter: invert(1) hue-rotate(180deg)` on `<html>`, with `img, video, canvas, embed, object, iframe, svg image` and inline `background-image` elements inverted back. It sits in `@media (prefers-color-scheme: dark)` (switching den's appearance applies at once, with no round trip) and on `html:not([data-den-tone=dark])` (a page already dark is never inverted).
 - **Cache.** Hosts measured dark under a dark scheme are remembered (`tones`, 400 at most) and get no sheet at all on the next visit: no flash, no filter cost.
 - **Per site.** `dark`: dark appearance plus `den.dark`. `light`: light appearance plus `den.light` (inverts pages that stay dark in a light scheme). `off`: nothing. Commands: "Dark Mode: Follow den / Always Dark / Always Light / Off for This Site" act on the focused pane's site; "Dark Mode for Websites: On/Off" switches the default.
-- Storage ns `darkmode`: `settings {enabled}`, `sites {host: mode}`, `tones [host]`. TODO(settings): register these in the `settings` host service once it lands.
+- Storage ns `darkmode`: `settings {enabled}`, `sites {host: mode}`, `tones [host]`. TODO(settings): register these with the `settings` host service (it has shipped; `darkmode` doesn't register yet).
 - Known gaps: CSS-class background images are inverted with the page; a natively dark site flashes inverted on its very first visit, until the detector runs (then it's cached). Measurements: [research/dark-mode.md](research/dark-mode.md).
 
 ## `passwords` (plugin `passwords`)
@@ -292,11 +292,11 @@ Injects `vault`, `ui`, `storage`; calls `commands`. Owns the `overlay.passwords`
 - **Save.** `vault.captured` shows "Save password for <site>?" (or "Update …" when that username is saved) with Never for This Site / Not Now / Save. `never` origins persist (storage ns `passwords`, key `never`).
 - **Autofill.** `vault.focus` on a site with saved logins puts one row per login under the field ("<user> · Touch ID"); picking one calls `vault.fill` (Touch ID, then fill). Sign-up fields also get "Use Strong Password" (`vault.generate`); the generated password is then offered for saving on submit. `vault.blur` hides the list.
 - **Passwords…** (command `passwords.open`): Touch ID (`vault.unlock`), then the list with Copy (Touch ID again) and Delete per login. Closing the sheet locks.
-- TODO(settings): expose the list and `never` in the settings service once it lands.
+- TODO(settings): expose the list and `never` in the `settings` host service (it has shipped; `passwords` doesn't register yet).
 
 ## `extensions` plugin (`extensions`)
 
-Injects `webext`, `ui`; calls `commands` and `tabs` when they exist. The host `webext` service does the WebKit work ([host-api.md](host-api.md#webext)); this plugin is the Extensions page and the commands, and provides `extensions`: `open {id?}` (the page, or one extension's details), `close`, `state`. The command bar's built-in "Extensions" destination calls `extensions.open`.
+Injects `webext`, `ui`; calls `commands` and `tabs` when they exist. The host `webext` service does the WebKit work ([host-api.md](host-api.md#webext)); this plugin is the Extensions page and the commands, and provides `extensions`: `open {id?}` (the page, or one extension's details), `close`, `state` (`{open, selected}`). The command bar's built-in "Extensions" destination calls `extensions.open`.
 
 - **Commands** (owner `extensions`): "Install Extension from File…" (`extensions.installFile`, the host's open panel), "Get Extensions" (`extensions.get`, the Chrome Web Store in a new tab). Registered with the same 500 ms / 30 s retry as `quit` and `theme`.
 - **Page** (`overlay.extensions`, sheet id `extensions`, style `page`): opened by `extensions.open` and by `webext.openPage` (the URL pill menu's "Manage Extensions").
@@ -333,7 +333,8 @@ These plugins provide no service; they only use the ones above.
 - **`quit`:** the quit dialog, through `app.interceptQuit`: app icon, "Quit den?", buttons "Always quit" / "Cancel" (esc) / "Quit" (↩); dialog id `quit`.
   - "Always quit" stores `warn = false` (storage ns `quit`) and turns interception off. The "Ask Before Quitting" command (`quit.warn`) turns it back on.
   - Closing the window never asks (spec §5).
-- Both call `commands.register` without injecting `commands` (the command bar is optional), retrying every 500 ms for 30 s until it exists.
+- **`updates`:** update policy (channels, schedule, what to install, relaunch, every string) over the host `updates` service; injects `updates`, `app`, `ui`, `storage`; command `den.checkForUpdates`. See [updates.md](updates.md).
+- `theme` and `quit` call `commands.register` without injecting `commands` (the command bar is optional), retrying every 500 ms for 30 s until it exists.
 
 ## Ownership rules
 

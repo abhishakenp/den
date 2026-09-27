@@ -21,9 +21,8 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 
 ## Media
 
-- **Mute a tab** by clicking its speaker icon, a mute badge on favorites, and **Mute Tab** in the tab menu.
-- **den's own mini player**: a small always-on-top window with seek, volume, ±10 s, speed and "back to tab", resizable and snapping to corners, with native picture in picture as the fallback.
-- **Automatic picture in picture** when you leave a tab playing video.
+- Mini player extras: a "Keep on top" toggle, tucking it off the screen edge, a hostname chip back to the tab, subtitles.
+- **Automatic system picture in picture** like Safari's, when you leave a tab playing video (today den's own mini player follows you instead).
 - Hover play/pause/skip for any tab playing audio.
 
 ## Connections & briefing
@@ -42,7 +41,7 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 - A built-in ad and tracker blocker.
 - Link routing rules (URL → space), like Arc's Air Traffic Control.
 - Boosts: per-site colors, fonts and CSS.
-- Session restore and crash recovery; a "Page crashed · Reload" view and protection against endless alerts.
+- Crash recovery; a "Page crashed · Reload" view and protection against endless alerts.
 - Web apps (PWA).
 - Non-US keyboard layouts for shortcuts, and CJK input in the command bar.
 - Resizing split panes by dragging.

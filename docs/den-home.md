@@ -96,7 +96,7 @@ sf = { name = "Swift Forums", url = "https://forums.swift.org/search?q=%s" }   #
 ```
 
 - **`[plugins] disabled`**: plugin ids that aren't loaded. The list is read at launch, and an edit loads or unloads plugins straight away.
-- **`[shortcuts]`**: chords are `cmd`, `shift`, `opt` and `ctrl` joined with `+` to a key. They're bound through the `keys` service (and show up in a *Shortcuts* menu), and each one runs `commands.run {id}`. Built-in command ids are listed in [plugin-services.md](plugin-services.md) (`den.*`). Plugin commands work too, such as `theme.edit`.
+- **`[shortcuts]`**: chords are `cmd`, `shift`, `opt` and `ctrl` joined with `+` to a key. A menu item id ([shortcuts.md](shortcuts.md), such as `tabs.next`) moves that item's shortcut to the chord. Any other id is bound through the `keys` service (and shows up in a *Shortcuts* menu), and runs `commands.run {id}`. Built-in command ids are listed in [plugin-services.md](plugin-services.md) (`den.*`). Plugin commands work too, such as `theme.edit`.
 - **`[search.keywords]`**: site-search keywords, merged into the command bar's engines (`commands.engines`). An entry here overrides an engine with the same keyword. Removing it removes that keyword again.
 
 The TOML subset den reads covers tables, dotted and quoted keys, strings, numbers, booleans, arrays and inline tables. It doesn't cover `[[arrays of tables]]`, multi-line strings or dates.
@@ -105,5 +105,5 @@ Plugins read the whole config through the host `config` service ([host-api.md](h
 
 ## Live updates for an installed den
 
-- `scripts/install.sh` builds `build/den.app` and runs `swift test`. Only if both pass does it copy the app to `/Applications/den.app` (next to the old one), quit the running den with SIGTERM (a clean quit that skips the quit dialog), swap in the new app and relaunch it. It then prints the relaunch gap and checks that the session came back.
+- `scripts/install.sh` builds `build/den.app` and runs `swift test` (through `scripts/test.sh`; `--no-test` skips it). Only if both pass does it copy the app to `/Applications/den.app` (next to the old one), quit the running den with SIGTERM (a clean quit that skips the quit dialog), swap in the new app and relaunch it. It then prints the relaunch gap and checks that the session came back.
 - `scripts/dev-sync.sh` watches the repo. A change under `Plugins/<id>/` rebuilds only that plugin into `~/.den/plugins/<id>.dylib`, and the running den hot-swaps it. A change under `Plugins/Shared` rebuilds every plugin. A host change (`Sources/`, `Resources/`, `Package.*`) runs the same verified install. Changes are debounced, and a failing build is never installed. The script uses `fswatch` if it's installed and otherwise polls mtimes once a second. After a host install, the `~/.den/plugins` dylibs that dev-sync wrote are removed, because the new bundle has those builds.

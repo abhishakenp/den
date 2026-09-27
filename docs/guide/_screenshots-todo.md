@@ -45,7 +45,7 @@ Native menus and the Settings window draw blank through `--snapshot`. Capture th
 | `try-for-a-week.png` | [Default browser](getting-started.md#make-den-your-default-browser): the 7-day "Keep den as your default browser?" dialog | a scenario that fakes the week having passed |
 | `settings-general.png` | Settings ▸ General with `~/.den` on (the current `settings.png` says "~/.den is off for this run") | the `settings` scenario with a throwaway `DEN_HOME` instead of `--no-den-home` |
 
-Screenshots of features that aren't merged (⇧-hover link previews, mute, mini player, page tools) wait for those features.
+Screenshots of features that aren't merged (⇧-hover link previews) wait for those features. Mute, the mini player and page tools are merged and have shots (`tab-audio`, `mini-player`, `pagetools-*`).
 
 ## Dark variants needed
 

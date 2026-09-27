@@ -81,6 +81,7 @@ Drag any row more than a few points and it lifts off. A thin line shows where it
 | between rows | moves it there |
 | on the favorites grid | makes it a favorite |
 | on the middle of a folder | puts it inside |
+| on the middle of another tab's row | makes a split of the two, the dragged tab on the right |
 | on a split view's row | adds it to the split (up to 4 panes) |
 | on a **space icon** in the footer | moves it to that space, in the same section. A favorite lands in that space's Today |
 | on the **page** | opens it in split view next to the current tab |
@@ -93,7 +94,7 @@ Drag links, URLs or files from other apps onto the sidebar and they open as Toda
 
 <p align="center"><img src="../screenshots/context-menu-dark.png" alt="Tab context menu" width="320"></p>
 
-**Copy Link**, **Duplicate**, **Rename…**, **Pin Tab** / **Unpin Tab** / **Remove from Favorites**, **Add to Favorites**, **New Folder with Tab**, **Move to \<space\>** for each other space, and **Archive Tab** (Today) or **Close Tab**.
+**Copy Link**, **Duplicate**, **Rename…**, **Mute Tab** / **Unmute Tab** (while it plays audio), **Pin Tab** / **Unpin Tab** / **Remove from Favorites**, **Add to Favorites**, **New Folder with Tab**, **Move to \<space\>** for each other space, and **Archive Tab** (Today) or **Close Tab**.
 
 ## Switching tabs
 
@@ -131,7 +132,7 @@ Drag links, URLs or files from other apps onto the sidebar and they open as Toda
 
 ## Memory
 
-Background tabs you haven't used for 30 minutes are unloaded: they keep their history, scroll position and a snapshot, and reload when you click them. Tabs on screen and tabs playing audio are never unloaded. Settings ▸ Tabs ▸ **Unload idle tabs** changes it (0 turns it off). See [Performance](performance.md).
+Background tabs you haven't used for 5 minutes are unloaded: they keep their history, scroll position and a snapshot, and reload when you click them. Tabs on screen, tabs playing media or in picture in picture, tabs using the camera or microphone, and tabs with unsaved form input are never unloaded. Settings ▸ Tabs ▸ **Unload idle tabs** changes it (0 turns it off). See [Performance](performance.md).
 
 ## Settings ▸ Tabs
 

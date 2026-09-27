@@ -2,7 +2,7 @@
 
 den's shortcuts next to Safari's, Chrome's and Arc's. Arc's come from its live menus and nib (spec §9, `docs/research/arc.md` §15). Where Arc and Safari disagree, Arc wins, and the standard key is kept as a second shortcut when it's free.
 
-Every shortcut is an item in den's menu bar (den, File, Edit, View, History, Spaces, Tabs, Window, Help), so it shows its key and goes through AppKit's normal key-equivalent path. A second key for the same action is a hidden alternate of that item. `ShortcutTests.everyShortcutDispatchesThroughTheMainMenu` sends each chord below through the real main menu as a keyboard event and checks the command it reaches.
+Every shortcut is an item in den's menu bar (den, File, Edit, View, History, Spaces, Tabs, Window, Help; the mini player's playback keys are the exception), so it shows its key and goes through AppKit's normal key-equivalent path. A second key for the same action is a hidden alternate of that item. `ShortcutTests.everyShortcutDispatchesThroughTheMainMenu` sends the chords below through the real main menu as keyboard events and checks the command each reaches (not yet covered: Esc for Close Peek, ⌘Z Reopen Peek, ⌥⌘H, Reader ⌃⌘R, Capture ⇧⌘2).
 
 **Remapping.** In `~/.den/config.toml`, `[shortcuts]` maps a chord to a menu item id (the last column), or to a command bar command id:
 
@@ -67,8 +67,8 @@ Chords are `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f
 | Inspect element | ⇧⌘C | ⇧⌘C | ⌥⌘C | ⌥⌘C | `view.inspectElement` |
 | JavaScript console | ⌥⌘C | ⌥⌘J | ⌥⌘J | ⌥⌘J | `view.console` |
 | Full screen | ⌃⌘F | ⌃⌘F | ⌃⌘F | ⌃⌘F | `view.fullScreen` |
-| Reader | ⇧⌘R | – | – | ⌃⌘R | `pagetools.reader` (command) |
-| Capture (region; the bar switches to element, visible area, full page) | – | – | ⇧⌘2 | ⇧⌘2 | `pagetools.capture.region` (command) |
+| Reader | ⇧⌘R | – | – | ⌃⌘R (View ▸ Reader) | `pagetools.reader` (command) |
+| Capture (region; the bar switches to element, visible area, full page) | – | – | ⇧⌘2 | ⇧⌘2 (View ▸ Capture…) | `pagetools.capture.region` (command) |
 
 Reader: Safari's ⇧⌘R is Arc's (and den's) Reload from Origin, so Reader is ⌃⌘R. ⌘S: Arc wins (Show/Hide Sidebar), so saving is Arc's ⇧⌘S. ⌥⌘C: Arc's Inspect Element wins over Safari's console; the console is ⌥⌘J like Chrome and Arc.
 
@@ -81,6 +81,7 @@ Reader: Safari's ⇧⌘R is Arc's (and den's) Reload from Origin, so Reader is �
 | Close split pane | ⌃⇧- | ⌃⇧- | `view.closePane` |
 | Focus split pane 1…4 | ⌃⇧1…4 | ⌃⇧1…4 | View ▸ Focus Split Pane |
 | Close Peek | Esc | Esc (only while a Peek is open) | `view.closePeek` |
+| Reopen the Peek you just closed | – | ⌘Z (for 15 s after closing it; then ⌘Z is Undo again) | Edit ▸ Reopen Peek |
 | Daily briefing | – | ⇧⌘B (changeable in Settings > Briefing) | `view.briefing` |
 
 ## Address and sharing
@@ -97,12 +98,14 @@ Reader: Safari's ⇧⌘R is Arc's (and den's) Reload from Origin, so Reader is �
 |---|---|---|---|---|---|
 | History | ⌘Y | ⌘Y | ⌘Y | ⌘Y (the Library: den's archive of closed tabs) | `history.library` |
 | Library | – | – | ⇧⌘L | ⇧⌘L | `history.library` |
-| Downloads | ⌥⌘L | ⇧⌘J | ⇧⌘J | – | den has no downloads yet |
+| Downloads | ⌥⌘L | ⇧⌘J | ⇧⌘J | – | den has no downloads list yet (a link's or image's context menu has Save Link As… / Save Image As…) |
 | Settings | ⌘, | ⌘, | ⌘, | ⌘, | `app.settings` |
 | Minimize | ⌘M | ⌘M | ⌘M | ⌘M | `window.minimize` |
 | Close window | ⇧⌘W | ⇧⌘W | ⇧⌘W | ⇧⌘W | `file.closeWindow` |
 | Hide | ⌘H | ⌘H | ⌘H | ⌘H | `app.hide` |
 | Quit | ⌘Q | ⌘Q | ⌘Q | ⌘Q (asks first; Settings > General) | `app.quit` |
+
+den ▸ Hide Others is ⌥⌘H (`app.hideOthers`).
 
 ## Spaces
 
@@ -111,6 +114,18 @@ Reader: Safari's ⇧⌘R is Arc's (and den's) Reload from Origin, so Reader is �
 | Space 1…9 | ⌃1…9 | ⌃1…9 (listed by name) | Spaces menu |
 | Next / previous space | ⌥⌘→ / ⌥⌘← | ⌥⌘→ / ⌥⌘← | `spaces.next`, `spaces.prev` |
 | Two-finger swipe in the sidebar | ✓ | ✓ | – |
+
+## Mini player
+
+While the mini player window is key (a playing video you left, see [guide/media.md](guide/media.md)). These are the panel's own keys, not menu items, so they can't be remapped.
+
+| Action | den |
+|---|---|
+| Play / pause | Space |
+| Back / forward 5 s | ← / → |
+| Volume up / down | ↑ / ↓ |
+| Mute / unmute | M |
+| Back to the tab | Esc |
 
 ## Edit
 

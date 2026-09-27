@@ -9,11 +9,12 @@ Rows marked **changed** were annoying defaults and have been fixed.
 | Setting | Default | Why |
 |---|---|---|
 | Archive Today tabs after | **24 hours** (changed, was 12 h) | Arc uses 12 h, and losing tabs is the most common complaint about Arc. At 12 h, a tab you open at 6 pm is gone by 6 am, before you're back at your desk. 24 h keeps yesterday's tabs through today and still clears the pile daily. Archived tabs stay in the Library, and ⇧⌘T brings the last one back. Pinned tabs, favorites, the selected tab and tabs playing audio are never archived |
-| Unload idle tabs after | 30 min | Background tabs are den's biggest memory cost. A suspended tab keeps its history and scroll position (`interactionState`) and a snapshot, and reloads when you come back. Tabs on screen (including every pane of a split) and tabs playing audio never unload. 0 turns it off |
+| Unload idle tabs after | 5 min | Background tabs are den's biggest memory cost. A suspended tab keeps its history and scroll position (`interactionState`) and a snapshot, and reloads when you come back. Tabs on screen (including every pane of a split), playing media or in picture in picture, using the camera or mic, or holding unsaved form input never unload. 0 turns it off |
 | ⌘W on a Today tab | archives it (Arc) | Nothing is lost: it's in the Library, and ⇧⌘T reopens it |
 | Clear Today tabs (⇧⌘K) | instant, with an "Undo ⌃Z" toast | Arc does the same. An undo toast beats a confirmation dialog |
 | New tab (⌘T) | the command bar | Arc |
 | ⌘-click / middle-click a link | background tab; ⌘⇧-click opens it in front | What every browser does |
+| Mini player when you leave a playing video | on | Arc's "Picture in Picture when you leave a video tab". Only an audible video that's playing triggers it; the page is never reloaded. Toggle it from the command bar ("Mini player when you leave a playing video") |
 
 ## Links
 
@@ -53,7 +54,16 @@ Rows marked **changed** were annoying defaults and have been fixed.
 | Sidebar | shown, 228 pt | Arc's width. ⌘S hides it; the left edge reveals it |
 | Haptics | on (drag-reorder, drop targets, the theme picker, space reorder) | Subtle trackpad ticks, as in Arc ("Haptic feedback when reordering tabs"). Only Force Touch trackpads feel them. No setting yet |
 | Sounds | none | den plays no sound effects. Arc has a few and a switch to turn them off; den doesn't need the switch |
+| Dark mode for websites | on, following den's appearance | Sites with their own dark mode use it; light-only sites are inverted (images and video kept) only while den is dark. Per site: follow den, always dark, always light or off, from the command bar |
 | Motion | short, eased; none with Reduce Motion | Space switch, peek open, hover cards and reorder all respect Reduce Motion |
+
+## Reading (page tools)
+
+| Setting | Default | Why |
+|---|---|---|
+| Reader font / text size | serif, 19 px | Settings > Reading |
+| Read-aloud speed | 1× | Settings > Reading |
+| Capture (⇧⌘2) goes to | the clipboard | Paste it anywhere; "Save as a PNG file" is the other choice |
 
 ## Hover previews
 
@@ -77,4 +87,4 @@ Rows marked **changed** were annoying defaults and have been fixed.
 |---|---|
 | No launch work for optional features | Settings, connections, previews and the briefing build nothing until used; plugins load lazily. Launch time is measured on every change |
 | Toasts last 2.2 s, top right | Arc's placement; long enough to read, short enough not to linger |
-| Downloads, profiles UI, extensions | Not built yet (README) |
+| Downloads list, profiles UI | Not built yet (README). Extensions have shipped (command bar: Extensions) |

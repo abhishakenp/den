@@ -40,7 +40,7 @@ Median of the 6 least-loaded rounds (load 4.7–7.9):
 ## Why it's small
 
 - **Plugins load lazily.** Settings, connections, previews and the briefing build nothing until you use them.
-- **Idle tabs unload** after 30 minutes by default (Settings ▸ Tabs, or 0 to turn it off). An unloaded tab keeps its history, scroll position and a snapshot, and reloads when you come back. Tabs on screen and tabs playing audio never unload.
+- **Idle tabs unload** after 5 minutes in the background by default (Settings ▸ Tabs, or 0 to turn it off). An unloaded tab keeps its history, scroll position and a snapshot on disk, and reloads when you come back; its WebKit process exits. Tabs on screen, tabs playing media or in picture in picture, tabs using the camera or microphone, and tabs with unsaved form input never unload.
 - **Nothing polls** until you connect an account.
 
 ## Measure it yourself

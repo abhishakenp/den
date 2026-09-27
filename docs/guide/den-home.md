@@ -11,7 +11,7 @@
   logs/         plugins.log, build-<id>.log, den.log, updater.log
 ```
 
-Settings ▸ General has **Open** and **Show in Finder** buttons for `config.toml` and the den folder. To use another folder, set `DEN_HOME`.
+Settings ▸ General has **Open** and **Show in Finder** buttons for `config.toml`, and **Show in Finder** for the den folder. To use another folder, set `DEN_HOME`.
 
 ## config.toml
 

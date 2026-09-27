@@ -137,5 +137,5 @@ Derived from these runs:
 
 ### Known limitations of the harness
 
-- Test instances launch without activation, like `open -g`. den (this build) calls `NSApp.activate()` itself, though. While `scripts/perf.sh` ran, den was the frontmost app in 5 of 60 two-second samples. A test flag that keeps den in the background would need a den code change, which this measurement work did not make.
+- Test instances launch without activation, like `open -g`. den (this build) calls `NSApp.activate()` itself, though. While `scripts/perf.sh` ran, den was the frontmost app in 5 of 60 two-second samples. A test flag that keeps den in the background would need a den code change, which this measurement work did not make. Later builds have one, `--background` (`Sources/Den/main.swift`, used by `scripts/measure-memory.sh`); `scripts/perf.sh` doesn't pass it yet.
 - This den build shows a quit dialog in response to the quit AppleEvent, so the probe force-quits it after 10 s. Later builds quit cleanly on SIGTERM.

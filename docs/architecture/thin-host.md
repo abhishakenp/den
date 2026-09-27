@@ -1,6 +1,6 @@
 # Thin host: moving feature code out of DenHost
 
-Status: design proposal. No code has changed.
+Status: design proposal. The audit is done (feature-specific host code is marked `thin-host:` in the source, see [Markers](#markers-and-the-updates-feature)); migration steps 0–9 (§6) have not started ([ROADMAP.md](../../ROADMAP.md), Thin host).
 
 Baseline: `origin/main` at `4519b77`, read from a `git archive` snapshot. In-flight work that is not on main was read from its branches and worktrees and is listed separately in §2.3. Other agents are changing that work, so it may already differ.
 
@@ -174,7 +174,7 @@ Counted with `awk`/`grep` over the tables above. By lines, **b** is most of the 
 
 ### 2.3 In-flight host code (not on main)
 
-These were read from branches and worktrees by three parallel read-only passes. Line counts come from `wc -l` on `git show` or the worktree file.
+These were read from branches and worktrees by three parallel read-only passes. Line counts come from `wc -l` on `git show` or the worktree file. Every file in this table has since landed on main; the Appendix and Addendum below track them as landed.
 
 | Where | File (lines) | Cat | What's feature policy in the host | → generic primitive / plugin |
 |---|---|---|---|---|
@@ -239,7 +239,7 @@ Rules for every service:
 
 - `suggest`: removed. It becomes `commandbar` code on top of `net` + `time`.
 - `keys`: merged into `menu`.
-- `vault`, `pageStyle`, `settings`, `extensions`, `pageActions`, `pageTools` (in flight): never land as host services. Their platform parts are the rows above.
+- `vault`, `pagestyle`, `settings`: landed as host services after this survey. Their platform parts are the rows above; their feature parts are marked `thin-host:` to migrate. Extensions landed as `webext`, page actions inside `webviews`, and page tools as `speech`/`translate` plus generic `webviews` scripting (Addendum).
 
 ### 3.4 `webviews` additions (all generic)
 
@@ -430,7 +430,7 @@ Feature-specific host code is marked with one line, so `git grep "thin-host:"` l
 // thin-host: feature-specific, migrate to plugin
 ```
 
-Marked so far: `ConfigService.apply()` (shortcuts and keywords), `LivePlugins.toast` (load and build failure strings), and `main.swift` `sessionSummary()`, `CommandBarView` (row, banner and framing; the launcher's index, ranking, aliases, settings and strings are already in the `commandbar` plugin) and `LauncherSettingsStub` in `CommandBarScenarios.swift` (a snapshot-only settings registry). The launcher added only generic blocks to the host: row `shortcut` keycaps and a `toggle` switch, the bar's `right`/`back` actions, `window.focusMini`, `app.showAbout` and `payload` in `keys.list`.
+Marked so far: `ConfigService.apply()` (shortcuts and keywords), `LivePlugins.toast` (load and build failure strings), and `main.swift` `sessionSummary()`, `CommandBarView` (row, banner and framing; the launcher's index, ranking, aliases, settings and strings are already in the `commandbar` plugin) and `LauncherSettingsStub` in `CommandBarScenarios.swift` (a snapshot-only settings registry). Also marked: the extensions code (Appendix), the Addendum's **marked** rows, the mini player (`MediaService`, `MiniPlayerPanel`, the isolation CSS in `PageScripts`), passwords (`VaultService`, the `overlay.passwords` slot in `UIService`, the suggestion-view case in `CardView.layout`), dark mode's page-tone heuristic (`PageStyleService`), and the dev scenarios `PageToolsScenarios`, `VaultScenarios` and the password pages in `MockServices`. `git grep "thin-host:"` is the complete list. The launcher added only generic blocks to the host: row `shortcut` keycaps and a `toggle` switch, the bar's `right`/`back` actions, `window.focusMini`, `app.showAbout` and `payload` in `keys.list`.
 
 Updates ([updates.md](../updates.md)) follow the rule from the start:
 
@@ -454,7 +454,7 @@ To migrate to the `extensions` plugin (marked in the code):
 | `ExtensionsService.installFromStore`, "Downloads", "Updates" | Chrome Web Store / AMO endpoints, update schedule (24 h) | Plugin, over `net.fetch` (needs a binary download-to-file variant) and a host `install {path}` primitive |
 | `ExtensionText.swift`, "Permission prompts", `toast`, `failed`, `pickFile` strings | User-facing strings and dialog composition | Plugin: host emits `extensions.permissionRequest {request, permissions, patterns}` and waits for `extensions.answer {request, allow}` |
 | `ExtensionsUI.showMenu`, `ExtensionsMenuView`, `menuItems` (pinning policy) | Menu layout, labels ("Manage Extensions", "Get Extensions") and which extensions show | Plugin: a generic host popover that renders a node tree, plus `extensions.actions` data (icon, badge) |
-| URL pill extension buttons (`Rows.swift`, `PillExtensionButton`) | The pill knows about extensions | Generic pill `accessories: [{id, icon, badge}]` node field filled by the plugin through the tabs header |
+| URL pill extension buttons (`Rows.swift` `syncExtensions`, `PillExtensionButton` in `ExtensionsUI.swift`) | The pill knows about extensions | Generic pill `accessories: [{id, icon, badge}]` node field filled by the plugin through the tabs header |
 
 Already in the plugin: the Extensions page, its strings and layout, the commands ("Extensions", "Install Extension from File…", "Get Extensions"), removal confirmation, update toasts.
 
@@ -491,14 +491,14 @@ These landed after the survey above, with the marker `// thin-host: feature-spec
 | Find bar | `Toolkit/FindBar.swift` (marked) | A dedicated view | A generic floating-bar node composed by a `find` plugin |
 | Space footer reorder | `Toolkit/Rows.swift` `SpaceIconReorder` | Tied to the `spaceIcon` node | A generic `reorderable` behavior for any node in a `row` |
 | Theme picker | `Toolkit/ThemePicker.swift` (listed) | Arc's picker as one node | Generic pad/slider/dial nodes composed by `theme` |
-| Command bar view | `Toolkit/CommandBarView.swift` (listed) | Banner copy, row semantics | Already driven by the `commandbar` plugin's tree; the banner node could be a generic `banner` |
+| Command bar view | `Toolkit/CommandBarView.swift` (marked) | Banner copy, row semantics | Already driven by the `commandbar` plugin's tree; the banner node could be a generic `banner` |
 | Library sheet | `Toolkit/Library.swift` (listed) | "Clear Archive", day grouping | A generic `sheet` + `list` composed by `tabs` |
 | Hover card | `Toolkit/HoverCard.swift` (listed) | Card layout specific to previews | Generic card node; `previews` composes it |
 | Briefing and connection rows | `Toolkit/SheetNodes.swift` `todoRow`, `feedRow`, `connectionRow` (listed) | Feature rows | Compose from generic row parts |
 | Little Arc chrome | `Window/MiniWindow.swift` (listed) | "Open in <space>" button | A generic mini-window with a toolbar tree from `peek` |
 | Search suggestions | `Services/SuggestService.swift` (listed) | Google's endpoint | A plugin fetching through `net` |
 | AI prompts | `Services/AIService.swift` (listed) | Summary and todo instructions | Plugins pass their own instructions (they mostly do) |
-| `[shortcuts]` and `[search.keywords]` | `DenHome/ConfigService.swift` (listed) | Applies keywords to the command bar | The `commandbar` plugin reads `config` itself |
+| `[shortcuts]` and `[search.keywords]` | `DenHome/ConfigService.swift` (marked) | Applies keywords to the command bar | The `commandbar` plugin reads `config` itself |
 | Dev scenarios | `Scenarios/*` | Demo states | Fine: dev tooling, not shipped behavior |
 
 ### How to migrate one piece

@@ -1,6 +1,6 @@
 # Keyboard shortcuts
 
-Every shortcut is in den's menu bar, so you can always look one up there. In den, type **Keyboard Shortcuts** in the command bar (⌘T) for a searchable list you can run from.
+Every shortcut is in den's menu bar (except the mini player's playback keys below), so you can always look one up there. In den, type **Keyboard Shortcuts** in the command bar (⌘T) for a searchable list you can run from.
 
 Where Arc and Safari disagree, den follows Arc, and keeps Safari's key as a second shortcut when it's free. The side-by-side comparison with Safari, Chrome and Arc is in [docs/shortcuts.md](../shortcuts.md).
 
@@ -61,6 +61,18 @@ Mouse back/forward buttons and two-finger swipes on the page work too.
 | Move a Peek or Little Arc window into the space | ⌘O |
 | Daily briefing | ⇧⌘B (change it in Settings ▸ Briefing) |
 
+## Mini player
+
+While the mini player is the active window:
+
+| Action | Keys |
+|---|---|
+| Play / pause | Space |
+| Back / forward 5 s | ← / → |
+| Volume up / down | ↑ / ↓ |
+| Mute / unmute | M |
+| Back to the tab | Esc |
+
 ## Copying
 
 | Action | Keys |
@@ -84,6 +96,7 @@ Mouse back/forward buttons and two-finger swipes on the page work too.
 | Minimize | ⌘M |
 | Close window | ⇧⌘W |
 | Hide den | ⌘H |
+| Hide other apps | ⌥⌘H |
 | Quit | ⌘Q (asks first; turn that off in Settings ▸ General) |
 
 Plus the standard text shortcuts: ⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌥⇧⌘V, ⌘A.
@@ -102,4 +115,4 @@ Chords use `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f
 
 ## Not there yet
 
-New window (⌘N), private window (⇧⌘N) and downloads (⌥⌘L) have no shortcut because den doesn't have those features yet. See [Coming soon](coming-soon.md).
+New window (⌘N), private window (⇧⌘N) and a downloads list (⌥⌘L) have no shortcut because den doesn't have those features yet. (Save Link As… and Save Image As… in a page's context menu do save files.) See [Coming soon](coming-soon.md).

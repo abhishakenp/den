@@ -15,7 +15,9 @@ Everything in den that you won't find by looking at it. One line each, with a li
 - **Drop a tab on the middle of a folder** to put it inside; near the edge it goes beside it. [Sidebar](sidebar-and-tabs.md#folders)
 - **Drop a tab on a space icon** in the footer to move it to that space. [Sidebar](sidebar-and-tabs.md#drag-and-drop)
 - **Drop a tab on the page** to split: the left third puts it on the left, the rest on the right. [Split view](peek-split-little-arc.md#split-view)
+- **Drop a tab on the middle of another tab's row** to split the two. [Split view](peek-split-little-arc.md#split-view)
 - **Drop a tab on a split's sidebar row** to add it as another pane. [Split view](peek-split-little-arc.md#split-view)
+- **Click the speaker** on a tab playing audio to mute it. [Media](media.md#tab-audio-and-mute)
 - **Drop links or files from other apps** onto the sidebar to open them as tabs. [Sidebar](sidebar-and-tabs.md#drag-and-drop)
 - **Move the pointer to the left edge** when the sidebar is hidden (⌘S) to slide it back. [Sidebar](sidebar-and-tabs.md#hiding-the-sidebar)
 - **Double-click the sidebar's edge** to reset its width. Drag it very narrow to hide it. [Sidebar](sidebar-and-tabs.md#hiding-the-sidebar)
@@ -66,6 +68,8 @@ Everything in den that you won't find by looking at it. One line each, with a li
 - **⌥⇧⌘C** copies the page as a Markdown link. [Page tools](page-tools.md#copy-the-link)
 - **⌘E** searches the page for the selected text. [Page tools](page-tools.md#find)
 - **Zoom sticks per site**; ⌘0 forgets it. [Page tools](page-tools.md#zoom-remembered-per-site)
+- **⌃⌘R** toggles Reader; **⇧⌘2** captures a region of the page. [Page tools](page-tools.md#reader)
+- **Leave a playing video's tab** and it follows you in den's mini player. [Media](media.md#the-mini-player)
 - **Type "dark"** in the command bar to force a site dark or light. [Privacy](privacy-and-passwords.md#dark-mode-for-every-website)
 
 ## Settings & config

@@ -62,7 +62,7 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 | `inject` | `id`, `plugin`, `files?: [name]` (from the plugin's resource folder), `global?`, `script?` (function body, ≤ 64 KB), `args?` (named arguments of `script`), `request?` | `{request}`, then `webviews.injectResult {request, webview, plugin, ok, value \| error}`. See [Plugins in pages](#plugins-in-pages) |
 | `setMenu` | `plugin`, `items: [{id, title, when?: selection\|any}]` (`[]` removes) | ok. Picking one emits `webviews.menu {id, webview, plugin}` |
 | `setContentRules` | `plugin`, `rules: [WebKit content rule]` (`[]` removes) | `{pending}`, then `webviews.contentRules {plugin, ok, count, error?}` |
-| `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted, media: {playing, pip, dirty, video?}, suspended, live, profile, snapshot}` |
+| `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted, media: {playing, pip, dirty, video?}, suspended, live, profile, snapshot, zoom}` |
 | `list` | – | `[id]` |
 | `setLinkPolicy` | `id` (or `"*"` for the default), `rules: [{when: crossSite\|sameSite\|any, hosts?: [suffix], modifiers?: [cmd,shift,opt,ctrl], event}]` | ok |
 
@@ -157,8 +157,8 @@ den's mini player (`// thin-host` marker: to move into a plugin over generic pri
 | `get` | – | `{open, webview?, fromWindow?, frame?, settings: {autoMiniPlayer}}` |
 | `settings` | `autoMiniPlayer?` | `{autoMiniPlayer}` (persisted, on by default) |
 | `open` | `webview` | ok, or an error when it plays no video |
-| `control` | `action`, `value?` | ok. What the panel's controls do: `play`, `pause`, `toggle`, `seek` (s), `skip` (±s), `volume` (0–1), `mute` (0/1), `rate`, `pip`, `back`, `close` |
-| `close` | – | ok (pauses the video) |
+| `control` | `action`, `value?` | ok (an error when no player is open). What the panel's controls do: `play`, `pause`, `toggle`, `seek` (s), `skip` (±s), `volume` (0–1), `mute` (0/1), `rate`, `pip`, `back`, `close` |
+| `close` | – | ok (pauses the video), or an error when no player is open |
 
 Events: `media.miniPlayer {webview, open}`, `media.backToTab {webview}` (the tabs plugin selects that tab), `media.playback {webview, t, dur, paused, muted, vol, rate}`.
 
@@ -191,7 +191,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 **Slots:**
 - `sidebar.header`, `sidebar.favorites`, `sidebar.footer`
 - Per space page: `sidebar.spaceHeader`, `sidebar.pinned`, `sidebar.today`
-- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections`, `overlay.extensions` (see [Briefing page](#briefing-page-and-connections-sheet)), `hoverCard` (see [Hover card](#hover-card))
+- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections`, `overlay.passwords`, `overlay.extensions` (see [Briefing page](#briefing-page-and-connections-sheet)), `hoverCard` (see [Hover card](#hover-card))
 
 **Event:** `ui.action {id, action, value}`
 
@@ -273,7 +273,7 @@ A `spaceIcon` with `reorderable: true` can be dragged along the footer strip (`S
 
 ### Briefing page and connections sheet
 
-`ui.set {slot: "overlay.briefing" | "overlay.connections" | "overlay.extensions", tree}` renders a `sheet` tree (null clears); they stack in that order. Both show in `ui.get` overlays. This is den's own UI, not Arc's, so every size is an estimate in `Tokens`. Snapshots: `--scenario briefingSheet|connectionsSheet` (`docs/screenshots/briefing-sheet*.png`, `connections-sheet*.png`).
+`ui.set {slot: "overlay.briefing" | "overlay.connections" | "overlay.passwords" | "overlay.extensions", tree}` renders a `sheet` tree (null clears); they stack in that order. All show in `ui.get` overlays. This is den's own UI, not Arc's, so every size is an estimate in `Tokens`. Snapshots: `--scenario briefingSheet|connectionsSheet` (`docs/screenshots/briefing-sheet*.png`, `connections-sheet*.png`).
 
 - **Root:** `{type: "sheet", id, style: page|sheet, title, subtitle?, icon?, headerButtons?: [{id, icon, tooltip?}], children}`.
   - `page` covers the content area like a new-tab page: card radius, no dim, and a centered column at most 680 wide with 40 pt top padding.
@@ -371,10 +371,10 @@ The Settings window (⌘,, "Settings…" in the den menu). Plugins contribute se
 |---|---|---|
 | `register` | `id`, `title`, `icon?`, `section?`, `order?`, `controls: [control]` | ok. Replaces an earlier registration. With `section`, the controls join that section as a group titled `title`; otherwise `id` is a sidebar section |
 | `unregister` | `id` | ok |
-| `list` | – | `[{id, title, icon, order}]`: the sidebar |
+| `list` | – | `[{id, title, icon, order, schema: [{key: "<id>.<key>", title, type, value, options?, keywords?}]}]`: the sidebar, each section with every titled control of its groups and its current value (the command bar searches and flips these) |
 | `get` | `id`, `key?` | the stored values over the controls' defaults (`{key: value}`), or one value |
-| `set` | `id`, `key`, `value` | ok. Stores (storage ns `id`, key `prefs`) and emits `settings.changed` when the value changed |
-| `open` | `section?` | ok. Shows the window at that section |
+| `set` | `id`, `key`, `value` (or no `id` and a dotted `key: "<id>.<key>"`, as `list` gives it) | ok. Stores (storage ns `id`, key `prefs`) and emits `settings.changed` when the value changed |
+| `open` | `section?` (or `id`, and `key?` a dotted setting key whose section opens) | ok. Shows the window at that section |
 | `close`, `state` | – | ok / `{open, section}` |
 
 Events: `settings.changed {id, key, value}`; `settings.action {id, key, item?, button?, value?}` (list and button rows, and `submit` text fields); `settings.opened {section}`.
@@ -399,6 +399,7 @@ Sections today:
 - **Tabs** (`tabs`): archive Today tabs after (Never … 30 days), unload idle tabs (0–240 min slider); plus **Links** from `peek` (peek at links from pinned tabs, "Open links from other apps in a mini window", archive unused mini windows).
 - **Search** (`commandbar`): search engine, site-search keywords (remove), add a keyword (`kw [Name] url-with-%s`), the default-browser banner.
 - **Connections** (`connections`): each provider with Connect / Cancel / Workspaces… / Disconnect.
+- **Reading** (`pagetools`): reader font, text size and read-aloud speed, sites that always open in Reader, where captures go, and zapped sites (see [plugin-services.md](plugin-services.md#pagetools-plugin-pagetools)).
 - **Briefing** (`briefing`): morning briefing on/off, its time, the shortcut that opens it.
 
 Snapshots: `--scenario settings` / `settingsTabs` / `settingsSearch` / `settingsConnections` / `settingsBriefing` (`docs/screenshots/settings-*.png`). Every default and why: [defaults.md](defaults.md).
@@ -407,9 +408,11 @@ Snapshots: `--scenario settings` / `settingsTabs` / `settingsSearch` / `settings
 
 | Method | Args | Returns |
 |---|---|---|
-| `bind` | `chord` (e.g. `cmd+shift+k`, `ctrl+1`, `cmd+opt+left`), `event`, `title?`, `menu?` (File/Edit/View/Tabs/Spaces/Window/any), `payload?` | ok. Emits `event {chord, payload}` |
+| `bind` | `chord` (e.g. `cmd+shift+k`, `ctrl+1`, `cmd+opt+left`), `event`, `title?`, `menu?` (File/Edit/View/History/Tabs/Spaces/Window/any; default Tabs), `payload?` | ok. Emits `event {chord, payload}` |
 | `unbind` | `chord` | ok |
 | `list` | – | `[{chord, event, title, menu, payload}]` |
+| `remap` | `chord`, `item` (a `MainMenu` item id, [shortcuts.md](shortcuts.md)) | ok. Gives that menu item a new shortcut; it survives a plugin rebinding the slot |
+| `resetRemaps` | – | ok. Restores every remapped item's own shortcut |
 
 Chords are bound as main-menu items. That way they work while a web page has focus, and the standard Edit and Window shortcuts keep working.
 
@@ -432,7 +435,7 @@ The native half of updating. All policy lives in the `updates` plugin ([updates.
 
 | Method | Args | Returns |
 |---|---|---|
-| `info` | – | `{version, build, commit, hostAPI, builtAt, crashed: [id], sparkle, publicKey}` |
+| `info` | – | `{version, build, commit, hostAPI, builtAt, crashed: [id], sparkle, publicKey, onDiskCommit}` (`onDiskCommit`: the build on disk, which may be an installed update not yet running) |
 | `state` | – | the follow-main updater's `~/.den/updates/state.json`, or null |
 | `fetch` | `url` (https), `etag?`, `json?` | `{pending}`. Emits `updates.fetched {url, status, etag, body, value?, bytes, error}` (304 when the ETag matches) |
 | `plugins` | – | `[{id, file, layer, sha256}]` for the loaded plugins |

@@ -56,6 +56,6 @@ The rules den follows:
 
 - **Search suggestions** go to Google as you type (Settings ▸ Search ▸ **Search suggestions** turns them off; then nothing leaves den until you press Return).
 - **Connections** talk only to the service itself, with your own session. See [Connections](connections-and-briefing.md#privacy).
-- **Hover cards** for public GitHub pull requests call GitHub's public API when you hover one.
+- **Hover cards** fetch only when you hover one: public GitHub pull requests and issues from GitHub's public API, and private repos, Gmail, Calendar and Slack through your own session in den. See [Hover previews](hover-previews.md).
 - **Updates** check GitHub on the schedule in [Updates](updates.md), and store-installed extensions check their store once a day.
 - den has no servers, no accounts and no analytics.
