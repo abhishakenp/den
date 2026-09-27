@@ -349,6 +349,7 @@ final class UpdatesCore {
     } else {
       text += "Last check: " + (lastCheck == 0 ? "never" : Self.utc(lastCheck))
       if !lastResult.isEmpty { text += " — " + lastResult }
+      if !installed.isEmpty { text += "\nPlugins updated since this release: " + String(installed.count) }
     }
     env.call("app", "setAbout", ["credits": .string(text)])
   }
