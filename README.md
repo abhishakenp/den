@@ -16,7 +16,7 @@ A fast, native macOS browser built on WebKit, where everything is a plugin.
 </p>
 
 > [!IMPORTANT]
-> den is in early development. It browses the web with an Arc-style sidebar, spaces, split view and a command bar, but there are no profiles, extensions, downloads or sync yet.
+> den is in early development. It browses the web with an Arc-style sidebar, spaces, split view and a command bar, but there are no profiles, downloads or sync yet.
 
 <p align="center"><img src="docs/screenshots/main-light.png" alt="den main window with demo data" width="820"></p>
 
@@ -49,7 +49,7 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 | 2 | Feature and architecture design | 🟡 In progress |
 | 3 | Plugin host and app skeleton | ✅ |
 | 4 | Core browsing: tabs, sidebar, spaces, profiles | 🟡 Tabs, sidebar and spaces done; profiles next |
-| 5 | Extensions and content blocking | ❌ |
+| 5 | Extensions and content blocking | 🟡 Chrome/Firefox extensions and store installs done; built-in blocker next |
 | 6 | Connections, daily briefing, personalized feed | ❌ |
 | 7 | First public release | ❌ |
 
@@ -69,7 +69,8 @@ Each item is covered by `swift test` or a `--scenario` run of the real app.
 - **Dark mode for every website**, following den's appearance: sites with their own dark theme use it, and the rest are darkened by a WebKit user stylesheet (no script, no white flash). Choose per site with the command bar: follow den, always dark, always light, or off
 - **Passwords:** den offers to save logins to your Keychain, and fills them after Touch ID. It also suggests strong passwords on sign-up forms. "Passwords…" in the command bar lists them
 - **Google sign-in** works: den sends Safari's user agent
-- **Plugins:** the features are Embedded Swift plugins (`spaces`, `tabs`, `commandbar`, `peek`, `theme`, `quit`, `darkmode`, `passwords`, …) loaded from `den.app/Contents/PlugIns`
+- **Extensions:** Chrome and Firefox extensions on WebKit's engine. "Add to den" on Chrome Web Store and Firefox Add-ons pages, popups, pinned extensions in the URL pill, and an Extensions page. Verified with uBlock Origin Lite (blocks ads), ColorPick Eyedropper and Dark Reader
+- **Plugins:** the features are Embedded Swift plugins (`spaces`, `tabs`, `commandbar`, `peek`, `theme`, `quit`, `darkmode`, `passwords`, `extensions`, …) loaded from `den.app/Contents/PlugIns`
 
 <p align="center">
   <img src="docs/screenshots/command-bar.png" alt="Command bar" width="410">

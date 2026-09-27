@@ -31,6 +31,8 @@ public struct DenHome: Sendable, Equatable {
   public var updaterState: URL { updates.appendingPathComponent("state.json") }
   /// The follow-main updater's clean checkout. Not watched.
   public var source: URL { root.appendingPathComponent("src", isDirectory: true) }
+  /// Unpacked extension folders loaded as development extensions (docs/den-home.md).
+  public var extensions: URL { root.appendingPathComponent("extensions", isDirectory: true) }
 
   /// Compiled source plugins. Outside `~/.den` so builds never trigger the `~/.den` watcher.
   public var buildCache: URL {

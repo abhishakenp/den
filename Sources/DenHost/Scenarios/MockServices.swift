@@ -30,6 +30,12 @@ public final class MockServices: @unchecked Sendable {
 
   public init(now: Date = Date()) { self.now = now }
 
+  private var _pages: [String: (String, Data)] = [:]
+  /// Serves `body` at `path` (extension tests and scenarios: test pages, a fake ad script).
+  public func page(_ path: String, _ body: String, type: String = "text/html; charset=utf-8") {
+    lock.withLock { _pages[path] = (type, Data(body.utf8)) }
+  }
+
   /// Starts listening on a free port; returns once the port is known.
   public func start() throws {
     let params = NWParameters.tcp
@@ -140,6 +146,7 @@ public final class MockServices: @unchecked Sendable {
 
   func respond(_ r: Request) -> (Int, [(String, String)], Data) {
     lock.withLock { _log.append("\(r.method) \(r.path)") }
+    if let (type, body) = lock.withLock({ _pages[r.path] }) { return (200, [("Content-Type", type)], body) }
     switch (r.method, r.path) {
     case ("GET", "/slack/signin"):
       return (200, [("Content-Type", "text/html; charset=utf-8"), ("Set-Cookie", "d=\(Self.dCookie); Path=/; HttpOnly; SameSite=Lax")], Data(slackSignedInPage.utf8))

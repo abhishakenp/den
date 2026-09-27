@@ -109,6 +109,12 @@ public final class ContentService: HostService {
     show(panes, orientation: orientation, ratios: ratios, focus: focused)
   }
 
+  /// Re-attaches the panes' web views (after `webviews` rebuilt them, e.g. for extensions).
+  public func reattach() {
+    guard !holdWebViews, !panes.isEmpty else { return }
+    show(panes, orientation: orientation, ratios: ratios, focus: focused)
+  }
+
   /// The card showing a pane (snapshots, tests).
   public func card(_ id: String) -> CardView? { cards[id] }
 

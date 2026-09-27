@@ -85,6 +85,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       ?? (args.contains("--demo") ? FileManager.default.temporaryDirectory.appendingPathComponent("den-demo-\(UUID().uuidString)") : StorageService.defaultRoot)
     trace("didFinishLaunching")
     runtime = DenRuntime(storageRoot: root, crashMarkerPath: PluginHost.defaultCrashMarkerPath)
+    // Unpacked development extensions (docs/den-home.md). Only a path: nothing is read until the first web view.
+    runtime.extensions.homeFolder = home?.extensions
     trace("runtime")
     // Demo runs never touch the real Keychain.
     if args.contains("--demo") { runtime.vault.store = MemoryVaultStore() }

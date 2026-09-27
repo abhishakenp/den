@@ -34,9 +34,9 @@ public final class UIService: HostService {
   var popoverOpen = false
   var commandBarOpen = false
   var dialogOpen = false
-  /// `overlay.briefing`, `overlay.connections` and `overlay.passwords`: one `SheetView` each (in that order, bottom to top).
+  /// `overlay.briefing`, `overlay.connections`, `overlay.passwords` and `overlay.extensions`: one `SheetView` each (in that order, bottom to top).
   // thin-host: feature-specific, migrate to plugin (`overlay.passwords` is a feature-named slot; a generic sheet slot per plugin would do)
-  static let sheetSlots = ["overlay.briefing", "overlay.connections", "overlay.passwords"]
+  static let sheetSlots = ["overlay.briefing", "overlay.connections", "overlay.passwords", "overlay.extensions"]
   var sheets: [String: SheetView] = [:]
   var sheetBackdrops: [String: BackdropView] = [:]
   /// `hoverCard` slot: Dia-style previews next to hovered sidebar rows (HoverCard.swift).

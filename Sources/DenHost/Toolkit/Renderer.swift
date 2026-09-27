@@ -56,7 +56,7 @@ public final class Renderer {
     "heading": HeadingNode.self, "paragraph": ParagraphNode.self, "section": SectionNode.self,
     "todoRow": TodoRowNode.self, "feedRow": FeedRowNode.self, "actionButton": ActionButtonNode.self,
     "buttonRow": ButtonRowNode.self, "connectionRow": ConnectionRowNode.self, "toggleRow": ToggleRowNode.self,
-    "choiceRow": ChoiceRowNode.self,
+    "choiceRow": ChoiceRowNode.self, "extensionRow": ExtensionRowNode.self,
   ]
 
   public init(palette: Palette, emit: @escaping (String, String, Value) -> Void) {

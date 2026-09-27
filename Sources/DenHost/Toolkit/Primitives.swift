@@ -80,6 +80,20 @@ public final class ImageCache {
 
   public func cached(_ url: String) -> NSImage? { images[url] }
 
+  /// A local image file (extension icons): read once, then cached.
+  public func file(_ path: String) -> NSImage? {
+    if let i = images[path] { return i }
+    guard let img = NSImage(contentsOfFile: path) else { return nil }
+    images[path] = img
+    return img
+  }
+
+  /// Drops a cached entry (a file that was rewritten).
+  public func forget(_ key: String) {
+    images[key] = nil
+    failed.remove(key)
+  }
+
   public func load(_ url: String, _ done: @escaping (NSImage?) -> Void) {
     if let i = images[url] { return done(i) }
     if failed.contains(url) { return done(nil) }
@@ -100,7 +114,7 @@ public final class ImageCache {
   }
 }
 
-/// Draws an icon spec: "sf:<symbol>", an http(s) image URL, or text/emoji. Falls back to a
+/// Draws an icon spec: "sf:<symbol>", an http(s) image URL, an absolute file path, or text/emoji. Falls back to a
 /// letter tile when a remote image fails.
 public final class IconView: NSView, Themable {
   public var spec = "" { didSet { if spec != oldValue { reload() } } }
@@ -119,6 +133,8 @@ public final class IconView: NSView, Themable {
     } else if spec.hasPrefix("sf:") {
       image = NSImage(systemSymbolName: String(spec.dropFirst(3)), accessibilityDescription: nil)
       isSymbol = true
+    } else if spec.hasPrefix("/") {
+      image = ImageCache.shared.file(spec)
     } else if spec.hasPrefix("http://") || spec.hasPrefix("https://") || spec.hasPrefix("data:") {
       let s = spec
       if let c = ImageCache.shared.cached(s) { image = c } else {
@@ -162,7 +178,7 @@ public final class IconView: NSView, Themable {
       }
       return
     }
-    let remote = spec.hasPrefix("http") || spec.isEmpty
+    let remote = spec.hasPrefix("http") || spec.hasPrefix("/") || spec.isEmpty
     let text = remote ? String(fallbackLetter.prefix(1)).uppercased() : spec
     guard !text.isEmpty else { return }
     if remote {

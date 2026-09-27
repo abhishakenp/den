@@ -90,9 +90,58 @@ Recent changes: Safari 26.0 added `dom.openOrClosedShadowRoot()`, DNR fixes (pri
 - Firefox extensions often expect `browser.*` + Promises + persistent MV2 background — which WebKit supports on macOS.
 
 ### Legal / ToS
-- Brave, Vivaldi, Edge, Orion and several open-source WebKit browsers install from CWS; no enforcement action found. Chrome Web Store user-facing ToS text could not be retrieved; whether it restricts use to Chrome: **UNVERIFIED**. Get a legal read before shipping.
+- Brave, Vivaldi, Edge, Orion and several open-source WebKit browsers install from CWS; no enforcement action found. (The earlier draft of this section couldn't retrieve the CWS terms; they were found and read on 2026-09-27, below.)
 - Safer posture: fetch on the user's explicit action, from the official store, never mirror/redistribute packages (each extension has its own license), don't spoof beyond `prodversion`, and don't use Google/Mozilla branding.
 - AMO public API is documented for third-party use; AMO add-on licenses vary per add-on.
+
+### Terms of use (researched 2026-09-27)
+
+*This is not legal advice. It records what the published terms say.* **VERIFIED** means the text was fetched from the URL on that date. The fetch tool passes pages through a summarizer, so check each quote against the page before it becomes load-bearing. **UNVERIFIED** means the claim comes from search results or common knowledge.
+
+**1. Chrome Web Store user ToS** (updated Jan 27 2025). `chrome.google.com/webstore/terms` and `chromewebstore.google.com/tos` returned 404; the text was read at https://ssl.gstatic.com/chrome/webstore/intl/en-US/gallery_tos.html. VERIFIED:
+- §1.1 incorporates the Google ToS (https://policies.google.com/terms).
+- §1.2: "You may use the Web Store to browse, locate, and download Products … **for use in connection with Google Chrome**."
+- §3.3: "You agree not to access (or attempt to access) the Web Store by any means other than through the interface that is provided by Google, unless you have been specifically allowed to do so in a separate agreement with Google."
+- §3.4: no "activity that interferes with or disrupts the Web Store (or the servers …)".
+- The Google ToS bars "using automated means to access content … in violation of the machine-readable instructions on our web pages", and says "Don't remove, obscure, or alter any of our branding, logos, or legal notices." VERIFIED
+- `robots.txt` (checked with curl, VERIFIED): chromewebstore.google.com disallows `/search` and some `/detail/*` subpaths; clients2.google.com has no rule for `/service/update2/crx`.
+
+**2. CWS Developer Agreement §5.2** (updated May 4 2021, https://developer.chrome.com/webstore/terms): the developer grants users a license to use Products "in connection with Google Chrome", and may override it with their own EULA. VERIFIED. Many extensions ship under open-source licences, which grant rights independently of this clause.
+
+**3. Mozilla / AMO**
+- The Websites & Communications Terms (https://www.mozilla.org/en-US/about/legal/terms/mozilla/) cover "AMO"; the Acceptable Use Policy forbids activity that "interferes with or disrupts Mozilla's services". Neither has a scraping or API clause. VERIFIED
+- The API docs (https://mozilla.github.io/addons-server/topics/api/overview.html) call v5 "considered stable" but "not frozen and can change at any time without warning", with no terms and no documented rate limit. VERIFIED. The server throttles with HTTP 429 (GitHub issues, Discourse). UNVERIFIED
+- The add-on policies say "All add-ons are subject to these policies, regardless of how they are distributed" (https://extensionworkshop.com/documentation/publish/add-on-policies/); nothing forbids installing an add-on in another browser. VERIFIED
+- Each add-on has its own licence (the v5 API reports uBlock Origin as "GNU General Public License v3.0 only"). VERIFIED via curl.
+- AMO's `robots.txt` disallows `/firefox/downloads/`, where `file.url` points. That targets crawlers, not a download a user clicked. VERIFIED
+
+**4. Other browsers.** Orion installs from both stores "with one click", behind opt-in settings "Allow installation of 3rd party Chrome/Firefox extensions" (https://help.kagi.com/orion/browser-extensions/macos-extensions.html). VERIFIED. Edge asks the user to "Allow extensions from other stores" before installing from CWS (support.microsoft.com). VERIFIED. Brave, Vivaldi, Opera and Arc install from CWS. UNVERIFIED. No legal action against a third-party browser for installing from CWS or AMO was found.
+
+**5. Trademarks.** Mozilla allows its word marks in text to "truthfully refer to and/or link to" its products, and "works with" / "is compatible" claims in words only, not logos (https://www.mozilla.org/en-US/foundation/trademarks/policy/). VERIFIED. Google: exact spelling, no implied endorsement, logos only as official artwork; the CWS branding page (https://developer.chrome.com/docs/webstore/branding) forbids Google marks as names or icons without permission. VERIFIED
+
+**Bottom line.** AMO: low risk — a user-initiated download from a public API of licensed files. CWS: technically at odds with ToS §1.2 ("for use in connection with Google Chrome") and §3.3 (access "only through the interface … provided by Google"); that is the same position Brave, Vivaldi, Edge and Orion are in, and no enforcement was found. The practical risk is contractual or technical (the endpoint changes or gets blocked), not copyright; each extension's own licence governs its code. Injecting a button into Google's page arguably touches the ban on altering Google's branding; den's button doesn't remove store branding, but it does hide the store's (non-working) install button.
+
+**What den does** (implemented in `ExtensionsService`, docs/host-api.md#extensions):
+1. Downloads only when the user clicks, one item at a time, and only after the permission dialog. No crawling, no mirroring, no `/search`.
+2. Update checks once a day (plus one catch-up a minute after launch when the last check is over a day old), batched into one Omaha request for all CWS items, with an honest `User-Agent: den/<version> (Macintosh; +https://github.com/abhishakenp/den)`.
+3. "Add to den" on store pages has an off-switch (Extensions page → Settings). Orion makes store installs opt-in; den keeps them on by default — revisit before a release.
+4. The injected button says it's den's ("＋ Add to den") and leaves the store's logos and branding alone.
+5. Stores are named in plain text only ("Chrome Web Store", "Firefox Add-ons"), with no Google or Mozilla logos and no endorsement claim; each extension links to its store page ("View in Store").
+6. Still to do: back-off on 429/5xx for update checks, show each extension's licence. Get counsel before any commercial distribution.
+
+### den's implementation: measured (2026-09-27, macOS 26.5, build/den.app)
+
+`--scenario extensionsVerify` (`Sources/DenHost/Scenarios/ExtensionScenarios.swift`) installs through the real path: store page → injected "Add to den" button → download → permission dialog → WebKit load. Result `ok=true`:
+
+| Extension | Source | Result |
+|---|---|---|
+| uBlock Origin Lite 2026.926.2202 (MV3, DNR, 6 default rulesets, 18,664 rules with `requestDomains` lists up to 50,775 domains) | Chrome Web Store | A 127.0.0.1 test page loading `pagead2.googlesyndication.com/…/adsbygoogle.js`, `securepubads.g.doubleclick.net/tag/js/gpt.js` and `www.google-analytics.com/analytics.js`: all three **loaded** before install, all three **blocked** after. Blocking started **21 s** after the install (WebKit converts the rulesets to content rule lists in the background; the controller in these runs is non-persistent, so it recompiles every launch). `offscreen` and `userScripts` are unsupported by WebKit |
+| ColorPick Eyedropper 0.0.3.3 (MV3, popup) | Chrome Web Store | Popup renders in den's popover (sized 158x330 from its page). WebKit reports "Invalid `web_accessible_resources` manifest entry" and "The background content failed to load", so its picker features don't work |
+| Dark Reader 4.9.133 (MV2, persistent background) | Firefox Add-ons (XPI, SHA-256 checked) | Content script runs: the test page's body turns `rgb(24, 26, 27)`. `theme` permission unsupported |
+
+Memory (`scripts/measure-memory.sh main 40`, phys_footprint, den launched through LaunchServices so only its own WebKit processes count, 3 runs each): **0 extensions 267–268 MB** total (den 29–30 MB, one WebContent 206 MB, GPU 21–22 MB, Networking 11 MB); **uBOL installed 344–345 MB** (den **105–107 MB**, WebContent 206–207 MB, same GPU/Networking). uBOL's service worker wasn't running after 40 s (no extra WebContent process). The +76 MB is in den's own process and was still there after 120 s (104 MB); likely WebKit's DNR → content rule list conversion, which runs in the UI process — not verified.
+
+Launch (`--measure-launch`, process start → first window, 10 launches per row, two interleaved rounds, load average 142–418 from other jobs on the machine, so noisy): pre-extensions build median 569 / 544 ms; this build with 0 extensions 686 / 521 ms; with uBOL installed 638 / 700 ms. The spread between rounds is larger than any difference, and by design nothing extension-related runs before the first window (the registry is read at the first web view).
 
 ## 4. Open-source WebKit browsers using WKWebExtension
 

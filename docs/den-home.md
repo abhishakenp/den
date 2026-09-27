@@ -6,6 +6,7 @@ den creates `~/.den` the first time it runs (after the first window is on screen
 ~/.den/
   plugins/      <id>.dylib, or a source folder <id>/*.swift
   themes/       <name>.json or <name>.toml theme presets
+  extensions/   unpacked extension folders (each with a manifest.json), loaded as development extensions
   config.toml   settings, shortcuts, site-search keywords
   logs/         plugins.log (loads, reloads, builds), build-<id>.log, den.log (launches and quits), updater.log
   updates/      managed plugin updates (plugins/<id>.dylib + <id>.json) and the developer updater's state
@@ -72,6 +73,12 @@ intensity = 0.6
 | `colors` | 1–3 hex strings | Required |
 | `intensity`, `grain` | 0–1 | Optional |
 | `appearance` | `auto`, `light` or `dark` | Optional. Appearance is global, so it applies to every space |
+
+## Extensions
+
+Each folder in `~/.den/extensions` that holds a `manifest.json` is an unpacked Chrome or Firefox extension. den loads it in place, the first time a web view is created, with the permissions it asks for (you put it there, so there's no prompt). It shows on the Extensions page as "~/.den/extensions"; turning it off there keeps it off, and to uninstall it you delete the folder (Remove never deletes your files). Edit the files and turn it off and on to reload it. The folder is read at launch; it isn't watched.
+
+Extensions installed from the Chrome Web Store, Firefox Add-ons or a file live in `~/Library/Application Support/den/Extensions`, not here ([host-api.md](host-api.md#extensions)).
 
 ## config.toml
 

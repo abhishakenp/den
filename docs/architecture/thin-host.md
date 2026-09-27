@@ -437,3 +437,23 @@ Updates ([updates.md](../updates.md)) follow the rule from the start:
 - **The `updates` plugin** holds the policy and UI: channel, schedule, what to install, rollbacks, when to relaunch, every string (toast, About text) and the Check for Updates… command.
 - **The host `updates` service** does only native work: ETag fetch, sha256 + EdDSA verification, atomic file placement, the Sparkle bridge, `launchctl`.
 - **Generic blocks** that any plugin can use: `app.state`, `app.relaunch`, `app.setAbout` and a toast action button.
+
+---
+
+## Appendix: extensions as landed
+
+Host code the rule applies to is marked `// thin-host: feature-specific, migrate to plugin`.
+
+Stays in the host (platform-bound, generic): the `WKWebExtensionController` bridge — install/load/unload primitives, CRX/ZIP unpacking and manifest checks (`ExtensionPackage`), the registry, `WKWebExtensionTab` / `WKWebExtensionWindow` adapters (`ExtensionBridge`), permission grants, the web view hooks, and hosting an extension's popup web view in a popover.
+
+To migrate to the `extensions` plugin (marked in the code):
+
+| Host code | Why it's feature-specific | Target |
+|---|---|---|
+| `StoreButton.swift` + `ExtensionsService` "Store pages" (`pageChanged`, `storeMessage`, `storeButtons` setting) | Store detection and the "Add to den" flow | Plugin: a generic host "inject script into pages matching X in an isolated world, relay messages" primitive; the plugin owns the script, hosts and policy |
+| `ExtensionsService.installFromStore`, "Downloads", "Updates" | Chrome Web Store / AMO endpoints, update schedule (24 h) | Plugin, over `net.fetch` (needs a binary download-to-file variant) and a host `install {path}` primitive |
+| `ExtensionText.swift`, "Permission prompts", `toast`, `failed`, `pickFile` strings | User-facing strings and dialog composition | Plugin: host emits `extensions.permissionRequest {request, permissions, patterns}` and waits for `extensions.answer {request, allow}` |
+| `ExtensionsUI.showMenu`, `ExtensionsMenuView`, `menuItems` (pinning policy) | Menu layout, labels ("Manage Extensions", "Get Extensions") and which extensions show | Plugin: a generic host popover that renders a node tree, plus `extensions.actions` data (icon, badge) |
+| URL pill extension buttons (`Rows.swift`, `PillExtensionButton`) | The pill knows about extensions | Generic pill `accessories: [{id, icon, badge}]` node field filled by the plugin through the tabs header |
+
+Already in the plugin: the Extensions page, its strings and layout, the commands ("Extensions", "Install Extension from File…", "Get Extensions"), removal confirmation, update toasts.

@@ -202,4 +202,16 @@ public enum Tokens {
   public static let sidebarHideDuration: TimeInterval = 0.067  // spec §7: ~67 ms, strong ease-out
   public static let sidebarShowDuration: TimeInterval = 0.083  // spec §7: ~83 ms, ease-out
   public static let swipeCommitFraction: CGFloat = 0.35  // estimate: swipe past this fraction commits
+
+  // Extensions (Arc's extension popovers were never measured: estimates, sized like its menus)
+  public static let extensionPanelRadius: CGFloat = 12  // estimate
+  public static let extensionPanelGap: CGFloat = 6  // estimate: below the URL pill
+  public static let extensionMenuWidth: CGFloat = 300  // estimate
+  public static let extensionMenuRowHeight: CGFloat = 34  // estimate
+  public static let extensionMenuPadding: CGFloat = 6  // estimate
+  public static let extensionPillButton: CGFloat = 24  // estimate: pinned extension buttons in the URL pill
+  /// Chrome's documented popup limits (developer.chrome.com, action.setPopup): 25x25 to 800x600.
+  public static let extensionPopupMin = CGSize(width: 25, height: 25)
+  public static let extensionPopupMax = CGSize(width: 800, height: 600)
+  public static let extensionRowHeight: CGFloat = 58  // estimate: the Extensions page rows
 }

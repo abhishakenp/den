@@ -542,3 +542,69 @@ final class ChoiceRowNode: SettingRowNode {
   }
   @objc func chose() { emit("select", ["option": .string(popup.selectedItem?.representedObject as? String ?? "")]) }
 }
+
+// MARK: - Extensions page
+
+/// {type:"extensionRow", id, icon, title, subtitle?, on, note?} -> toggle {on} (switch), open (row click)
+/// An installed extension on the Extensions page: its icon, name, version line, an on/off switch
+/// and a chevron to its details. `note` (e.g. "Update available") shows as an accent caption.
+final class ExtensionRowNode: SheetRowNode {
+  let icon = IconView()
+  let title = makeLabel(size: 14, weight: .medium)
+  let subtitle = makeLabel(size: 12)
+  let note = makeLabel(size: 11, weight: .semibold)
+  let chevron = IconView()
+  let toggle = NSSwitch()
+  required init(renderer: Renderer) {
+    super.init(renderer: renderer)
+    toggle.controlSize = .small
+    toggle.target = self
+    toggle.action = #selector(flipped)
+    chevron.spec = "sf:chevron.right"
+    [icon, title, subtitle, note, chevron, toggle].forEach { addSubview($0) }
+  }
+  required init?(coder: NSCoder) { fatalError() }
+  override func update(_ v: Value) {
+    super.update(v)
+    icon.spec = v.str("icon", "sf:puzzlepiece.extension")
+    icon.fallbackLetter = v.str("title")
+    title.stringValue = v.str("title")
+    subtitle.stringValue = v.str("subtitle")
+    note.stringValue = v.str("note")
+    note.isHidden = note.stringValue.isEmpty
+    toggle.state = v.flag("on") ? .on : .off
+    apply(r.palette)
+    needsLayout = true
+  }
+  override func apply(_ p: Palette) {
+    title.textColor = node.flag("on") ? p.text : p.secondaryText
+    subtitle.textColor = p.secondaryText
+    note.textColor = p.accentStrong
+    icon.tint = p.text
+    icon.alphaValue = node.flag("on") ? 1 : 0.45
+    chevron.tint = p.tertiaryText
+    needsDisplay = true
+  }
+  override func height(for w: CGFloat) -> CGFloat { Tokens.extensionRowHeight }
+  override func layout() {
+    let h = bounds.height
+    icon.frame = NSRect(x: 14, y: (h - 32) / 2, width: 32, height: 32)
+    chevron.frame = NSRect(x: bounds.width - 26, y: (h - 12) / 2, width: 12, height: 12)
+    let s = toggle.fittingSize
+    toggle.frame = NSRect(x: chevron.frame.minX - 12 - s.width, y: ((h - s.height) / 2).rounded(), width: s.width, height: s.height)
+    let x: CGFloat = 60, right = toggle.frame.minX - 10
+    var nw: CGFloat = 0
+    if !note.isHidden {
+      nw = min(160, ceil(note.textWidth))
+      note.frame = NSRect(x: right - nw, y: (h - 15) / 2, width: nw, height: 15)
+      nw += 8
+    }
+    title.frame = NSRect(x: x, y: h / 2 - 19, width: max(0, right - x - nw), height: 18)
+    subtitle.frame = NSRect(x: x, y: h / 2 + 1, width: max(0, right - x - nw), height: 16)
+  }
+  override func clicked(at p: NSPoint) {
+    if toggle.frame.insetBy(dx: -4, dy: -4).contains(p) { return }
+    emit("open")
+  }
+  @objc func flipped() { emit("toggle", ["on": .bool(toggle.state == .on)]) }
+}

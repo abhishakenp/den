@@ -14,6 +14,10 @@ public enum HostScenarios {
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
     if let w = commandBar(name, runtime: rt) { return w }
     if let w = launcher(name, runtime: rt) { return w }
+    if ExtensionScenarios.names.contains(name) {
+      ExtensionScenarios.apply(name, runtime: rt)
+      return rt.window.window
+    }
     if ConnectionScenarios.names.contains(name) {
       ConnectionScenarios.apply(name, runtime: rt)
       return rt.window.window

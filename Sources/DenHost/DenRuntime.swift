@@ -25,6 +25,9 @@ public final class DenRuntime {
   /// Per-site user stylesheets and appearance (the `darkmode` plugin), and den's password vault.
   public let pageStyle: PageStyleService
   public let vault: VaultService
+  /// Chrome/Firefox extensions (docs/host-api.md#extensions). Nothing WebKit-side exists until
+  /// something is installed.
+  public let extensions: ExtensionsService
   /// Lets `PluginLoader` (built by the app from `plugins` alone) grant sidecar permissions.
   static var permissionsByHost: [ObjectIdentifier: Permissions] = [:]
   static func permissions(for plugins: PluginHost) -> Permissions? { permissionsByHost[ObjectIdentifier(plugins)] }
@@ -46,12 +49,20 @@ public final class DenRuntime {
     schedule = ScheduleService(host: host, storage: storage)
     pageStyle = PageStyleService(host: host, webviews: webviews)
     vault = VaultService(host: host, webviews: webviews)
+    // The real profile keeps extensions next to its storage and a persistent controller; any other
+    // storage root (tests, --demo, --storage) gets its own folder and a non-persistent controller.
+    let isDefault = storageRoot.standardizedFileURL == StorageService.defaultRoot.standardizedFileURL
+    extensions = ExtensionsService(host: host, webviews: webviews, window: window,
+                                   root: isDefault ? storageRoot.deletingLastPathComponent().appendingPathComponent("Extensions", isDirectory: true)
+                                     : storageRoot.appendingPathComponent("extensions", isDirectory: true),
+                                   persistent: isDefault)
+    extensions.content = content
     Self.permissionsByHost[ObjectIdentifier(plugins)] = permissions
     // `webviews.eval` reads a live page only for a plugin with `session:<that page's host>`.
     webviews.allowScript = { [permissions] plugin, host in MainActor.assumeIsolated { permissions.allowsSession(plugin, host: host) } }
     windowService.ui = ui
     windowService.attach(webviews: webviews, host: host)
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions] {
       host.provide(s)
       plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }
@@ -59,6 +70,9 @@ public final class DenRuntime {
       guard let plugins else { return ["error": "plugins: host is gone"] }
       return Self.pluginsService(plugins, method, args)
     }
+    extensions.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
+    extensions.subscribe = { [weak plugins] e, h in _ = plugins?.on(e, h) }
+    extensions.start()
     host.forward = { [weak plugins] e, v in plugins?.emit(e, v) }
     host.externalListeners = { [weak plugins] e in plugins?.hasListeners(e) ?? false }
     window.emit = { [weak host] e, v in host?.emit(e, v) }

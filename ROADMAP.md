@@ -68,12 +68,12 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 
 Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 
-- [ ] Chrome and Firefox extensions via Apple's `WKWebExtension` API (Manifest v2 and v3, `chrome.*` and `browser.*`)
-- [ ] One-click install from Chrome Web Store / addons.mozilla.org, with update checks (Chrome Web Store terms: needs a legal read)
+- [x] Chrome and Firefox extensions via Apple's `WKWebExtension` API (Manifest v2 and v3, `chrome.*` and `browser.*`): popups, pinning in the URL pill, the Extensions page, per-site access ([host API](docs/host-api.md#extensions))
+- [x] One-click install from Chrome Web Store / addons.mozilla.org ("Add to den"), with daily update checks. Terms researched (CWS ToS says "for use in connection with Google Chrome"); get counsel before a commercial release
 - [ ] Fill in APIs Apple leaves out where feasible: `bookmarks`, `sidePanel`, `downloads`, `history`, `identity`
 - [ ] Native messaging bridge (password managers)
 - [ ] Built-in ad/tracker blocker: filter lists compiled to content rule lists (e.g. `adblock-rust` or AdGuard's `SafariConverterLib`), plus CSS hiding and scriptlets
-- [ ] uBlock Origin Lite works (full uBlock Origin can't, since WebKit has no blocking `webRequest`)
+- [x] uBlock Origin Lite works (full uBlock Origin can't, since WebKit has no blocking `webRequest`)
 - [x] Minimum macOS: 26 Tahoe. No support for older versions; newer-OS APIs (macOS 27) used when available
 
 ## Connections and daily briefing (Dia-style)

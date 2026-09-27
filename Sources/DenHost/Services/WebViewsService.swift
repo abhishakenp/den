@@ -55,6 +55,9 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   private var stores: [String: WKWebsiteDataStore] = [:]
   private var nextId = 1
   private lazy var scriptHandler = ScriptMessageProxy { [weak self] msg in self?.didReceive(msg) }
+  /// The `extensions` service: attaches its controller to new configurations, supplies extension
+  /// pages' configurations, and watches store pages. nil (or nothing installed) costs nothing.
+  weak var extensionHooks: ExtensionsService?
 
   public init(host: ServiceHost) { self.host = host }
 
@@ -130,8 +133,13 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   public func materialize(_ id: String) -> WKWebView? {
     guard let r = records[id] else { return nil }
     if let w = r.webView { return w }
-    let config = WKWebViewConfiguration()
-    config.websiteDataStore = store(for: r.profile)
+    // Extension pages (options, popups opened as tabs) run in their extension's configuration.
+    let extensionPage = extensionHooks?.configuration(for: r.url)
+    let config = extensionPage ?? WKWebViewConfiguration()
+    if extensionPage == nil {
+      config.websiteDataStore = store(for: r.profile)
+      extensionHooks?.prepare(config)
+    }
     config.preferences.isElementFullscreenEnabled = true
     config.preferences.inactiveSchedulingPolicy = .suspend
     config.applicationNameForUserAgent = Self.applicationNameForUserAgent
@@ -148,15 +156,28 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     r.webView = w
     observe(r, w)
     for h in createdHooks { h(r, w) }
-    if let state = r.interactionState {
-      w.interactionState = state
-      r.interactionState = nil
-      // Some states (e.g. loadHTMLString pages) don't restore; fall back to the last URL.
-      if w.backForwardList.currentItem == nil, let url = URL(string: r.url), r.url != "about:blank" { w.load(URLRequest(url: url)) }
-    } else if let url = URL(string: r.url), r.url != "about:blank" {
-      w.load(URLRequest(url: url))
+    let start = { [weak w] in
+      guard let w else { return }
+      if let state = r.interactionState {
+        w.interactionState = state
+        r.interactionState = nil
+        // Some states (e.g. loadHTMLString pages) don't restore; fall back to the last URL.
+        if w.backForwardList.currentItem == nil, let url = URL(string: r.url), r.url != "about:blank" { w.load(URLRequest(url: url)) }
+      } else if let url = URL(string: r.url), r.url != "about:blank" {
+        w.load(URLRequest(url: url))
+      }
     }
+    // With extensions, the first load waits (briefly) for them, so blockers apply to it too.
+    if let ext = extensionHooks { ext.whenReady(start) } else { start() }
     return w
+  }
+
+  /// Re-creates a live web view with a fresh configuration, keeping its back/forward state
+  /// (the extension controller can only be attached before a web view exists).
+  func rebuild(_ r: WebRecord) {
+    guard let w = r.webView else { return }
+    r.interactionState = w.interactionState
+    destroyView(r)
   }
 
   func observe(_ r: WebRecord, _ w: WKWebView) {
@@ -175,6 +196,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
         guard let u = wv.url?.absoluteString else { return }
         r.url = u
         self?.host.emit("webviews.url", ["id": .string(id), "url": .string(u)])
+        self?.extensionHooks?.pageChanged(wv)
       },
       on(\.estimatedProgress) { [weak self] wv in self?.progress(r, wv) },
       on(\.isLoading) { [weak self] wv in self?.progress(r, wv) },
@@ -357,7 +379,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   public nonisolated static func normalize(_ s: String) -> URL? {
     let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
     if t.isEmpty { return nil }
-    if let u = URL(string: t), let scheme = u.scheme, ["http", "https", "about", "file", "data"].contains(scheme.lowercased()) { return u }
+    if let u = URL(string: t), let scheme = u.scheme, ["http", "https", "about", "file", "data", "webkit-extension"].contains(scheme.lowercased()) { return u }
     if !t.contains(" "), t.contains(".") || t.hasPrefix("localhost") { return URL(string: "https://" + t) }
     return nil
   }
@@ -387,6 +409,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     guard let r = recordFor(webView) else { return }
+    extensionHooks?.pageChanged(webView)
     webView.evaluateJavaScript(Self.faviconScript) { [weak self] result, _ in
       MainActor.assumeIsolated {
         guard let s = result as? String, !s.isEmpty, s != r.favicon else { return }

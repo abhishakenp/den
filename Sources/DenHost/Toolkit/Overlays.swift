@@ -43,8 +43,8 @@ class PanelView: FlippedView, Themable {
 ///  buttons: [{id, title, style: default|cancel|destructive|secondary, default?, keycap?}], checkbox?: {id, title, checked}}
 /// action (id = dialog id): button {button, checked}. Return presses the `default` style button or the
 /// button flagged `default: true` (e.g. a destructive confirm); Escape presses the cancel button.
-/// Icons: `app:icon` draws at 62 pt (quit sheet, spec §5); any other icon is a 76 pt hero icon
-/// (spec §5 "Dialog hero icons"): an `sf:` symbol on a tinted disc.
+/// Icons: `app:icon` (or an image file, e.g. an extension's icon) draws at 62 pt (quit sheet, spec §5);
+/// an `sf:` symbol is a 76 pt hero icon (spec §5 "Dialog hero icons"): the symbol on a tinted disc.
 /// Layout follows Arc's quit sheet (spec §5): left-aligned icon and title, buttons in a row at the
 /// bottom right, each with its keyboard hint as a keycap.
 @MainActor
@@ -73,7 +73,7 @@ final class DialogView: PanelView {
     node = v
     icon.spec = v.str("icon")
     icon.isHidden = icon.spec.isEmpty
-    hero.isHidden = icon.isHidden || icon.spec == "app:icon"
+    hero.isHidden = icon.isHidden || !icon.spec.hasPrefix("sf:")
     title.stringValue = v.str("title")
     message.stringValue = v.str("message")
     message.isHidden = message.stringValue.isEmpty
@@ -138,7 +138,7 @@ final class DialogView: PanelView {
   var titleHeight: CGFloat {
     max(22, ceil(title.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: Tokens.dialogWidth - 2 * Tokens.dialogPadding, height: 1000)).height))
   }
-  var iconSize: CGFloat { icon.spec == "app:icon" ? Tokens.dialogIconSize : Tokens.dialogHeroIconSize }
+  var iconSize: CGFloat { icon.spec.hasPrefix("sf:") ? Tokens.dialogHeroIconSize : Tokens.dialogIconSize }
 
   var contentHeight: CGFloat {
     // Spec §5: 450x248 with icon (62) at 38, title at 117, no message.

@@ -106,7 +106,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 **Slots:**
 - `sidebar.header`, `sidebar.favorites`, `sidebar.footer`
 - Per space page: `sidebar.spaceHeader`, `sidebar.pinned`, `sidebar.today`
-- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections` (see [Briefing page](#briefing-page-and-connections-sheet)), `hoverCard` (see [Hover card](#hover-card))
+- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections`, `overlay.extensions` (see [Briefing page](#briefing-page-and-connections-sheet)), `hoverCard` (see [Hover card](#hover-card))
 
 **Event:** `ui.action {id, action, value}`
 
@@ -141,7 +141,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss {reason?}` |
 
 **Details that apply to several nodes:**
-- **Icons.** A node icon can be `sf:<symbol>`, an http(s) image URL (cached), `app:icon`, or text/emoji.
+- **Icons.** A node icon can be `sf:<symbol>`, an http(s) image URL (cached), an absolute image file path (extension icons), `app:icon`, or text/emoji. In a `dialog`, an image icon draws at 62 pt like `app:icon`; only `sf:` symbols get the hero disc.
 - **Context menus.** Any node can carry `menu: [item]`, shown as a native context menu. Picking an item emits `menu` with its id (submenu items included). Item shapes:
   - `{id, title, icon?, key?, destructive?, enabled=true, checked?, items?}`. `icon` is an `sf:` symbol. `key` is a chord hint drawn on the right (`cmd+w`), display only; the real binding lives in `keys`. `destructive` draws the title and icon in DestructiveButtonFace red (#F53714). `items` makes it a submenu ("Move to Space ▸").
   - `{separator: true}` and `{header: "Title"}` (section header).
@@ -178,7 +178,7 @@ ui.set {slot: "popover", tree: {type: "themePicker", id: "theme", anchor: "space
 
 ### Briefing page and connections sheet
 
-`ui.set {slot: "overlay.briefing" | "overlay.connections", tree}` renders a `sheet` tree (null clears). Both show in `ui.get` overlays. This is den's own UI, not Arc's, so every size is an estimate in `Tokens`. Snapshots: `--scenario briefingSheet|connectionsSheet` (`docs/screenshots/briefing-sheet*.png`, `connections-sheet*.png`).
+`ui.set {slot: "overlay.briefing" | "overlay.connections" | "overlay.extensions", tree}` renders a `sheet` tree (null clears); they stack in that order. Both show in `ui.get` overlays. This is den's own UI, not Arc's, so every size is an estimate in `Tokens`. Snapshots: `--scenario briefingSheet|connectionsSheet` (`docs/screenshots/briefing-sheet*.png`, `connections-sheet*.png`).
 
 - **Root:** `{type: "sheet", id, style: page|sheet, title, subtitle?, icon?, headerButtons?: [{id, icon, tooltip?}], children}`.
   - `page` covers the content area like a new-tab page: card radius, no dim, and a centered column at most 680 wide with 40 pt top padding.
@@ -200,6 +200,7 @@ ui.set {slot: "popover", tree: {type: "themePicker", id: "theme", anchor: "space
 | `connectionRow` | `id`, `title`, `icon`, `status`, `connected`, `button: {title, style}`, `secondaryButton?: {id, title, style}` | `click`, `secondary` |
 | `toggleRow` | `id`, `title`, `subtitle?`, `icon?`, `on` | `toggle {on}` |
 | `choiceRow` | `id`, `title`, `subtitle?`, `options: [{id, title}]`, `selected` | `select {option}` |
+| `extensionRow` | `id`, `icon`, `title`, `subtitle?`, `on`, `note?` (accent caption, e.g. "Update 2.0") | `toggle {on}` (switch), `open` (row) |
 
 ### Hover card
 
@@ -388,6 +389,53 @@ Events (never with a password): `vault.focus {webview, origin, field, signup, ac
 - the password format
 - the suggestion popup (a generic anchored-popup `ui` node)
 - the `overlay.passwords` slot name
+
+## extensions
+
+Chrome and Firefox extensions on Apple's `WKWebExtension` engine (the one Safari uses): Manifest V2 and V3, `chrome.*` and `browser.*`. Background and limits: [research notes](research/extensions-on-webkit.md). The `extensions` plugin draws the Extensions page on top of this ([plugin-services.md](plugin-services.md#extensions-plugin-extensions)).
+
+| Method | Args | Returns |
+|---|---|---|
+| `list` | – | `[ext]` (below) |
+| `get` | `id` | `ext` |
+| `install` | `path` (unpacked folder, `.crx`, `.xpi` or `.zip`), `request?` | `{request, pending}`. Copies/unpacks, validates, asks, loads |
+| `installFromStore` | `url` (a Chrome Web Store or Firefox Add-ons item page), or `source: chrome\|firefox` + `id` (CWS id / AMO slug), `request?` | `{request, pending}` |
+| `pickFile` | – | ok. An open panel; the pick goes to `install` |
+| `uninstall` | `id` | ok. Unloads it, deletes its WebKit data, folder and icon |
+| `setEnabled` | `id`, `enabled` | ok. Loads or unloads it |
+| `setPinned` | `id`, `pinned` | ok. Pinned ones show in the URL pill on hover |
+| `setSiteAccess` | `id`, `mode: all\|click\|sites`, `sites?` | ok. `all` grants every host it asked for, `click` only the tab you click it on (`activeTab`), `sites` the listed hosts |
+| `allowSite` | `id`, `site`, `allowed` | ok. Adds or removes one host (switches `click` to `sites`) |
+| `checkUpdates` | `force?` (true) | `{pending}`, then `extensions.updates` |
+| `action` | `id` | ok. Runs its toolbar action on the selected tab (a popup, or `action.onClicked`) |
+| `menu` | `open?` (true) | ok. The extensions menu under the URL pill |
+| `closePopup` | – | ok |
+| `openOptions` | `id` | ok. Its options page in a new tab |
+| `settings` | `storeButtons?` | `{storeButtons}`: "Add to den" on store pages (default on) |
+| `state` | – | `{controller, ready, loaded: [id], popup, menu, prompts}` (tests) |
+
+`ext`: `{id, name, version, description, source: chrome|firefox|local|home, storeId?, storeURL?, enabled, pinned, icon (PNG path), siteAccess, sites, permissions: [line], unsupported: [permission], loaded, hasAction, hasPopup, hasOptions, badge, manifestVersion, background: none|on demand|persistent, errors, updateAvailable?}`. `permissions` are plain-language lines worded like Chrome's install warnings ("Read and change all your data on all websites", "Block content on any page"). `unsupported` lists manifest permissions WebKit doesn't know (e.g. `userScripts`, `offscreen`).
+
+Events: `extensions.changed {extensions}`, `extensions.installing {request, …}`, `extensions.installed {request, id, name, update}`, `extensions.failed {request, error}` (`error: "cancelled"` when the user said no), `extensions.uninstalled {id, name}`, `extensions.updates {checked, updated: [id], available: [id]}`, `extensions.openPage` (the menu's "Manage Extensions").
+
+**Cost.** Nothing exists while nothing is installed: the registry file is read once, at the first web view (one failed file read), and no `WKWebExtensionController` is made. The first install creates it, rebuilds the live web views with it (they keep their back/forward state), and every later configuration gets it. At launch with extensions installed, a web view's first load waits (at most 2 s) until they are loaded, so blockers and document-start scripts apply to the first page. Service workers and non-persistent background pages are started and stopped by WebKit; den never calls `loadBackgroundContent`. Measured with uBlock Origin Lite: den's process grows from 29–30 MB to 105–107 MB, no extra WebContent process at rest, and ad blocking starts about 21 s after loading while WebKit compiles its rulesets ([research notes](research/extensions-on-webkit.md#dens-implementation-measured-2026-09-27-macos-265-builddenapp)).
+
+**Storage.** `~/Library/Application Support/den/Extensions/` (next to `storage/`): `extensions.json` (the registry: id, version, source, store id, enabled, pinned, site access, granted permissions and patterns), `<id>/` (the unpacked extension) and `icons/<id>.png`. Grants are re-applied on every load. The controller is persistent (`WKWebExtensionController.Configuration(identifier:)`), and each context's base URL is `webkit-extension://<id>/`, so the extension's own storage survives relaunches. Any other `--storage` root uses `<root>/extensions` and a non-persistent controller. Unpacked folders in `~/.den/extensions/` load in place as development extensions ([den-home.md](den-home.md)).
+
+**Ids.** A Chrome Web Store install keeps its store id (so `runtime.id` matches Chrome's); otherwise the manifest `key` gives the Chrome id, then the gecko id or the path gives a stable a–p id.
+
+**Installing.** Store items: Chrome's update service (`clients2.google.com/service/update2/crx?response=redirect&prodversion=<current stable Chrome>&x=id%3D<id>…`) returns the CRX; den strips the CRX2/CRX3 header, unpacks the ZIP with `ditto` and checks `manifest.json` (valid JSON, `manifest_version` 2 or 3, `name`, `version`). AMO items come from the v5 API's `current_version.file.url` and are checked against its SHA-256. Every install shows an Arc dialog with the extension's icon, "Add “Name” to den?", what it can do, and what WebKit can't provide; nothing is written until the user clicks **Add Extension**. Runtime requests (`permissions.request`) show the same dialog ("“Name” wants more access").
+
+**Store pages.** On `chromewebstore.google.com` and `addons.mozilla.org` item pages, a small script in an isolated content world (`den-store`, invisible to the store's scripts) hides the store's own install button and puts an Arc-style "＋ Add to den" pill in its place ("✓ Added to den" once installed). A click posts `{source, id}`; den re-derives both from the page URL before downloading. Other pages cost one host-name comparison per load. The button can be turned off (`settings {storeButtons: false}`).
+
+**Updates.** Only with a store extension installed: a daily `schedule.interval` (`extensions.updates`), plus one check a minute after launch if the last is older than a day. Chrome items are checked in one Omaha request (`response=updatecheck`, `x=id=<id>&v=<version>` each); AMO items through the API. An update that asks for nothing new installs silently; one that asks for more waits for approval (`updateAvailable`, "Update to …" on its details).
+
+**UI** (host-drawn; Arc's extension UI was never measured, so sizes are `Tokens.extension*` estimates):
+- **URL pill.** While anything is installed, hovering the pill shows the pinned extensions' toolbar icons (with badges) and a puzzle button, left of the copy button. Clicking an icon runs its action; the puzzle opens the menu.
+- **Menu.** 300 wide, PopoverBackground, below the pill: every enabled extension (click runs it, the pin toggles it in the pill), then "Manage Extensions" (`extensions.openPage`) and "Get Extensions" (Chrome Web Store in a tab).
+- **Popups** render the extension's popup web view in the same popover, sized like Chrome: its fit-content width and scroll height, between 25x25 and 800x600, re-measured while open. A click outside or Esc closes it.
+
+What WebKit leaves out (no blocking `webRequest`, `identity`, `downloads`, `history`, `bookmarks`, side panels…) stays out: `unsupported` and the dialog say so. Keyboard `commands` and extension context-menu items aren't wired into den's menus yet.
 
 ## Connections, AI and scheduling
 

@@ -136,10 +136,17 @@ final class NavBarNode: NodeView {
 
 /// Simplified URL pill. {type:"urlPill", id, text, progress?, loading?, secure?, placeholder?}
 /// actions: click (open the command bar pre-filled), copy (hover button)
+/// With extensions installed, hovering also shows the pinned extensions' buttons and the
+/// extensions menu button (Arc shows pinned extensions in the URL bar on hover). They talk to the
+/// host `extensions` service directly, so plugins that render the pill need no changes.
 final class URLPillNode: HoverNode {
   let label = makeLabel(size: Tokens.urlPillFontSize, weight: .medium)
   let lock = IconView()
   lazy var copy = IconButton(symbol: "link", size: 22) { [weak self] in self?.emit("copy") }
+  var extensionButtons: [PillExtensionButton] = []
+  var extensionsObserver: NSObjectProtocol?
+  /// Shows the hover accessories without a pointer (snapshots).
+  var forceAccessories = false { didSet { hoverChanged() } }
   override var cornerRadius: CGFloat { Tokens.urlPillCornerRadius }
   override var baseFill: NSColor? { palette.pillFill }
   override var hoverColor: NSColor { palette.pillHoverFill }
@@ -149,9 +156,45 @@ final class URLPillNode: HoverNode {
     addSubview(label)
     addSubview(copy)
     copy.isHidden = true
+    extensionsObserver = NotificationCenter.default.addObserver(forName: ExtensionsUI.changedNotification, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.syncExtensions() }
+    }
+    syncExtensions()
   }
   required init?(coder: NSCoder) { fatalError() }
-  override func hoverChanged() { copy.isHidden = !hovering || node.str("text").isEmpty }
+  isolated deinit { if let o = extensionsObserver { NotificationCenter.default.removeObserver(o) } }
+  var showsAccessories: Bool { hovering || forceAccessories }
+  override func hoverChanged() {
+    copy.isHidden = !showsAccessories || node.str("text").isEmpty
+    extensionButtons.forEach { $0.isHidden = !showsAccessories }
+    needsLayout = true
+  }
+
+  // thin-host: feature-specific, migrate to plugin
+  /// Pinned extensions, then the extensions menu button. Nothing while none is installed.
+  func syncExtensions() {
+    guard let ext = ExtensionsUI.current, ext.hasExtensions else {
+      extensionButtons.forEach { $0.removeFromSuperview() }
+      extensionButtons = []
+      return
+    }
+    ext.pill = self
+    let pinned = ext.pinnedItems
+    let ids = pinned.map(\.id) + ["menu"]
+    if extensionButtons.map(\.id) != ids {
+      extensionButtons.forEach { $0.removeFromSuperview() }
+      extensionButtons = ids.map { id in
+        let b = PillExtensionButton(id: id)
+        b.onClick = { [weak ext] b in ext?.pillClicked(b.id, from: b) }
+        addSubview(b)
+        return b
+      }
+    }
+    for (b, it) in zip(extensionButtons, pinned) { b.configure(it, tooltip: it.title) }
+    extensionButtons.last?.configure(nil, symbol: "sf:puzzlepiece.extension", tooltip: "Extensions")
+    apply(r.palette)
+    hoverChanged()
+  }
   override func update(_ v: Value) {
     super.update(v)
     let t = v.str("text")
@@ -165,6 +208,11 @@ final class URLPillNode: HoverNode {
     label.textColor = node.str("text").isEmpty ? p.secondaryText : p.text
     lock.tint = p.secondaryText
     copy.apply(p)
+    for b in extensionButtons {
+      b.icon.tint = p.text.withAlphaComponent(0.75)
+      b.hoverFill = p.hoverFill
+      b.badge.apply(p)
+    }
     needsDisplay = true
   }
   override func height(for w: CGFloat) -> CGFloat { Tokens.urlPillHeight }
@@ -172,7 +220,15 @@ final class URLPillNode: HoverNode {
     let h = bounds.height
     let x: CGFloat = 12  // spec §1: text at sidebar x = 20
     copy.frame = NSRect(x: bounds.width - 28, y: (h - 22) / 2, width: 22, height: 22)
-    label.frame = NSRect(x: x, y: (h - 17) / 2, width: bounds.width - x - 32, height: 17)
+    // Extension buttons sit left of the copy button, right-aligned, while the pill is hovered.
+    var right = bounds.width - (copy.isHidden ? 6 : 30)
+    let s = Tokens.extensionPillButton
+    for b in extensionButtons.reversed() where !b.isHidden {
+      right -= s
+      b.frame = NSRect(x: right, y: (h - s) / 2, width: s, height: s)
+      if right < x + 40 { b.isHidden = true }  // a narrow sidebar keeps the domain readable
+    }
+    label.frame = NSRect(x: x, y: (h - 17) / 2, width: max(0, min(bounds.width - x - 32, right - x - 4)), height: 17)
   }
   override func draw(_ dirtyRect: NSRect) {
     super.draw(dirtyRect)
