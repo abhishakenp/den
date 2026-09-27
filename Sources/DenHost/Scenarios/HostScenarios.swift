@@ -8,7 +8,7 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -23,6 +23,11 @@ public enum HostScenarios {
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
       rt.call("ui", "set", ["slot": "dialog", "tree": dialogs[name]!])
+    case "library", "libraryClear":
+      seedSidebar(rt, appearance: appearance)
+      showContent(rt)
+      rt.call("ui", "set", ["slot": "overlay.library", "tree": ["type": "library", "id": "archive", "items": archiveItems()]])
+      if name == "libraryClear" { rt.call("ui", "set", ["slot": "dialog", "tree": dialogs["dialogClearArchive"]!]) }
     case "littleArc":
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
@@ -87,6 +92,20 @@ public enum HostScenarios {
       "title": "Clear the Archive?", "message": "Every archived tab is removed for good. This can’t be undone.",
       "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "clear", "title": "Clear Archive", "style": "destructive", "default": true]]],
   ]
+
+  /// Sample archive entries in the `tabs.archive` shape, closed over the last few days.
+  static func archiveItems(now: Date = Date()) -> Value {
+    let h = 3_600_000.0, t = now.timeIntervalSince1970 * 1000
+    let entries: [(String, String, String, Double)] = [
+      ("Release notes", "https://www.swift.org/blog/", "sf:swift", 0.4), ("Hacker News", "https://news.ycombinator.com", "sf:newspaper", 1.5),
+      ("WebKit Features in Safari", "https://webkit.org/blog/", "sf:safari", 3), ("Design review notes", "https://linear.app/team/issue", "sf:doc.text", 26),
+      ("Swift Forums", "https://forums.swift.org", "sf:bubble.left.and.bubble.right", 28), ("MDN Web Docs", "https://developer.mozilla.org", "sf:book", 75),
+      ("The Verge", "https://www.theverge.com", "sf:globe", 200),
+    ]
+    return .array(entries.enumerated().map { i, e in
+      ["id": .string("arch-\(i)"), "title": .string(e.0), "url": .string(e.1), "icon": .string(e.2), "closedAt": .double(t - e.3 * h)]
+    })
+  }
 
   static let tabMenu: Value = [
     ["id": "copy", "title": "Copy Link", "icon": "sf:link", "key": "cmd+shift+c"],

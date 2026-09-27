@@ -533,6 +533,10 @@ final class PillButton: FlippedView, Themable {
       fill = p.destructive; label.textColor = .white
       hoverFill = NSColor(srgbRed: 0xDD / 255, green: 0x31 / 255, blue: 0x12 / 255, alpha: 1)
       pressedFill = NSColor(srgbRed: 0xD0 / 255, green: 0x2F / 255, blue: 0x11 / 255, alpha: 1)
+    case "destructiveSecondary":  // estimate: red text on a faint red pill (e.g. "Clear Archive")
+      fill = p.destructive.withAlphaComponent(p.dark ? 0.16 : 0.08)
+      border = p.destructive.withAlphaComponent(0.35)
+      label.textColor = p.dark ? p.destructive.blended(withFraction: 0.25, of: .white)! : p.destructive
     default:
       // PX (dark, arc_quit_dialog.png): fill (48,47,99), 1 pt border (99,98,174). Light: estimate.
       fill = p.dark ? NSColor(srgbRed: 48 / 255, green: 47 / 255, blue: 99 / 255, alpha: 1) : p.primaryButton.withAlphaComponent(0.08)

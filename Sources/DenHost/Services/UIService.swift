@@ -26,6 +26,9 @@ public final class UIService: HostService {
   let commandBackdrop = BackdropView()
   let dialogBackdrop = BackdropView()
   var toasts: [ToastView] = []
+  lazy var library = LibraryView(emit: { [weak self] in self?.emit($0, $1, $2) })
+  let libraryBackdrop = BackdropView()
+  var libraryOpen = false
   let popover = PopoverPanel()
   let popoverBackdrop = BackdropView()
   var popoverOpen = false
@@ -59,6 +62,9 @@ public final class UIService: HostService {
     sidebarView.onDoubleClickEmpty = { emitter("sidebar", "doubleClick", .null) }
 
     commandBackdrop.onClick = { emitter("commandBar", "dismiss", .null) }
+    libraryBackdrop.wantsLayer = true
+    libraryBackdrop.layer?.backgroundColor = NSColor(white: 0, alpha: Tokens.libraryBackdropAlpha).cgColor
+    libraryBackdrop.onClick = { [weak self] in self?.library.send("dismiss") }
     dialogBackdrop.wantsLayer = true
     dialogBackdrop.layer?.backgroundColor = NSColor(white: 0, alpha: Tokens.dialogBackdropAlpha).cgColor
     let prev = wc.onLayout
@@ -89,6 +95,7 @@ public final class UIService: HostService {
       if commandBarOpen { overlays.append("overlay.commandBar") }
       if dialogOpen { overlays.append("dialog") }
       if popoverOpen { overlays.append("popover") }
+      if libraryOpen { overlays.append("overlay.library") }
       return ["page": .int(Int64(sidebarView.pager.current)), "pages": .int(Int64(sidebarView.pager.pages.count)), "overlays": .array(overlays)]
     default:
       return .error("ui: unknown method '\(method)'")
@@ -102,6 +109,7 @@ public final class UIService: HostService {
     case "dialog": setDialog(tree)
     case "toast": if !tree.isNull { showToast(tree) }
     case "popover": setPopover(tree)
+    case "overlay.library": setLibrary(tree)
     case "overlay.peek":
       _ = content?.handle(method: "peek", args: tree.isNull ? .null : ["webview": tree["webview"], "title": tree["title"]])
     default:
@@ -194,6 +202,33 @@ public final class UIService: HostService {
     }
   }
 
+  /// `overlay.library` slot: the Archive / Library sheet over the content area.
+  func setLibrary(_ tree: Value) {
+    if tree.isNull {
+      guard libraryOpen else { return }
+      libraryOpen = false
+      libraryBackdrop.removeFromSuperview()
+      library.removeFromSuperview()
+      library.node = .null
+      return
+    }
+    library.update(tree, palette: renderer.palette)
+    if !libraryOpen {
+      libraryOpen = true
+      // Below dialogs, so "Clear Archive" can confirm on top of the sheet.
+      if dialogOpen {
+        wc.overlays.addSubview(libraryBackdrop, positioned: .below, relativeTo: dialogBackdrop)
+        wc.overlays.addSubview(library, positioned: .below, relativeTo: dialogBackdrop)
+      } else {
+        wc.overlays.addSubview(libraryBackdrop)
+        wc.overlays.addSubview(library)
+      }
+      layoutOverlays()
+      wc.window.makeFirstResponder(library.input)
+    }
+    layoutOverlays()
+  }
+
   /// `popover` slot: {type, id, anchor?, ...}. The popover opens just right of the sidebar, next to
   /// the node whose id is `anchor` (spec §4). A click outside emits `dismiss` for the content id.
   func setPopover(_ tree: Value) {
@@ -244,6 +279,13 @@ public final class UIService: HostService {
     let b = wc.overlays.bounds
     popoverBackdrop.frame = b
     layoutPopover(in: b)
+    libraryBackdrop.frame = b
+    if libraryOpen {
+      let area = wc.overlays.convert(wc.contentArea.frame, from: wc.contentArea.superview)
+      let w = min(Tokens.libraryWidth, area.width - 2 * Tokens.libraryInset)
+      let h = max(200, area.height - 2 * Tokens.libraryInset)
+      library.frame = NSRect(x: (area.midX - w / 2).rounded(), y: (area.minY + Tokens.libraryInset).rounded(), width: w, height: h)
+    }
     commandBackdrop.frame = b
     dialogBackdrop.frame = b
     if commandBarOpen {

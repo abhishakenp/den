@@ -169,3 +169,41 @@ extension ComponentTests {
     #expect(web.window === rt.window.window)
   }
 }
+
+extension ComponentTests {
+  @Test func librarySheetFiltersGroupsAndEmits() throws {
+    let rt = Self.runtime()
+    var got: [Value] = []
+    rt.host.on("ui.action") { got.append($0) }
+    let now = Date()
+    rt.ui.library.now = { now }
+    _ = rt.call("ui", "set", ["slot": "overlay.library", "tree": ["type": "library", "id": "archive", "items": HostScenarios.archiveItems(now: now)]])
+    #expect(rt.call("ui", "get")["overlays"] == ["overlay.library"])
+    let lib = rt.ui.library
+    #expect(lib.rows.count == 7 && lib.headers.first?.stringValue == "Today")
+    // Centered over the content area, inset 40.
+    let area = rt.window.overlays.convert(rt.window.contentArea.frame, from: rt.window.contentArea.superview)
+    #expect(abs(lib.frame.midX - area.midX) <= 1 && lib.frame.minY == area.minY + 40)
+    // Typing filters locally (title or URL) and reports the text.
+    lib.input.stringValue = "swift"
+    lib.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    #expect(lib.rows.map(\.title.stringValue) == ["Release notes", "Swift Forums"])
+    #expect(got.last?["action"] == "input" && got.last?["value"]["text"] == "swift")
+    lib.rows[1].onRestore?()
+    #expect(got.last?["action"] == "restore" && got.last?["value"]["item"] == "arch-4")
+    lib.clearButton.action()
+    #expect(got.last?["id"] == "archive" && got.last?["action"] == "clear")
+    rt.ui.libraryBackdrop.onClick?()
+    #expect(got.last?["action"] == "dismiss")
+    // Day buckets.
+    let cal = Calendar.current
+    #expect(LibraryView.section(for: now.timeIntervalSince1970 * 1000, now: now) == "Today")
+    #expect(LibraryView.section(for: cal.date(byAdding: .day, value: -1, to: now)!.timeIntervalSince1970 * 1000, now: now) == "Yesterday")
+    // Clear Archive confirmation stacks above the sheet.
+    _ = rt.call("ui", "set", ["slot": "dialog", "tree": HostScenarios.dialogs["dialogClearArchive"]!])
+    let subs = rt.window.overlays.subviews
+    #expect(subs.firstIndex(of: rt.ui.dialog)! > subs.firstIndex(of: lib)!)
+    _ = rt.call("ui", "set", ["slot": "overlay.library", "tree": nil])
+    #expect(!(rt.call("ui", "get")["overlays"].array ?? []).contains("overlay.library"))
+  }
+}

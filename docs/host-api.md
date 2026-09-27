@@ -93,7 +93,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 **Slots:**
 - `sidebar.header`, `sidebar.favorites`, `sidebar.footer`
 - Per space page: `sidebar.spaceHeader`, `sidebar.pinned`, `sidebar.today`
-- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover))
+- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet))
 
 **Event:** `ui.action {id, action, value}`
 
@@ -123,6 +123,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]` | `input {text}`, `select {row}` (arrow keys, or hovering a row after the mouse moves), `submit {row, query, modifiers}`, `tab {query}`, `dismiss` |
 | `dialog` | `id`, `title`, `message?`, `icon?`, `iconStyle?: accent\|destructive\|plain`, `buttons: [{id, title, style: default\|cancel\|destructive\|secondary, default?, keycap?}]`, `checkbox?` | `button {button, checked}`. Return presses the `default` button (or the one with `default: true`), Esc the `cancel` one |
 | `toast` | `text`, `icon?`, `duration?` (ms) | – |
+| `library` | `id`, `title?`, `query?`, `placeholder?`, `clearTitle?`, `empty?`, `items: [{id, title, url?, subtitle?, icon?, closedAt?}]` | `input {text}`, `restore {item}`, `clear`, `dismiss` |
 | `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss {reason?}` |
 
 **Details that apply to several nodes:**
@@ -149,6 +150,16 @@ ui.set {slot: "popover", tree: {type: "themePicker", id: "theme", anchor: "space
 - **Live preview.** Every drag step emits `change`, whose value has the same shape as `window.setTheme` args, so the plugin can pass it straight through. `commit` follows when a drag ends or after a click.
 - **Haptics.** A tick when a dot is grabbed, when it crosses each 4-dot cell, at each 10% of intensity and at each grain step.
 - **Dismiss.** Esc emits `dismiss {reason: "escape"}` (the `theme` plugin reverts); a click outside emits `dismiss` with no value (it saves). The plugin clears the slot (`tree: null`).
+
+### Archive / Library sheet
+
+`ui.set {slot: "overlay.library", tree: {type: "library", id: "archive", items: tabs.archive()}}` shows the archive as a sheet over the content area (640 wide, 40 pt from the content edges, 20 pt radius, over a black α0.35 dim). Arc's archive view was never measured (spec §12), so its geometry is estimated.
+
+- **Items** take the `tabs.archive` shape directly. Rows are grouped by the day of `closedAt` (ms since 1970): Today, Yesterday, a weekday within the last week, then "Month day". The subtitle defaults to "host · time".
+- **Search** filters the items locally by title or URL on every keystroke, so it stays instant. The typed text is also emitted as `input`. Return restores the first match.
+- **Restore.** Clicking a row, or its hover "Restore" button, emits `restore {item}`.
+- **Clear Archive** emits `clear`. The plugin then confirms with the Clear Archive dialog below, which opens above the sheet.
+- **Dismiss.** Esc, the close button or a click on the dim emits `dismiss`; the plugin clears the slot.
 
 ### Dialogs
 

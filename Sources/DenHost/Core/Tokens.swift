@@ -94,6 +94,15 @@ public enum Tokens {
   public static let toastRightInset: CGFloat = 20  // estimate
   public static let toastDefaultDurationMs = 2200  // estimate
 
+  // MARK: Archive / Library sheet (Arc's archive view is UNVERIFIED, spec §12: all estimates)
+  public static let libraryWidth: CGFloat = 640  // estimate
+  public static let libraryInset: CGFloat = 40  // estimate: from the content area's edges
+  public static let libraryCornerRadius: CGFloat = 20  // estimate: same as the theme picker popover
+  public static let libraryPadding: CGFloat = 24  // estimate
+  public static let libraryRowHeight: CGFloat = 48  // estimate
+  public static let libraryRowRadius: CGFloat = 10  // estimate
+  public static let libraryBackdropAlpha: CGFloat = 0.35  // estimate (dialogs use the measured 0.55)
+
   // MARK: Little Arc (spec §8; PX = measured on the spec's arc_littlearc_page.png)
   public static let miniDefaultSize = CGSize(width: 1185, height: 832)  // spec §8 (after a URL loads)
   public static let miniMinSize = CGSize(width: 490, height: 329)  // spec §8: the command-bar-only state
