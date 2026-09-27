@@ -171,9 +171,10 @@ public final class WatchdogMonitor: @unchecked Sendable {
     p.standardOutput = FileHandle.nullDevice
     p.standardError = FileHandle.nullDevice
     guard (try? p.run()) != nil else { return nil }
-    let end = now() + 15
+    // Symbolication is slow on a loaded machine (15 s was not enough at load 70).
+    let end = now() + 90
     while p.isRunning, now() < end { Thread.sleep(forTimeInterval: 0.1) }
-    if p.isRunning { p.terminate(); return nil }
+    if p.isRunning { p.terminate(); return "sample did not finish within 90 s" }
     guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return path }
     // The first thread block is the main thread; keep its deepest few frames.
     let lines = text.components(separatedBy: "\n")

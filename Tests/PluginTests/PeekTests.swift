@@ -112,12 +112,13 @@ struct PeekTests {
       + "<script>window.log=[];for(const t of ['mousedown','mouseup','click'])addEventListener(t,e=>log.push(t+(e.shiftKey?'+shift':'')),true)</script>"
     web.loadHTMLString(html, baseURL: URL(string: "https://www.a.test/"))
     // Loaded, in the window and laid out.
-    let ready = try await Self.wait(seconds: 30) {
+    // 60 s: at load 70 the WebContent process alone took more than 30 s to come up.
+    let ready = try await Self.wait(seconds: 60) {
       h.rt.window.window.contentView?.layoutSubtreeIfNeeded()
       guard !web.isLoading, web.url?.host == "www.a.test", web.window != nil, web.bounds.width > 100, web.bounds.height > 100 else { return false }
       return await Wait.js(web, "document.readyState", seconds: 5) as? String == "complete"
     }
-    try #require(ready, "the page never finished loading in a laid-out web view")
+    try #require(ready, "the page never finished loading in a laid-out web view: loading=\(web.isLoading) url=\(String(describing: web.url)) window=\(web.window != nil) bounds=\(web.bounds)")
     let win = try #require(web.window)
     let mid = NSPoint(x: web.bounds.midX, y: web.bounds.midY)
     // Hit-test the web view's own subtree only, so the events can never reach den's chrome.

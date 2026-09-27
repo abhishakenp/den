@@ -325,7 +325,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
   - ✅ `scripts/release.sh`: zip + dmg, per-plugin assets, `plugins.json`, EdDSA signatures; pre-release 0.1.0-alpha.1 published
   - ⏳ Developer ID signing and notarization
 - ✅ Auto-update (OTA): Sparkle for the app, signed hot-swapped plugins, `stable` / `prerelease` / `follow-main` channels, relaunch only when you won't notice ([docs](docs/updates.md))
-- ⏳ Stable signing identity (one self-signed cert in the login keychain) so Keychain/TCC never re-prompt after rebuilds
+- ✅ Stable signing identity: `scripts/make-signing-identity.sh` creates "den Local Signing" in the login keychain once; `scripts/bundle.sh` signs with it (designated requirement = certificate, not cdhash), ad-hoc when absent
 - ⏳ CI builds on every PR
 - ⏳ Contributing guide
 - 🟡 Plugin author docs
@@ -336,7 +336,8 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 ### Test reliability
 
 - ✅ Bounded waits in WebKit tests (10 s budgets), web views closed after each test, timing-sensitive tests retried once by the updater and `release.sh`
-- ⏳ Find every remaining hang; bound every wait with a timeout; deterministic under load
+- ✅ No unbounded waits: every suite carries a per-test watchdog (`Tests/DenTestSupport`) that fails a test past its limit with what it was waiting on, and stops the run with a stack sample when the main thread is stuck; waits are deadline-based and event-driven (`Wait.until`, bounded JS/callback awaits), host deadlines (session/webviews eval, suggest debounce) take an injected clock, and `scripts/test.sh` runs suites serially with a cap on the whole run
+- ✅ Test windows are invisible (alpha 0 in the window server, still "on screen" for AppKit and WebKit); the test process never activates or shows a Dock icon
 - ⏳ A `--background` test mode: no Dock icon, no activation, auto-quit; test instances never left running
 
 ## Decided 2026-09-28
