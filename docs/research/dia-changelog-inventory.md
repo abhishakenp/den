@@ -199,7 +199,7 @@
 ## v1.31.0 (May 14, 2026)
 - [non-AI] GitHub Live Group PR hover shows CI status and merge conflicts (rough diff size). **den-candidate**
 - [AI] Confluence in Live Groups (Docs Live Group alongside Notion, Gmail).
-- [AI] Auto-selected emoji for tab groups based on contents.
+- [AI] Auto-selected emoji for tab groups based on contents. Live (1.50.1): the emoji shows transiently while the group changes, and the header rests on the first tab's favicon: see `../reference/dia-ui-spec.md` §6.
 - [AI] Notion mentions, comment threads, share invites surface in chat.
 
 **Release notes:** [https://www.diabrowser.com/release-notes/1-31-0-pr-hover](https://www.diabrowser.com/release-notes/1-31-0-pr-hover) ("Stop opening PRs blind", May 14 2026, Issue No. 025, App v1.31). Detailed spec in [`../reference/dia-ui-spec.md` §3](../reference/dia-ui-spec.md#3-github-pr-peek-live-group-pr-hover-stop-opening-prs-blind). Hovering a PR in the GitHub Live Group shows CI status and merge conflicts. [non-AI] **den-candidate**
@@ -434,7 +434,7 @@
 
 ## v1.16.0 (January 29, 2026)
 - [non-AI] Pin tab groups to sidebar top / tab strip leading edge. **den-candidate**
-- [non-AI] ⌘-click link opens into a new tab group with the original. **den-candidate**
+- [non-AI] ⌘-click link opens into a new tab group with the original. **den-candidate** Live-verified in 1.50.1 (auto name "A & B", transient emoji, dissolves at one tab): see `../reference/dia-ui-spec.md` §6.
 - [non-AI] ⌥⌘T new tab inside current group. **den-candidate**
 - [non-AI] Tabs pane in Settings (layout, group behaviors). **den-candidate**
 - [non-AI] Recently closed groups in Tab Overflow and History menus. **den-candidate**
@@ -443,7 +443,7 @@
 - [non-AI] Manifest V2 phase-out notice (built-in ad blocker cited).
 
 **Release notes:** [https://www.diabrowser.com/release-notes/1-16-0-organization-that-grows](https://www.diabrowser.com/release-notes/1-16-0-organization-that-grows) ("Onboarding without tab overload", Jan 29 2026, Issue No. 010, App v1.16.0). 4 videos. Intro: tab organization is opt-in and "grows with you" rather than being forced as in Arc.
-- [non-AI] ⌘-clicking links from a doc auto-creates "Group 1" containing the source doc and each opened link. **den-candidate**
+- [non-AI] ⌘-clicking links from a doc auto-creates "Group 1" containing the source doc and each opened link. **den-candidate** In 1.50.1 (live) the auto group is AI-named from the tab titles rather than "Group 1": see `../reference/dia-ui-spec.md` §6.
   - Group header menu: 8 color swatches / Rename… / Change Icon… / Pin Group / Chat with "…" / Copy URLs in Group / Move Group to › / Ungroup Tabs / New Tab in Group / Duplicate Group / Close and Move to Bookmark Bar / Delete Group.
   - The header is renamable in place.
 - [non-AI] Pinned groups sync across all windows in a profile and persist across restarts. They sit under the pinned tiles, above a divider. **den-candidate**

@@ -3,7 +3,8 @@
 > **Reference only. Do not copy.** den must not ship any Dia or Arc assets, icons, sounds, fonts, videos or artwork. This file records **measurements, structure and behavior** so den can rebuild the *feel* with its own assets and copy. Screenshots and recordings stay in the scratchpad and never enter this repo. Nothing from the observer's own accounts (tab titles, repo names, people, messages) is recorded here.
 
 - **Observed:** 2026-09-27/28, Dia **1.50.1** (`company.thebrowser.dia`), macOS 26 (Darwin 25.5), 2x Retina display at 1470x956 pt, **dark** appearance, vertical-tabs (sidebar) layout, window 1470x923 pt at (0, 33).
-- The profile was freshly signed in with few tabs and **no GitHub Live Group**, so the live PR-data hover could not be exercised in this profile (see §3.5). The PR-peek spec in §3 comes from Dia's own release-note video, frame-stepped, plus the binary's strings and data model.
+- The profile was freshly signed in with few tabs. **GitHub is not connected:** Settings → Apps shows Advanced Chat off and no connected apps (§7), so there is **no GitHub Live Group** and the live PR-data hover couldn't be exercised (see §3.5). The PR-peek spec in §3 comes from Dia's own release-note video, frame-stepped, plus the binary's strings and data model.
+- Session 2 (2026-09-28) ran after Dia relaunched (same build) and covered the light theme (§2.6), ⌘-click tab groups (§6), Settings → Apps (§7) and PiP (§8).
 - Companion docs: [`arc-ui-spec.md`](arc-ui-spec.md) (Arc measurements, plus a static Dia section in §13), [`../research/dia.md`](../research/dia.md), [`../research/dia-changelog-inventory.md`](../research/dia-changelog-inventory.md).
 
 ## Provenance tags
@@ -117,7 +118,8 @@ For den: Dia's list-tab dwell is **longer than Arc's feel** (about 0.7–0.8 s).
 
 - **Dark (measured):** card `#262626`, title `#DEDEDE`, secondary `#9D9D9D`, button hover `#373737`, tooltip `#474747`. The card does **not** pick up the page, and it does **not** tint to the sidebar gradient. It's a neutral surface one step lighter than the sidebar.
 - **Light (VID, horizontal-tab card):** card about `#F2F2F2`, with a white 1 px top highlight/border and the same soft shadow; primary text near-black; secondary about `#B7B7B7` status text.
-- The dark↔light switch was **not exercised live**, because that would change the user's appearance setting. UNVERIFIED: whether the card follows Dia's in-app appearance override or only the system appearance.
+- **Light (LIVE, session 2, same list-tab card, PX on the card window):** card fill **`#F4F4F4`**. Border is two layers: a **1 pt white (`#FFFFFF`) inner highlight** and a **0.5 pt `#DCDCDC` outer hairline**. The dark card has a single `#3C3C3C` hairline instead. Title **`#252525`**, subtitle **`#7B7B7B`**, action glyphs `#7A7A7A`. Size, placement and layout are identical to dark (200 pt wide, 4 × 47 pt buttons). Light sidebar: fill about `#F2F2F2`, selected row about `#F7F7F7` (near white).
+- The card **follows Dia's in-app appearance override**: switching View → Appearance → Light re-themed it with the system still dark. The menu offers **Automatic / Light / Dark**. The user's setting (Automatic) was restored afterwards and re-read over AX (✓ Automatic).
 
 ---
 
@@ -166,7 +168,7 @@ For den: Dia's list-tab dwell is **longer than Arc's feel** (about 0.7–0.8 s).
 
 ### 3.6 Vertical tabs vs horizontal (user demonstration)
 
-_Pending: filled from the user's live demonstration, captured as passive Dia-only screenshots._
+This demo was skipped. The user reviewed **den's vertical-sidebar PR peek** directly and **confirmed it matches the intended behavior**, so den's implementation is the reference for vertical layout. Dia's own PR peek was only observed in the horizontal layout (release video, §3.1). Its vertical-layout placement in Dia itself is not recorded here: it can't be observed without a GitHub Live Group.
 
 ### 3.7 den recommendations for the PR peek
 
@@ -197,6 +199,8 @@ _Pending: filled from the user's live demonstration, captured as passive Dia-onl
 
 **Pinned tab:** the same menu, except that Pin becomes **Unpin**; "Move to Window" becomes **Open in New Window**; the Rename section gains **Edit Pinned Page ›** (→ "Replace Pinned URL with Current"); and the closing section is **Close** only.
 
+Menu shortcuts, read over AX (`AXMenuItemCmdChar`/`Modifiers`): New Tab `⌘T`, **New Tab in Group `⌥⌘T`**, New Window `⌘N`, New Incognito Window `⇧⌘N`, Reopen Closed Tab `⇧⌘T`, Chat… `⌘E`, Focus Chat `⌃⌘E`, Open Command Bar `⌘L`, Close Window `⇧⌘W`, Close Tab `⌘W`, Close All Tabs `⇧⌘K`, **Clean Up Tabs `⌥⌘K`**, Next/Previous Tab `⇧⌘]`/`⇧⌘[`, **Search Tabs… `⇧⌘A`**, New Group with Tab `⌃⌘N`. The Tabs menu gains **Remove from Group** when the active tab is grouped.
+
 Menu-bar **Tabs** menu: Go Back, Go Forward, Next Tab, Previous Tab, **Search Tabs…**, Pin, **Separate Tabs** (unsplit), Duplicate, New Group with Tab, Move to Group, Move to Profile, Move to Window, then the open-tab list. **File:** New Tab, **New Tab in Group**, New Window, New Incognito Window, Reopen Closed Tab, Chat…, Focus Chat, Open Command Bar, Close Window, Close Tab, Close All Tabs, **Clean Up Tabs**, Share…, Print…. **View:** Appearance, Refresh, Force Refresh, **Show Tabs in Sidebar** (toggles the vertical/horizontal layout), **Auto-Hide Tabs**, Open Split Pane, Focus Next/Previous Split Pane, Show Bookmarks Bar, **Show Full URL**, zoom, Full Screen, Developer. **Edit** adds **Copy URL** and **Copy URL as Markdown**. **Help:** Chat with Support, Video Tour, Status, Copy Diagnostics, **Record Performance Issue…**. (AX)
 
 Split-view menu strings (STR): "close the focused pane", **"Separate All Tabs"**, "move the current split pane to the right/left", "splitting with an existing tab" (section title). Drag-to-split drop targets are "add a left/right split view" with half-filled rectangle glyphs.
@@ -206,21 +210,44 @@ Split-view menu strings (STR): "close the focused pane", **"Separate All Tabs"**
 - AX: `commandBar`, 1125x107 docked over the toolbar while editing the current URL. It contains a `commandBarTextField` with a leading magnifier, a bottom row with **"+ Add tabs or files"** (a pill), a "More" (…) button, and trailing toolbar buttons (34x34), including a 102x34 primary.
 - The new-tab/⌘T form is centered over the page: about 650 pt wide, rounded, dark (`#2E2E2E`-ish). The input row has a globe glyph. Results are single-line rows on about a 40 pt pitch, and the top row is highlighted with a lighter rounded fill. Ranking seen for the query "github": **1. navigational URL match** ("GitHub — github.com"), **2–5. search suggestions** (bold completion suffix), **6. an already-open tab** matching the query, with a trailing hint **"Hold ⌘ to switch →"**. Footer: "+ Add tabs or files", "…", mic, and a **"Go ↩"** button with a keycap. (PX from a downscaled capture; values approximate, ±5 pt)
 - The mode-tinted caret and selection colors are in arc-ui-spec §13 (CAR).
+- **New Tab page** (LIVE, session 2): there are no results at rest. It shows a centered composer, about 490 pt wide at a 1274 pt content width, with an "Ask anything…" placeholder, a magnifier, "+ Add tabs or files", "…", mic and a send button. A round avatar sits above it. Below: the headline "Prep for meetings. Draft replies. Catch up on threads. Generate reports.", the line "Connect Slack and Google to get started.", two app cards (Slack / Google) each with a white **Connect** pill, then "Use other apps? Connect others or dismiss." At the bottom is a fanned stack of sample-artifact cards (status report, weekly brief, analytics review). None of it was clicked.
 
-## 6. Tab groups (LIVE)
+## 6. Tab groups / ⌘-click (LIVE)
 
-- "New Group with Tab" creates a group named **"Group 1"** and **drops straight into inline rename** (the name is selected). Esc keeps the default name.
-- The group icon is the **first tab's favicon**. With one tab, **no auto-name or auto-emoji** appeared within 6 s. The release notes (v1.31.0) say groups "get an automatically selected emoji that represents what's inside". The trigger is UNVERIFIED (probably ≥2 tabs, or AI naming).
-- Group header hover shows no card.
+**Manual group:** "New Group with Tab" (`⌃⌘N`) creates a group named **"Group 1"** and **drops straight into inline rename** (the name is selected). Esc keeps the default name. With one tab, no auto-name or emoji appeared within 6 s. A manual one-tab group **persists** (it survived a relaunch collapsed) and disappears when its last tab closes.
+
+**⌘-click a link: the auto group** (Wikipedia pages, ⌘ plus synthetic left click; recording and AX; N=1 for creation):
+
+| Question | Observed |
+|---|---|
+| Where the new tab goes | The source tab and the new tab are **wrapped into a new group at the source tab's position**. The group header takes the source row's slot, and the source becomes the group's first child with the new tab second. Children are indented 16 pt (x = 15, width 173 vs the top-level x = −1, width 192) |
+| Background? | **Yes.** The source stays active (AX web area and window title unchanged), and the new tab loads in the background |
+| Row timing | The group and new row animate in **~120–250 ms after mouse-up**, with a ~90 ms settle (about 6 frames of decreasing change: rows slide down, children indent). The new row first shows the **URL as its title with a placeholder favicon** and switches to the page title about **0.8–1.0 s** later |
+| Naming | The header first shows a **grey shimmer skeleton** bar (no text) for about 3 s, then an **AI-style name built from the tabs' titles**: "WebKit" + "Apple Inc." gave **"WebKit & Apple"**, about 3.8–4.2 s after the click. The name **reveals with a multicolor gradient sweep across the text** (about 0.4 s, 4.2→4.6 s) and settles to plain white bold. It was **not renamed** when more tabs were added (4 tabs, still "WebKit & Apple") |
+| Emoji | During the reveal the header icon **morphs from a blue blob to an emoji** (🍎 for Apple/WebKit). The emoji shows **transiently** (after creation, and again for about 1 s whenever a tab is added or the group changes), then the icon falls back to the **first child's favicon**. At rest (window key or not, pointer anywhere) it was the favicon in every capture (N=4 idle captures, 2 transient emoji sightings) |
+| 2nd ⌘-click from the **source** tab | Joins the **same group**, inserted **after the source's previously opened child** (WebKit → Apple Inc. → **Igalia** appended last). It opens in the background, with no new group |
+| ⌘-click from the **new** (child) tab | Joins the same group, **inserted directly after that tab** (Apple Inc. → **Steve Jobs**, placed before Igalia). This is Chrome-style opener-relative insertion and is not nested |
+| `⌥⌘T` inside a group | Opens **"New Tab" as the last child of the active tab's group** (not next to the active tab), selects it, and focuses the "Ask anything…" composer |
+| Closing a grouped tab | Closing the ⌥⌘T New Tab went back to the **previously active tab** (Apple Inc.), not a neighbor. Closing Apple Inc. selected the **next tab below** (Steve Jobs), and closing Steve Jobs selected the next one (Igalia). No animation beyond the row collapse |
+| Last tabs | When an **auto group drops to one tab, the group dissolves**: the remaining tab (WebKit) returns to top level at x = −1 with no header |
+| Sidebar treatment | The group is a **rounded, lighter container panel** (dark about 8% white over the sidebar) spanning the header and children. The header shows the icon (18 pt), a **bold** name and a disclosure chevron `⌄`; clicking it collapses to `›`. The active child gets the usual selected pill. There's no colored group tint in vertical tabs |
+
+**den takeaways:** ⌘-click-to-group is a strong default. Build the header from the source and new titles ("A & B"), with emoji/icon selection async and a skeleton placeholder until it's ready. Insert opener-relative, dissolve at one tab (auto groups only), and make ⌥⌘T add to the end of the current group.
 
 ## 7. Settings (AX, window `preferencesWindow`, 778x509)
 
 - Left source list 196 wide with 28 pt rows and 20x20 glyphs, in this order: **Account, Tabs, Privacy, Profiles, Apps, Shortcuts, Advanced**. Content pane 574 wide. Separately, **Personalization** opens as a full *tab* page (not in the window): an avatar, 8 accent swatches, a "Personalize new chats" toggle card, and free-text "Teach Dia about yourself" fields.
-- The **Apps/connections** pane internals were not opened (input was paused). UNVERIFIED.
+- **Apps pane** (AX + window capture; nothing clicked). A top card: a 32 pt round icon, "**Advanced Chat**" / "Connect your apps to let Dia help you with your work", and a **"Turn On Advanced Chat"** button (163x32, light-grey fill). Below is an **APPS** section header (small caps, secondary) and one grouped rounded list: 18 pt icon plus name, **51 pt row pitch**, hairline separators, some rows with a **BETA** chip (28x13, grey fill). The 20 apps: Amplitude, Atlassian, Canva β, Figma, GitHub, Gmail, Google Calendar, Google Chat β, Google Drive, Granola, Linear, LinkedIn, Notion, Outlook, Salesforce β, SharePoint, Slack, Teams, Trello β, Zoom β. With Advanced Chat **off**, rows have **no per-app Connect/status control**: connecting is gated behind the toggle. So the **connected / auto-connected state could not be observed**, because nothing is connected (UNVERIFIED). Toolbar title "Apps" with back/forward chevrons. The pane was put back to Account and the window closed afterwards.
 
-## 8. Other features: not observed live
+## 8. Other features
 
-- PiP / mini player / "Keep on Top", stash, Morning Brief, toasts and sounds were not exercised: there was no media tab or brief in the profile, and input was paused. The strings confirm an **audio mini-player** (Spotify-aware, seek, marquee title, mediaSession artwork), **stashable** floating panels (`isStashed`, `wasLastPresentationStashed`), and a Morning Brief with scheduled daily generation ("Morning Brief preference that generates every day"). For sounds and toasts, see arc-ui-spec §13.
+- **PiP (LIVE, session 2).** Test page: a local muted, looping `<video>` (Big Buck Bunny 480p, Wikimedia Commons).
+  - **No auto-PiP** when switching tabs away from a playing **muted** video, and no sidebar mini-player appeared (N=1). Audible playback wasn't tested (the task rules require muted), so auto-PiP for audible video is UNVERIFIED.
+  - Manual PiP comes from the video's context menu (Loop, Show All Controls, Open Video in New Tab, Save Video Frame As…, Save Video As…, Copy Video Frame, Copy Video Address, **Picture in Picture**, Cast…, Inspect).
+  - The PiP window is a **Chromium/system PiP panel**: AX role `AXSystemDialog`, window **layer 3 (floating)**, **320x180 pt**, placed **bottom-right with a 10 pt margin** from the screen edges, corner radius about 5 pt. It has **no Dia-branded chrome**: no "Keep on Top" or stash control was visible, and its hover controls aren't part of Dia's window contents (they didn't appear in Dia-only captures). Closing the source tab closes the PiP.
+  - "Keep on Top" and stash were not seen for web video; the `isStashed` strings may belong to other floating panels (UNVERIFIED).
+- **Morning Brief:** not visible in this profile (no brief tab or badge). The new-tab page only shows a marketing card for it. Not observed.
+- Toasts and sounds were not exercised. The strings confirm an **audio mini-player** (Spotify-aware, seek, marquee title, mediaSession artwork), **stashable** floating panels (`isStashed`, `wasLastPresentationStashed`), and a Morning Brief with scheduled daily generation ("Morning Brief preference that generates every day"). For sounds and toasts, see arc-ui-spec §13.
 
 ## 9. den recommendations (summary)
 
