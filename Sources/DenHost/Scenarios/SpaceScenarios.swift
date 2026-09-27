@@ -91,7 +91,7 @@ public enum SpaceScenarios {
       case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
       case "toast":
         rt.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Cleared Tabs! Use ⌃Z to undo.", "icon": "sf:arrow.uturn.backward", "duration": 60000]])
-      case "hover": _ = PreviewScenarios.apply("previewGitHub", runtime: rt, appearance: "")
+      case "hover": _ = PreviewScenarios.apply("prFailing", runtime: rt, appearance: "")
       default: break
       }
     }

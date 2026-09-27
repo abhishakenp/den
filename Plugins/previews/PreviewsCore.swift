@@ -2,31 +2,29 @@
   import CordisValue
 #endif
 
-/// Dia-style hover previews for sidebar tabs (docs/plugin-services.md, `previews`).
-///
-/// - The host decides *when* (hover intent, HoverCard.swift) and emits `ui.action {id, action: hover}`
-///   for the row; `tabs` turns that into `previews.show {anchor, url, title, icon, webview}`.
-/// - This plugin decides *what*: the best-matching provider for the URL answers asynchronously,
-///   and the card goes into the host's `hoverCard` slot. The card appears at once with the tab's
-///   header (and cached data when there is any), and fills in when the provider answers.
-/// - Providers register by URL pattern (`register {pattern, provider}`). The built-in ones
-///   (Providers.swift) cover GitHub pull requests and issues, Google Calendar, Gmail and Slack; any
-///   other page gets a small cached snapshot of the tab (`webviews.snapshot {width}`).
-/// - Nothing runs until a hover: no polling, no timers, no requests. Results are cached per URL
-///   with a TTL, a stale card shows at once while it refreshes, and requests for the same URL are
-///   shared.
+/// Hover previews: the tab card (sidebar rows, tiles, folders, splits), the GitHub PR peek, and
+/// ⇧-hover link cards on any page. The host gives generic pieces (hover intent on nodes,
+/// `ui.card`, `webviews.watchLinks`, `net.fetch`); this plugin decides what a card shows and does.
+/// Nothing is fetched, timed or captured until something is hovered.
 final class PreviewsCore {
-  static let slot = "hoverCard"
-  static let cardId = "hoverCard"
+  static let ns = "previews"
   static let snapshotTTL: Int64 = 30_000
-  static let snapshotWidth: Int64 = 320
+  /// Compact page snapshot: twice the card's widest (200 pt) is plenty on Retina.
+  static let snapshotWidth: Int64 = 400
+  static let linkTTL: Int64 = 10 * 60_000
+  static let linkCacheMax = 100
+  /// Plain-hover link cards (a setting, off by default) wait like a list row does.
+  static let linkHoverDelayMs: UInt64 = 700
+  /// Sites with their own link previews: den's card stays out of their way.
+  static let yieldTo: [Value] = [".mwe-popups", ".mw-mmv-overlay", "[data-testid=\"hoverCardParent\"]", ".Popover-message", ".hovercard"]
+  /// `<head>` only: stop reading there (or at 256 KB).
+  static let headBytes: Int64 = 262_144
 
   struct Provider {
     var id: String
     var pattern: String
     var owner: String?
     var ttlMs: Int64
-    /// Built-in providers fetch here; external ones get `previews.request` and call `answer`.
     var fetch: ((Request, @escaping (Value) -> Void) -> Void)?
   }
 
@@ -40,6 +38,21 @@ final class PreviewsCore {
     var selected: Bool
     var kind: String
     var items: [Value]
+    var drift = false
+    var audio = false
+    var muted = false
+    var inSplit = false
+    var spaces: [Value] = []
+    var panes: [Value]?
+    var place = "trailing"
+    /// A link under the pointer (⇧-hover) rather than a tab.
+    var link = false
+    var rect: Value = .null
+
+    init(anchor: String, url: String, title: String, icon: String, webview: String, profile: String, selected: Bool, kind: String, items: [Value]) {
+      (self.anchor, self.url, self.title, self.icon, self.webview, self.profile, self.selected, self.kind, self.items) =
+        (anchor, url, title, icon, webview, profile, selected, kind, items)
+    }
   }
 
   struct Entry {
@@ -62,14 +75,20 @@ final class PreviewsCore {
   var inflight: [String: [(Value) -> Void]] = [:]
   var external: [String: (Value) -> Void] = [:]
   var current: Request?
+  var link: Request?
+  var linkGen = 0
+  var og: [String: Entry] = [:]
+  var ogOrder: [String] = []
   var snapshots: [String: Snapshot] = [:]
   var snapshotPending: [String: Bool] = [:]
   var nextExternal = 1
   var snapshotDir = "/tmp"
-  /// Slack workspaces (with their web-client tokens) read on the first Slack hover; memory only.
   var slackTeams: [Value]?
-  /// Fetch count, for tests and `get`.
   var fetches = 0
+  /// Settings: link previews `shift` (default) | `hover` | `off`; `redwell`: wait again before
+  /// swapping to another tab's card (Dia) instead of swapping at once (Arc, default).
+  var linkMode = "shift"
+  var redwell = false
 
   init(env: PluginEnv) {
     self.env = env
@@ -78,15 +97,58 @@ final class PreviewsCore {
 
   func start() {
     Builtins.register(self)
-    env.on("ui.action") { [self] v in
-      guard v.s("id") == Self.cardId else { return }
-      action(v.s("action"), v["value"])
-    }
+    env.on("ui.action") { [self] v in uiAction(v.s("id"), v.s("action"), v["value"]) }
     env.on("webviews.snapshot") { [self] v in
       let id = v.s("id")
       if v.s("path") == snapshotPath(id), snapshotPending.removeValue(forKey: id) != nil { snapshotDone(id, ok: v.b("ok")) }
     }
     env.on("tabs.closed") { [self] v in snapshots[v.s("id")] = nil }
+    env.on("webviews.linkHover") { [self] v in linkHover(v) }
+    env.on("webviews.linkHoverEnd") { [self] v in if link?.webview == v.s("id") { hideLink() } }
+    env.on("connections.changed") { [self] _ in connectionsChanged() }
+    env.on("settings.changed") { [self] v in
+      guard v.s("id") == Self.ns else { return }
+      applySetting(v.s("key"), v["value"])
+    }
+    let saved = env.call("settings", "get", ["id": .string(Self.ns)])
+    if !saved.isErr, !saved.isNull {
+      if let m = saved.sOpt("links") { linkMode = m }
+      if let r = saved["redwell"].bool { redwell = r }
+    }
+    registerSettings()
+    applyLinkMode()
+  }
+
+  // MARK: Settings
+
+  func registerSettings() {
+    env.call("settings", "register", [
+      "id": .string(Self.ns), "title": "Previews", "icon": "sf:rectangle.on.rectangle", "order": 25,
+      "controls": [
+        ["key": "links", "type": "choice", "title": "Link previews", "default": "shift",
+         "subtitle": "A card with the link's picture, title and summary. den reads only the page's head, and only when you ask.",
+         "options": [["value": "shift", "title": "Hold ⇧ and hover"], ["value": "hover", "title": "Hover"], ["value": "off", "title": "Off"]]],
+        ["key": "redwell", "type": "toggle", "title": "Wait before switching tab cards", "default": false,
+         "subtitle": "With a card open, moving to another tab waits for its own delay instead of switching at once."],
+      ],
+    ])
+  }
+
+  func applySetting(_ key: String, _ v: Value) {
+    switch key {
+    case "links":
+      linkMode = v.string ?? "shift"
+      applyLinkMode()
+    case "redwell":
+      redwell = v.bool ?? false
+    default: break
+    }
+  }
+
+  func applyLinkMode() {
+    let modifier = linkMode == "hover" ? "none" : linkMode == "off" ? "off" : "shift"
+    env.call("webviews", "watchLinks", ["modifier": .string(modifier), "yieldTo": .array(Self.yieldTo)])
+    if linkMode == "off" { hideLink() }
   }
 
   // MARK: Service
@@ -119,18 +181,17 @@ final class PreviewsCore {
     case "clear":
       cache = [:]
       snapshots = [:]
+      og = [:]
+      ogOrder = []
     case "stats":
-      return ["fetches": .int(Int64(fetches)), "cached": .int(Int64(cache.count)), "inflight": .int(Int64(inflight.count))]
+      return ["fetches": .int(Int64(fetches)), "cached": .int(Int64(cache.count)), "inflight": .int(Int64(inflight.count)),
+              "links": .int(Int64(og.count))]
     default:
       return .err("previews: unknown method '" + method + "'")
     }
     return .okay
   }
 
-  // MARK: Matching
-
-  /// Best provider for `url`: the matching pattern with the most literal characters (so
-  /// `github.com/*/*/pull/*` beats `github.com/*`); the generic page preview otherwise.
   func match(_ url: String) -> Provider? {
     let target = Pattern.target(url)
     var best: Provider?
@@ -147,25 +208,35 @@ final class PreviewsCore {
 
   func key(_ p: Provider, _ url: String) -> String { p.id + "|" + Pattern.target(url) }
 
-  // MARK: Show
+  // MARK: Tab cards
 
   func show(_ args: Value) {
     var req = Request(anchor: args.s("anchor"), url: args.s("url"), title: args.s("title"), icon: args.s("icon"),
                       webview: args.s("webview"), profile: args.s("profile"), selected: args.b("selected"),
                       kind: args.s("kind"), items: args.a("items"))
     guard !req.anchor.isEmpty else { return }
+    req.drift = args.b("drift")
+    req.audio = args.b("audio")
+    req.muted = args.b("muted")
+    req.inSplit = args.b("inSplit")
+    req.spaces = args.a("spaces")
+    req.place = args.sOpt("place") ?? "trailing"
+    if !args["panes"].isNull { req.panes = args.a("panes") }
     if req.profile.isEmpty, !req.webview.isEmpty {
       req.profile = env.call("webviews", "get", ["id": .string(req.webview)]).sOpt("profile") ?? "default"
     }
     if req.profile.isEmpty { req.profile = "default" }
     current = req
+    hideLink()
     if req.kind == "folder" {
-      render(req, Cards.folder(req, cached: { [self] url in cachedData(url) }), loading: false)
+      present(req, Cards.folder(req, cached: { [self] url in cachedData(url) }), width: .int(Cards.wideWidth))
+      return
+    }
+    if req.panes != nil {
+      present(req, Cards.tab(req), width: Cards.width(actions: 3))
       return
     }
     guard let p = match(req.url), p.id != "page" else {
-      // The selected tab's page is already on screen: a snapshot of it adds nothing.
-      if req.selected { return }
       showPage(req)
       return
     }
@@ -173,12 +244,14 @@ final class PreviewsCore {
     let entry = cache[k]
     render(req, entry?.data ?? .null, loading: entry == nil)
     if let e = entry, env.now() - e.at < p.ttlMs { return }
-    load(p, req, key: k)
+    load(p, req, key: k) { [self] data in
+      if let c = current, c.anchor == req.anchor, c.url == req.url { render(c, data, loading: false) }
+    }
   }
 
   func hide() {
     current = nil
-    env.call("ui", "set", ["slot": .string(Self.slot), "tree": nil])
+    env.call("ui", "card", ["id": .string(Cards.tabCard), "tree": nil])
   }
 
   func cachedData(_ url: String) -> Value? {
@@ -186,11 +259,7 @@ final class PreviewsCore {
     return cache[key(p, url)]?.data
   }
 
-  /// Fetches once per key; every caller waiting on the same key gets the answer.
-  func load(_ p: Provider, _ req: Request, key k: String) {
-    let redraw: (Value) -> Void = { [self] data in
-      if let c = current, c.anchor == req.anchor, c.url == req.url { render(c, data, loading: false) }
-    }
+  func load(_ p: Provider, _ req: Request, key k: String, _ redraw: @escaping (Value) -> Void) {
     if inflight[k] != nil {
       inflight[k]!.append(redraw)
       return
@@ -198,8 +267,6 @@ final class PreviewsCore {
     inflight[k] = [redraw]
     fetches += 1
     let finish: (Value) -> Void = { [self] data in
-      // Keep the old data when a refresh fails; answers marked `noCache` (sign-in hints, a page
-      // that isn't loaded) are shown but refetched on the next hover.
       if data.isErr, let old = cache[k] {
         cache[k] = Entry(data: old.data, at: old.at)
       } else {
@@ -219,28 +286,44 @@ final class PreviewsCore {
                                   "anchor": .string(req.anchor), "webview": .string(req.webview), "profile": .string(req.profile)])
   }
 
+  /// The card for a tab whose provider has data (or is loading).
   func render(_ req: Request, _ data: Value, loading: Bool) {
-    let tree = Cards.card(req, data, loading: loading)
-    env.call("ui", "set", ["slot": .string(Self.slot), "tree": tree])
+    let acts = Cards.tabActions(req)
+    if data.s("kind") == "pr" || (loading && match(req.url)?.id == "github.pr") {
+      present(req, Cards.pr(data, title: req.title, loading: loading, actions: acts), width: ["min": .int(Cards.wideWidth), "max": .int(max(Cards.wideWidth, Int64(acts.count) * 32 + 6))])
+    } else {
+      present(req, Cards.fragment(req, data, loading: loading, actions: acts), width: ["min": .int(Cards.wideWidth), "max": .int(max(Cards.wideWidth, Int64(acts.count) * 32 + 6))])
+    }
   }
 
-  // MARK: Generic page preview
+  func present(_ req: Request, _ tree: Value, width: Value) {
+    env.call("ui", "card", ["id": .string(Cards.tabCard), "anchor": .string(req.anchor), "tree": tree, "width": width,
+                            "place": .string(req.place), "swap": .string(redwell ? "dwell" : "instant")])
+  }
 
   func snapshotPath(_ webview: String) -> String { snapshotDir + "/den-preview-" + webview + ".jpg" }
 
+  /// Any other page: the compact card, with a small snapshot of the page when it isn't the tab
+  /// you're looking at (taken on hover, kept 30 s).
   func showPage(_ req: Request) {
-    var data: Value = ["kind": "page"]
-    let snap = snapshots[req.webview]
-    if let s = snap, s.ok, s.url == req.url {
-      data.put("image", .string(s.path))
-      data.put("imageVersion", .int(s.version))
-    } else if !req.webview.isEmpty {
-      data.put("imagePending", true)
+    let acts = Cards.tabActions(req)
+    let width = Cards.width(actions: acts.count)
+    guard !req.selected, !req.webview.isEmpty else {
+      present(req, Cards.tab(req), width: width)
+      return
     }
-    render(req, data, loading: false)
-    guard !req.webview.isEmpty else { return }
+    let snap = snapshots[req.webview]
     let fresh = snap.map { $0.url == req.url && env.now() - $0.at < Self.snapshotTTL } ?? false
-    if fresh || snapshotPending[req.webview] == true { return }
+    let pending = snapshotPending[req.webview] == true
+    if let s = snap, s.ok, s.url == req.url {
+      present(req, Cards.tab(req, image: s.path, imageVersion: s.version), width: width)
+    } else if fresh && !pending {
+      present(req, Cards.tab(req), width: width)  // a snapshot just failed: no picture
+    } else {
+      // The image's space is reserved while the snapshot is taken, so nothing jumps when it lands.
+      present(req, Cards.tab(req, imagePending: true), width: width)
+    }
+    if fresh || pending { return }
     snapshotPending[req.webview] = true
     let r = env.call("webviews", "snapshot", ["id": .string(req.webview), "path": .string(snapshotPath(req.webview)),
                                               "width": .int(Self.snapshotWidth), "format": "jpeg"])
@@ -256,33 +339,224 @@ final class PreviewsCore {
     let url = snapshots[webview]?.url ?? current?.url ?? ""
     let version = (snapshots[webview]?.version ?? 0) + 1
     snapshots[webview] = Snapshot(url: url, path: snapshotPath(webview), at: env.now(), version: version, ok: ok)
-    guard let c = current, c.webview == webview, c.kind != "folder", match(c.url)?.id ?? "page" == "page" else { return }
-    var data: Value = ["kind": "page"]
-    if ok {
-      data.put("image", .string(snapshotPath(webview)))
-      data.put("imageVersion", .int(version))
-    }
-    render(c, data, loading: false)
+    guard let c = current, c.webview == webview, c.kind != "folder", c.panes == nil, match(c.url)?.id ?? "page" == "page", !c.selected else { return }
+    let acts = Cards.tabActions(c)
+    present(c, ok ? Cards.tab(c, image: snapshotPath(webview), imageVersion: version) : Cards.tab(c), width: Cards.width(actions: acts.count))
   }
 
-  // MARK: Card actions
+  // MARK: Actions
 
-  func action(_ action: String, _ value: Value) {
-    switch action {
-    case "close":
+  func uiAction(_ id: String, _ action: String, _ value: Value) {
+    if id == Cards.tabCard, action == "close" {
       if current?.anchor == value.s("anchor") { current = nil }
-    case "open", "action":
-      let url = value.s("url")
-      if !url.isEmpty { env.call("tabs", "open", ["url": .string(url)]) }
-      current = nil
-    default:
-      break
+      return
     }
+    if id == Cards.linkCard, action == "close" {
+      link = nil
+      return
+    }
+    guard Text.hasPrefix(id, "previews.") else { return }
+    if Text.hasPrefix(id, "previews.tab.act:") {
+      tabAction(Text.dropPrefix(id, "previews.tab.act:"), action, value)
+    } else if Text.hasPrefix(id, "previews.link.act:") {
+      linkAction(Text.dropPrefix(id, "previews.link.act:"))
+    } else if Text.hasPrefix(id, "previews.pr:") {
+      prAction(Text.dropPrefix(id, "previews.pr:"), value)
+    } else if Text.hasPrefix(id, "previews.open:") {
+      open(value.s("url"))
+    }
+  }
+
+  func tabAction(_ name: String, _ action: String, _ value: Value) {
+    guard let c = current else { return }
+    let tab = c.panes?.first?.s("id") ?? c.webview
+    switch name {
+    case "move":
+      guard action == "menu", let sid = value.string, !sid.isEmpty else { return }
+      env.call("tabs", "act", ["id": .string(tab), "action": "move", "value": ["spaceId": .string(sid)]])
+    case "separate":
+      env.call("tabs", "unsplit", ["id": .string(c.anchor)])
+    case "mute", "unmute":
+      env.call("tabs", "act", ["id": .string(tab), "action": .string(name)])
+      // The card stays: it now offers the opposite.
+      var r = c
+      r.muted = name == "mute"
+      show(requestArgs(r))
+      return
+    default:
+      env.call("tabs", "act", ["id": .string(tab), "action": .string(name)])
+    }
+    hide()
+  }
+
+  /// A request as `show` args (re-rendering after an in-place change).
+  func requestArgs(_ r: Request) -> Value {
+    var v: Value = ["anchor": .string(r.anchor), "url": .string(r.url), "title": .string(r.title), "icon": .string(r.icon),
+                    "webview": .string(r.webview), "profile": .string(r.profile), "selected": .bool(r.selected), "kind": .string(r.kind),
+                    "drift": .bool(r.drift), "audio": .bool(r.audio), "muted": .bool(r.muted), "inSplit": .bool(r.inSplit),
+                    "spaces": .array(r.spaces), "place": .string(r.place)]
+    if let p = r.panes { v.put("panes", .array(p)) }
+    return v
+  }
+
+  /// PR peek buttons and failing-check rows.
+  func prAction(_ what: String, _ value: Value) {
+    let req = link ?? current
+    guard let r = req, let (repo, n) = GitHub.parse(r.url) else { return }
+    let web = "https://github.com/" + repo + "/pull/" + String(n)
+    switch what {
+    case "connect":
+      env.call("connections", "connect", ["id": "github"])
+      return  // the card stays; it fills in when GitHub connects
+    case "failures": open(web + "/checks", in: r)
+    case "comments": open(web, in: r)
+    case "conflicts": open(web + "/conflicts", in: r)
+    default:
+      if Text.hasPrefix(what, "check:") { open(value.s("url"), in: nil) }
+    }
+    link == nil ? hide() : hideLink(now: true)
+  }
+
+  /// Opens `url`: in the hovered tab itself when the card is a tab's (select + navigate), else
+  /// in a new tab.
+  func open(_ url: String, in req: Request?) {
+    guard !url.isEmpty else { return }
+    if let r = req, !r.link, !r.webview.isEmpty {
+      env.call("tabs", "select", ["id": .string(r.webview)])
+      env.call("tabs", "navigate", ["id": .string(r.webview), "url": .string(url)])
+    } else {
+      env.call("tabs", "open", ["url": .string(url)])
+    }
+  }
+
+  func open(_ url: String) {
+    if !url.isEmpty { env.call("tabs", "open", ["url": .string(url)]) }
+    hide()
+    hideLink(now: true)
+  }
+
+  /// GitHub connected (or disconnected): private-repo cards fill in live.
+  func connectionsChanged() {
+    var dropped = false
+    for (k, e) in cache where e.data.b("private") || e.data.b("limited") {
+      cache[k] = nil
+      dropped = true
+    }
+    guard dropped else { return }
+    if let c = current, GitHub.parse(c.url) != nil { show(requestArgs(c)) }
+    if let l = link, GitHub.parse(l.url) != nil { showLink(l) }
+  }
+
+  // MARK: Link cards (⇧-hover)
+
+  func linkHover(_ v: Value) {
+    guard linkMode != "off" else { return }
+    let url = v.s("url")
+    guard !url.isEmpty, !v.b("yield") else {
+      if v.b("yield") { hideLink(now: true) }
+      return
+    }
+    var r = Request(anchor: "link", url: url, title: v.s("text"), icon: "", webview: v.s("id"), profile: "default", selected: false,
+                    kind: "link", items: [])
+    r.link = true
+    r.rect = v["rect"]
+    r.profile = env.call("webviews", "get", ["id": .string(r.webview)]).sOpt("profile") ?? "default"
+    linkGen += 1
+    let gen = linkGen
+    link = r
+    if linkMode == "hover" {
+      env.timer(Self.linkHoverDelayMs, false) { [self] in if linkGen == gen, let l = link { showLink(l) } }
+    } else {
+      showLink(r)
+    }
+  }
+
+  func hideLink(now: Bool = false) {
+    linkGen += 1
+    guard link != nil else { return }
+    link = nil
+    var a: Value = ["id": .string(Cards.linkCard), "tree": nil]
+    if now { a.put("graceMs", 0) }
+    env.call("ui", "card", a)
+  }
+
+  func presentLink(_ r: Request, _ tree: Value, width: Value) {
+    env.call("ui", "card", ["id": .string(Cards.linkCard), "rect": r.rect, "place": "below", "tree": tree, "width": width])
+  }
+
+  func showLink(_ r: Request) {
+    // Rich providers first: a pull request link gets the PR peek.
+    if let p = match(r.url), p.id != "page" {
+      let k = key(p, r.url)
+      let draw: (Value, Bool) -> Void = { [self] data, loading in
+        guard let l = link, l.url == r.url else { return }
+        let acts = Cards.linkActions()
+        let w: Value = .int(Cards.wideWidth)
+        if data.s("kind") == "pr" || (loading && p.id == "github.pr") {
+          presentLink(l, Cards.pr(data, title: l.title, loading: loading, actions: acts), width: w)
+        } else {
+          presentLink(l, Cards.fragment(l, data, loading: loading, actions: acts), width: w)
+        }
+      }
+      let entry = cache[k]
+      draw(entry?.data ?? .null, entry == nil)
+      if let e = entry, env.now() - e.at < p.ttlMs { return }
+      load(p, r, key: k) { data in draw(data, false) }
+      return
+    }
+    let u = r.url
+    if let e = og[u], env.now() - e.at < Self.linkTTL {
+      presentLink(r, Cards.link(url: u, og: e.data, loading: false), width: .int(Cards.linkWidth))
+      return
+    }
+    presentLink(r, Cards.link(url: u, og: ["title": .string(r.title)], loading: true), width: .int(Cards.linkWidth))
+    fetchHead(u, profile: r.profile) { [self] data in
+      guard let l = link, l.url == u else { return }
+      presentLink(l, Cards.link(url: u, og: data, loading: false), width: .int(Cards.linkWidth))
+    }
+  }
+
+  /// Reads the page's `<head>` only (a Range request, and the host stops at `</head>`), parses
+  /// its OpenGraph tags, and caches the result for 10 minutes. No cookies are sent.
+  func fetchHead(_ url: String, profile: String, _ done: @escaping (Value) -> Void) {
+    if let wait = inflight["og|" + url] {
+      inflight["og|" + url] = wait + [done]
+      return
+    }
+    inflight["og|" + url] = [done]
+    fetches += 1
+    let args: Value = ["url": .string(url), "as": "text", "method": "GET", "timeoutMs": 8000, "maxBytes": .int(Self.headBytes),
+                       "stopAfter": "</head>", "headers": ["Range": .string("bytes=0-" + String(Self.headBytes - 1)), "Accept": "text/html,application/xhtml+xml"]]
+    requests.call("net", "fetch", args) { [self] r in
+      var data: Value = r.b("ok") && r.i("status") < 400 ? OpenGraph.parse(OpenGraph.headOnly(r.s("text")), url: url) : [:]
+      if data.s("title").isEmpty, let l = link, l.url == url, !l.title.isEmpty { data.put("title", .string(l.title)) }
+      og[url] = Entry(data: data, at: r.b("ok") ? env.now() : 0)
+      ogOrder.removeAll { $0 == url }
+      ogOrder.append(url)
+      while ogOrder.count > Self.linkCacheMax { og[ogOrder.removeFirst()] = nil }
+      for f in inflight.removeValue(forKey: "og|" + url) ?? [] { f(data) }
+    }
+  }
+
+  func linkAction(_ name: String) {
+    guard let l = link else { return }
+    switch name {
+    case "peek":
+      env.call("peek", "open", ["url": .string(l.url), "sourceId": .string(l.webview)])
+    case "split":
+      if let id = env.call("tabs", "open", ["url": .string(l.url), "background": true]).sOpt("id"),
+         let sel = env.call("tabs", "selected").sOpt("id") {
+        env.call("tabs", "split", ["ids": [.string(sel), .string(id)], "layout": "horizontal", "focus": .string(id)])
+      }
+    case "copy":
+      env.call("app", "copy", ["text": .string(l.url)])
+      env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Copied Link", "icon": "sf:link"]])
+    default: break
+    }
+    hideLink(now: true)
   }
 }
 
-/// URL patterns: `host/path` with `*` wildcards, matched against the URL without its scheme,
-/// `www.`, query or fragment. A leading `*.` also matches the bare domain.
 enum Pattern {
   static func target(_ url: String) -> String {
     var b = Array(url.utf8)

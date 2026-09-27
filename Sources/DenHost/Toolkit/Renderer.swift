@@ -21,6 +21,8 @@ public class NodeView: FlippedView, Themable {
   func height(for width: CGFloat) -> CGFloat { 0 }
   /// Width when placed in a `row`; nil = flexible.
   var preferredWidth: CGFloat? { nil }
+  /// Natural (untruncated) width, for content-fitted containers such as cards; nil = no opinion.
+  var fitWidth: CGFloat? { nil }
   public func apply(_ p: Palette) { needsDisplay = true }
 
   func emit(_ action: String, _ value: Value = .null) { r.emit(nodeId, action, value) }
@@ -51,8 +53,8 @@ public final class Renderer {
   /// (node id, action, value) -> emitted as `ui.action` {id, action, value}.
   let emitFn: (String, String, Value) -> Void
   var drag: DragController?
-  /// Hover previews for sidebar rows (set by `UIService`).
-  var hover: HoverCardController?
+  /// Cards and hover intent (set by `UIService`): nodes with `hoverIntent` report to it.
+  var hover: CardController?
   static var registry: [String: NodeView.Type] = [
     "list": StackNode.self, "row": RowNode.self, "spacer": SpacerNode.self, "text": TextNode.self,
     "button": ButtonNode.self, "navBar": NavBarNode.self, "urlPill": URLPillNode.self,
@@ -64,6 +66,9 @@ public final class Renderer {
     "todoRow": TodoRowNode.self, "feedRow": FeedRowNode.self, "actionButton": ActionButtonNode.self,
     "buttonRow": ButtonRowNode.self, "connectionRow": ConnectionRowNode.self, "toggleRow": ToggleRowNode.self,
     "choiceRow": ChoiceRowNode.self, "extensionRow": ExtensionRowNode.self,
+    // Generic composition nodes (CardNodes.swift): cards, popovers, any plugin surface.
+    "stack": CardStackNode.self, "label": LabelNode.self, "icon": IconNode.self, "image": ImageNode.self,
+    "badge": BadgeNode.self, "meter": MeterNode.self, "note": NoteNode.self, "item": ItemNode.self, "action": ActionNode.self,
   ]
 
   public init(palette: Palette, emit: @escaping (String, String, Value) -> Void) {

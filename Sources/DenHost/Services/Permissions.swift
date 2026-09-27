@@ -57,12 +57,15 @@ public final class Permissions {
   nonisolated static func parse(_ p: String) -> (kind: String, domain: String)? {
     let parts = p.split(separator: ":", maxSplits: 1).map(String.init)
     guard parts.count == 2, ["session", "net", "pages"].contains(parts[0]), !parts[1].isEmpty else { return nil }
+    // Only plain fetches may name every site (`net:*`); never cookies or page scripts.
+    if parts[0] != "net" && parts[1] == "*" { return nil }
     return (parts[0], parts[1].lowercased())
   }
 
   /// True when `host` is `domain` or one of its subdomains.
   nonisolated static func covers(domain: String, host: String) -> Bool {
     let h = host.lowercased(), d = domain.lowercased()
+    if d == "*" { return true }  // `net:*` only (parse refuses `session:*`)
     return h == d || h.hasSuffix("." + d)
   }
 
@@ -74,7 +77,8 @@ public final class Permissions {
     }
   }
 
-  /// Plain `net.fetch` to `host`.
+  /// Plain `net.fetch` to `host`. `net:*` allows any host, still without cookies (link previews
+  /// read the `<head>` of whatever link the user deliberately hovers). `session:*` isn't a thing.
   public func allowsNet(_ plugin: String, host: String) -> Bool {
     list(plugin).contains { p in
       guard let (k, d) = Self.parse(p), k != "pages" else { return false }

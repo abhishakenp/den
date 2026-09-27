@@ -81,6 +81,9 @@ final class TabsCore {
 
   static let ns = "tabs"
   static let maxFavorites = 12
+  /// Hover-card dwell (docs/reference/dia-ui-spec.md §2.4): list rows 0.7 s, favorite tiles 0.3 s.
+  static let rowCardDelayMs: Int64 = 700
+  static let tileCardDelayMs: Int64 = 300
   static let maxPanes = 4
   /// 24 hours (Arc: 12). A tab opened late in the day is still there the next morning; see docs/defaults.md.
   static let defaultArchiveAfterMs: Int64 = 24 * 3_600_000
@@ -431,6 +434,8 @@ final class TabsCore {
       setKind(id, method == "pin" ? "pinned" : method == "unpin" ? "today" : "favorite", toast: false)
     case "move":
       return move(args)
+    case "act":
+      return act(args.s("id"), args.s("action"), args["value"])
     case "reset":
       guard tabs[args.s("id")] != nil else { return .err("tabs: no tab '" + args.s("id") + "'") }
       reset(args.s("id"))
@@ -1143,7 +1148,8 @@ final class TabsCore {
       let id = splits[fid]?.children.first ?? fid
       guard let t = tabs[id] else { return nil }
       return ["type": "favoriteTile", "id": .string(id), "icon": .string(t.icon), "title": .string(t.displayTitle), "selected": .bool(id == sel),
-              "audio": .bool(t.audio), "muted": .bool(t.muted), "menu": .array(menu(for: id, box: .favorites)), "dropInto": true]
+              "audio": .bool(t.audio), "muted": .bool(t.muted), "menu": .array(menu(for: id, box: .favorites)), "dropInto": true,
+              "hoverIntent": .int(Self.tileCardDelayMs)]
     })]])
   }
 
@@ -1152,7 +1158,8 @@ final class TabsCore {
     var r: Value = ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(selected[sid] == id),
                     "audio": .bool(t.audio), "muted": .bool(t.muted), "drift": .bool(kind(of: box) != "today" && t.drift), "menu": .array(menu(for: id, box: box)),
                     "closeTitle": .string(kind(of: box) == "today" ? "Archive Tab" : "Close Tab"),
-                    "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1"]
+                    "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1",
+                    "hoverIntent": .int(Self.rowCardDelayMs)]
     if editing == id { r.put("editing", true) }
     return r
   }
@@ -1160,6 +1167,7 @@ final class TabsCore {
   func node(_ id: String, _ sid: String, parent: Box) -> Value? {
     if let f = folders[id] {
       return ["type": "folder", "id": .string(id), "title": .string(f.title), "icon": "sf:folder", "open": .bool(f.open), "editing": .bool(editing == id),
+              "hoverIntent": .int(Self.rowCardDelayMs),
               "children": .array(f.children.compactMap { node($0, sid, parent: .folder(id)) }),
               "menu": [["id": "renameFolder", "title": "Rename Folder…", "icon": "sf:pencil"], ["id": "newFolder", "title": "New Folder Inside", "icon": "sf:folder.badge.plus"],
                        ["separator": true], ["id": "deleteFolder", "title": "Delete Folder…", "icon": "sf:trash"]]]
@@ -1169,6 +1177,7 @@ final class TabsCore {
       let sel = selected[sid]
       let on = sp.children.contains(sel ?? "")
       return ["type": "splitRow", "id": .string(id), "selected": .bool(on), "layout": .string(sp.layout), "menu": .array(splitMenu(id)),
+              "hoverIntent": .int(Self.rowCardDelayMs),
               "panes": .array(sp.children.compactMap { c -> Value? in
                 guard let t = tabs[c] else { return nil }
                 return ["id": .string(c), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(c == sel)]
@@ -1596,10 +1605,61 @@ final class TabsCore {
   /// loaded; without it nothing happens). `anchor` is the row the card points at.
   func preview(_ id: String, anchor: String? = nil) {
     guard let t = tabs[id] else { return }
-    env.call("previews", "show", [
+    let k = kindOf(id)
+    var args: Value = [
       "anchor": .string(anchor ?? id), "url": .string(t.url), "title": .string(t.displayTitle), "icon": .string(t.icon),
-      "webview": .string(id), "selected": .bool(id == selectedId), "kind": .string(kindOf(id)),
-    ])
+      "webview": .string(id), "selected": .bool(id == selectedId), "kind": .string(k),
+      // What the card's actions need (previews composes them; `tabs.act` runs them).
+      "drift": .bool(k != "today" && t.drift), "audio": .bool(t.audio), "muted": .bool(t.muted),
+      "place": .string(k == "favorite" ? "tile" : "trailing"),
+    ]
+    if k != "favorite" {
+      let here = spaceOf(id)
+      args.put("spaces", .array(spaces.filter { $0.s("id") != here }.map { ["id": $0["id"], "name": $0["name"]] }))
+    }
+    if let a = anchor, let sp = splits[a] {
+      args.put("panes", .array(sp.children.compactMap { c -> Value? in
+        guard let p = tabs[c] else { return nil }
+        return ["id": .string(c), "title": .string(p.displayTitle), "url": .string(p.url), "icon": .string(p.icon), "audio": .bool(p.audio)]
+      }))
+      args.put("inSplit", true)
+    } else if splitOf(id) != nil {
+      args.put("inSplit", true)
+    }
+    env.call("previews", "show", args)
+  }
+
+  /// A hover-card action on tab `id` (docs/plugin-services.md "tabs.act").
+  func act(_ id: String, _ action: String, _ value: Value) -> Value {
+    guard tabs[id] != nil else { return .err("tabs: no tab '" + id + "'") }
+    switch action {
+    case "pin": setKind(id, "pinned", toast: false)
+    case "unpin": setKind(id, "today", toast: false)
+    case "reset": reset(id)
+    case "duplicate": _ = duplicate(id)
+    case "copy": menuPicked(id, "copy")
+    case "close": close(id)
+    case "mute", "unmute":
+      let m = action == "mute"
+      env.call("webviews", "setMuted", ["id": .string(id), "muted": .bool(m)])
+      tabs[id]?.muted = m
+      changed(spaceOf(id))
+    case "move":
+      let sid = value.s("spaceId")
+      guard !sid.isEmpty else { return .err("tabs: move needs spaceId") }
+      moveToSpace(id, sid)
+    case "split":
+      // Dia: the hovered tab joins the active one (50/50, hovered on the right). On the active
+      // tab (or a tab already in a split) it's "add a split": a new pane and the command bar.
+      if let sel = selectedId, sel != id, splitOf(id) == nil, splitOf(sel) == nil {
+        return split([sel, id], layout: "horizontal", focus: id)
+      }
+      if selectedId != id { select(id) }
+      env.emit("peek.key.addSplit", .null)
+    default:
+      return .err("tabs: unknown action '" + action + "'")
+    }
+    return .okay
   }
 
   func previewFolder(_ fid: String) {

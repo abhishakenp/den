@@ -3,80 +3,98 @@
 import AppKit
 import CordisValue
 
-/// `--scenario` states for hover previews and the Library sheet. The cards are the trees the
-/// `previews` plugin builds from the mock site data below (PluginTests/PreviewsTests checks they
-/// stay identical), so snapshots need no network or sign-in.
+/// `--scenario` states for hover cards, the PR peek, ⇧-hover link cards and the Library sheet.
+/// They run the real path (sidebar hover intent → tabs → previews → `ui.card`) with the real
+/// plugins; GitHub's API and the linked page come from the local `MockServices`, so snapshots need
+/// no network, no account and no sign-in.
 @MainActor
 public enum PreviewScenarios {
-  public static let names = ["previewGitHub", "previewCalendar", "previewPage", "previewFolder", "libraryFooter"]
+  public static let names = ["previewTab", "previewPinned", "previewSplit", "previewPlaying", "prPassing", "prFailing", "prConflicts",
+                             "prPrivate", "linkCard", "previewCalendar", "previewFolder", "libraryFooter"]
+  static var mock: MockServices?
 
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
     guard names.contains(name) else { return nil }
-    // With the plugins loaded (the app), the sidebar is the real one from `tabs`: cards anchor to
-    // real rows. The data cards (GitHub, Calendar) are answered here with the mock data, so the
-    // live `previews` plugin is kept out of those two (it would ask the real sites).
-    let plugins = rt.plugins.serviceNames.contains("tabs")
-    if !plugins { HostScenarios.seedSidebar(rt, appearance: appearance) }
+    guard rt.plugins.serviceNames.contains("tabs"), rt.plugins.serviceNames.contains("previews") else {
+      print("scenario.\(name) needs the tabs and previews plugins")
+      return rt.window.window
+    }
+    let m = MockServices()
+    try? m.start()
+    mock = m
+    serveGitHub(m)
+    // The previews plugin reads GitHub from the mock, with its usual permissions plus the mock's host.
+    rt.call("storage", "set", ["ns": "previews", "key": "endpoints", "value": ["githubApi": .string(m.base + "/gh"), "githubWeb": .string(m.base)]])
+    rt.permissions.grant("previews", rt.permissions.list("previews") + ["net:127.0.0.1", "session:127.0.0.1"])
+    let today = { tabIds(rt).filter { $0.2 == "today" } }
     switch name {
-    case "previewGitHub":
-      if plugins {
-        let id = rt.call("tabs", "open", ["url": "https://github.com/denhq/den/pull/482", "background": true]).str("id")
-        rt.call("tabs", "rename", ["id": .string(id), "title": "Parser: accept trailing commas in tuple patterns"])
-        hover(rt, id, prCard, live: false)
-      } else {
-        rows(rt, [("t1", "Example Domain", "sf:globe", true), ("pr", "Parser: accept trailing commas…", "sf:arrow.triangle.pull", false)])
-        HostScenarios.showContent(rt)
-        hover(rt, "pr", prCard, live: false)
+    case "previewTab":
+      // A today tab that isn't selected: its card has the compact page snapshot.
+      let sel = rt.call("tabs", "selected").str("id")
+      guard let other = today().first(where: { $0.0 != sel }) else { return rt.window.window }
+      rt.call("tabs", "select", ["id": .string(other.0)])
+      after(2.5) {
+        rt.call("tabs", "select", ["id": .string(sel)])
+        hover(rt, other.0)
       }
+    case "previewPinned":
+      guard let p = tabIds(rt).first(where: { $0.2 == "pinned" }) else { return rt.window.window }
+      rt.call("tabs", "select", ["id": .string(p.0)])
+      after(0.8) { hover(rt, p.0) }
+    case "previewSplit":
+      let ids = today().prefix(2).map { Value.string($0.0) }
+      guard ids.count == 2 else { return rt.window.window }
+      let r = rt.call("tabs", "split", ["ids": .array(ids), "layout": "horizontal"])
+      after(0.8) { hover(rt, r.str("id")) }
+    case "previewPlaying":
+      guard let t = today().first else { return rt.window.window }
+      rt.call("tabs", "select", ["id": .string(t.0)])
+      // What WebKit's media script reports for a tab playing sound.
+      after(0.6) {
+        rt.plugins.emit("webviews.audio", ["id": .string(t.0), "playing": true])
+        hover(rt, t.0)
+      }
+    case "prPassing", "prFailing", "prConflicts", "prPrivate":
+      let (url, title) = [
+        "prPassing": ("https://github.com/denhq/den/pull/481", "Sidebar: keep the hovered row's card while scrolling"),
+        "prFailing": ("https://github.com/denhq/den/pull/482", "Parser: accept trailing commas in tuple patterns"),
+        "prConflicts": ("https://github.com/denhq/den/pull/483", "Previews: cache OpenGraph heads per URL"),
+        "prPrivate": ("https://github.com/acme/platform/pull/7", "Billing: prorate seat changes"),
+      ][name]!
+      // In the background: the tab's page never loads (nothing reaches github.com).
+      let id = rt.call("tabs", "open", ["url": .string(url), "background": true]).str("id")
+      rt.call("tabs", "rename", ["id": .string(id), "title": .string(title)])
+      after(0.8) { hover(rt, id) }
+    case "linkCard":
+      m.page("/blog/rendering", """
+        <html><head><title>Rendering</title>
+        <meta property="og:title" content="How the web renders a frame">
+        <meta property="og:description" content="Style, layout, paint and composite: a tour of the steps between a DOM change and pixels on screen, and what makes each one fast.">
+        <meta property="og:site_name" content="The Rendering Blog">
+        <meta property="og:image" content="\(writeOGImage())">
+        </head><body>Post</body></html>
+        """)
+      m.page("/reading", """
+        <html><head><title>Reading list</title><style>
+        body{font:16px -apple-system;margin:48px 56px;color:#222} a{color:#0a5bd8} h1{font-size:26px}
+        </style></head><body><h1>Reading list</h1>
+        <p>Next up: <a id="l" href="\(m.base)/blog/rendering">How the web renders a frame</a>, then the WebKit blog.</p>
+        <p>Hold ⇧ over a link to preview it.</p></body></html>
+        """)
+      let id = rt.call("tabs", "open", ["url": .string(m.base + "/reading")]).str("id")
+      rt.call("tabs", "select", ["id": .string(id)])
+      after(2.5) { shiftHover(rt, id, selector: "#l") }
     case "previewCalendar":
-      if plugins, let cal = tabIds(rt).first(where: { $0.1.contains("calendar.google.com") }) {
-        hover(rt, cal.0, calendarCard, live: false)
-      } else {
-        pinned(rt, [("cal", "Calendar", "sf:calendar"), ("mail", "Inbox", "sf:envelope.fill")])
-        HostScenarios.showContent(rt)
-        hover(rt, "cal", calendarCard, live: false)
-      }
+      guard let cal = tabIds(rt).first(where: { $0.1.contains("calendar.google.com") }) else { return rt.window.window }
+      after(0.8) { hover(rt, cal.0) }
     case "previewFolder":
-      // The whole real path: tabs → previews (a folder card needs no network).
-      if plugins, let f = (rt.call("tabs", "list")["pinned"].array ?? []).first(where: { $0.flag("folder") }) {
-        hover(rt, f.str("id"), .null, live: true)
-      } else {
-        HostScenarios.showContent(rt)
-        hover(rt, "f1", folderCard, live: false)
-      }
-    case "previewPage":
-      if plugins {
-        // The real path: tabs → previews → webviews.snapshot {width: 320, format: jpeg}. Show the
-        // tab once so its page is loaded and can be snapshotted, then go back.
-        let sel = rt.call("tabs", "selected").str("id")
-        guard let other = tabIds(rt).first(where: { $0.2 == "today" && $0.0 != sel }) else { return rt.window.window }
-        rt.call("tabs", "select", ["id": .string(other.0)])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-          rt.call("tabs", "select", ["id": .string(sel)])
-          hover(rt, other.0, .null, live: true)
-        }
-      } else {
-        let id = HostScenarios.page(rt, id: "t3", title: "Design review", host: "figma.com",
-                                    body: "Hover a tab to glimpse it without switching. den keeps a small snapshot of the page, taken only when you hover.",
-                                    tint: "#eef4ff")
-        rt.call("content", "show", ["panes": [.string(id)]])
-        let path = NSTemporaryDirectory() + "den-preview-scenario.jpg"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-          rt.call("webviews", "snapshot", ["id": .string(id), "path": .string(path), "width": 320, "format": "jpeg"])
-          DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            HostScenarios.showContent(rt)
-            hover(rt, "t3", pageCard.with("image", .string(path)).with("imageVersion", 1), live: false)
-          }
-        }
-      }
+      guard let f = (rt.call("tabs", "list")["pinned"].array ?? []).first(where: { $0.flag("folder") }) else { return rt.window.window }
+      after(0.8) { hover(rt, f.str("id")) }
     case "libraryFooter":
-      // The real path: the footer's Library button (spaces plugin) → spaces.library → the tabs
-      // plugin opens its archive in `overlay.library`. Needs the plugins.
-      guard plugins else { return rt.window.window }
       for e in (HostScenarios.archiveItems().array ?? []).reversed() {
         rt.call("tabs", "addToArchive", ["url": e["url"], "title": e["title"]])
       }
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+      after(0.8) {
         guard let b = HostScenarios.find("spaces.library", in: rt.ui.sidebarView) as? ButtonNode else { print("scenario.libraryFooter no button"); return }
         b.button.action()
         print("scenario.libraryFooter overlays=\(rt.call("ui", "get")["overlays"])")
@@ -84,6 +102,10 @@ public enum PreviewScenarios {
     default: break
     }
     return rt.window.window
+  }
+
+  static func after(_ s: Double, _ f: @escaping @MainActor () -> Void) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + s) { MainActor.assumeIsolated { f() } }
   }
 
   /// (id, url, kind) of every tab in the current space, pinned first.
@@ -100,62 +122,91 @@ public enum PreviewScenarios {
     return out
   }
 
-  static func rows(_ rt: DenRuntime, _ rows: [(String, String, String, Bool)]) {
-    rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "id": "today", "children": .array(
-      [["type": "divider", "id": "div", "action": "Clear"], ["type": "newTabRow", "id": "newtab"]]
-        + rows.map { ["type": "tabRow", "id": .string($0.0), "title": .string($0.1), "icon": .string($0.2), "selected": .bool($0.3)] }
-    )]])
+  /// Hovers node `id` through the real intent path (its own dwell skipped) and reports how long
+  /// the card took to appear after intent.
+  static func hover(_ rt: DenRuntime, _ id: String) {
+    rt.window.root.layoutSubtreeIfNeeded()
+    guard let row = HostScenarios.find(id, in: rt.ui.sidebarView) else { print("scenario.preview no row \(id)"); return }
+    let target: NodeView = (row as? FolderNode)?.header ?? row
+    (target as? HoverNode)?.hovering = true
+    let cards = rt.ui.cards!
+    cards.onShown = { ms in print(String(format: "scenario.card intentToVisibleMs=%.2f", ms)) }
+    cards.intent.enter(target.nodeId, delayMs: 0)
   }
 
-  static func pinned(_ rt: DenRuntime, _ rows: [(String, String, String)]) {
-    rt.call("ui", "set", ["slot": "sidebar.pinned", "tree": ["type": "list", "id": "pinned", "children": .array(
-      rows.map { ["type": "tabRow", "id": .string($0.0), "title": .string($0.1), "icon": .string($0.2)] }
-        + [["type": "folder", "id": "f1", "title": "Reading", "open": true, "children": [["type": "tabRow", "id": "p2", "title": "The Swift Book", "icon": "sf:swift"]]]]
-    )]])
+  /// Holds ⇧ over the link `selector` in tab `id`'s page, the way a person would: the page sees a
+  /// Shift keydown and a mouseover with `shiftKey`. The host's link listener reports it.
+  static func shiftHover(_ rt: DenRuntime, _ id: String, selector: String) {
+    let js = """
+      const a = document.querySelector('\(selector)');
+      document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Shift', shiftKey: true, bubbles: true}));
+      a.dispatchEvent(new MouseEvent('mouseover', {shiftKey: true, bubbles: true, clientX: a.getBoundingClientRect().left + 4, clientY: a.getBoundingClientRect().top + 4}));
+      """
+    rt.webviews.record(id)?.webView?.evaluateJavaScript(js) { _, e in if let e { print("scenario.linkCard js error \(e)") } }
+    rt.plugins.on("webviews.linkHover") { v in print("scenario.linkHover url=\(v.str("url")) rect=\(v["rect"])") }
   }
 
-  /// Hovers row `id` through the real intent path. `live`: the row's plugin answers (tabs →
-  /// previews); otherwise `card` answers, as the plugin would for the mock data.
-  static func hover(_ rt: DenRuntime, _ id: String, _ card: Value, live: Bool) {
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-      rt.window.root.layoutSubtreeIfNeeded()
-      guard let row = HostScenarios.find(id, in: rt.ui.sidebarView) else { print("scenario.preview no row \(id)"); return }
-      let target: NodeView = (row as? FolderNode)?.header ?? row
-      (target as? HoverNode)?.hovering = true
-      let hc = rt.ui.hoverCard!
-      if !live { hc.intent.onShow = { _ in } }  // keep the live plugin out; the card below answers
-      if live { hc.onShown = { ms in print(String(format: "scenario.hoverCard intentToVisibleMs=%.2f", ms)) } }
-      hc.intent.delayMs = 0
-      hc.entered(target)
-      if !live {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-          rt.call("ui", "set", ["slot": "hoverCard", "tree": card.with("anchor", .string(id)).with("type", "hoverCard")])
-        }
-      }
+  /// A small picture for the OpenGraph card, written to a temporary file.
+  static func writeOGImage() -> String {
+    let img = NSImage(size: NSSize(width: 600, height: 300), flipped: false) { r in
+      NSGradient(colors: [NSColor(srgbRed: 0.16, green: 0.36, blue: 0.85, alpha: 1), NSColor(srgbRed: 0.55, green: 0.3, blue: 0.9, alpha: 1)])?.draw(in: r, angle: 20)
+      NSColor(white: 1, alpha: 0.9).setFill()
+      for i in 0..<5 { NSBezierPath(roundedRect: NSRect(x: 60 + CGFloat(i) * 100, y: 90 + CGFloat(i % 2) * 40, width: 80, height: 80), xRadius: 14, yRadius: 14).fill() }
+      return true
+    }
+    let path = NSTemporaryDirectory() + "den-og-scenario.png"
+    if let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
+      try? png.write(to: URL(fileURLWithPath: path))
+    }
+    return "file://" + path
+  }
+
+  // MARK: Mock GitHub (what api.github.com returns)
+
+  static func serveGitHub(_ m: MockServices) {
+    for (path, v) in githubFixtures {
+      m.page("/gh/repos/denhq/den" + path, ValueJSON.string(v["json"]), type: "application/json")
     }
   }
 
-  // MARK: Mock site data (what the providers read)
+  static func pr(_ n: Int, _ title: String, mergeable: Bool, state: String = "clean", additions: Int, deletions: Int, files: Int, login: String, avatar: Int) -> Value {
+    ["title": .string(title), "state": "open", "draft": false, "merged": false, "merged_at": nil, "mergeable": .bool(mergeable),
+     "mergeable_state": .string(state), "head": ["ref": "work", "sha": .string("sha\(n)")], "base": ["ref": "main"],
+     "user": ["login": .string(login), "avatar_url": .string("https://avatars.githubusercontent.com/u/\(avatar)?v=4")],
+     "additions": .int(Int64(additions)), "deletions": .int(Int64(deletions)), "changed_files": .int(Int64(files)),
+     "comments": 3, "review_comments": 4, "updated_at": "2026-09-27T09:12:00Z"]
+  }
 
-  static let prJSON: Value = [
-    "title": "Parser: accept trailing commas in tuple patterns", "state": "open", "draft": false, "merged": false, "merged_at": nil,
-    "mergeable": false, "mergeable_state": "dirty", "head": ["ref": "fix/tuple-trailing-comma", "sha": "9f3c2e1"], "base": ["ref": "main"],
-    "user": ["login": "abhi"], "additions": 214, "deletions": 37, "changed_files": 6, "updated_at": "2026-09-27T09:12:00Z",
-    "requested_reviewers": [["login": "jonas"]], "requested_teams": [],
-  ]
+  public static let prJSON: Value = pr(482, "Parser: accept trailing commas in tuple patterns", mergeable: false, state: "dirty",
+                                       additions: 214, deletions: 37, files: 6, login: "abhi", avatar: 1)
 
-  /// `net.fetch` answers by URL substring, most specific first.
+  static func run(_ name: String, _ status: String, _ conclusion: Value, _ n: Int) -> Value {
+    ["name": .string(name), "status": .string(status), "conclusion": conclusion, "html_url": .string("https://github.com/denhq/den/runs/\(n)")]
+  }
+
+  /// `net.fetch` answers by URL path under /repos/denhq/den (tests match by substring).
   public static let githubFixtures: [(String, Value)] = [
-    ("/pulls/482/reviews", ["status": 200, "json": [["user": ["login": "mira"], "state": "COMMENTED"], ["user": ["login": "mira"], "state": "CHANGES_REQUESTED"]]]),
-    ("/check-runs", ["status": 200, "json": ["check_runs": [
-      ["name": "build (macOS)", "status": "completed", "conclusion": "failure", "html_url": "https://github.com/denhq/den/runs/1"],
-      ["name": "test (linux)", "status": "completed", "conclusion": "failure", "html_url": "https://github.com/denhq/den/runs/2"],
-      ["name": "test (macOS)", "status": "in_progress", "conclusion": nil, "html_url": "https://github.com/denhq/den/runs/3"],
-      ["name": "lint", "status": "completed", "conclusion": "success", "html_url": "https://github.com/denhq/den/runs/4"],
-      ["name": "docs", "status": "completed", "conclusion": "skipped", "html_url": "https://github.com/denhq/den/runs/5"],
+    // #482: two failures, one running, a merge conflict.
+    ("/commits/sha482/check-runs", ["status": 200, "json": ["check_runs": [
+      run("build (macOS)", "completed", "failure", 1), run("test (linux)", "completed", "failure", 2), run("test (macOS)", "in_progress", nil, 3),
+      run("lint", "completed", "success", 4), run("docs", "completed", "skipped", 5),
     ]]]),
-    ("/status", ["status": 200, "json": ["state": "pending", "statuses": []]]),
+    ("/commits/sha482/status", ["status": 200, "json": ["state": "pending", "statuses": []]]),
     ("/pulls/482", ["status": 200, "json": prJSON]),
+    // #481: all green.
+    ("/commits/sha481/check-runs", ["status": 200, "json": ["check_runs": [
+      run("build (macOS)", "completed", "success", 11), run("test (linux)", "completed", "success", 12), run("test (macOS)", "completed", "success", 13),
+      run("lint", "completed", "success", 14),
+    ]]]),
+    ("/commits/sha481/status", ["status": 200, "json": ["state": "success", "statuses": []]]),
+    ("/pulls/481", ["status": 200, "json": pr(481, "Sidebar: keep the hovered row's card while scrolling", mergeable: true, additions: 1521, deletions: 36, files: 22, login: "mira", avatar: 2)]),
+    // #483: checks passing but a conflict with main, one still running.
+    ("/commits/sha483/check-runs", ["status": 200, "json": ["check_runs": [
+      run("build (macOS)", "completed", "success", 21), run("test (linux)", "completed", "success", 22), run("test (macOS)", "in_progress", nil, 23),
+      run("lint", "queued", nil, 24),
+    ]]]),
+    ("/commits/sha483/status", ["status": 200, "json": ["state": "pending", "statuses": []]]),
+    ("/pulls/483", ["status": 200, "json": pr(483, "Previews: cache OpenGraph heads per URL", mergeable: false, state: "dirty", additions: 88, deletions: 12, files: 3, login: "jonas", avatar: 3)]),
   ]
 
   /// What the Calendar tab's page script returns at 10:20 am.
@@ -186,72 +237,5 @@ public enum PreviewScenarios {
     <link rel="alternate" href="https://mail.google.com/mail/u/1?account_id=abhi@example.com&amp;message_id=3&amp;view=conv" type="text/html" />\
     <issued>2026-09-26T18:00:00Z</issued><author><name>Jonas &amp; Co</name><email>billing@example.com</email></author></entry></feed>
     """
-
-  // MARK: Cards (the plugin's output for the data above)
-
-  static func row(_ title: String, subtitle: String? = nil, icon: String, status: String? = nil, accessory: String? = nil, url: String? = nil, id: String) -> Value {
-    var r: Value = ["title": .string(title), "icon": .string(icon), "id": .string(id)]
-    if let subtitle { r = r.with("subtitle", .string(subtitle)) }
-    if let status { r = r.with("status", .string(status)) }
-    if let accessory { r = r.with("accessory", .string(accessory)) }
-    if let url { r = r.with("url", .string(url)) }
-    return r
-  }
-
-  public static let prCard: Value = [
-    "type": "hoverCard", "icon": "https://github.com/favicon.ico", "title": "Parser: accept trailing commas in tuple patterns",
-    "subtitle": "denhq/den", "accessory": "#482",
-    "badges": [
-      ["text": "Open", "style": "success", "icon": "sf:arrow.triangle.pull"],
-      ["text": "2 failing", "style": "failure", "icon": "sf:xmark.circle.fill"],
-      ["text": "Conflicts", "style": "attention", "icon": "sf:exclamationmark.triangle.fill"],
-      ["text": "Changes requested", "style": "failure", "icon": "sf:exclamationmark.bubble.fill"],
-    ],
-    "sections": [
-      ["rows": [
-        row("fix/tuple-trailing-comma", icon: "sf:arrow.triangle.branch", accessory: "into main", id: "branch"),
-        row("Merge conflicts", subtitle: "Resolve them before this can merge", icon: "sf:exclamationmark.triangle.fill", status: "attention",
-            url: "https://github.com/denhq/den/pull/482/conflicts", id: "conflicts"),
-      ]],
-      ["title": "Checks · 2 failing, 1 pending, 2 passing", "rows": [
-        row("build (macOS)", icon: "sf:xmark.circle.fill", status: "failure", accessory: "Failed", url: "https://github.com/denhq/den/runs/1", id: "check:build (macOS)"),
-        row("test (linux)", icon: "sf:xmark.circle.fill", status: "failure", accessory: "Failed", url: "https://github.com/denhq/den/runs/2", id: "check:test (linux)"),
-        row("test (macOS)", icon: "sf:clock.fill", status: "pending", accessory: "Running", url: "https://github.com/denhq/den/runs/3", id: "check:test (macOS)"),
-        row("2 more checks", icon: "sf:ellipsis.circle", url: "https://github.com/denhq/den/pull/482/checks", id: "checks"),
-      ]],
-      ["title": "Reviews", "rows": [
-        row("mira", icon: "sf:exclamationmark.circle.fill", status: "failure", accessory: "Changes requested", id: "review:mira"),
-        row("jonas", icon: "sf:clock", status: "pending", accessory: "Requested", id: "review:jonas"),
-      ]],
-    ],
-    "footer": "+214 −37 · 6 files · abhi · 1h",
-  ]
-
-  public static let calendarCard: Value = [
-    "type": "hoverCard", "icon": "https://calendar.google.com/googlecalendar/images/favicons_2020q4/calendar_27.ico",
-    "title": "Rest of today", "subtitle": "Sunday, September 27",
-    "badges": [["text": "Now · Design review", "style": "success", "icon": "sf:circle.fill"]],
-    "sections": [["rows": [
-      row("Company offsite", subtitle: "All day", icon: "sf:calendar", id: "event:0"),
-      row("Design review", subtitle: "10 – 11am", icon: "sf:video.fill", status: "success", accessory: "Now", url: "https://meet.google.com/abc-defg-hij", id: "event:1"),
-      row("1:1 with Mira", subtitle: "11:30am – 12pm", icon: "sf:video.fill", status: "accent", accessory: "in 1h 10m", url: "https://acme.zoom.us/j/123456", id: "event:2"),
-      row("Ship den 0.2", subtitle: "2 – 3pm", icon: "sf:calendar", status: "accent", id: "event:3"),
-      row("Dinner", subtitle: "7 – 9pm", icon: "sf:calendar", status: "accent", id: "event:4"),
-    ]]],
-    "actions": [["id": "join", "title": "Join Design review", "icon": "sf:video.fill", "style": "primary", "url": "https://meet.google.com/abc-defg-hij"]],
-  ]
-
-  static let pageCard: Value = [
-    "type": "hoverCard", "icon": "sf:paintbrush.pointed.fill", "title": "Design review", "subtitle": "figma.com",
-  ]
-
-  static let folderCard: Value = [
-    "type": "hoverCard", "icon": "sf:folder.fill", "title": "Reading", "subtitle": "3 tabs",
-    "sections": [["rows": [
-      row("The Swift Book", subtitle: "docs.swift.org", icon: "sf:swift", id: "p2"),
-      row("Parser: accept trailing commas…", subtitle: "github.com", icon: "sf:arrow.triangle.pull", status: "failure", accessory: "CI failing", id: "pr"),
-      row("Inbox", subtitle: "mail.google.com", icon: "sf:envelope.fill", status: "accent", accessory: "3", id: "mail"),
-    ]]],
-  ]
 }
 #endif

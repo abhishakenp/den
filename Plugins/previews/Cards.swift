@@ -2,28 +2,353 @@
   import CordisValue
 #endif
 
-/// Builds `hoverCard` trees (docs/host-api.md) from a hover request and a provider's data.
+/// Composes the hover cards from the host's generic nodes (`ui.card`; docs/host-api.md "Generic
+/// nodes"). Every string, count and measurement of a card lives here, in the plugin.
 ///
-/// Provider data is a card fragment: any of `title`, `subtitle`, `accessory`, `badges`, `sections`,
-/// `actions`, `footer`, `empty`, `image`, `imageVersion`, `imagePending`, plus `summary {text, style}`
-/// (a one-badge digest shown next to the tab in folder cards), or `{error}`.
+/// Measurements are Dia's (docs/reference/dia-ui-spec.md): the tab card §2.3 (13 pt text inset,
+/// title 13 semibold up to 2 lines, subtitle 13 regular, 6 pt, then equal 34 pt buttons inset 3 pt
+/// with 2 pt gaps; 170–200 pt wide), the PR peek §3.2 (about 288 pt wide).
+///
+/// Provider data is either PR data (`kind: "pr"`, see `GitHub.prData`) or a card fragment: any of
+/// `title`, `subtitle`, `accessory`, `badges`, `sections`, `actions`, `footer`, `empty`, `image`,
+/// `imageVersion`, `imagePending`, plus `summary {text, style}` (a one-badge digest shown next to
+/// the tab in folder cards), or `{error}`.
 enum Cards {
-  static let fields = ["title", "subtitle", "accessory", "badges", "sections", "actions", "footer", "empty", "image", "imageVersion", "imagePending"]
+  static let tabCard = "previews.tab"
+  static let linkCard = "previews.link"
+  static let wideWidth: Int64 = 288  // spec §3.2: the PR peek is about 288 pt wide
+  static let linkWidth: Int64 = 300  // den: link cards carry an image, a little wider
 
-  static func card(_ req: PreviewsCore.Request, _ data: Value, loading: Bool) -> Value {
-    var t: Value = [
-      "type": "hoverCard", "id": .string(PreviewsCore.cardId), "anchor": .string(req.anchor),
-      "icon": .string(req.icon.isEmpty ? "sf:globe" : req.icon),
-      "title": .string(req.url.isEmpty ? req.title : URLs.pageTitle(req.title, req.url)),
-      "subtitle": .string(URLs.display(req.url)),
-    ]
-    for k in fields where !data[k].isNull { t.put(k, data[k]) }
-    if data.isErr {
-      t.put("empty", .string(friendly(data.s("error"))))
-    } else if loading {
-      t.put("loading", true)
+  // MARK: Node helpers
+
+  static func stack(_ children: [Value], axis: String = "v", spacing: Int64 = 0, padding: Value = .null, distribute: String = "",
+                    align: String = "", height: Int64 = 0, id: String = "") -> Value {
+    var v: Value = ["type": "stack", "axis": .string(axis), "children": .array(children)]
+    if spacing != 0 { v.put("spacing", .int(spacing)) }
+    if !padding.isNull { v.put("padding", padding) }
+    if !distribute.isEmpty { v.put("distribute", .string(distribute)) }
+    if !align.isEmpty { v.put("align", .string(align)) }
+    if height > 0 { v.put("height", .int(height)) }
+    if !id.isEmpty { v.put("id", .string(id)) }
+    return v
+  }
+
+  static func pad(_ top: Int64, _ right: Int64, _ bottom: Int64, _ left: Int64) -> Value { [.int(top), .int(right), .int(bottom), .int(left)] }
+
+  static func label(_ text: String, size: Double = 13, weight: String = "", tone: String = "primary", lines: Int64 = 1, lineHeight: Int64 = 0) -> Value {
+    var v: Value = ["type": "label", "text": .string(text), "size": .double(size), "tone": .string(tone)]
+    if !weight.isEmpty { v.put("weight", .string(weight)) }
+    if lines > 1 { v.put("lines", .int(lines)) }
+    if lineHeight > 0 { v.put("lineHeight", .int(lineHeight)) }
+    return v
+  }
+
+  static func runs(_ parts: [Value], size: Double = 13, tone: String = "secondary") -> Value {
+    ["type": "label", "runs": .array(parts), "size": .double(size), "tone": .string(tone)]
+  }
+
+  static func run(_ text: String, tone: String = "", weight: String = "") -> Value {
+    var v: Value = ["text": .string(text)]
+    if !tone.isEmpty { v.put("tone", .string(tone)) }
+    if !weight.isEmpty { v.put("weight", .string(weight)) }
+    return v
+  }
+
+  static func spacer(_ h: Int64) -> Value { ["type": "spacer", "height": .int(h)] }
+
+  /// An icon button of the card's action row, or (`pill`) a filled button.
+  static func action(_ id: String, icon: String, tooltip: String, shortcut: String = "", enabled: Bool = true, title: String = "",
+                     pill: Bool = false, tone: String = "", menu: [Value] = [], value: Value = .null, width: Int64 = 0) -> Value {
+    var v: Value = ["type": "action", "id": .string(id), "icon": .string(icon), "tooltip": .string(tooltip)]
+    if !shortcut.isEmpty { v.put("shortcut", .string(shortcut)) }
+    if !enabled { v.put("enabled", false) }
+    if !title.isEmpty { v.put("title", .string(title)) }
+    if pill { v.put("variant", "pill") }
+    if !tone.isEmpty { v.put("tone", .string(tone)) }
+    if !menu.isEmpty { v.put("menu", .array(menu)) }
+    if !value.isNull { v.put("value", value) }
+    if width > 0 { v.put("width", .int(width)) }
+    return v
+  }
+
+  /// Dia's action row: equal-width 34 pt buttons, 2 pt apart, inset 3 pt from the card's edges.
+  static func actionRow(_ actions: [Value]) -> Value {
+    stack(actions, axis: "h", spacing: 2, padding: pad(0, 3, 0, 3), distribute: "equal", height: 34)
+  }
+
+  /// Width range for a card with `n` icon actions: Dia's 170–200, widened so each button keeps
+  /// at least 30 pt (den shows more verbs than Dia's four).
+  static func width(actions n: Int) -> Value {
+    let need = Int64(n) * 30 + Int64(max(0, n - 1)) * 2 + 6
+    return ["min": 170, "max": .int(max(200, need))]
+  }
+
+  static func tone(_ oldStyle: String) -> String {
+    switch oldStyle {
+    case "success": return "success"
+    case "failure": return "danger"
+    case "pending", "attention": return "warning"
+    case "accent", "merged": return "accent"
+    default: return "secondary"
     }
-    return t
+  }
+
+  // MARK: Tab card (spec §2.3, §2.5)
+
+  /// "github.com", or "github.com · #3752" for a pull request or issue (spec §2.3 subtitle).
+  static func subtitle(_ url: String) -> String {
+    let host = URLs.display(url)
+    let seg = Pattern.segments(url)
+    if seg.count >= 5, seg[0] == "github.com", seg[3] == "pull" || seg[3] == "issues", Text.int(seg[4]) != nil {
+      return URLs.host(url) + " · #" + seg[4]
+    }
+    return URLs.host(url).isEmpty ? host : URLs.host(url)
+  }
+
+  /// The tab's verbs, in Dia's order adapted to den: pin (or reset + unpin) · split · duplicate ·
+  /// copy link · mute (when audible) · move to space ▸ · archive/close. Tooltips carry shortcuts;
+  /// while the card shows, those shortcuts act on this tab.
+  static func tabActions(_ req: PreviewsCore.Request) -> [Value] {
+    let p = "previews.tab.act:"
+    var out: [Value] = []
+    switch req.kind {
+    case "pinned":
+      out.append(action(p + "reset", icon: "sf:arrow.uturn.backward", tooltip: req.drift ? "Back to Pinned URL" : "At Pinned URL", enabled: req.drift))
+      out.append(action(p + "unpin", icon: "sf:pin.slash", tooltip: "Unpin Tab", shortcut: "cmd+d"))
+    case "favorite":
+      out.append(action(p + "reset", icon: "sf:arrow.uturn.backward", tooltip: req.drift ? "Back to Pinned URL" : "At Pinned URL", enabled: req.drift))
+    default:
+      out.append(action(p + "pin", icon: "sf:pin", tooltip: "Pin Tab", shortcut: "cmd+d"))
+    }
+    let splitTip = req.inSplit ? "Add to Split" : req.selected ? "Add Split View" : "Open as Split"
+    out.append(action(p + "split", icon: "sf:rectangle.split.2x1", tooltip: splitTip, shortcut: "ctrl+shift+="))
+    out.append(action(p + "duplicate", icon: "sf:plus.square.on.square", tooltip: "Duplicate Tab"))
+    out.append(action(p + "copy", icon: "sf:link", tooltip: "Copy Link", shortcut: "cmd+shift+c"))
+    if req.audio || req.muted {
+      out.append(req.muted ? action(p + "unmute", icon: "sf:speaker.wave.2", tooltip: "Unmute Tab")
+                           : action(p + "mute", icon: "sf:speaker.slash", tooltip: "Mute Tab"))
+    }
+    if !req.spaces.isEmpty {
+      let items: [Value] = req.spaces.map { ["id": $0["id"], "title": .string($0.s("name")), "icon": "sf:square.grid.2x2"] }
+      out.append(action(p + "move", icon: "sf:arrow.right.square", tooltip: "Move to Space", menu: items))
+    }
+    out.append(req.kind == "today" ? action(p + "close", icon: "sf:archivebox", tooltip: "Archive Tab", shortcut: "cmd+w")
+                                   : action(p + "close", icon: "sf:xmark", tooltip: "Close Tab", shortcut: "cmd+w"))
+    return out
+  }
+
+  /// The split row's card lists both panes (spec §2.5) with its own three verbs.
+  static func splitActions(_ req: PreviewsCore.Request) -> [Value] {
+    let p = "previews.tab.act:"
+    return [
+      action(p + "split", icon: "sf:rectangle.split.2x1", tooltip: "Add to Split", shortcut: "ctrl+shift+="),
+      action(p + "copy", icon: "sf:link", tooltip: "Copy Link", shortcut: "cmd+shift+c"),
+      action(p + "separate", icon: "sf:rectangle.split.3x1.slash", tooltip: "Separate Tabs"),
+    ]
+  }
+
+  /// The plain tab card: optional compact snapshot, title (2 lines), host, action row.
+  static func tab(_ req: PreviewsCore.Request, image: String = "", imageVersion: Int64 = 0, imagePending: Bool = false) -> Value {
+    var kids: [Value] = []
+    let snapshot = !image.isEmpty || imagePending
+    if snapshot {
+      var img: Value = ["type": "image", "id": "previews.snapshot", "aspect": 0.5, "placeholder": true]
+      if !image.isEmpty {
+        img.put("src", .string(image))
+        img.put("version", .string(String(imageVersion)))
+      }
+      kids.append(img)
+    }
+    var text: [Value] = []
+    if let panes = req.panes, !panes.isEmpty {
+      for (i, pane) in panes.enumerated() {
+        if i > 0 { text.append(spacer(8)) }
+        text.append(label(URLs.pageTitle(pane.s("title"), pane.s("url")), weight: "semibold", lines: 2))
+        text.append(label(subtitle(pane.s("url")), tone: "secondary", lineHeight: 18))
+      }
+    } else {
+      text.append(label(req.url.isEmpty ? req.title : URLs.pageTitle(req.title, req.url), weight: "semibold", lines: 2))
+      text.append(label(req.url.isEmpty ? "" : subtitle(req.url), tone: "secondary", lineHeight: 18))
+    }
+    kids.append(stack(text, padding: pad(snapshot ? 11 : 15, 14, 0, 13)))
+    let acts = req.panes != nil ? splitActions(req) : tabActions(req)
+    kids.append(spacer(6))
+    kids.append(actionRow(acts))
+    return stack(kids, padding: pad(0, 0, 3, 0), id: "previews.tab.root")
+  }
+
+  // MARK: PR peek (spec §3.2)
+
+  /// `d` from `GitHub.prData` (or `GitHub.privateData`). `actions`: the tab's action row, or the
+  /// link card's.
+  static func pr(_ d: Value, title fallback: String, loading: Bool, actions: [Value]) -> Value {
+    var kids: [Value] = []
+    let title = d.sOpt("title") ?? fallback
+    kids.append(label(title.isEmpty ? "Pull request" : title, weight: "semibold", lines: 2))
+    kids.append(spacer(7))
+    // avatar · author · #N
+    var who: [Value] = []
+    if !d.s("avatar").isEmpty { who.append(["type": "image", "src": d["avatar"], "width": 16, "height": 16, "radius": 8]) }
+    var line = d.s("author")
+    let num = d.i("number") > 0 ? "#" + String(d.i("number")) : ""
+    if line.isEmpty { line = d.s("repo") }
+    if !num.isEmpty { line = line.isEmpty ? num : line + " · " + num }
+    who.append(label(line, tone: "secondary"))
+    kids.append(stack(who, axis: "h", spacing: 6, align: "center", height: 16))
+    if loading {
+      kids.append(spacer(10))
+      kids.append(label("Loading…", tone: "secondary"))
+      kids.append(spacer(10))
+      return prFrame(kids, actions)
+    }
+    if d.b("private") {
+      kids.append(spacer(10))
+      if d.b("connected") {
+        kids.append(label(d.s("state").isEmpty ? "Private repository" : "Private repository · " + d.s("state"), tone: "secondary"))
+        kids.append(spacer(4))
+        kids.append(label("GitHub doesn't share checks or the diff for private repositories outside the page. Open it to see them.",
+                          size: 12, tone: "secondary", lines: 3))
+      } else {
+        kids.append(label("Private repository", tone: "secondary"))
+        kids.append(spacer(4))
+        kids.append(label("Connect GitHub to see its state, author and branches here.", size: 12, tone: "secondary", lines: 2))
+        kids.append(spacer(10))
+        kids.append(stack([action("previews.pr:connect", icon: "https://github.com/favicon.ico", tooltip: "Sign in to GitHub in a new tab",
+                                  title: "Connect GitHub", pill: true, tone: "primary")], axis: "h"))
+      }
+      kids.append(spacer(10))
+      return prFrame(kids, actions)
+    }
+    if d.b("limited") {
+      kids.append(spacer(10))
+      kids.append(label("GitHub is limiting previews right now. Try again in a few minutes.", size: 12, tone: "secondary", lines: 2))
+      kids.append(spacer(10))
+      return prFrame(kids, actions)
+    }
+    kids.append(spacer(6))
+    // +adds −dels · N files
+    kids.append(runs([run("+" + String(d.i("additions")), tone: "add", weight: "semibold"), run(" "),
+                      run("−" + String(d.i("deletions")), tone: "del", weight: "semibold"),
+                      run(" · " + PV.plural(Int(d.i("files")), "file", "files"))]))
+    let c = d["checks"]
+    let total = c.i("total"), failed = c.i("failed"), pending = c.i("pending"), passed = c.i("passed")
+    if total > 0 && !d.b("merged") {
+      kids.append(spacer(10))
+      kids.append(["type": "meter", "height": 6, "total": .int(total), "segments": [
+        ["value": .int(passed), "tone": "success"], ["value": .int(pending), "tone": "warning"], ["value": .int(failed), "tone": "danger"],
+      ]])
+    }
+    kids.append(spacer(8))
+    let failing = d.a("failing")
+    if d.b("merged") {
+      kids.append(label("Merged", tone: "secondary"))
+    } else if d.s("state") == "closed" {
+      kids.append(label("Closed without merging", tone: "secondary"))
+    } else if failed > 0 && !failing.isEmpty {
+      var notes: [Value] = []
+      for (i, f) in failing.prefix(3).enumerated() {
+        notes.append(["type": "note", "id": .string("previews.pr:check:" + String(i)), "text": f["name"], "tone": "danger", "value": ["url": f["url"]]])
+      }
+      kids.append(stack(notes, spacing: 8))
+    } else {
+      kids.append(label(status(d), tone: "secondary"))
+    }
+    if d.b("conflicts") {
+      kids.append(spacer(8))
+      kids.append(["type": "note", "id": "previews.pr:conflicts", "text": .string("Conflicts with " + d.s("base")), "tone": "warning"])
+    }
+    kids.append(spacer(10))
+    var buttons: [Value] = []
+    if failed > 0 {
+      buttons.append(action("previews.pr:failures", icon: "", tooltip: "Open the failing checks", title: "Show " + PV.plural(Int(failed), "failure", "failures"),
+                            pill: true, tone: "destructive", width: 118))
+    } else if d.b("conflicts") {
+      buttons.append(action("previews.pr:conflicts", icon: "", tooltip: "Open the conflict editor", title: "Resolve Conflicts",
+                            pill: true, tone: "destructive", width: 138))
+    }
+    buttons.append(action("previews.pr:comments", icon: "sf:bubble.left", tooltip: "Open the conversation", title: "Show Comments", pill: true, tone: "strong"))
+    kids.append(stack(buttons, axis: "h", spacing: 6))
+    kids.append(spacer(12))
+    return prFrame(kids, actions)
+  }
+
+  /// The PR peek's status line (den's copy).
+  static func status(_ d: Value) -> String {
+    let c = d["checks"]
+    let total = c.i("total"), pending = c.i("pending"), queued = c.i("queued"), failed = c.i("failed")
+    if d.b("draft") && total == 0 { return "Draft" }
+    if total == 0 { return d.b("draft") ? "Draft · no checks" : "No checks" }
+    if failed > 0 { return PV.plural(Int(failed), "check is failing", "checks are failing") }
+    if pending == 0 && queued == 0 { return "All checks passed" }
+    if pending == 0 { return "Checks are queued" }
+    return String(pending + queued) + " of " + String(total) + " checks still running"
+  }
+
+  static func prFrame(_ kids: [Value], _ actions: [Value]) -> Value {
+    var all: [Value] = [stack(kids, padding: pad(13, 12, 0, 12))]
+    if !actions.isEmpty { all.append(actionRow(actions)) }
+    return stack(all, padding: pad(0, 0, actions.isEmpty ? 0 : 3, 0), id: "previews.pr.root")
+  }
+
+  // MARK: Fragment cards (Calendar, Gmail, Slack, issues, folders)
+
+  static func fragment(_ req: PreviewsCore.Request, _ data: Value, loading: Bool, actions: [Value]) -> Value {
+    var head: [Value] = []
+    let title = data.sOpt("title") ?? (req.url.isEmpty ? req.title : URLs.pageTitle(req.title, req.url))
+    var sub = data.sOpt("subtitle") ?? (req.url.isEmpty ? "" : subtitle(req.url))
+    if let a = data.sOpt("accessory"), !a.isEmpty { sub = sub.isEmpty ? a : sub + " · " + a }
+    head.append(label(title, weight: "semibold", lines: 2))
+    head.append(label(sub, tone: "secondary", lineHeight: 18))
+    var kids: [Value] = [stack(head, padding: pad(15, 14, 0, 13))]
+    var body: [Value] = []
+    let badges = data.a("badges")
+    if !badges.isEmpty {
+      body.append(stack(badges.prefix(4).map { b in
+        var v: Value = ["type": "badge", "text": b["text"], "tone": .string(tone(b.s("style")))]
+        if !b.s("icon").isEmpty { v.put("icon", b["icon"]) }
+        return v
+      }, axis: "h", spacing: 6, align: "start", height: 20))
+    }
+    if data.isErr {
+      body.append(label(friendly(data.s("error")), size: 12, tone: "secondary", lines: 3))
+    } else if loading {
+      body.append(label("Loading…", size: 12, tone: "secondary"))
+    }
+    var n = 0
+    for s in data.a("sections") {
+      var rows: [Value] = []
+      if !s.s("title").isEmpty { rows.append(label(s.s("title"), size: 11, weight: "semibold", tone: "secondary")) }
+      for r in s.a("rows") {
+        var item: Value = ["type": "item", "title": r["title"]]
+        for k in ["subtitle", "icon", "accessory"] where !r[k].isNull { item.put(k, r[k]) }
+        if !r.s("status").isEmpty { item.put("tone", .string(tone(r.s("status")))) }
+        if !r.s("url").isEmpty {
+          item.put("id", .string("previews.open:" + String(n)))
+          item.put("value", ["url": r["url"]])
+          n += 1
+        }
+        rows.append(item)
+      }
+      body.append(stack(rows, spacing: 2))
+    }
+    if let e = data.sOpt("empty"), !e.isEmpty { body.append(label(e, size: 12, tone: "secondary", lines: 3)) }
+    if !data.s("image").isEmpty || data.b("imagePending") {
+      var img: Value = ["type": "image", "aspect": 0.625, "radius": 8, "placeholder": true]
+      if !data.s("image").isEmpty { img.put("src", data["image"]); img.put("version", .string(String(data.i("imageVersion")))) }
+      body.append(img)
+    }
+    let acts = data.a("actions")
+    if !acts.isEmpty {
+      body.append(stack(acts.enumerated().map { (i, a) in
+        action("previews.open:a" + String(i), icon: a.s("icon"), tooltip: a.s("title"), title: a.s("title"), pill: true,
+               tone: a.s("style") == "primary" ? "primary" : "", value: ["url": a["url"]])
+      }, axis: "h", spacing: 6))
+    }
+    if let f = data.sOpt("footer"), !f.isEmpty { body.append(label(f, size: 11, tone: "secondary")) }
+    if !body.isEmpty { kids.append(stack(body, spacing: 10, padding: pad(10, 8, 0, 8))) }
+    kids.append(spacer(actions.isEmpty ? 12 : 8))
+    if !actions.isEmpty { kids.append(actionRow(actions)) }
+    return stack(kids, padding: pad(0, 0, actions.isEmpty ? 0 : 3, 0), id: "previews.fragment.root")
   }
 
   static func friendly(_ error: String) -> String {
@@ -48,14 +373,54 @@ enum Cards {
     }
     let n = req.items.count
     var data: Value = [
-      "subtitle": .string(n == 1 ? "1 tab" : String(n) + " tabs"),
+      "title": .string(req.title), "subtitle": .string(n == 1 ? "1 tab" : String(n) + " tabs"),
       "sections": .array(rows.isEmpty ? [] : [["rows": .array(rows)]]),
     ]
     if n > 6 { data.put("footer", .string("and " + String(n - 6) + " more")) }
     if n == 0 { data.put("empty", "This folder is empty.") }
-    return card(PreviewsCore.Request(anchor: req.anchor, url: "", title: req.title, icon: req.icon.isEmpty ? "sf:folder.fill" : req.icon,
-                                     webview: "", profile: req.profile, selected: false, kind: "folder", items: []), data, loading: false)
+    return fragment(req, data, loading: false, actions: [])
   }
+
+  // MARK: Link card (⇧-hover)
+
+  static func linkActions() -> [Value] {
+    let p = "previews.link.act:"
+    return [
+      action(p + "peek", icon: "sf:eye", tooltip: "Open in Peek  ⇧-click"),
+      action(p + "split", icon: "sf:rectangle.split.2x1", tooltip: "Open as Split", shortcut: "ctrl+shift+="),
+      action(p + "copy", icon: "sf:link", tooltip: "Copy Link", shortcut: "cmd+shift+c"),
+    ]
+  }
+
+  /// OpenGraph data (`OpenGraph.parse`): image, site, title, description.
+  static func link(url: String, og: Value, loading: Bool) -> Value {
+    var kids: [Value] = []
+    if !og.s("image").isEmpty {
+      kids.append(["type": "image", "id": "previews.link.image", "src": og["image"], "aspect": 0.5, "placeholder": true])
+    }
+    var text: [Value] = []
+    var site = og.sOpt("site") ?? URLs.host(url)
+    if site.isEmpty { site = URLs.display(url) }
+    let icon = og.s("icon")
+    text.append(stack([["type": "icon", "spec": .string(icon.isEmpty ? URLs.favicon(url) : icon), "size": 14, "letter": .string(site)],
+                       label(site, size: 12, tone: "secondary")], axis: "h", spacing: 6, align: "center", height: 16))
+    text.append(spacer(4))
+    let title = og.sOpt("title") ?? URLs.display(url)
+    text.append(label(title, weight: "semibold", lines: 2))
+    if loading {
+      text.append(spacer(2))
+      text.append(label("Loading preview…", size: 12, tone: "secondary"))
+    } else if let d = og.sOpt("description"), !d.isEmpty {
+      text.append(spacer(2))
+      text.append(label(d, size: 12, tone: "secondary", lines: 3))
+    }
+    kids.append(stack(text, padding: pad(12, 14, 0, 13)))
+    kids.append(spacer(8))
+    kids.append(actionRow(linkActions()))
+    return stack(kids, padding: pad(0, 0, 3, 0), id: "previews.link.root")
+  }
+
+  // MARK: Fragment helpers (providers)
 
   static func badge(_ text: String, _ style: String, _ icon: String = "") -> Value {
     var b: Value = ["text": .string(text), "style": .string(style)]

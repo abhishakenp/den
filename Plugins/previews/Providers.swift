@@ -41,21 +41,24 @@ enum GitHub {
 
   static func ok(_ r: Value) -> Bool { r.b("ok") && r.i("status") < 400 && !r["json"].isNull }
 
-  /// PR: `pulls/<n>`, then its head commit's check runs and statuses and the reviews, in parallel
-  /// (public repositories need no sign-in). A private repository (404) or a rate limit falls back
-  /// to the github.com page the user is signed in to.
+  /// PR: `pulls/<n>`, then its head commit's check runs and legacy statuses, in parallel (public
+  /// repositories need no sign-in: GitHub's public API). A private repository (404) or a rate
+  /// limit falls back to the github.com page the user is signed in to, if they are.
   static func pr(_ core: PreviewsCore, _ req: PreviewsCore.Request, _ done: @escaping (Value) -> Void) {
     guard let (repo, n) = parse(req.url) else { return done(.err("not a pull request")) }
     let api = Builtins.endpoint(core, "githubApi", "https://api.github.com") + "/repos/" + repo
     core.requests.fetch(api + "/pulls/" + String(n), headers: headers) { r in
-      guard ok(r) else { return sessionPR(core, req, repo: repo, n: n, done) }
+      guard ok(r) else {
+        let limited = r.i("status") == 403 || r.i("status") == 429
+        return sessionPR(core, req, repo: repo, n: n, limited: limited, done)
+      }
       let pr = r["json"]
       let sha = pr["head"].s("sha")
-      var checks: Value = .null, statuses: Value = .null, reviews: Value = .null
-      var left = 3
+      var checks: Value = .null, statuses: Value = .null
+      var left = 2
       let step: () -> Void = {
         left -= 1
-        if left == 0 { done(prCard(pr, checks: checks, statuses: statuses, reviews: reviews, repo: repo, n: n, now: core.env.now())) }
+        if left == 0 { done(prData(pr, checks: checks, statuses: statuses, repo: repo, n: n)) }
       }
       core.requests.fetch(api + "/commits/" + sha + "/check-runs?per_page=100", headers: headers) { c in
         if ok(c) { checks = c["json"] }
@@ -65,16 +68,12 @@ enum GitHub {
         if ok(s) { statuses = s["json"] }
         step()
       }
-      core.requests.fetch(api + "/pulls/" + String(n) + "/reviews?per_page=100", headers: headers) { v in
-        if ok(v) { reviews = v["json"] }
-        step()
-      }
     }
   }
 
   struct Check {
     var name: String
-    var state: String  // failure | pending | success
+    var state: String  // failure | pending | queued | success
     var url: String
   }
 
@@ -88,7 +87,10 @@ enum GitHub {
       seen[name] = true
       let concl = c.s("conclusion")
       var state = "success"
-      if c.s("status") != "completed" {
+      let status = c.s("status")
+      if status == "queued" || status == "waiting" || status == "requested" || status == "pending" {
+        state = "queued"
+      } else if status != "completed" {
         state = "pending"
       } else if ["failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"].contains(concl) {
         state = "failure"
@@ -102,145 +104,54 @@ enum GitHub {
       let st = s.s("state")
       out.append(Check(name: name, state: st == "success" ? "success" : st == "pending" ? "pending" : "failure", url: s.s("target_url")))
     }
-    func rank(_ s: String) -> Int { s == "failure" ? 0 : s == "pending" ? 1 : 2 }
+    func rank(_ s: String) -> Int { s == "failure" ? 0 : s == "pending" ? 1 : s == "queued" ? 2 : 3 }
     var indexed: [(Int, Check)] = []
     for (i, c) in out.enumerated() { indexed.append((i, c)) }
     indexed.sort { rank($0.1.state) != rank($1.1.state) ? rank($0.1.state) < rank($1.1.state) : $0.0 < $1.0 }
     return indexed.map { $0.1 }
   }
 
-  /// Latest decisive review per reviewer (a later comment doesn't undo an approval; a dismissal does).
-  static func reviewStates(_ reviews: Value) -> [(String, String)] {
-    var order: [String] = []
-    var state: [String: String] = [:]
-    for r in reviews.array ?? [] {
-      let who = r["user"].s("login"), s = r.s("state")
-      guard !who.isEmpty else { continue }
-      if s == "APPROVED" || s == "CHANGES_REQUESTED" || s == "DISMISSED" {
-        if state[who] == nil { order.append(who) }
-        state[who] = s
-      }
-    }
-    return order.compactMap { w in state[w].flatMap { $0 == "DISMISSED" ? nil : (w, $0) } }
-  }
-
-  static func prCard(_ pr: Value, checks: Value, statuses: Value, reviews: Value, repo: String, n: Int, now: Int64) -> Value {
-    let web = "https://github.com/" + repo + "/pull/" + String(n)
+  /// The PR peek's data (docs/reference/dia-ui-spec.md §3.2, §3.4) from the REST API's pull, check
+  /// runs and statuses: `{kind: "pr", title, author, avatar, repo, number, state, draft, merged,
+  /// additions, deletions, files, comments, base, conflicts, checks {total, passed, pending,
+  /// queued, failed}, failing [{name, url}], summary}`.
+  static func prData(_ pr: Value, checks: Value, statuses: Value, repo: String, n: Int) -> Value {
     let merged = pr.b("merged") || !pr["merged_at"].isNull
-    let draft = pr.b("draft")
     let open = pr.s("state") == "open"
-    var badges: [Value] = []
-    var summary: Value = .null
-    if merged {
-      badges.append(Cards.badge("Merged", "merged", "sf:arrow.triangle.merge"))
-      summary = Cards.badge("Merged", "merged")
-    } else if !open {
-      badges.append(Cards.badge("Closed", "failure", "sf:xmark.circle.fill"))
-      summary = Cards.badge("Closed", "neutral")
-    } else if draft {
-      badges.append(Cards.badge("Draft", "neutral", "sf:circle.dashed"))
-    } else {
-      badges.append(Cards.badge("Open", "success", "sf:arrow.triangle.pull"))
-    }
-
     let list = checkList(checks, statuses)
-    let failing = list.filter { $0.state == "failure" }.count
+    let failed = list.filter { $0.state == "failure" }
     let pending = list.filter { $0.state == "pending" }.count
-    if !merged && !list.isEmpty {
-      if failing > 0 {
-        badges.append(Cards.badge(String(failing) + " failing", "failure", "sf:xmark.circle.fill"))
-      } else if pending > 0 {
-        badges.append(Cards.badge(String(pending) + " pending", "pending", "sf:clock.fill"))
-      } else {
-        badges.append(Cards.badge("Checks passing", "success", "sf:checkmark.circle.fill"))
-      }
-    }
-    let mstate = pr.s("mergeable_state")
-    let conflicts = open && (mstate == "dirty" || pr["mergeable"].bool == false)
-    if conflicts { badges.append(Cards.badge("Conflicts", "attention", "sf:exclamationmark.triangle.fill")) }
-
-    let decisions = reviewStates(reviews)
-    let requested = pr.a("requested_reviewers").map { $0.s("login") } + pr.a("requested_teams").map { "@" + $0.s("slug") }
-    let changes = decisions.filter { $0.1 == "CHANGES_REQUESTED" }.count
-    let approvals = decisions.filter { $0.1 == "APPROVED" }.count
-    if open {
-      if changes > 0 {
-        badges.append(Cards.badge("Changes requested", "failure", "sf:exclamationmark.bubble.fill"))
-      } else if approvals > 0 {
-        badges.append(Cards.badge(approvals == 1 ? "Approved" : "Approved ×" + String(approvals), "success", "sf:checkmark.seal.fill"))
-      } else if !requested.isEmpty {
-        badges.append(Cards.badge("Review requested", "pending", "sf:eye.fill"))
-      }
-    }
-    if summary.isNull {
-      if failing > 0 { summary = Cards.badge("CI failing", "failure") }
-      else if conflicts { summary = Cards.badge("Conflicts", "attention") }
-      else if changes > 0 { summary = Cards.badge("Changes", "failure") }
-      else if pending > 0 { summary = Cards.badge("CI pending", "pending") }
-      else if approvals > 0 { summary = Cards.badge("Approved", "success") }
-      else if draft { summary = Cards.badge("Draft", "neutral") }
-      else if !list.isEmpty { summary = Cards.badge("Passing", "success") }
-    }
-
-    var sections: [Value] = []
-    // Branch, and what blocks the merge.
-    var branchRows: [Value] = [Cards.row(pr["head"].s("ref"), icon: "sf:arrow.triangle.branch", accessory: "into " + pr["base"].s("ref"), id: "branch")]
-    if conflicts {
-      branchRows.append(Cards.row("Merge conflicts", subtitle: "Resolve them before this can merge", icon: "sf:exclamationmark.triangle.fill",
-                                  status: "attention", url: web + "/conflicts", id: "conflicts"))
-    } else if open && mstate == "behind" {
-      branchRows.append(Cards.row("Behind " + pr["base"].s("ref"), icon: "sf:arrow.down.circle", status: "pending", id: "behind"))
-    }
-    sections.append(Cards.section("", branchRows))
-
-    if !list.isEmpty {
-      var title = "Checks"
-      var parts: [String] = []
-      if failing > 0 { parts.append(String(failing) + " failing") }
-      if pending > 0 { parts.append(String(pending) + " pending") }
-      let passing = list.count - failing - pending
-      if passing > 0 { parts.append(String(passing) + " passing") }
-      if !parts.isEmpty { title += " · " + parts.joined(separator: ", ") }
-      var rows: [Value] = []
-      let shown = list.count > 4 ? 3 : list.count
-      for c in list.prefix(shown) {
-        let icon = c.state == "failure" ? "sf:xmark.circle.fill" : c.state == "pending" ? "sf:clock.fill" : "sf:checkmark.circle.fill"
-        let label = c.state == "failure" ? "Failed" : c.state == "pending" ? "Running" : "Passed"
-        rows.append(Cards.row(c.name, icon: icon, status: c.state, accessory: label, url: c.url, id: "check:" + c.name))
-      }
-      if list.count > shown {
-        rows.append(Cards.row(PV.plural(list.count - shown, "more check", "more checks"), icon: "sf:ellipsis.circle", url: web + "/checks", id: "checks"))
-      }
-      sections.append(Cards.section(title, rows))
-    }
-
-    var reviewRows: [Value] = []
-    for (who, s) in decisions.prefix(3) {
-      let approved = s == "APPROVED"
-      reviewRows.append(Cards.row(who, icon: approved ? "sf:checkmark.circle.fill" : "sf:exclamationmark.circle.fill", status: approved ? "success" : "failure",
-                                  accessory: approved ? "Approved" : "Changes requested", id: "review:" + who))
-    }
-    for who in requested.prefix(max(0, 3 - reviewRows.count)) where !decisions.contains(where: { $0.0 == who }) {
-      reviewRows.append(Cards.row(who, icon: "sf:clock", status: "pending", accessory: "Requested", id: "review:" + who))
-    }
-    if open && !reviewRows.isEmpty { sections.append(Cards.section("Reviews", reviewRows)) }
-
-    var footer = "+" + String(pr.i("additions")) + " −" + String(pr.i("deletions")) + " · " + PV.plural(Int(pr.i("changed_files")), "file", "files")
-    let author = pr["user"].s("login")
-    if !author.isEmpty { footer += " · " + author }
-    let updated = PV.isoMs(pr.s("updated_at"))
-    if updated > 0 { footer += " · " + PV.ago(updated, now: now) }
-
-    var card: Value = ["title": .string(pr.s("title")), "subtitle": .string(repo), "accessory": .string("#" + String(n)),
-                       "badges": .array(badges), "sections": .array(sections), "footer": .string(footer)]
-    if !summary.isNull { card.put("summary", summary) }
-    return card
+    let queued = list.filter { $0.state == "queued" }.count
+    let passed = list.count - failed.count - pending - queued
+    let conflicts = open && !merged && (pr.s("mergeable_state") == "dirty" || pr["mergeable"].bool == false)
+    var avatar = pr["user"].s("avatar_url")
+    if !avatar.isEmpty { avatar += (Text.contains(avatar, "?") ? "&" : "?") + "s=32" }
+    var summary: Value = .null
+    if merged { summary = Cards.badge("Merged", "merged") }
+    else if !open { summary = Cards.badge("Closed", "neutral") }
+    else if !failed.isEmpty { summary = Cards.badge("CI failing", "failure") }
+    else if conflicts { summary = Cards.badge("Conflicts", "attention") }
+    else if pending + queued > 0 { summary = Cards.badge("CI pending", "pending") }
+    else if pr.b("draft") { summary = Cards.badge("Draft", "neutral") }
+    else if !list.isEmpty { summary = Cards.badge("Passing", "success") }
+    var d: Value = [
+      "kind": "pr", "title": .string(pr.s("title")), "author": .string(pr["user"].s("login")), "avatar": .string(avatar),
+      "repo": .string(repo), "number": .int(Int64(n)), "state": .string(merged ? "merged" : pr.s("state")), "draft": .bool(pr.b("draft")),
+      "merged": .bool(merged), "additions": .int(pr.i("additions")), "deletions": .int(pr.i("deletions")), "files": .int(pr.i("changed_files")),
+      "comments": .int(pr.i("comments") + pr.i("review_comments")), "base": .string(pr["base"].s("ref")), "conflicts": .bool(conflicts),
+      "checks": ["total": .int(Int64(list.count)), "passed": .int(Int64(passed)), "pending": .int(Int64(pending)), "queued": .int(Int64(queued)),
+                 "failed": .int(Int64(failed.count))],
+      "failing": .array(failed.map { ["name": .string($0.name), "url": .string($0.url)] }),
+    ]
+    if !summary.isNull { d.put("summary", summary) }
+    return d
   }
 
-  /// Private repositories: read the pull request page with the user's github.com session (the page
-  /// embeds its state and branches as JSON). Checks and reviews load client-side on that page, so
-  /// this card shows state and branches only.
-  static func sessionPR(_ core: PreviewsCore, _ req: PreviewsCore.Request, repo: String, n: Int, _ done: @escaping (Value) -> Void) {
+  /// Private repositories (or a rate-limited API): read the pull request page with the user's
+  /// github.com session in den, when they're signed in there. The page embeds the PR's title,
+  /// state, author and branches as JSON; checks and the diff load client-side on that page, so
+  /// the card says so. Not signed in: `private` without `connected`, and the card offers Connect.
+  static func sessionPR(_ core: PreviewsCore, _ req: PreviewsCore.Request, repo: String, n: Int, limited: Bool, _ done: @escaping (Value) -> Void) {
     let web = Builtins.endpoint(core, "githubWeb", "https://github.com")
     let script = "const r = await fetch('/" + repo + "/pull/" + String(n) + "', {credentials: 'include'});\n" + """
       if (!r.ok) return {status: r.status};
@@ -251,27 +162,28 @@ enum GitHub {
       if (!L || !L.pullRequest) return {status: r.status};
       const p = L.pullRequest;
       return {status: r.status, state: p.state || '', title: p.title || '', head: p.headBranch || '', base: p.baseBranch || '',
-              author: (p.author && p.author.login) || '', merged: !!p.mergedTime};
+              author: (p.author && p.author.login) || '', avatar: (p.author && p.author.avatarUrl) || '', merged: !!p.mergedTime};
       """
+    let base: Value = ["kind": "pr", "repo": .string(repo), "number": .int(Int64(n)), "noCache": true]
     core.requests.call("session", "eval", ["origin": .string(web), "script": .string(script), "profile": .string(req.profile), "timeoutMs": 10_000]) { r in
       let v = r["value"]
       guard r.b("ok"), !v.s("state").isEmpty else {
-        return done(["empty": "Sign in to GitHub in den to preview this pull request.", "subtitle": .string(repo), "accessory": .string("#" + String(n)), "noCache": true])
+        var d = base
+        // A public PR that GitHub rate-limits isn't private; say what's going on instead.
+        d.put(limited ? "limited" : "private", true)
+        return done(d)
       }
-      let state = v.s("state")
-      var badges: [Value] = []
-      if v.b("merged") || state == "MERGED" {
-        badges.append(Cards.badge("Merged", "merged", "sf:arrow.triangle.merge"))
-      } else if state == "CLOSED" {
-        badges.append(Cards.badge("Closed", "failure", "sf:xmark.circle.fill"))
-      } else if state == "DRAFT" {
-        badges.append(Cards.badge("Draft", "neutral", "sf:circle.dashed"))
-      } else {
-        badges.append(Cards.badge("Open", "success", "sf:arrow.triangle.pull"))
-      }
-      done(["title": .string(v.s("title")), "subtitle": .string(repo), "accessory": .string("#" + String(n)), "badges": .array(badges),
-            "sections": [Cards.section("", [Cards.row(v.s("head"), icon: "sf:arrow.triangle.branch", accessory: "into " + v.s("base"), id: "branch")])],
-            "footer": .string("Private repository · open it for checks and reviews")])
+      let state = Text.lower(v.s("state"))
+      var d = base
+      d.put(limited ? "limited" : "private", true)
+      d.put("connected", true)
+      d.put("title", v["title"])
+      d.put("author", v["author"])
+      d.put("avatar", v["avatar"])
+      d.put("base", v["base"])
+      d.put("state", .string(v.b("merged") ? "merged" : state == "open" ? "open" : state))
+      d.put("merged", .bool(v.b("merged") || state == "merged"))
+      done(d)
     }
   }
 

@@ -8,7 +8,13 @@ import CordisValue
 ///                                sidebar.today*, sidebar.footer, overlay.commandBar, overlay.peek, dialog, toast
 ///                                (* = per space page; `page` defaults to the current page). tree null clears.
 ///   setPages {count, current?}   number of space pages in the swipeable sidebar pager
-///   showPage {page, animated?}   slide to a page (also blends the window theme)///   get                          -> {page, pages, overlays: [slot]}
+///   showPage {page, animated?}   slide to a page (also blends the window theme)
+///   get                          -> {page, pages, overlays: [slot], cards: [id]}
+///   card {id, tree|null, anchor?, rect?, place?, width?, gap?, swap?, graceMs?}
+///                                a generic popover card (Card.swift; docs/host-api.md "ui.card"):
+///                                next to the node `anchor` (hover intent: shown while that node is hovered),
+///                                or below a window `rect` {x, y, w, h} (top-left origin). tree null closes it.
+///   hoverIntent {redwell?}        hover intent options (a second dwell before swapping cards)
 /// Event: ui.action {id, action, value}. Node actions are documented on each node type;
 ///   sidebar-level: {id:"sidebar", action:"page", value:n} after a swipe, {id:"sidebar", action:"doubleClick"}.
 @MainActor
@@ -38,8 +44,8 @@ public final class UIService: HostService {
   static let sheetSlots = ["overlay.briefing", "overlay.connections", "overlay.passwords", "overlay.extensions"]
   var sheets: [String: SheetView] = [:]
   var sheetBackdrops: [String: BackdropView] = [:]
-  /// `hoverCard` slot: Dia-style previews next to hovered sidebar rows (HoverCard.swift).
-  public private(set) var hoverCard: HoverCardController!
+  /// `ui.card`: generic popover cards and the hover intent of nodes with `hoverIntent` (Card.swift).
+  public private(set) var cards: CardController!
 
   public init(host: ServiceHost, window: DenWindowController, content: ContentService?) {
     self.host = host
@@ -56,14 +62,23 @@ public final class UIService: HostService {
     drag.accent = { [weak self] in self?.renderer.palette.accentStrong ?? .controlAccentColor }
     drag.overlay = { [weak wc] in wc?.overlays }
     content?.accent = renderer.palette.accentStrong
-    hoverCard = HoverCardController(emit: emitter, palette: { [weak self] in self?.renderer.palette })
-    hoverCard.overlays = wc.overlays
-    hoverCard.anchorFrame = { [weak self] id in self?.anchorFrame(id) }
-    hoverCard.cardLeft = { [weak wc] in
-      guard let wc else { return 0 }
-      return wc.sidebarHidden ? (wc.sidebarRevealed ? wc.sidebar.frame.maxX : 0) : wc.sidebar.frame.maxX
+    cards = CardController(renderer: renderer, emit: emitter)
+    cards.overlays = wc.overlays
+    cards.anchorFrame = { [weak self] id in self?.anchorFrame(id) }
+    // Cards next to a sidebar node start right of the sidebar (Dia's rows span it: row maxX + 3).
+    cards.clearX = { [weak self] id in
+      guard let self, self.isInSidebar(id) else { return nil }
+      let wc = self.wc
+      let right = wc.sidebarHidden ? (wc.sidebarRevealed ? wc.sidebar.frame.maxX : 0) : wc.sidebar.frame.maxX
+      return wc.overlays.convert(NSPoint(x: right, y: 0), from: wc.sidebar.superview).x
     }
-    renderer.hover = hoverCard
+    cards.windowRect = { [weak wc] r in
+      guard let wc, let content = wc.window.contentView else { return r }
+      // Window content coordinates, top-left origin -> overlays.
+      let bl = NSRect(x: r.minX, y: content.bounds.height - r.maxY, width: r.width, height: r.height)
+      return wc.overlays.convert(content.convert(bl, to: nil), from: nil)
+    }
+    renderer.hover = cards
 
     wc.sidebar.body.addSubview(sidebarView)
     sidebarView.frame = wc.sidebar.body.bounds
@@ -114,8 +129,15 @@ public final class UIService: HostService {
       if popoverOpen { overlays.append("popover") }
       if libraryOpen { overlays.append("overlay.library") }
       for s in Self.sheetSlots where sheets[s] != nil { overlays.append(.string(s)) }
-      if hoverCard.visible { overlays.append("hoverCard") }
-      return ["page": .int(Int64(sidebarView.pager.current)), "pages": .int(Int64(sidebarView.pager.pages.count)), "overlays": .array(overlays)]
+      let shown = cards.cards.filter { $0.value.superview != nil && !$0.value.leaving }.map(\.key).sorted().map { Value.string($0) }
+      return ["page": .int(Int64(sidebarView.pager.current)), "pages": .int(Int64(sidebarView.pager.pages.count)), "overlays": .array(overlays),
+              "cards": .array(shown)]
+    case "card":
+      let r = cards.set(args)
+      HoverTracker.setNeedsRefresh(wc.window)
+      return r
+    case "hoverIntent":
+      if let b = args["redwell"].bool { cards.intent.redwell = b }
     default:
       return .error("ui: unknown method '\(method)'")
     }
@@ -124,9 +146,8 @@ public final class UIService: HostService {
 
   func set(_ slot: String, _ tree: Value, page: Int?) -> Value {
     // Anything modal (command bar, dialogs, sheets, popovers) closes the hover card.
-    if !tree.isNull, slot.hasPrefix("overlay.") || slot == "dialog" || slot == "popover" { hoverCard.intent.hide(warm: false) }
+    if !tree.isNull, slot.hasPrefix("overlay.") || slot == "dialog" || slot == "popover" { cards.hideAll() }
     switch slot {
-    case "hoverCard": hoverCard.set(tree)
     case "overlay.commandBar": setCommandBar(tree)
     case "dialog": setDialog(tree)
     case "toast": if !tree.isNull { showToast(tree) }
@@ -159,7 +180,7 @@ public final class UIService: HostService {
     content?.accent = renderer.palette.accentStrong
     sidebarView.applyPaletteRecursively(renderer.palette)
     wc.overlays.applyPaletteRecursively(renderer.palette)
-    hoverCard.applyPalette(renderer.palette)
+    cards.applyPalette(renderer.palette)
     onPalette?(renderer.palette)
   }
 
@@ -381,6 +402,15 @@ public final class UIService: HostService {
     ModalFocus.present(popover) { [weak self] in self?.popover.content }
   }
 
+  /// True when the node `id` is rendered in the sidebar.
+  func isInSidebar(_ id: String) -> Bool { findNode(id, in: sidebarView) != nil }
+
+  func findNode(_ id: String, in v: NSView) -> NodeView? {
+    if let n = v as? NodeView, n.nodeId == id, !n.isHiddenOrHasHiddenAncestor { return n }
+    for s in v.subviews { if let f = findNode(id, in: s) { return f } }
+    return nil
+  }
+
   /// Frame of a rendered sidebar node (by id) in overlay coordinates.
   func anchorFrame(_ id: String) -> NSRect? {
     guard !id.isEmpty else { return nil }
@@ -427,7 +457,7 @@ public final class UIService: HostService {
       let w = Tokens.dialogWidth, h = dialog.contentHeight
       dialog.frame = NSRect(x: ((b.width - w) / 2).rounded(), y: ((b.height - h) / 2 - 20).rounded(), width: w, height: h)
     }
-    hoverCard.layout()
+    cards.layout()
     // Spec §6: toasts are anchored to the window's top-right corner.
     var y = Tokens.toastTopInset
     for t in toasts {

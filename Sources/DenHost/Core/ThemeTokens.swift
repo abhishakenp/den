@@ -59,6 +59,32 @@ public struct ThemeTokens: Equatable, Sendable {
   public var dialogDim: CGFloat, sheetDim: CGFloat
   /// Grain drawn on surfaces (a fraction of the window's grain, never louder).
   public var grain: CGFloat
+  /// Cards and popovers (`ui.card`): Dia's neutral hover-card surface, a step off the sidebar.
+  public var card = CardTokens()
+
+  /// Card colors (docs/reference/dia-ui-spec.md §2.3, §2.6, §3.2). With no space colors they are
+  /// Dia's measured values; a themed space tints them slightly. Text is contrast-checked like
+  /// every other surface, so Dia's light secondary (#7B7B7B, 3.9:1) is darkened to 4.5:1.
+  public struct CardTokens: Equatable, Sendable {
+    public var fill = RGB(0xF4 / 255, 0xF4 / 255, 0xF4 / 255)
+    public var text = RGB(0x25 / 255, 0x25 / 255, 0x25 / 255), secondary = RGB(0.45, 0.45, 0.45), glyph = RGB(0.45, 0.45, 0.45)
+    /// Hairline (dark: one #3C3C3C stroke; light: #DCDCDC outside a 1 pt white highlight).
+    public var border = RGB(0xDC / 255, 0xDC / 255, 0xDC / 255), highlight: RGB? = RGB(1, 1, 1)
+    /// Icon-button hover fill (dark #373737).
+    public var hover = RGB(0.9, 0.9, 0.9)
+    public var tooltip = RGB(0x47 / 255, 0x47 / 255, 0x47 / 255), onTooltip = RGB(0xE4 / 255, 0xE4 / 255, 0xE4 / 255)
+    /// Status tones (PR peek, spec §3.2): passed, pending, failed, and the CI bar's empty track.
+    public var success = RGB(0x1C / 255, 0x86 / 255, 0x37 / 255), warning = RGB(0xCB / 255, 0x9F / 255, 0x16 / 255)
+    public var danger = RGB(0xA2 / 255, 0x31 / 255, 0x27 / 255), track = RGB(0xDA / 255, 0xDD / 255, 0xDF / 255)
+    /// Diff counts (+adds / −dels) as text on the card.
+    public var addText = RGB(0x1E / 255, 0x8A / 255, 0x3C / 255), delText = RGB(0xA2 / 255, 0x3A / 255, 0x36 / 255)
+    /// A failing-check row: soft fill, accent bar (= danger), text.
+    public var dangerSoft = RGB(0xF0 / 255, 0xDD / 255, 0xDD / 255), onDangerSoft = RGB(0x7C / 255, 0x31 / 255, 0x37 / 255)
+    /// "Show comments": the strong (black in light) button; "Show N failures": destructive.
+    public var strong = RGB(0.07, 0.07, 0.07), onStrong = RGB(1, 1, 1)
+    public var destructive = RGB(0xA6 / 255, 0x30 / 255, 0x27 / 255), onDestructive = RGB(1, 1, 1)
+    public init() {}
+  }
 
   /// WCAG targets: primary text AAA (7:1), secondary text AA (4.5:1), tertiary (hints, disabled
   /// and large text) 3:1; button labels AA; the accent against the surface 3:1 (a UI component).
@@ -174,7 +200,8 @@ public struct ThemeTokens: Equatable, Sendable {
     let base = dark ? RGB(0.2, 0.2, 0.21) : RGB(0.12, 0.12, 0.13)
     let toast = ensure(hasTheme ? base.mix(tint, 0.45) : base, on: white, bodyContrast)
     let hairFg = dark ? white : RGB(0, 0, 0)
-    return ThemeTokens(
+    let card = cardTokens(dark: dark, tint: hasTheme ? tint : nil, intensity: theme.intensity)
+    var t = ThemeTokens(
       dark: dark, background: bg, surface: surface, elevated: elevated,
       textPrimary: textPrimary, textSecondary: textSecondary, textTertiary: textTertiary,
       sidebarText: sidebarText, sidebarSecondary: sidebarSecondary,
@@ -188,5 +215,51 @@ public struct ThemeTokens: Equatable, Sendable {
       rim: RGBA(white, dark ? 0.16 : 0.85),
       dialogDim: 0.55, sheetDim: 0.35,
       grain: theme.grain * 0.5)
+    t.card = card
+    return t
+  }
+
+  /// Dia's card surface (dark #262626, light #F4F4F4), tinted a little toward the space's colors
+  /// (at most 6%), with text pushed to the usual contrast targets on it.
+  static func cardTokens(dark: Bool, tint: RGB?, intensity: CGFloat) -> CardTokens {
+    func hex(_ v: UInt32) -> RGB { RGB(CGFloat((v >> 16) & 0xFF) / 255, CGFloat((v >> 8) & 0xFF) / 255, CGFloat(v & 0xFF) / 255) }
+    var c = CardTokens()
+    let base = dark ? hex(0x262626) : hex(0xF4F4F4)
+    var fill = base
+    if let tint {
+      let deep = dark ? tint.mix(RGB(0, 0, 0), 0.7) : tint
+      fill = base.mix(deep, 0.02 + 0.04 * min(max(intensity, 0), 1))
+    }
+    c.fill = fill
+    c.text = ensure(dark ? hex(0xDEDEDE) : hex(0x252525), on: fill, primaryContrast)
+    c.secondary = ensure(dark ? hex(0x9D9D9D) : hex(0x7B7B7B), on: fill, bodyContrast)
+    c.glyph = ensure(dark ? hex(0x9D9D9D) : hex(0x7A7A7A), on: fill, uiContrast)
+    c.border = dark ? hex(0x3C3C3C) : hex(0xDCDCDC)
+    c.highlight = dark ? nil : white
+    c.hover = dark ? hex(0x373737) : fill.mix(RGB(0, 0, 0), 0.06)
+    // Tooltip: Dia's dark tooltip (#474747 / #E4E4E4). Its light tooltip wasn't measured; den uses
+    // the same chip so a tooltip always reads as one.
+    c.tooltip = hex(0x474747)
+    c.onTooltip = hex(0xE4E4E4)
+    if dark {
+      // Dia's dark PR card wasn't measured (spec §3.5): GitHub's dark-mode status colors.
+      c.success = hex(0x3FB950)
+      c.warning = hex(0xD29922)
+      c.danger = hex(0xF85149)
+      c.track = hex(0x3A3A3A)
+      c.addText = ensure(hex(0x3FB950), on: fill, bodyContrast)
+      c.delText = ensure(hex(0xF85149), on: fill, bodyContrast)
+      c.dangerSoft = fill.mix(hex(0xF85149), 0.16)
+      c.onDangerSoft = ensure(hex(0xFFA198), on: c.dangerSoft, bodyContrast)
+      c.strong = hex(0xEDEDED)
+      c.onStrong = hex(0x161616)
+      c.destructive = hex(0xC93C31)
+    } else {
+      c.addText = ensure(c.addText, on: fill, bodyContrast)
+      c.delText = ensure(c.delText, on: fill, bodyContrast)
+      c.onDangerSoft = ensure(c.onDangerSoft, on: c.dangerSoft, bodyContrast)
+    }
+    c.onDestructive = ensure(white, on: c.destructive, bodyContrast)
+    return c
   }
 }
