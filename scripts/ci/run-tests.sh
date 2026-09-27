@@ -36,11 +36,13 @@ for flag pattern in "${passes[@]}"; do
   [[ $flag == --all ]] || args=($flag "$pattern")
   echo "== scripts/test.sh ${args[*]}" | tee -a "$log"
   t=$SECONDS prc=0
-  $test_cmd "${args[@]}" "$@" 2>&1 | tee -a "$log" || prc=$?
-  line=$(grep -E '^(✔|✘).*Test run with' "$log" | tail -1 || true)
+  $test_cmd "${args[@]}" "$@" 2>&1 | tee "$log.pass" || prc=$?
+  cat "$log.pass" >> "$log"
+  line=$(grep -E '^(✔|✘).*Test run with|exited with unexpected signal' "$log.pass" | tail -1 | cut -c1-200 || true)
   summary+="${args[*]:-full suite}: exit $prc, $(( SECONDS - t ))s"$'\n'"  $line"$'\n'
   (( prc == 0 )) || rc=$prc
 done
+rm -f "$log.pass"
 print -r -- "$summary"
 echo "tests finished in $(( SECONDS - start ))s, exit $rc"
 if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then

@@ -13,6 +13,10 @@ on:
         description: Also render the UI snapshot scenarios (scripts/snapshots.sh) and upload the PNGs
         type: boolean
         default: false
+      test_parallelism:
+        description: Maximum tests running at once (Swift Testing parallelization width)
+        type: string
+        default: "3"
 
 permissions:
   contents: read
@@ -62,8 +66,11 @@ jobs:
 
       - name: Test (scripts/test.sh, UI suites included)
         env:
-          # Mock-server WebKit suites run after the parallel pass (see scripts/ci/run-tests.sh).
-          CI_ISOLATE_SUITES: ConnectionsTests|ExtensionsTests
+          # The suites' wall-clock timeouts were set on an 8-core M3; a 3-core runner running every
+          # suite at once misses them. Cap how many tests run at once (Swift Testing).
+          SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH: ${{ inputs.test_parallelism || '3' }}
+          # A crash prints a symbolicated Swift backtrace into the log (runners keep no .ips).
+          SWIFT_BACKTRACE: enable=yes,interactive=no
         run: scripts/ci/run-tests.sh
 
       - name: Perf (report only)
