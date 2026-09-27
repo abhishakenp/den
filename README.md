@@ -11,7 +11,6 @@ An open-source, macOS-only browser built on WebKit.
 - Chrome/Firefox extension support
 - Connections (Slack, GitHub, …) and a daily briefing that turns them into a todo list
 - Low memory and energy use
-- Signed, notarized releases with auto-update from day one
 
 ## License
 
