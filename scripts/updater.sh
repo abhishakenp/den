@@ -121,7 +121,7 @@ cmd_status() {
 # crashed (no summary) is run again whole, once; then tests that failed are re-run once on their
 # own. Deploys need every test to pass by then.
 run_tests() {
-  local out=$STAGE/test.log filter=$1
+  local out=$STAGE/test.log filter=${1:-}
   mkdir -p $STAGE
   (cd $SRC && swift test ${filter:+--filter "$filter"} > $out 2>&1); local rc=$?
   cat $out >> $LOG
