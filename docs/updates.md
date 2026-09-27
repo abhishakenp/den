@@ -103,7 +103,7 @@ Each check:
    - **Anything fails:** nothing is deployed, the last good version stays, and `~/.den/logs/updater.log` says why. That commit isn't retried until `main` moves.
      - A test run that crashed is run again once.
      - Failed tests are re-run once on their own, because WebKit and latency tests are timing-sensitive.
-     - When the 1-minute load is above twice the core count, a failure isn't held against the commit, and the next check tries again.
+     - When the 1-minute load is above twice the core count, a failure isn't held against the commit. It is tried again at most every 20 minutes.
 3. Results go to `~/.den/updates/state.json`. The About panel shows the deployed commit, when it was deployed and the last check. `state.json` is written only when something changed, or when you asked for a check, so an idle check never wakes den.
 
 ## Gatekeeper without notarization

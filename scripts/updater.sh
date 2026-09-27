@@ -71,7 +71,7 @@ overloaded() {
 
 failed_at() { # sha deployed
   if overloaded; then
-    state_write lastCheck=$(now_iso) lastResult="Tests failed at $(short $1) under load $(sysctl -n vm.loadavg | awk '{print $2}'); retrying"
+    state_write deferred=$1 deferredAt=$(date +%s) lastCheck=$(now_iso) lastResult="Tests failed at $(short $1) under load $(sysctl -n vm.loadavg | awk '{print $2}'); retrying"
     log "NOT deployed $(short $1) (load $(sysctl -n vm.loadavg | awk '{print $2}')): will retry at the next check"
   else
     state_write lastFailed=$1 lastCheck=$(now_iso) lastResult="Tests failed at $(short $1); kept $(short $2)"
@@ -238,6 +238,11 @@ cmd_check() {
   if [[ -z $remote ]]; then
     (( requested )) && state_write lastCheck=$(now_iso) lastResult="Couldn't reach GitHub"
     log "ls-remote failed"; return 0
+  fi
+  # A commit deferred under load is retried at most every 20 minutes (a full test run each time).
+  local deferred=$(state_get deferred) deferredAt=$(state_get deferredAt)
+  if [[ $remote == $deferred && -n $deferredAt ]] && (( $(date +%s) - deferredAt < ${DEN_UPDATER_RETRY_S:-1200} )); then
+    return 0
   fi
   if [[ $remote == $deployed || $remote == $failed ]]; then
     # Nothing new: den isn't woken unless someone asked.
