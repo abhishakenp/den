@@ -30,7 +30,7 @@ public final class DenRuntime {
     app = AppService(host: host, window: window)
     windowService.ui = ui
     windowService.attach(webviews: webviews, host: host)
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host)] {
       host.provide(s)
       plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

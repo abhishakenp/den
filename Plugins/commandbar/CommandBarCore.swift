@@ -57,6 +57,7 @@ final class CommandBarCore {
     var act: Act
     var key = ""  // usage key for ranking
     var score = 0
+    var strength = 0  // how well the text matched (no usage): decides the tier, so rows don't jump while typing
   }
 
   enum Scope: Equatable {
@@ -87,6 +88,13 @@ final class CommandBarCore {
     Engine("x", "X", "https://x.com/search?q=%s"),
   ]
   static let maxUsage = 400
+  /// Rows the bar shows at most (matches the host's `Tokens.commandBarMaxRows`).
+  static let maxRows = 8
+  static let maxSuggestions = 4
+  /// Rows kept for web suggestions, so local matches never get pushed out when they arrive.
+  static let reservedSuggestions = 2
+  /// A match at least this good (prefix, word prefix, keyword or host) ranks above web suggestions.
+  static let strongMatch = 60
   static let dayMs: Int64 = 86_400_000
 
   let env: PluginEnv
@@ -104,6 +112,10 @@ final class CommandBarCore {
   var selected = ""
   var rows: [Row] = []
   var sections: [(String, [Row])] = []
+  // Web suggestions (the host `suggest` service): the latest answer and what's on screen now.
+  var suggestQuery = ""
+  var suggestItems: [String] = []
+  var shownSuggestions: [String] = []
 
   init(env: PluginEnv) { self.env = env }
 
@@ -116,6 +128,7 @@ final class CommandBarCore {
     env.on("commands.key.new") { [self] _ in toggle("new") }
     env.on("commands.key.edit") { [self] _ in toggle("edit") }
     env.on("ui.action") { [self] v in if v.s("id") == Self.barId { action(v.s("action"), v["value"]) } }
+    env.on("suggest.results") { [self] v in suggestionsArrived(v.s("q"), v.a("items").compactMap { $0.string }) }
   }
 
   func stop() {
@@ -230,6 +243,8 @@ final class CommandBarCore {
     }
     selected = ""
     isOpen = true
+    shownSuggestions = []
+    requestSuggestions()
     // Clearing first makes the host treat it as a fresh open, which selects the text (Cmd-L).
     if reopen { env.call("ui", "set", ["slot": .string(Self.slot), "tree": .null]) }
     render(replace: true)
@@ -242,6 +257,8 @@ final class CommandBarCore {
     query = ""
     rows = []
     sections = []
+    shownSuggestions = []
+    env.call("suggest", "cancel")
     env.call("ui", "set", ["slot": .string(Self.slot), "tree": .null])
   }
 
@@ -249,6 +266,7 @@ final class CommandBarCore {
     scope = s
     query = q
     selected = ""
+    requestSuggestions()
     if reopen { env.call("ui", "set", ["slot": .string(Self.slot), "tree": .null]) }
     render(replace: true)
   }
@@ -261,6 +279,7 @@ final class CommandBarCore {
     case "input":
       query = value.s("text")
       selected = ""
+      requestSuggestions()
       render()
     case "select":
       selected = value.s("row")
@@ -726,7 +745,7 @@ final class CommandBarCore {
     }
     let u = Self.url(from: q)
     if let u, !unchanged {
-      top.append(Row(id: "go", icon: "sf:globe", title: q, subtitle: mode == "edit" ? "— Go to URL" : "— Open URL", act: .url(u), key: "url:" + URLs.normalize(u)))
+      top.append(Row(id: "go", icon: URLs.favicon(u), title: q, subtitle: mode == "edit" ? "— Go to URL" : "— Open URL", act: .url(u), key: "url:" + URLs.normalize(u)))
     }
     // A full URL with a scheme is never a search.
     if u == nil || !Text.contains(q, "://") {
@@ -738,38 +757,130 @@ final class CommandBarCore {
     return top
   }
 
+  /// Main results, in tiers so rows keep their place while typing and when web suggestions
+  /// arrive: go/search rows, strong local matches (tabs, history, actions, spaces), web
+  /// suggestions, then weak local matches. At most `maxRows`; two rows stay reserved for
+  /// suggestions, so their arrival never pushes a strong match out.
   func mainResults(_ q: String) -> [(String, [Row])] {
     if q.isEmpty {
-      // Nothing typed: the most recent tabs, like Arc's suggestions.
+      // Nothing typed (Cmd-T): the most recent tabs, then suggested actions, like Arc.
       let tabs = allTabs().sorted { $0.i("lastActive") > $1.i("lastActive") }
       let sel = selectedTab().s("id")
-      return [("Tabs", Array(tabs.filter { $0.s("id") != sel }.prefix(5).map { tabRow($0, score: 0) }))]
+      let recent = Array(tabs.filter { $0.s("id") != sel }.prefix(5).map { tabRow($0, score: 0) })
+      return [("Tabs", recent), ("Actions", commandRows("", limit: Self.maxRows - recent.count))]
     }
-    let tabs = tabRows(q, limit: 5)
+    let go = goRows(q)
     let openURLs = allTabs().map { URLs.normalize($0.s("url")) }
-    var ranked: [(String, [Row])] = [
-      ("Tabs", tabs),
-      ("Actions", commandRows(q, limit: 4)),
-      ("Spaces", spaceRows(q)),
+    let local: [(String, [Row])] = [
+      ("Tabs", tabRows(q, limit: 3)),
       ("History", historyRows(q, exclude: openURLs)),
+      ("Actions", commandRows(q, limit: 3)),
+      ("Spaces", spaceRows(q)),
     ]
-    ranked = ranked.filter { !$0.1.isEmpty }
-    // Stable: the section with the strongest match comes first.
-    let best = ranked.map { $0.1.map { $0.score }.max() ?? 0 }
-    let order = Array(0..<ranked.count).sorted { best[$0] != best[$1] ? best[$0] > best[$1] : $0 < $1 }
-    return [("", goRows(q))] + order.map { ranked[$0] }
+    let sugg = suggestionRows(q)
+    let reserve = suggestible(q) ? min(Self.reservedSuggestions, Self.maxSuggestions) : 0
+    var left = Self.maxRows - go.count
+    var out: [(String, [Row])] = [("", go)]
+    // Strong local matches, leaving room for the reserved suggestions.
+    var strongLeft = max(0, left - reserve)
+    for (title, rs) in local {
+      let strong = Array(rs.filter { $0.strength >= Self.strongMatch }.prefix(strongLeft))
+      strongLeft -= strong.count
+      left -= strong.count
+      out.append((title, strong))
+    }
+    let shown = Array(sugg.prefix(min(left, Self.maxSuggestions)))
+    left -= shown.count
+    out.append(("Suggestions", shown))
+    for (title, rs) in local {
+      let weak = Array(rs.filter { $0.strength < Self.strongMatch }.prefix(max(0, left)))
+      left -= weak.count
+      out.append((title, weak))
+    }
+    return out
   }
 
-  func tabRow(_ t: Value, score: Int) -> Row {
+  // MARK: - Web suggestions
+
+  /// Suggestions only make sense for a typed search in the main scope (not a full URL).
+  func suggestible(_ q: String) -> Bool {
+    scope == .main && !q.isEmpty && !Text.contains(q, "://") && !(mode == "edit" && q == editURL)
+  }
+
+  /// Asks the host for suggestions. A cached answer comes back at once; otherwise the host
+  /// answers later with a `suggest.results` event. Nothing happens without a `suggest` service.
+  func requestSuggestions() {
+    let q = trim(query)
+    guard isOpen, suggestible(q) else { return }
+    let r = env.call("suggest", "query", ["q": .string(q)])
+    if let items = r["items"].array, !r.isErr {
+      suggestQuery = r.s("q")
+      suggestItems = items.compactMap { $0.string }
+    }
+  }
+
+  func suggestionsArrived(_ q: String, _ items: [String]) {
+    guard isOpen, q == Self.normQuery(trim(query)) else { return }  // stale: the user typed on
+    suggestQuery = q
+    suggestItems = items
+    render()
+  }
+
+  func suggestionRows(_ q: String) -> [Row] {
+    guard suggestible(q) else { return [] }
+    let nq = Self.normQuery(q)
+    let fresh: [String]? = suggestQuery == nq ? suggestItems : nil
+    shownSuggestions = Self.mergeSuggestions(shown: shownSuggestions, fresh: fresh, query: nq, limit: Self.maxSuggestions)
+    return shownSuggestions.map { text in
+      if !Text.contains(text, " "), let u = Self.url(from: text) {
+        return Row(id: "sugg:" + text, icon: URLs.favicon(u), title: text, subtitle: "— Open URL", act: .url(u), key: "url:" + URLs.normalize(u))
+      }
+      return Row(id: "sugg:" + text, icon: "sf:magnifyingglass", title: text, act: .search(Self.searchURL(defaultEngine, text)), key: "q:" + Text.lower(text))
+    }
+  }
+
+  /// Lowercased, trimmed, inner whitespace collapsed (the `suggest` service's cache key).
+  static func normQuery(_ s: String) -> String {
+    var out = ""
+    for w in split(Text.lower(s)) { out += out.isEmpty ? w : " " + w }
+    return out
+  }
+
+  /// The suggestions to show for `query`. Stable while typing: rows already on screen keep their
+  /// order. While the answer for `query` is pending (`fresh == nil`), shown rows that still extend
+  /// the query stay; when it arrives, shown rows it confirms come first, then its new ones.
+  /// The query itself is left out (the search row covers it), as are duplicates.
+  static func mergeSuggestions(shown: [String], fresh: [String]?, query: String, limit: Int) -> [String] {
+    let q = normQuery(query)
+    var out: [String] = []
+    var keys: [String] = []
+    func add(_ s: String) {
+      let k = normQuery(s)
+      guard out.count < limit, !k.isEmpty, k != q, !keys.contains(k) else { return }
+      out.append(s)
+      keys.append(k)
+    }
+    guard let fresh else {
+      for s in shown where Text.hasPrefix(normQuery(s), q) { add(s) }
+      return out
+    }
+    let freshKeys = fresh.map { normQuery($0) }
+    for s in shown where freshKeys.contains(normQuery(s)) { add(s) }
+    for s in fresh { add(s) }
+    return out
+  }
+
+  func tabRow(_ t: Value, score: Int, strength: Int = 0) -> Row {
     let current = env.call("spaces", "current").s("id")
     var sub = URLs.display(t.s("url"))
+    if !sub.isEmpty { sub = "— " + sub }
     let sid = t.s("spaceId")
     if !sid.isEmpty && sid != current {
       for sp in env.call("spaces", "list").array ?? [] where sp.s("id") == sid { sub += " · " + sp.s("name") }
     }
     return Row(
       id: "tab:" + t.s("id"), icon: t.sOpt("favicon") ?? URLs.favicon(t.s("url")), title: t.s("title"), subtitle: sub, accessory: "Switch to Tab",
-      keycap: "→", act: .tab(t.s("id")), key: "tab:" + t.s("id"), score: score)
+      keycap: "→", act: .tab(t.s("id")), key: "tab:" + t.s("id"), score: score, strength: strength)
   }
 
   func tabRows(_ q: String, limit: Int) -> [Row] {
@@ -777,7 +888,7 @@ final class CommandBarCore {
     for t in allTabs() {
       guard let m = Self.match(q, title: t.s("title"), url: t.s("url")) else { continue }
       let s = m + 10 + usageScore("tab:" + t.s("id")) + usageScore("url:" + URLs.normalize(t.s("url")))
-      out.append(tabRow(t, score: s))
+      out.append(tabRow(t, score: s, strength: m))
     }
     return Self.top(out, limit)
   }
@@ -788,7 +899,7 @@ final class CommandBarCore {
       guard let m = Self.match(q, title: c.title, keywords: c.keywords) else { continue }
       // Empty query (actions mode): most used first, then the built-in order.
       let s = (q.isEmpty ? 0 : m) + usageScore("cmd:" + c.id) - (q.isEmpty ? n : 0)
-      out.append(Row(id: "cmd:" + c.id, icon: c.icon, title: c.title, accessory: c.shortcut, act: .command(c.id), key: "cmd:" + c.id, score: s))
+      out.append(Row(id: "cmd:" + c.id, icon: c.icon, title: c.title, accessory: c.shortcut, act: .command(c.id), key: "cmd:" + c.id, score: s, strength: m))
     }
     return Self.top(out, limit)
   }
@@ -801,7 +912,7 @@ final class CommandBarCore {
       guard id != current, let m = Self.match(q, title: sp.s("name"), keywords: ["space"]) else { continue }
       out.append(Row(
         id: "space:" + id, icon: sp.sOpt("icon") ?? "sf:square.stack", title: sp.s("name"), subtitle: "— Switch to Space", act: .space(id),
-        key: "space:" + id, score: m + usageScore("space:" + id)))
+        key: "space:" + id, score: m + usageScore("space:" + id), strength: m))
     }
     return Self.top(out, 3)
   }
@@ -815,11 +926,11 @@ final class CommandBarCore {
       let norm = URLs.normalize(u.url)
       guard !u.url.isEmpty, !seen.contains(norm), let m = Self.match(q, title: u.title, url: u.url) else { continue }
       seen.append(norm)
-      out.append(Row(id: "hist:" + norm, icon: URLs.favicon(u.url), title: u.title.isEmpty ? URLs.display(u.url) : u.title, subtitle: URLs.display(u.url),
-                     act: .url(u.url), key: k, score: m + usageScore(k)))
+      out.append(Row(id: "hist:" + norm, icon: URLs.favicon(u.url), title: u.title.isEmpty ? URLs.display(u.url) : u.title, subtitle: "— " + URLs.display(u.url),
+                     act: .url(u.url), key: k, score: m + usageScore(k), strength: m))
     }
     out += archiveRows(q, limit: 10, exclude: seen)
-    return Self.top(out, 4)
+    return Self.top(out, 3)
   }
 
   func archiveRows(_ q: String, limit: Int, exclude: [String]) -> [Row] {
@@ -832,8 +943,8 @@ final class CommandBarCore {
       seen.append(norm)
       let key = "url:" + norm
       out.append(Row(id: "arch:" + e.s("id"), icon: e.sOpt("favicon") ?? URLs.favicon(u), title: e.s("title").isEmpty ? URLs.display(u) : e.s("title"),
-                     subtitle: URLs.display(u), accessory: "Archived", act: .archived(e.s("id"), u), key: key,
-                     score: (q.isEmpty ? -n : m - 5) + usageScore(key)))
+                     subtitle: "— " + URLs.display(u), accessory: "Archived", act: .archived(e.s("id"), u), key: key,
+                     score: (q.isEmpty ? -n : m - 5) + usageScore(key), strength: m))
     }
     return Self.top(out, limit)
   }
@@ -881,6 +992,10 @@ final class CommandBarCore {
       "tree": [
         "type": "commandBar", "id": .string(Self.barId), "query": .string(query), "replaceQuery": .bool(replace), "placeholder": .string(placeholder),
         "selected": .string(selected), "sections": .array(secs),
+        // Arc's bar is one flat list; other scopes keep their section headers.
+        "headers": .bool(scope != .main),
+        // Caret and selection color follow the mode (Go for URL-shaped input, else Search).
+        "inputMode": .string(Self.url(from: trim(query)) != nil ? "go" : "search"),
       ],
     ])
   }

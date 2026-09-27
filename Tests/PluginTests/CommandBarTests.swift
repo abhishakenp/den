@@ -5,11 +5,20 @@ import Testing
 @testable import DenHost
 @testable import PluginCores
 
+/// Web-suggestion requests a test hasn't answered yet, per harness.
+@MainActor var pendingSuggest: [ObjectIdentifier: [(String, @Sendable ([String]?) -> Void)]] = [:]
+
 extension Harness {
   /// Starts spaces, tabs and the command bar, like the real load order.
   @discardableResult
   func startCommandBar() -> CommandBarCore {
     if rt.plugins.serviceNames.contains("tabs") == false { startTabs() }
+    // Offline: web suggestions never answer unless a test answers them (see `answerSuggestions`).
+    suggest.fetch = { [weak self] q, done in
+      MainActor.assumeIsolated { self?.suggestRequests.append((q, done)) }
+      return {}
+    }
+    suggest.debounce = 0
     let core = CommandBarCore(env: env)
     rt.plugins.provide("commands") { m, a in core.handle(m, a) }
     core.start()
@@ -29,6 +38,18 @@ extension Harness {
       "row": .string(row ?? bar.str("selected")), "query": .string(rt.ui.commandBar.input.stringValue),
       "modifiers": .array(shift ? ["shift"] : []),
     ])
+  }
+  var suggest: SuggestService { rt.host.services["suggest"] as! SuggestService }
+  /// Answers the latest pending web-suggestion request, then waits for the event to land.
+  var suggestRequests: [(String, @Sendable ([String]?) -> Void)] {
+    get { pendingSuggest[ObjectIdentifier(self)] ?? [] }
+    set { pendingSuggest[ObjectIdentifier(self)] = newValue }
+  }
+  /// Answers the latest pending web-suggestion request, then lets the main queue deliver the event.
+  func answerSuggestions(_ items: [String]) async {
+    guard let (_, done) = suggestRequests.popLast() else { return }
+    done(items)
+    try? await Task.sleep(nanoseconds: 30_000_000)
   }
   func allTabIds() -> [String] { spaceIds.flatMap { ids("pinned", $0) + ids("today", $0) } + ids("favorites") }
 }
@@ -89,7 +110,7 @@ struct CommandBarTests {
     #expect(titles.contains("Swift.org"))
     let swiftOrg = rows.first { $0.str("title") == "Swift.org" }!
     #expect(swiftOrg.str("accessory") == "Switch to Tab")
-    #expect(swiftOrg.str("subtitle") == "swift.org · Work")
+    #expect(swiftOrg.str("subtitle") == "— swift.org · Work")
     #expect(h.bar.list("sections").map { $0.str("title") }.contains("Tabs"))
 
     h.submit(swiftOrg.str("id"))
@@ -359,5 +380,97 @@ struct CommandBarTests {
     #expect(CommandBarCore.match("xyz", title: "Swift") == nil)
     #expect(CommandBarCore.match("ycomb", title: "Hacker News", url: "https://news.ycombinator.com") != nil)
     #expect(CommandBarCore.searchURL(.init("g", "Google", "https://www.google.com/search?q=%s"), "a/b c") == "https://www.google.com/search?q=a%2Fb+c")
+  }
+
+  // MARK: - Web suggestions, merging and ranking
+
+  @Test func mergeKeepsShownSuggestionsStableWhileTyping() {
+    let m = CommandBarCore.mergeSuggestions
+    // Fresh answer: the query itself and duplicates (any case/spacing) are left out; limit applies.
+    #expect(m([], ["icon", "icons", "Icons", "iconic", "icon  tablet", "icon tablet", "icons8"], "icon", 4) == ["icons", "iconic", "icon  tablet", "icons8"])
+    // Pending (no answer for this query yet): shown rows that still extend the query stay, in order.
+    #expect(m(["icons", "iconic", "ice age"], nil, "icon", 4) == ["icons", "iconic"])
+    #expect(m(["icons", "iconic"], nil, "  ICON ", 4) == ["icons", "iconic"])
+    // Answer arrives: rows it confirms keep their place, its new rows follow in its order.
+    #expect(m(["iconic", "icons"], ["icons", "icon pack", "iconic"], "icon", 4) == ["iconic", "icons", "icon pack"])
+    // Rows the answer drops go away.
+    #expect(m(["icons", "iconic"], ["iconify"], "iconi", 4) == ["iconify"])
+    #expect(CommandBarCore.normQuery("  Git   HUB ") == "git hub")
+  }
+
+  @Test func webSuggestionsBlendBelowStrongLocalMatchesWithoutMovingThem() async {
+    let h = Harness()
+    h.startCommandBar()
+    h.key("cmd+t")
+    h.type("swi")
+    #expect(h.suggestRequests.last?.0 == "swi")
+    let before = h.barRowIds
+    #expect(before.first == "search")
+    #expect(!before.contains { $0.hasPrefix("sugg:") })
+    await h.answerSuggestions(["swi", "swiggy", "swift", "switch 2", "swimming", "swiss"])
+    let after = h.barRowIds
+    // Everything that was on screen keeps its position; suggestions come after the strong tab matches.
+    #expect(Array(after.prefix(before.count)) == before)
+    #expect(after.filter { $0.hasPrefix("sugg:") } == ["sugg:swiggy", "sugg:swift", "sugg:switch 2", "sugg:swimming"])
+    #expect(after.count <= CommandBarCore.maxRows)
+    let sugg = h.barRows.first { $0.str("id") == "sugg:swift" }!
+    #expect(sugg.str("icon") == "sf:magnifyingglass")
+
+    // Typing on: shown suggestions that still match stay put until the new answer lands.
+    h.type("swif")
+    #expect(h.barRowIds.filter { $0.hasPrefix("sugg:") } == ["sugg:swift"])
+    // A late answer for the old query is ignored.
+    h.rt.plugins.emit("suggest.results", ["q": "swi", "items": ["swiggy"]])
+    #expect(!h.barRowIds.contains("sugg:swiggy"))
+    await h.answerSuggestions(["swift", "swiftui", "swift codes"])
+    #expect(h.barRowIds.filter { $0.hasPrefix("sugg:") } == ["sugg:swift", "sugg:swiftui", "sugg:swift codes"])
+
+    // Picking a suggestion searches it with the default engine.
+    h.submit("sugg:swiftui")
+    #expect(h.tabs("list")["today"].array?.contains { $0.s("url") == "https://www.google.com/search?q=swiftui" } == true)
+  }
+
+  @Test func cachedSuggestionsShowAtOnceAndUrlsGoDirectly() async {
+    let h = Harness()
+    h.startCommandBar()
+    h.key("cmd+t")
+    h.type("news")
+    await h.answerSuggestions(["news", "news.ycombinator.com", "news today"])
+    h.key("cmd+t")  // close
+    h.key("cmd+t")
+    h.type("news")  // cached: no request, rows at once
+    #expect(h.suggestRequests.isEmpty)
+    let nav = h.barRows.first { $0.str("id") == "sugg:news.ycombinator.com" }
+    #expect(nav?.str("subtitle") == "— Open URL")
+    #expect(nav?.str("icon").hasPrefix("https://") == true)
+    h.submit("sugg:news.ycombinator.com")
+    #expect(h.tabs("list")["today"].array?.contains { $0.s("url") == "https://news.ycombinator.com" } == true)
+
+    // A domain gets a Go row first (with its favicon); a full URL asks for no suggestions.
+    h.key("cmd+t")
+    h.type("news.ycombinator.com")
+    #expect(h.barRowIds.prefix(2) == ["go", "search"])
+    #expect(h.barRows[0].str("icon").hasPrefix("https://"))
+    #expect(h.bar.str("inputMode") == "go")
+    h.type("https://example.com/a")
+    #expect(h.suggestRequests.last?.0 != "https://example.com/a")
+    #expect(!h.barRowIds.contains { $0.hasPrefix("sugg:") })
+  }
+
+  @Test func emptyStateShowsRecentTabsThenSuggestedActionsAsOneFlatList() {
+    let h = Harness()
+    h.startCommandBar()
+    h.key("cmd+t")
+    let secs = h.bar.list("sections")
+    #expect(secs.map { $0.str("title") } == ["Tabs", "Actions"])
+    #expect(h.bar.flag("headers") == false)  // Arc's main list has no headers
+    let tabs = secs[0].list("rows"), actions = secs[1].list("rows")
+    #expect(!tabs.isEmpty && tabs.count <= 5)
+    #expect(tabs.allSatisfy { $0.str("accessory") == "Switch to Tab" && $0.str("keycap") == "→" })
+    #expect(!actions.isEmpty)
+    #expect(tabs.count + actions.count == CommandBarCore.maxRows)
+    // Other scopes keep their headers.
+    h.action("commandBar", "tab", ["query": ""])
+    #expect(h.bar.flag("headers") == true)
   }
 }

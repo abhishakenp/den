@@ -12,6 +12,7 @@ public enum HostScenarios {
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
+    if let w = commandBar(name, runtime: rt) { return w }
     guard names.contains(name) else { return nil }
     switch name {
     case "themePicker", "themePickerEmpty":
