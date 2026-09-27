@@ -62,6 +62,23 @@ os.replace(tmp, path)
 PY
 }
 
+# True when the machine is too busy for timing-sensitive tests to mean anything (1-min load
+# above 2x the cores). A failure then isn't held against the commit: the next check retries it.
+overloaded() {
+  local l=$(sysctl -n vm.loadavg | awk '{print int($2)}') n=$(sysctl -n hw.ncpu)
+  (( l > 2 * n ))
+}
+
+failed_at() { # sha deployed
+  if overloaded; then
+    state_write lastCheck=$(now_iso) lastResult="Tests failed at $(short $1) under load $(sysctl -n vm.loadavg | awk '{print $2}'); retrying"
+    log "NOT deployed $(short $1) (load $(sysctl -n vm.loadavg | awk '{print $2}')): will retry at the next check"
+  else
+    state_write lastFailed=$1 lastCheck=$(now_iso) lastResult="Tests failed at $(short $1); kept $(short $2)"
+    log "NOT deployed $(short $1): kept $(short $2)"
+  fi
+}
+
 channel() { # [updates] channel in config.toml, if set
   [[ -f $DEN/config.toml ]] || return
   awk '/^\[updates\]/{s=1;next} /^\[/{s=0} s && /^[[:space:]]*channel[[:space:]]*=/{gsub(/.*=[[:space:]]*"|".*/,""); print; exit}' $DEN/config.toml
@@ -249,16 +266,14 @@ cmd_check() {
       result="Installed $(short $remote) — restart to apply"
       state_write deployed=$remote deployedAt=$(now_iso) installedCommit=$remote lastCheck=$(now_iso) lastResult="$result" lastFailed=
     else
-      state_write lastFailed=$remote lastCheck=$(now_iso) lastResult="Tests failed at $(short $remote); kept $(short $deployed)"
-      log "NOT deployed $(short $remote): kept $(short $deployed)"; return 1
+      failed_at $remote $deployed; return 1
     fi
   elif (( ${#ids} )); then
     if deploy_plugins $remote $ids; then
       result="Updated ${(j:, :)ids} to $(short $remote)"
       state_write deployed=$remote deployedAt=$(now_iso) lastCheck=$(now_iso) lastResult="$result" lastFailed=
     else
-      state_write lastFailed=$remote lastCheck=$(now_iso) lastResult="Tests failed at $(short $remote); kept $(short $deployed)"
-      log "NOT deployed $(short $remote): kept $(short $deployed)"; return 1
+      failed_at $remote $deployed; return 1
     fi
   else
     result="Nothing to deploy in $(short $remote)"
