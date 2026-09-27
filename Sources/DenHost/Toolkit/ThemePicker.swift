@@ -27,11 +27,11 @@ final class ThemePickerNode: NodeView {
   private var lastDetent = -1
   private var lastHaptic: CFTimeInterval = 0
 
-  private var modeButtons: [IconButton] = []
-  private lazy var removeButton = IconButton(symbol: "minus", size: 32) { [weak self] in self?.removeColor() }
-  private lazy var addButton = IconButton(symbol: "plus", size: 32) { [weak self] in self?.addColor() }
-  private lazy var prevButton = IconButton(symbol: "chevron.left", size: 32) { [weak self] in self?.turnPage(-1) }
-  private lazy var nextButton = IconButton(symbol: "chevron.right", size: 32) { [weak self] in self?.turnPage(1) }
+  private(set) var modeButtons: [IconButton] = []
+  private(set) lazy var removeButton = IconButton(symbol: "minus", size: 32) { [weak self] in self?.removeColor() }
+  private(set) lazy var addButton = IconButton(symbol: "plus", size: 32) { [weak self] in self?.addColor() }
+  private(set) lazy var prevButton = IconButton(symbol: "chevron.left", size: 32) { [weak self] in self?.turnPage(-1) }
+  private(set) lazy var nextButton = IconButton(symbol: "chevron.right", size: 32) { [weak self] in self?.turnPage(1) }
   private let emptyLabel = makeLabel("Tap to pick a color for this space", size: 13, weight: .semibold)  // PX: 204 pt wide = SF 13 semibold
   private var padImage: CGImage?
   private var padImageKey = ""
@@ -171,7 +171,10 @@ final class ThemePickerNode: NodeView {
 
   override func layout() {
     super.layout()
-    let s = Tokens.themePickerModeSize, cx = bounds.width / 2
+    // Every control is placed in the body's fixed coordinates (spec §4), never from the current
+    // bounds: a layout pass that ran before the popover sized the node used to center on x = 0,
+    // cutting the light-mode button at the left edge and dropping "+" into the pad's corner.
+    let s = Tokens.themePickerModeSize, cx = Tokens.themePickerSize.width / 2
     for (i, b) in modeButtons.enumerated() {
       b.frame = NSRect(x: cx - s / 2 + CGFloat(i - 1) * Tokens.themePickerModePitch, y: Tokens.themePickerModeTop, width: s, height: s)
     }
@@ -180,7 +183,7 @@ final class ThemePickerNode: NodeView {
     addButton.frame = NSRect(x: cx + 20 - 16, y: ay, width: 32, height: 32)
     let sy = Tokens.themePickerSwatchCenterY - 16, px = Tokens.themePickerPagerCenterX
     prevButton.frame = NSRect(x: px - 16, y: sy, width: 32, height: 32)
-    nextButton.frame = NSRect(x: bounds.width - px - 16, y: sy, width: 32, height: 32)
+    nextButton.frame = NSRect(x: Tokens.themePickerSize.width - px - 16, y: sy, width: 32, height: 32)
     emptyLabel.frame = NSRect(x: padRect.minX, y: padRect.midY - 9, width: padRect.width, height: 18)
   }
 
@@ -496,5 +499,11 @@ final class PopoverPanel: PanelView {
   override func layout() {
     super.layout()
     content?.frame = surface.bounds
+  }
+  override func setFrameSize(_ newSize: NSSize) {
+    super.setFrameSize(newSize)
+    // Size the content right away, so it never draws or lays out at a stale size.
+    surface.frame = bounds
+    if let c = content, c.frame.size != newSize { c.frame = surface.bounds; c.needsLayout = true }
   }
 }

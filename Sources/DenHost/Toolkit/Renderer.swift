@@ -27,6 +27,13 @@ public class NodeView: FlippedView, Themable {
 
   public override var mouseDownCanMoveWindow: Bool { false }
 
+  /// Nodes lay out manually from their bounds, so a new size always means a new layout pass.
+  public override func setFrameSize(_ newSize: NSSize) {
+    let changed = newSize != frame.size
+    super.setFrameSize(newSize)
+    if changed { needsLayout = true }
+  }
+
   /// Optional native context menu (see `ContextMenu` for the item shapes): separators, section
   /// headers, submenus, SF Symbol icons, destructive items and key-equivalent hints.
   public override func menu(for event: NSEvent) -> NSMenu? {

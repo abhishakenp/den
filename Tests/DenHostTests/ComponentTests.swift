@@ -78,6 +78,39 @@ struct ComponentTests {
 }
 
 extension ComponentTests {
+  /// Regression: the picker was laid out once while still zero-sized (cx = 0), which left the
+  /// light-mode button cut at the left edge and "+" in the pad's bottom-left corner. Its layout
+  /// must follow its real size (spec §4 body coordinates).
+  @Test func themePickerControlsSitAtSpecPositionsAfterOpening() throws {
+    let rt = Self.runtime()
+    rt.window.window.orderFront(nil)
+    for dark in [false, true] {
+      rt.window.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+      _ = rt.call("ui", "set", ["slot": "popover", "tree": ["type": "themePicker", "id": "theme", "colors": ["#b98cff", "#ff9fc8"]]])
+      rt.window.window.displayIfNeeded()
+      let picker = try #require(rt.ui.popover.content as? ThemePickerNode)
+      #expect(picker.frame.size == CGSize(width: 356, height: 508))
+      #expect(picker.modeButtons.map(\.frame.midX) == [138, 178, 218])
+      #expect(picker.modeButtons.allSatisfy { $0.frame.size == CGSize(width: 32, height: 32) && $0.frame.minX >= 8 })
+      #expect(picker.removeButton.frame.midX == 158 && picker.removeButton.frame.midY == 316.5)
+      #expect(picker.addButton.frame.midX == 198 && picker.addButton.frame.midY == 316.5)
+      #expect(picker.prevButton.frame.midX == 23.5 && picker.nextButton.frame.midX == 332.5)
+      _ = rt.call("ui", "set", ["slot": "popover", "tree": nil])
+    }
+    // A picker that went through a layout pass before it had a size (e.g. replacing the content of
+    // an open popover, whose own size doesn't change) must re-lay itself out once it is sized.
+    let r = rt.ui.renderer!
+    let p = try #require(r.make(["type": "themePicker", "id": "t2", "colors": ["#b98cff"]]) as? ThemePickerNode)
+    rt.window.window.contentView?.addSubview(p)
+    p.layout()  // a pass while still zero-sized
+    #expect(p.modeButtons.map(\.frame.midX) == [138, 178, 218])
+    #expect(p.addButton.frame.midX == 198 && p.removeButton.frame.midX == 158)
+    p.needsLayout = false
+    p.frame = NSRect(x: 0, y: 0, width: 356, height: 508)
+    #expect(p.needsLayout)  // resizing asks for a new pass
+    p.removeFromSuperview()
+  }
+
   @Test func contextMenusSupportSubmenusIconsDestructiveAndKeys() throws {
     let rt = Self.runtime()
     var got: [Value] = []
