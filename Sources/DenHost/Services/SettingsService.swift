@@ -63,15 +63,37 @@ public final class SettingsService: HostService {
       entries.removeValue(forKey: args.str("id"))
       window?.reload()
     case "list":
-      return .array(sections.map { ["id": .string($0.id), "title": .string($0.title), "icon": .string($0.icon), "order": .double($0.order)] })
+      // With each section's `schema` (every control of its groups, keyed "<id>.<key>" with its
+      // current value), so the command bar can search settings and flip them in place.
+      return .array(sections.map { sec in
+        var schema: [Value] = []
+        for e in groups(of: sec.id) {
+          for c in e.controls where !c.str("key").isEmpty && !c.str("title").isEmpty {
+            var v: Value = ["key": .string(e.id + "." + c.str("key")), "title": .string(c.str("title")), "type": .string(c.str("type")),
+                            "value": value(e.id, c.str("key"))]
+            if !c["options"].isNull { v = v.with("options", c["options"]) }
+            if !c["keywords"].isNull { v = v.with("keywords", c["keywords"]) }
+            schema.append(v)
+          }
+        }
+        return ["id": .string(sec.id), "title": .string(sec.title), "icon": .string(sec.icon), "order": .double(sec.order), "schema": .array(schema)]
+      })
     case "get":
       let id = args.str("id")
       if let k = args["key"].string { return value(id, k) }
       return values(id)
     case "set":
-      return set(args.str("id"), args.str("key"), args["value"])
+      // `{id, key}`, or one dotted key `"<id>.<key>"` as `list` gives it.
+      var id = args.str("id"), key = args.str("key")
+      if id.isEmpty, let dot = key.firstIndex(of: ".") { id = String(key[..<dot]); key = String(key[key.index(after: dot)...]) }
+      return set(id, key, args["value"])
     case "open":
-      open(section: args["section"].string)
+      // `section`, or `id` (as the command bar sends it; a dotted setting key opens its section).
+      var sec = args["section"].string ?? args["id"].string
+      if let s0 = sec, entries[s0] == nil, builtins[s0] == nil, let k = args["key"].string, let dot = k.firstIndex(of: ".") {
+        sec = entries[String(k[..<dot])]?.section ?? s0
+      } else if let s0 = sec, let e = entries[s0] { sec = e.section }
+      open(section: sec)
     case "close":
       window?.window.close()
     case "state":

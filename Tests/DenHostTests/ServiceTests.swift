@@ -15,6 +15,9 @@ struct ServiceTests {
     _ = NSApplication.shared
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("den-svc-\(UUID())")
     let rt = DenRuntime(storageRoot: dir)
+    // Test windows are never on screen: keep pages running (den uses `.suspend` for unseen pages,
+    // which in a loaded full run suspends a test page before its load or click completes).
+    rt.webviews.configureHooks.append { _, c in c.preferences.inactiveSchedulingPolicy = .none }
     rt.window.window.setFrame(NSRect(x: 0, y: 0, width: 1280, height: 800), display: false)
     rt.window.window.contentView?.layoutSubtreeIfNeeded()
     return rt

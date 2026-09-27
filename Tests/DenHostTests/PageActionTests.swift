@@ -25,7 +25,7 @@ struct PageActionTests {
 
   /// Polls (50 ms) until `cond` holds, failing after `seconds` instead of hanging. Generous,
   /// because WebContent launches slowly on a loaded machine (seen: load average 577).
-  static func until(_ seconds: Double = 30, line: Int = #line, _ cond: () -> Bool) async throws {
+  static func until(_ seconds: Double = 60, line: Int = #line, _ cond: () -> Bool) async throws {
     let end = Date().addingTimeInterval(seconds)
     while !cond() {
       if Date() > end { Issue.record("timed out waiting at line \(line)"); return }
@@ -175,15 +175,16 @@ struct PageActionTests {
     let target = try #require(w.hitTest(w.superview!.convert(p, from: nil)))
     #expect(target === w || target.isDescendant(of: w))
     // WebKit handles the click asynchronously in WebContent; on a very loaded machine a click can be
-    // dropped, so click again (at most 3 times, 10 s each) rather than wait forever.
-    for _ in 0..<3 where opened.isNull {
+    // dropped, so click again (at most 6 times, up to 10 s of wall time each) rather than wait forever.
+    for _ in 0..<6 where opened.isNull {
       for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
         let e = try #require(NSEvent.mouseEvent(with: type, location: p, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
                                                 windowNumber: win.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
         if type == .leftMouseDown { target.mouseDown(with: e) } else { target.mouseUp(with: e) }
         try await Task.sleep(for: .milliseconds(50))
       }
-      for _ in 0..<200 where opened.isNull { try await Task.sleep(for: .milliseconds(50)) }
+      let end = Date().addingTimeInterval(10)
+      while opened.isNull, Date() < end { try await Task.sleep(for: .milliseconds(50)) }
     }
     #expect(opened["url"] == "https://www.zoom.test/next" && opened["background"] == true && opened["id"].string == id)
     #expect(w.url?.absoluteString == "https://www.zoom.test/")  // the page itself stayed

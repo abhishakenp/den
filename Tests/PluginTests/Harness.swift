@@ -2,6 +2,7 @@ import AppKit
 import Cordis
 import CordisValue
 import Foundation
+import WebKit
 
 @testable import DenHost
 @testable import PluginCores
@@ -20,6 +21,8 @@ final class Harness {
     _ = NSApplication.shared
     self.root = root ?? FileManager.default.temporaryDirectory.appendingPathComponent("den-plugin-\(UUID())")
     rt = DenRuntime(storageRoot: self.root)
+    // Test windows are never on screen: keep pages running (see ServiceTests.runtime).
+    rt.webviews.configureHooks.append { _, c in c.preferences.inactiveSchedulingPolicy = .none }
     rt.window.window.setFrame(NSRect(x: 0, y: 0, width: 1280, height: 800), display: false)
     rt.window.window.contentView?.layoutSubtreeIfNeeded()
   }

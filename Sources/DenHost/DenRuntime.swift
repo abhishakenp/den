@@ -30,6 +30,8 @@ public final class DenRuntime {
   public let extensions: ExtensionsService
   /// den's Settings window (⌘,) and the sections plugins contribute to it.
   public let settings: SettingsService
+  /// The cordis registration of each host service (tests can withdraw one to stand in a fake).
+  public private(set) var serviceHandles: [String: CordisHandle] = [:]
   /// Lets `PluginLoader` (built by the app from `plugins` alone) grant sidecar permissions.
   static var permissionsByHost: [ObjectIdentifier: Permissions] = [:]
   static func permissions(for plugins: PluginHost) -> Permissions? { permissionsByHost[ObjectIdentifier(plugins)] }
@@ -76,7 +78,7 @@ public final class DenRuntime {
     webviews.pageActions = pa
     for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions, settings] {
       host.provide(s)
-      plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
+      serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }
     plugins.provide("plugins") { [weak plugins] method, args in
       guard let plugins else { return ["error": "plugins: host is gone"] }

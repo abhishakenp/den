@@ -35,7 +35,12 @@ struct ConnectionsTests {
   func signIn(_ h: Harness, _ url: String) async -> Bool {
     let id = h.rt.call("webviews", "create", ["url": .string(url), "profile": .string(Self.profile)]).s("id")
     guard let w = h.rt.webviews.materialize(id) else { return false }
-    return await until { !w.isLoading && w.url != nil && w.estimatedProgress >= 1 }
+    // Show it in the (on-screen) window: den's web views use `inactiveSchedulingPolicy = .suspend`,
+    // and in a loaded full run an unseen one gets suspended before the page finishes loading.
+    h.rt.window.window.orderFrontRegardless()
+    h.rt.call("content", "show", ["panes": [.string(id)]])
+    // 45 s of wall time: under a loaded full run the mock page can take far longer than alone (3 s).
+    return await until(45) { !w.isLoading && w.url != nil && w.estimatedProgress >= 1 }
   }
 
   /// Points the plugins at the mock and grants them its host (the real sidecars say slack.com /
@@ -209,7 +214,7 @@ struct ConnectionsTests {
     // The user signs in; the next probe (every 3 s, or on the tab's URL change) sees it.
     #expect(await signIn(h, m.base + "/slack/signin"))
     h.fireTimers()
-    #expect(await until { h.rt.call("connections", "get", ["id": "slack"]).b("connected") })
+    #expect(await until(45) { h.rt.call("connections", "get", ["id": "slack"]).b("connected") })
     let slack = h.rt.call("connections", "get", ["id": "slack"])
     #expect(slack.s("account") == "Acme Inc")
     #expect(slack.a("teams").map { $0.s("name") } == ["Acme Inc", "den OSS"])

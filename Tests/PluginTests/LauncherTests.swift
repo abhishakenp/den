@@ -52,6 +52,8 @@ extension Harness {
   func provideSettings(_ panes: [Value] = FakeSettings.den, destinations: [String] = []) -> FakeSettings {
     let f = FakeSettings(panes)
     let rt = rt
+    // Stand in for den's own `settings` service.
+    if let old = rt.serviceHandles["settings"] { rt.plugins.dispose(old) }
     rt.plugins.provide("settings") { m, a in
       MainActor.assumeIsolated {
         switch m {
@@ -241,6 +243,7 @@ struct LauncherTests {
 
   @Test func withoutASettingsServicePluginSettingsAreSearchable() {
     let h = Harness()
+    if let s = h.rt.serviceHandles["settings"] { h.rt.plugins.dispose(s) }  // a host without den's Settings
     h.startPeek()
     h.startCommandBar()
     h.key("cmd+t")
@@ -256,7 +259,7 @@ struct LauncherTests {
     // A choice through `tabs.settings`.
     h.key("cmd+t")
     h.type("archive today")
-    #expect(h.barRows.first { $0.str("id") == "set:tabs.archiveAfterMs" }?.str("accessory") == "12 hours")
+    #expect(h.barRows.first { $0.str("id") == "set:tabs.archiveAfterMs" }?.str("accessory") == "24 hours")  // the default (docs/defaults.md)
     h.action("commandBar", "right", ["row": "set:tabs.archiveAfterMs", "query": "archive today"])
     h.type("never")
     h.submit()

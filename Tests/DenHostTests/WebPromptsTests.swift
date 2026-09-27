@@ -14,6 +14,7 @@ struct WebPromptsTests {
   func runtime() -> DenRuntime {
     _ = NSApplication.shared
     let rt = DenRuntime(storageRoot: FileManager.default.temporaryDirectory.appendingPathComponent("den-prompts-\(UUID())"))
+    rt.webviews.configureHooks.append { _, c in c.preferences.inactiveSchedulingPolicy = .none }  // see ServiceTests.runtime
     rt.window.window.setFrame(NSRect(x: 0, y: 0, width: 1280, height: 800), display: false)
     rt.window.window.contentView?.layoutSubtreeIfNeeded()
     return rt

@@ -16,6 +16,7 @@ struct MenuCostTests {
     for _ in 0..<n { MainMenu.install() }
     let ms = Date().timeIntervalSince(t0) * 1000 / Double(n)
     print("menu.install ms \(String(format: "%.2f", ms))")
-    #expect(ms < 5)
+    // 1.1 ms measured on an idle-ish machine, 9 ms at load average 600: a regression guard only.
+    #expect(ms < 50)
   }
 }
