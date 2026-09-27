@@ -58,6 +58,7 @@ public final class Renderer {
     "grid": GridNode.self, "favoriteTile": FavoriteTileNode.self, "spaceTitle": SpaceTitleNode.self,
     "tabRow": TabRowNode.self, "folder": FolderNode.self, "divider": DividerNode.self,
     "newTabRow": NewTabRowNode.self, "spaceIcon": SpaceIconNode.self,
+    "themePicker": ThemePickerNode.self,
   ]
 
   public init(palette: Palette, emit: @escaping (String, String, Value) -> Void) {

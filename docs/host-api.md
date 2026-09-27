@@ -80,7 +80,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 **Slots:**
 - `sidebar.header`, `sidebar.favorites`, `sidebar.footer`
 - Per space page: `sidebar.spaceHeader`, `sidebar.pinned`, `sidebar.today`
-- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`
+- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover))
 
 **Event:** `ui.action {id, action, value}`
 
@@ -110,12 +110,30 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]` | `input {text}`, `select {row}`, `submit {row, query, modifiers}`, `tab {query}`, `dismiss` |
 | `dialog` | `id`, `title`, `message?`, `icon?` (`app:icon` for the app icon), `buttons: [{id, title, style: default\|cancel\|destructive\|secondary}]`, `checkbox?` | `button {button, checked}` (Return/Esc press the default/cancel button) |
 | `toast` | `text`, `icon?`, `duration?` (ms) | – |
+| `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss` |
 
 **Details that apply to several nodes:**
 - **Icons.** A node icon can be `sf:<symbol>`, an http(s) image URL (cached), `app:icon`, or text/emoji.
 - **Context menus.** Any node can carry `menu: [{id, title, icon?} | {separator: true}]`. The host shows it as a native context menu and emits `menu` with the picked item's id.
 - **Drag reorder.** Dragging emits `reorder {source, target, position: before|after|into}` with a haptic tick. Dropping on the web content emits `dropOnContent {source, side: left|center|right}`.
 - **View reuse.** Views are reused by `type` + `id`, so it's cheap to resend a whole tree on every change.
+
+### Theme picker popover
+
+Arc's space theme editor (spec §4), rendered in the `popover` slot:
+
+```
+ui.set {slot: "popover", tree: {type: "themePicker", id: "theme", anchor: "space-0",
+        colors: ["#b98cff", "#ff9fc8"], intensity: 0.6, grain: 0.3, appearance: "auto"}}
+```
+
+- **Placement.** A 356x508 body with a 20 pt continuous radius, 13 pt right of the sidebar. Its top follows the node whose `id` is `anchor` (clamped to the window with a 10 pt margin).
+- **Color pad** (340x340, dot grid at 4.25 pt). Up to 3 draggable color dots; the first is the larger primary one. Dots snap to the grid. The angle around the center picks the hue and the distance from it the saturation. Clicking an empty pad adds the first color ("Tap to pick a color for this space"). `−` / `+` remove and add colors.
+- **Presets.** 9 swatches per page, 4 pages (Brand, Pastel, Drab, Greyscale, from the spec's palette). A swatch replaces the primary color. The chevrons page through them.
+- **Intensity** is the wavy slider; **grain** is the dial of dots. The three buttons at the top pick automatic, light or dark appearance.
+- **Live preview.** Every drag step emits `change`, whose value has the same shape as `window.setTheme` args, so the plugin can pass it straight through. `commit` follows when a drag ends or after a click.
+- **Haptics.** A tick when a dot is grabbed, when it crosses each 4-dot cell, at each 10% of intensity and at each grain step.
+- **Dismiss.** Esc or a click outside emits `dismiss`; the plugin clears the slot (`tree: null`).
 
 ## keys
 

@@ -26,6 +26,9 @@ public final class UIService: HostService {
   let commandBackdrop = BackdropView()
   let dialogBackdrop = BackdropView()
   var toasts: [ToastView] = []
+  let popover = PopoverPanel()
+  let popoverBackdrop = BackdropView()
+  var popoverOpen = false
   var commandBarOpen = false
   var dialogOpen = false
 
@@ -85,6 +88,7 @@ public final class UIService: HostService {
       var overlays: [Value] = []
       if commandBarOpen { overlays.append("overlay.commandBar") }
       if dialogOpen { overlays.append("dialog") }
+      if popoverOpen { overlays.append("popover") }
       return ["page": .int(Int64(sidebarView.pager.current)), "pages": .int(Int64(sidebarView.pager.pages.count)), "overlays": .array(overlays)]
     default:
       return .error("ui: unknown method '\(method)'")
@@ -97,6 +101,7 @@ public final class UIService: HostService {
     case "overlay.commandBar": setCommandBar(tree)
     case "dialog": setDialog(tree)
     case "toast": if !tree.isNull { showToast(tree) }
+    case "popover": setPopover(tree)
     case "overlay.peek":
       _ = content?.handle(method: "peek", args: tree.isNull ? .null : ["webview": tree["webview"], "title": tree["title"]])
     default:
@@ -189,8 +194,56 @@ public final class UIService: HostService {
     }
   }
 
+  /// `popover` slot: {type, id, anchor?, ...}. The popover opens just right of the sidebar, next to
+  /// the node whose id is `anchor` (spec §4). A click outside emits `dismiss` for the content id.
+  func setPopover(_ tree: Value) {
+    if tree.isNull {
+      popoverOpen = false
+      popoverBackdrop.removeFromSuperview()
+      popover.removeFromSuperview()
+      popover.content?.removeFromSuperview()
+      popover.content = nil
+      return
+    }
+    popover.anchor = tree.str("anchor")
+    popover.content = renderer.reconcile([tree], existing: popover.content.map { [$0] } ?? [], in: popover.surface).first
+    popoverBackdrop.onClick = { [weak self] in self?.emit(tree.str("id", "popover"), "dismiss", .null) }
+    if !popoverOpen {
+      popoverOpen = true
+      wc.overlays.addSubview(popoverBackdrop)
+      wc.overlays.addSubview(popover)
+      popover.apply(renderer.palette)
+    }
+    layoutOverlays()
+    if let c = popover.content { wc.window.makeFirstResponder(c) }
+  }
+
+  /// Frame of a rendered sidebar node (by id) in overlay coordinates.
+  func anchorFrame(_ id: String) -> NSRect? {
+    guard !id.isEmpty else { return nil }
+    func find(_ v: NSView) -> NodeView? {
+      if let n = v as? NodeView, n.nodeId == id, !n.isHiddenOrHasHiddenAncestor { return n }
+      for s in v.subviews { if let f = find(s) { return f } }
+      return nil
+    }
+    guard let n = find(sidebarView) else { return nil }
+    return wc.overlays.convert(n.bounds, from: n)
+  }
+
+  func layoutPopover(in b: NSRect) {
+    guard popoverOpen else { return }
+    let size = popover.contentSize
+    let sidebarRight = wc.sidebarHidden ? (wc.sidebarRevealed ? wc.sidebar.frame.maxX : 0) : wc.sidebar.frame.maxX
+    let x = sidebarRight + Tokens.themePickerSidebarGap
+    let top = (anchorFrame(popover.anchor)?.minY ?? 80) + Tokens.themePickerAnchorOffsetY
+    let y = min(max(top, 10), max(10, b.height - size.height - 10))
+    popover.frame = NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
+  }
+
   func layoutOverlays() {
     let b = wc.overlays.bounds
+    popoverBackdrop.frame = b
+    layoutPopover(in: b)
     commandBackdrop.frame = b
     dialogBackdrop.frame = b
     if commandBarOpen {

@@ -148,6 +148,7 @@ The AX order observed live was Brand, Brand again, Pastel, Drab, Greyscale.
 
 | Element | Value | Prov. |
 |---|---|---|
+| Source | PX rows below were measured on `arc_theme_picker.png` (empty state, dark), in body coordinates | - |
 | Container | AXPopover window 382x534 (13 pt shadow margin); visible body **356x508**, anchored just right of the sidebar (body x = 241) | AX, PX |
 | Corner radius | **20 pt, continuous** (residual 0) | PX |
 | Mode buttons (Automatic / Light / Dark) | Three 32x32 buttons, 40 pt pitch, centered at the top. They animate with Lottie: sun 1.0 s, moon 1.5 s, automatic 1.5 s (60 fps) | AX, LOTTIE |
@@ -158,6 +159,14 @@ The AX order observed live was Brand, Brand again, Pastel, Drab, Greyscale.
 | Intensity slider | 224x44 (a wavy track) | AX, PX |
 | Knobs | DenimKnob / GrainKnob / SandKnob / TweedKnob, 56x56 | CAR |
 | Haptics | The release notes say the Theme Picker gives haptic feedback. Not observable here: UNVERIFIED | - |
+| Body fill (dark, no color picked) | (86,86,87); the pad is about 6 levels lighter | PX |
+| Pad | Corner radius about 7 pt (rough fit). Dot grid: 1 pt dots at a 4.25 pt (8.5 px) pitch, white α≈0.27 (134 over 90) | PX |
+| Mode buttons | Selected button at (122, 32), fill white α≈0.12 (113 over 94) | PX |
+| Empty-state label | Centered at y = 178, 204 pt wide, which matches SF 13 pt semibold exactly | PX |
+| Remove / add color | Centers (158, 316.5) and (198, 316.5); dimmed to white α≈0.21 while disabled | PX |
+| Swatch row | Centers at y = 380.5, first x = 60; a 1.5 pt rim darker than the swatch; page buttons centered at x = 23.5 / 332.5 | PX |
+| Intensity slider | Track x 18–242, 20 pt tall pill, white α≈0.08; wave stroke about 5 pt, white α≈0.21, period about 32.5 pt, amplitude about 12 pt | PX |
+| Grain dial | Center (298, 452); inner circle r = 20.5 (1 pt, white α≈0.15); ring of dots at r ≈ 32.5 | PX |
 
 ## 5. Dialogs and alerts
 

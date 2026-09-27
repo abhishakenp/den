@@ -142,13 +142,16 @@ public final class IconView: NSView, Themable {
         let sym = img.withSymbolConfiguration(cfg) ?? img
         let s = sym.size
         let r = NSRect(x: b.midX - s.width / 2, y: b.midY - s.height / 2, width: s.width, height: s.height)
+        // Fill with the opaque tint, then apply its alpha when compositing: filling a translucent
+        // tint `.sourceAtop` would leave the black template showing through.
+        let opaque = tint.withAlphaComponent(1)
         let tinted = NSImage(size: s, flipped: false) { rect in
           sym.draw(in: rect)
-          self.tint.set()
+          opaque.set()
           rect.fill(using: .sourceAtop)
           return true
         }
-        tinted.draw(in: r)
+        tinted.draw(in: r, from: .zero, operation: .sourceOver, fraction: tint.alphaComponent)
       } else {
         NSGraphicsContext.current?.imageInterpolation = .high
         let path = NSBezierPath(roundedRect: b, xRadius: b.width * 0.2, yRadius: b.height * 0.2)

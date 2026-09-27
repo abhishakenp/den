@@ -90,6 +90,43 @@ public enum Tokens {
   public static let toastRightInset: CGFloat = 20  // estimate
   public static let toastDefaultDurationMs = 2200  // estimate
 
+  // MARK: Theme picker (spec §4; PX = measured on the spec's arc_theme_picker.png, @2x)
+  public static let themePickerSize = CGSize(width: 356, height: 508)  // spec §4
+  public static let themePickerCornerRadius: CGFloat = 20  // spec §4 (continuous)
+  public static let themePickerSidebarGap: CGFloat = 13  // spec §4: body x = 241 with a 228 sidebar
+  public static let themePickerAnchorOffsetY: CGFloat = -40  // estimate: popover top relative to the anchor's top
+  public static let themePickerPadInset: CGFloat = 8  // spec §4
+  public static let themePickerPadSize: CGFloat = 340  // spec §4
+  public static let themePickerPadRadius: CGFloat = 7  // PX (rough fit)
+  public static let themePickerDotPitch: CGFloat = 4.25  // PX: 8.5 px dot pitch
+  public static let themePickerDotSize: CGFloat = 1  // PX
+  public static let themePickerDotAlpha: CGFloat = 0.27  // PX: 134 over 90
+  public static let themePickerModeTop: CGFloat = 32  // PX: selected mode button at (122, 32)
+  public static let themePickerModeSize: CGFloat = 32  // spec §4
+  public static let themePickerModePitch: CGFloat = 40  // spec §4
+  public static let themePickerModeRadius: CGFloat = 8  // estimate
+  public static let themePickerSelectedModeAlpha: CGFloat = 0.12  // PX: 113 over 94
+  public static let themePickerAddRemoveCenterY: CGFloat = 316.5  // PX
+  public static let themePickerSwatchCenterY: CGFloat = 380.5  // PX
+  public static let themePickerSwatchSize: CGFloat = 24  // spec §4
+  public static let themePickerSwatchPitch: CGFloat = 29.5  // spec §4
+  public static let themePickerSwatchFirstX: CGFloat = 60  // PX: first swatch center
+  public static let themePickerPagerCenterX: CGFloat = 23.5  // PX: prev/next page buttons at 23.5 / 332.5
+  public static let themePickerSliderFrame = CGRect(x: 18, y: 429.5, width: 224, height: 44)  // spec §4 size, PX position
+  public static let themePickerTrackHeight: CGFloat = 20  // PX
+  public static let themePickerWavePeriod: CGFloat = 32.5  // PX
+  public static let themePickerWaveAmplitude: CGFloat = 12  // PX
+  public static let themePickerWaveWidth: CGFloat = 5  // PX
+  public static let themePickerDialCenter = CGPoint(x: 298, y: 452)  // PX
+  public static let themePickerDialInnerRadius: CGFloat = 20.5  // PX
+  public static let themePickerDialDotRadius: CGFloat = 32.5  // PX
+  public static let themePickerDialDots = 24  // estimate (PX count unclear)
+  public static let themePickerHandleSize: CGFloat = 34  // estimate: primary color handle
+  public static let themePickerSecondaryHandleSize: CGFloat = 26  // estimate
+  public static let themePickerBodyDark = (r: 86.0 / 255, g: 86.0 / 255, b: 87.0 / 255)  // PX (no color picked)
+  public static let themePickerBodyLight = (r: 0.95, g: 0.95, b: 0.96)  // estimate
+  public static let themePickerBodyTint: CGFloat = 0.14  // estimate: body blends toward the first color
+
   // MARK: Theme rendering
   public static let lightBase: (r: CGFloat, g: CGFloat, b: CGFloat) = (0.95, 0.95, 0.96)  // estimate
   public static let darkBase: (r: CGFloat, g: CGFloat, b: CGFloat) = (0.11, 0.11, 0.12)  // estimate

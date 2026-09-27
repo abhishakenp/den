@@ -8,12 +8,42 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = []
+  public static let names: [String] = ["themePicker", "themePickerEmpty"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
     guard names.contains(name) else { return nil }
+    switch name {
+    case "themePicker", "themePickerEmpty":
+      let empty = name == "themePickerEmpty"
+      seedSidebar(rt, appearance: appearance, colors: empty ? [] : accent)
+      showContent(rt)
+      themePicker(rt, colors: empty ? [] : ["#b98cff", "#ff9fc8"], appearance: appearance)
+    default: break
+    }
     return rt.window.window
+  }
+
+  /// What the `theme` plugin does: open the picker next to the space title and apply every
+  /// `change` to the window live.
+  static func themePicker(_ rt: DenRuntime, colors: [String], appearance: String) {
+    rt.call("ui", "set", ["slot": "popover", "tree": [
+      "type": "themePicker", "id": "theme", "anchor": "space-0", "colors": .array(colors.map { .string($0) }),
+      "intensity": 0.6, "grain": 0.3, "appearance": .string(appearance == "dark" ? "dark" : "auto"),
+    ]])
+    rt.host.on("ui.action") { v in
+      guard v.str("id") == "theme" else { return }
+      switch v.str("action") {
+      case "change": rt.call("window", "setTheme", v["value"])
+      case "dismiss": rt.call("ui", "set", ["slot": "popover", "tree": nil])
+      default: break
+      }
+    }
+  }
+
+  static func showContent(_ rt: DenRuntime) {
+    let id = page(rt, id: "t1", title: "Example Domain", body: "This page is local HTML rendered by den's scenario runner, so snapshots never need the network.")
+    rt.call("content", "show", ["panes": [.string(id)]])
   }
 
   // MARK: Sample content
