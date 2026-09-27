@@ -6,7 +6,7 @@ import WebKit
 
 @testable import DenHost
 
-/// `webviews.watchLinks` (link under the pointer), `webviews.setMuted`, and `net.fetch {stopAfter}`.
+/// `webviews.watchLinks` (link under the pointer) and `net.fetch {stopAfter}`. (Tab mute: ServiceTests.)
 @MainActor
 @Suite(.serialized)
 struct LinkHoverTests {
@@ -124,25 +124,6 @@ struct LinkHoverTests {
     #expect(rt.call("webviews", "watchLinks", ["modifier": "off"]) == .ok)
     let gone = try? await w.evaluateJavaScript("!!window.__denLinks", in: nil, contentWorld: LinkHover.world)
     #expect((gone as? Bool) == false)
-  }
-
-  @Test func setMutedMutesTheMediaAndGetReportsIt() async {
-    let rt = runtime()
-    let (id, w) = page(rt)
-    w.loadHTMLString("<audio id=a src='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA='></audio>", baseURL: URL(string: "https://media.test/"))
-    _ = await wait { !w.isLoading && w.url != nil }
-    #expect(rt.call("webviews", "get", ["id": .string(id)])["muted"] == false)
-    #expect(rt.call("webviews", "setMuted", ["id": .string(id), "muted": true]) == .ok)
-    #expect(rt.call("webviews", "get", ["id": .string(id)])["muted"] == true)
-    var muted = false
-    for _ in 0..<60 where !muted {
-      muted = (try? await w.evaluateJavaScript("document.getElementById('a').muted", in: nil, contentWorld: .page)) as? Bool == true
-      if !muted { try? await Task.sleep(for: .milliseconds(50)) }
-    }
-    #expect(muted)
-    #expect(rt.call("webviews", "setMuted", ["id": .string(id), "muted": false]) == .ok)
-    #expect(rt.call("webviews", "get", ["id": .string(id)])["muted"] == false)
-    #expect(rt.call("webviews", "setMuted", ["id": "nope", "muted": true]).isError)
   }
 
   // MARK: net.fetch {stopAfter}
