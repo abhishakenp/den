@@ -7,7 +7,14 @@ The host is a small AppKit app. Browser features (spaces, tabs, peek, command ba
 - Events go on the host bus as `<service>.<event>`, and plugins subscribe with `on`.
 - Asynchronous results always arrive as events. No call blocks.
 
-The code lives in `Sources/DenHost/Services/`. Until `PluginHost` is wired in, `DenRuntime.call(service, method, args)` and `ServiceHost.on/emit` stand in for `cordis_host.call/on/emit`.
+The code lives in `Sources/DenHost/Services/`. `DenRuntime` registers every service with cordis `PluginHost.provide` and re-emits every host event on the `PluginHost` bus, so plugins use `ctx.call/on/emit` and host code uses `DenRuntime.call` / `runtime.plugins.on`.
+
+## Plugins
+
+- Loaded at launch from `den.app/Contents/PlugIns/*.dylib` and `~/Library/Application Support/den/Plugins/*.dylib`. A user plugin replaces a bundled one with the same file name.
+- `--dev-plugins <dir>` also loads `<dir>/*.dylib` (these win over both) and hot-reloads each file when it is rebuilt.
+- If a plugin crashed den, the same build is refused on the next launch, and a toast names it. A new build of that plugin loads normally.
+- `scripts/bundle.sh` builds every `Plugins/<id>/` (plus `Plugins/Shared/`) with `cordis-build` into `Contents/PlugIns/<id>.dylib`.
 
 ## window
 
@@ -169,5 +176,6 @@ Chords are bound as main-menu items. That way they work while a web page has foc
 | `pendingURLs` | – | `[url]` opened before any listener existed |
 | `setDefaultBrowser` | – | ok. Emits `app.defaultBrowser {scheme, error}` |
 | `info` | – | `{bundleId, version, launchMs}` |
+| `copy` | `text` | ok. Puts the text on the general pasteboard |
 
 Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`.

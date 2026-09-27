@@ -1,12 +1,15 @@
 import AppKit
+import Cordis
 import CordisValue
 import DenHost
 import os
 
 // Flags:
-//   --demo                         run the temporary DemoDriver (stand-in for plugins)
-//   --appearance light|dark        demo appearance
-//   --scenario <name>              demo state before snapshot: main, hidden, split, command, dialog, toast, peek, reveal
+//   --demo                         use a fresh temporary storage root, so the plugins' first-run seed shows
+//   --appearance light|dark|auto   set every space's appearance through the spaces plugin
+//   --scenario <name>              state before snapshot: main, hidden, reveal, space2, toast, swipe, swipeCommit,
+//                                  load10, load10discard, split, command, dialog, peek (the last four need those plugins)
+//   --dev-plugins <dir>            also load <dir>/*.dylib and hot-reload them when rebuilt
 //   --snapshot <path.png>          render the window to PNG after load, then quit
 //   --snapshot-delay <seconds>     wait before snapshot (default 4)
 //   --measure-launch               print ms from process start to first window on screen, then quit
@@ -34,7 +37,7 @@ func processStartDate() -> Date {
 final class AppDelegate: NSObject, NSApplicationDelegate {
   let args = CommandLine.arguments
   var runtime: DenRuntime!
-  var demo: DemoDriver?
+  var loader: PluginLoader!
   var pendingURLs: [URL] = []
   var visibleObserver: NSObjectProtocol?
 
@@ -58,19 +61,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       try? p.run()
       usleep(150_000)
     }
-    let root = arg("--storage").map { URL(fileURLWithPath: $0) } ?? StorageService.defaultRoot
+    // --demo without --storage runs on a fresh store, so the plugins' first-run seed shows.
+    let root = arg("--storage").map { URL(fileURLWithPath: $0) }
+      ?? (args.contains("--demo") ? FileManager.default.temporaryDirectory.appendingPathComponent("den-demo-\(UUID().uuidString)") : StorageService.defaultRoot)
     trace("didFinishLaunching")
-    runtime = DenRuntime(storageRoot: root)
+    runtime = DenRuntime(storageRoot: root, crashMarkerPath: PluginHost.defaultCrashMarkerPath)
     trace("runtime")
+    runtime.plugins.onEvent = { e in
+      switch e {
+      case let .log(id, level, message): if level != .debug { print("[\(id)] \(message)") }
+      case let .applyFailed(id, reason): print("plugin \(id) failed to apply: \(reason)")
+      case let .reloaded(id, hash): print("plugin \(id) reloaded (build \(hash))")
+      case let .reloadFailed(path, reason): print("plugin reload failed \(path): \(reason)")
+      default: break
+      }
+    }
     runtime.app.open(pendingURLs)
     pendingURLs = []
-
-    if args.contains("--demo") {
-      let d = DemoDriver(runtime: runtime)
-      demo = d
-      d.start(appearance: arg("--appearance") ?? "light")
-    } else {
+    loader = PluginLoader(plugins: runtime.plugins)
+    let outcome = loader.loadAll(dev: arg("--dev-plugins").map { URL(fileURLWithPath: $0) })
+    trace("plugins")
+    if traceOn || !outcome.failed.isEmpty { print("plugins loaded=\(outcome.loaded) failed=\(outcome.failed) crashed=\(outcome.crashed)") }
+    if let text = PluginLoader.crashToast(outcome.crashed) {
+      runtime.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(text), "icon": "sf:exclamationmark.triangle.fill", "duration": 6000]])
+    }
+    if !runtime.plugins.serviceNames.contains("spaces") {
       runtime.call("window", "setTheme", ["colors": ["#c3b1ff", "#ffb3d1"], "intensity": 0.6, "grain": 0.3])
+    }
+    if let a = arg("--appearance") {
+      for s in runtime.call("spaces", "list").array ?? [] {
+        runtime.call("spaces", "update", ["id": s["id"], "theme": ["appearance": .string(a)]])
+      }
     }
 
     trace("setup")
@@ -123,24 +144,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applyScenario(_ s: String) {
-    guard let d = demo else { return }
+    let rt = runtime!
+    func allTabIds() -> [String] {
+      var ids: [String] = []
+      for sp in rt.call("spaces", "list").array ?? [] {
+        let l = rt.call("tabs", "list", ["spaceId": sp["id"]])
+        func walk(_ items: [Value]) { for i in items { if i.flag("folder") { walk(i.list("children")) } else { ids.append(i.str("id")) } } }
+        walk(l.list("pinned"))
+        walk(l.list("today"))
+        if ids.isEmpty || sp == rt.call("spaces", "list")[0] { ids += l.list("favorites").map { $0.str("id") } }
+      }
+      var seen = Set<String>()
+      return ids.filter { seen.insert($0).inserted }
+    }
     switch s {
-    case "hidden": runtime.call("window", "setSidebar", ["hidden": true, "animated": false])
+    case "hidden": rt.call("window", "setSidebar", ["hidden": true, "animated": false])
     case "reveal":
-      runtime.call("window", "setSidebar", ["hidden": true, "animated": false])
-      runtime.window.revealSidebarForTesting()
-    case "split": d.addSplit()
-    case "command":
-      d.openCommandBar()
-      d.query = "swi"
-      d.renderCommandBar(replace: true)
-    case "dialog": d.showQuitDialog()
-    case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { d.clearToday() }
-    case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { d.peek("https://www.swift.org") }
-    case "space2": d.switchSpace(1, animated: false)
+      rt.call("window", "setSidebar", ["hidden": true, "animated": false])
+      rt.window.revealSidebarForTesting()
+    case "split":
+      let today = rt.call("tabs", "list").list("today").map { $0["id"] }
+      if today.count > 1 { rt.call("peek", "split", ["ids": .array(Array(today.prefix(2))), "layout": "horizontal"]) }
+    case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
+    case "dialog": rt.plugins.emit("app.quitRequested")
+    case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { rt.call("tabs", "clearToday") }
+    case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.call("peek", "open", ["url": "https://www.swift.org"]) }
+    case "space2":
+      if let id = rt.call("spaces", "list")[1]["id"].string { rt.call("spaces", "switch", ["id": .string(id), "animated": false]) }
     case "swipe", "swipeCommit":
       // In-process synthetic two-finger swipe over the sidebar (no other app is touched).
-      let w = runtime.window.window
+      let w = rt.window.window
       let p = NSPoint(x: w.frame.minX + 110, y: w.frame.maxY - 500)
       func scroll(_ phase: UInt32, _ dx: Int32) {
         guard let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: dx, wheel3: 0) else { return }
@@ -148,22 +181,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         e.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(phase))
         e.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: Int64(dx))
         e.location = CGPoint(x: p.x, y: (NSScreen.screens.first?.frame.height ?? 0) - p.y)
-        if let ne = NSEvent(cgEvent: e) { runtime.ui.sidebarView.deliverScrollForTesting(ne) }
+        if let ne = NSEvent(cgEvent: e) { rt.ui.sidebarView.deliverScrollForTesting(ne) }
       }
       scroll(1, 0)
       for _ in 0..<3 { scroll(2, -32) }
       if s == "swipeCommit" { scroll(4, 0) }
     case "load10", "load10discard":
-      // Memory measurement: show 10 tabs one after another (each gets a live WKWebView),
-      // then go back to the first; with "discard", fully discard the other 9.
-      let ids = d.allTabIds().prefix(10)
+      let ids = Array(allTabIds().prefix(10))
       for (i, id) in ids.enumerated() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 2.5) { d.select(id) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 2.5) { rt.call("tabs", "select", ["id": .string(id)]) }
       }
       DispatchQueue.main.asyncAfter(deadline: .now() + Double(ids.count) * 2.5 + 3) {
-        d.select(ids.first!)
-        if s == "load10discard" { for id in ids.dropFirst() { self.runtime.call("webviews", "suspend", ["id": .string(id)]) } }
-        let live = ids.filter { self.runtime.call("webviews", "get", ["id": .string($0)]).flag("live") }.count
+        rt.call("tabs", "select", ["id": .string(ids.first!)])
+        if s == "load10discard" { for id in ids.dropFirst() { rt.call("webviews", "suspend", ["id": .string(id)]) } }
+        let live = ids.filter { rt.call("webviews", "get", ["id": .string($0)]).flag("live") }.count
         print("scenario.ready live=\(live)")
       }
     default: break

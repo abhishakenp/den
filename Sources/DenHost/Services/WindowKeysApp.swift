@@ -164,6 +164,7 @@ public enum MainMenu {
 ///   pendingURLs                  -> [url] opened before a listener existed (clears the buffer)
 ///   setDefaultBrowser            -> asks macOS to make den the default for http/https
 ///   info                         -> {bundleId, version, launchMs}
+///   copy {text}                  -> puts text on the general pasteboard
 /// Events: app.quitRequested, app.closeRequested, app.openURL {urls: [string]}, app.activate
 @MainActor
 public final class AppService: HostService {
@@ -211,6 +212,9 @@ public final class AppService: HostService {
           DispatchQueue.main.async { MainActor.assumeIsolated { self?.host.emit("app.defaultBrowser", ["scheme": .string(scheme), "error": .string(msg)]) } }
         }
       }
+    case "copy":
+      NSPasteboard.general.clearContents()
+      NSPasteboard.general.setString(args.str("text"), forType: .string)
     case "info":
       return ["bundleId": .string(Bundle.main.bundleIdentifier ?? ""), "version": .string(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"),
               "launchMs": launchMs.map { .double($0) } ?? .null]

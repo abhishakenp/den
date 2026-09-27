@@ -10,16 +10,33 @@ let package = Package(
     .library(name: "DenHost", targets: ["DenHost"]),
   ],
   dependencies: [
-    .package(path: "../cordis-swift")
+    .package(url: "https://github.com/abhishakenp/cordis-swift", from: "0.1.1")
   ],
   targets: [
     .target(
       name: "DenHost",
-      dependencies: [.product(name: "CordisValue", package: "cordis-swift")]
+      dependencies: [
+        .product(name: "CordisValue", package: "cordis-swift"),
+        .product(name: "Cordis", package: "cordis-swift"),
+      ]
     ),
     .executableTarget(
       name: "Den",
       dependencies: ["DenHost", .product(name: "CordisValue", package: "cordis-swift")]
+    ),
+    // Plugin logic compiled as normal Swift so it can be tested against the real host services.
+    // The same files are compiled as Embedded Swift plugins by scripts/bundle.sh (cordis-build).
+    .target(
+      name: "PluginCores",
+      dependencies: [.product(name: "CordisValue", package: "cordis-swift")],
+      path: "Plugins",
+      sources: ["Shared/Env.swift", "spaces/SpacesCore.swift", "tabs/TabsCore.swift"],
+      swiftSettings: [.swiftLanguageMode(.v5)]
+    ),
+    .testTarget(
+      name: "PluginTests",
+      dependencies: ["DenHost", "PluginCores", .product(name: "CordisValue", package: "cordis-swift"), .product(name: "Cordis", package: "cordis-swift")],
+      swiftSettings: [.swiftLanguageMode(.v5)]
     ),
     .testTarget(
       name: "DenHostTests",

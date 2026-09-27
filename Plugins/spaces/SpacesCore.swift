@@ -1,0 +1,316 @@
+// The `spaces` service: the list of Spaces, the current one, per-Space themes, the sidebar's
+// space header and footer, the space shortcuts and swipe paging. See docs/plugin-services.md.
+
+#if !hasFeature(Embedded)
+  import CordisValue
+#endif
+
+final class SpacesCore {
+  struct Space {
+    var id: String
+    var name: String
+    var icon: String
+    var theme: Value
+    var profile: String
+
+    var value: Value {
+      ["id": .string(id), "name": .string(name), "icon": .string(icon), "theme": theme, "profile": .string(profile)]
+    }
+
+    init(id: String, name: String, icon: String, theme: Value, profile: String) {
+      self.id = id
+      self.name = name
+      self.icon = icon
+      self.theme = theme
+      self.profile = profile
+    }
+
+    init?(_ v: Value) {
+      guard let id = v["id"].string else { return nil }
+      self.init(id: id, name: v.s("name"), icon: v.s("icon"), theme: v["theme"], profile: v.sOpt("profile") ?? "default")
+    }
+  }
+
+  static let ns = "spaces"
+
+  /// Arc-like gradients: the first three seed the default Spaces, the rest are offered to new ones.
+  static let palettes: [[String]] = [
+    ["#c3b1ff", "#ffb3d1"],
+    ["#8fd3ff", "#9af0d0"],
+    ["#ffc78a", "#ff9b9b", "#ffe38a"],
+    ["#b6e3a8", "#8fdcc9"],
+    ["#a9c1ff", "#d7b8ff"],
+    ["#ffb5a7", "#ffd6a5"],
+    ["#9be7ff", "#c5b8ff", "#ffc2e2"],
+    ["#d0d4dc", "#aab4c3"],
+  ]
+
+  static func theme(_ colors: [String]) -> Value {
+    ["colors": .array(colors.map { .string($0) }), "intensity": 0.6, "grain": 0.3, "appearance": "auto"]
+  }
+
+  let env: PluginEnv
+  var spaces: [Space] = []
+  var current = ""
+  var nextId: Int64 = 1
+  /// True until the first render has placed the pager; later renders never jump pages.
+  var placedPager = false
+
+  init(env: PluginEnv) { self.env = env }
+
+  // MARK: Lifecycle
+
+  func start() {
+    load()
+    bindKeys()
+    env.on("ui.action") { [self] v in action(v.s("id"), v.s("action"), v["value"]) }
+    env.on("spaces.key.jump") { [self] v in
+      let i = Int(v["payload"].int ?? 0)
+      if i < spaces.count { switchTo(i, direction: "jump", animated: true) }
+    }
+    env.on("spaces.key.next") { [self] _ in step(1) }
+    env.on("spaces.key.prev") { [self] _ in step(-1) }
+    renderAll(themes: true)
+    emitChanged()
+  }
+
+  func load() {
+    let stored = env.call("storage", "get", ["ns": .string(Self.ns), "key": "spaces"])
+    spaces = (stored.array ?? []).compactMap { Space($0) }
+    nextId = env.call("storage", "get", ["ns": .string(Self.ns), "key": "nextId"]).int ?? 1
+    if spaces.isEmpty {
+      let seed: [(String, String)] = [("Personal", "sf:house.fill"), ("Work", "sf:briefcase.fill"), ("Side Project", "sf:hammer.fill")]
+      for (j, s) in seed.enumerated() {
+        spaces.append(Space(id: newId(), name: s.0, icon: s.1, theme: Self.theme(Self.palettes[j]), profile: "default"))
+      }
+    }
+    current = env.call("storage", "get", ["ns": .string(Self.ns), "key": "current"]).string ?? ""
+    if index(of: current) == nil { current = spaces[0].id }
+    save()
+  }
+
+  func save() {
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": "spaces", "value": .array(spaces.map { $0.value })])
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": "current", "value": .string(current)])
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": "nextId", "value": .int(nextId)])
+  }
+
+  func newId() -> String {
+    defer { nextId += 1 }
+    return "space-" + String(nextId)
+  }
+
+  func index(of id: String) -> Int? { spaces.firstIndex { $0.id == id } }
+  var currentIndex: Int { index(of: current) ?? 0 }
+
+  // MARK: Service
+
+  func handle(_ method: String, _ args: Value) -> Value {
+    switch method {
+    case "list":
+      return .array(spaces.map { $0.value })
+    case "current":
+      return ["id": .string(current)]
+    case "switch":
+      if let id = args["id"].string {
+        guard let i = index(of: id) else { return .err("spaces: no space '" + id + "'") }
+        switchTo(i, direction: "jump", animated: args.b("animated", true))
+      } else {
+        let d = args.s("direction")
+        guard d == "next" || d == "prev" else { return .err("spaces: switch needs id or direction") }
+        step(d == "next" ? 1 : -1)
+      }
+      return .okay
+    case "create":
+      let id = create(name: args.sOpt("name"), icon: args["icon"].string, theme: args["theme"], profile: args.sOpt("profile"))
+      return ["id": .string(id)]
+    case "update":
+      guard let i = index(of: args.s("id")) else { return .err("spaces: no space '" + args.s("id") + "'") }
+      if let n = args["name"].string { spaces[i].name = n }
+      if let ic = args["icon"].string { spaces[i].icon = ic }
+      if let p = args["profile"].string { spaces[i].profile = p }
+      var themed = false
+      if case let .object(pairs) = args["theme"] {
+        for (k, v) in pairs { spaces[i].theme.put(k, v) }
+        themed = true
+      }
+      commit(themes: themed)
+      return .okay
+    case "delete":
+      guard let i = index(of: args.s("id")) else { return .err("spaces: no space '" + args.s("id") + "'") }
+      guard spaces.count > 1 else { return .err("spaces: cannot delete the last space") }
+      delete(i)
+      return .okay
+    case "move":
+      guard let i = index(of: args.s("id")) else { return .err("spaces: no space '" + args.s("id") + "'") }
+      let to = max(0, min(Int(args.i("index")), spaces.count - 1))
+      let s = spaces.remove(at: i)
+      spaces.insert(s, at: to)
+      commit(themes: true, showCurrent: true)
+      return .okay
+    default:
+      return .err("spaces: unknown method " + method)
+    }
+  }
+
+  // MARK: Mutations
+
+  func create(name: String?, icon: String?, theme: Value, profile: String?) -> String {
+    let id = newId()
+    let palette = Self.palettes[(spaces.count) % Self.palettes.count]
+    var t = Self.theme(palette)
+    if case let .object(pairs) = theme { for (k, v) in pairs { t.put(k, v) } }
+    spaces.append(Space(id: id, name: name ?? ("Space " + String(spaces.count + 1)), icon: icon ?? "", theme: t, profile: profile ?? "default"))
+    commit(themes: true)
+    return id
+  }
+
+  func delete(_ i: Int) {
+    let wasCurrent = spaces[i].id == current
+    spaces.remove(at: i)
+    if wasCurrent {
+      let prev = current
+      current = spaces[max(0, i - 1)].id
+      env.call("ui", "setPages", ["count": .int(Int64(spaces.count)), "current": .int(Int64(currentIndex))])
+      commit(themes: true)
+      env.emit("spaces.current", ["id": .string(current), "previous": .string(prev), "direction": "jump"])
+    } else {
+      commit(themes: true, showCurrent: true)
+    }
+  }
+
+  func commit(themes: Bool, showCurrent: Bool = false) {
+    save()
+    renderAll(themes: themes)
+    if showCurrent { env.call("ui", "showPage", ["page": .int(Int64(currentIndex)), "animated": false]) }
+    bindKeys()
+    emitChanged()
+  }
+
+  func emitChanged() { env.emit("spaces.changed", ["spaces": .array(spaces.map { $0.value })]) }
+
+  func step(_ delta: Int) {
+    let i = currentIndex + delta
+    guard i >= 0, i < spaces.count else { return }
+    switchTo(i, direction: delta > 0 ? "next" : "prev", animated: true)
+  }
+
+  func switchTo(_ i: Int, direction: String, animated: Bool) {
+    guard i >= 0, i < spaces.count else { return }
+    env.call("ui", "showPage", ["page": .int(Int64(i)), "animated": .bool(animated)])
+    didChange(to: i, direction: direction)
+  }
+
+  /// The pager is already on page `i` (after a swipe or showPage): record and announce it.
+  func didChange(to i: Int, direction: String) {
+    let prev = current
+    guard spaces[i].id != prev else { return }
+    current = spaces[i].id
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": "current", "value": .string(current)])
+    renderFooter()
+    env.emit("spaces.current", ["id": .string(current), "previous": .string(prev), "direction": .string(direction)])
+  }
+
+  // MARK: UI
+
+  func renderAll(themes: Bool) {
+    if placedPager {
+      env.call("ui", "setPages", ["count": .int(Int64(spaces.count))])
+    } else {
+      env.call("ui", "setPages", ["count": .int(Int64(spaces.count)), "current": .int(Int64(currentIndex))])
+      placedPager = true
+    }
+    for (i, s) in spaces.enumerated() {
+      if themes {
+        var t = s.theme
+        t.put("page", .int(Int64(i)))
+        env.call("window", "setTheme", t)
+      }
+      renderHeader(i)
+    }
+    renderFooter()
+  }
+
+  func renderHeader(_ i: Int) {
+    let s = spaces[i]
+    var menu: [Value] = [
+      ["id": "theme", "title": "Edit Theme…", "icon": "sf:paintpalette"],
+      ["id": "new", "title": "New Space", "icon": "sf:plus"],
+    ]
+    if i > 0 { menu.append(["id": "moveLeft", "title": "Move Left", "icon": "sf:arrow.left"]) }
+    if i < spaces.count - 1 { menu.append(["id": "moveRight", "title": "Move Right", "icon": "sf:arrow.right"]) }
+    if spaces.count > 1 {
+      menu.append(["separator": true])
+      menu.append(["id": "delete", "title": "Delete Space…", "icon": "sf:trash"])
+    }
+    env.call("ui", "set", [
+      "slot": "sidebar.spaceHeader", "page": .int(Int64(i)),
+      "tree": ["type": "spaceTitle", "id": .string("spaces.title:" + s.id), "title": .string(s.name), "icon": .string(s.icon), "menu": .array(menu)],
+    ])
+  }
+
+  func renderFooter() {
+    var row: [Value] = [
+      ["type": "button", "id": "spaces.library", "icon": "sf:tray.full", "tooltip": "Library", "size": 32],
+      ["type": "spacer"],
+    ]
+    for s in spaces {
+      row.append(["type": "spaceIcon", "id": .string("spaces.icon:" + s.id), "icon": .string(s.icon), "title": .string(s.name), "selected": .bool(s.id == current)])
+    }
+    row.append(["type": "spacer"])
+    row.append(["type": "button", "id": "spaces.new", "icon": "sf:plus", "tooltip": "New Space", "size": 32])
+    env.call("ui", "set", ["slot": "sidebar.footer", "tree": ["type": "row", "id": "spaces.footer", "height": 50, "spacing": 2, "children": .array(row)]])
+  }
+
+  func bindKeys() {
+    for n in 1...9 {
+      let title = n <= spaces.count ? spaces[n - 1].name : "Space " + String(n)
+      env.call("keys", "bind", ["chord": .string("ctrl+" + String(n)), "event": "spaces.key.jump", "title": .string(title), "menu": "Spaces", "payload": .int(Int64(n - 1))])
+    }
+    env.call("keys", "bind", ["chord": "cmd+opt+right", "event": "spaces.key.next", "title": "Next Space", "menu": "Spaces"])
+    env.call("keys", "bind", ["chord": "cmd+opt+left", "event": "spaces.key.prev", "title": "Previous Space", "menu": "Spaces"])
+  }
+
+  func confirmDelete(_ id: String) {
+    guard let i = index(of: id) else { return }
+    env.call("ui", "set", ["slot": "dialog", "tree": [
+      "type": "dialog", "id": .string("spaces.delete:" + id), "icon": "sf:trash",
+      "title": .string("Delete your " + spaces[i].name + " Space?"),
+      "message": "This will archive all the tabs and folders inside it.",
+      "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "delete", "title": "Delete", "style": "destructive"]],
+    ]])
+  }
+
+  func action(_ id: String, _ action: String, _ value: Value) {
+    if id == "sidebar", action == "page" {
+      let p = Int(value.int ?? 0)
+      guard p >= 0, p < spaces.count else { return }
+      let from = currentIndex
+      didChange(to: p, direction: p > from ? "next" : "prev")
+      return
+    }
+    if Text.hasPrefix(id, "spaces.icon:"), action == "click" {
+      if let i = index(of: Text.dropPrefix(id, "spaces.icon:")) { switchTo(i, direction: "jump", animated: true) }
+    } else if id == "spaces.new", action == "click" {
+      let nid = create(name: nil, icon: nil, theme: .null, profile: nil)
+      if let i = index(of: nid) { switchTo(i, direction: "jump", animated: true) }
+      env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "New Space Created", "icon": "sf:checkmark.circle.fill"]])
+    } else if id == "spaces.library", action == "click" {
+      env.emit("spaces.library", .null)
+    } else if Text.hasPrefix(id, "spaces.title:") {
+      let sid = Text.dropPrefix(id, "spaces.title:")
+      let item = action == "menu" ? (value.string ?? "") : action
+      switch item {
+      case "more", "theme": env.emit("spaces.editTheme", ["id": .string(sid)])
+      case "new": _ = handle("create", .null)
+      case "delete": confirmDelete(sid)
+      case "moveLeft", "moveRight":
+        if let i = index(of: sid) { _ = handle("move", ["id": .string(sid), "index": .int(Int64(i + (item == "moveLeft" ? -1 : 1)))]) }
+      default: break
+      }
+    } else if Text.hasPrefix(id, "spaces.delete:"), action == "button" {
+      env.call("ui", "set", ["slot": "dialog", "tree": nil])
+      if value.s("button") == "delete" { _ = handle("delete", ["id": .string(Text.dropPrefix(id, "spaces.delete:"))]) }
+    }
+  }
+}

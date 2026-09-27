@@ -20,6 +20,11 @@ public final class ServiceHost {
   public private(set) var services: [String: HostService] = [:]
   private var handlers: [String: [(UInt64, EventHandler)]] = [:]
   private var nextHandle: UInt64 = 1
+  /// Receives every emitted event after local handlers ran. `DenRuntime` points this at the
+  /// cordis `PluginHost` bus, so plugins see host events.
+  public var forward: ((String, Value) -> Void)?
+  /// Reports listeners registered outside this host (plugins on the `PluginHost` bus).
+  public var externalListeners: ((String) -> Bool)?
 
   public init() {}
 
@@ -44,11 +49,13 @@ public final class ServiceHost {
     for key in handlers.keys { handlers[key]?.removeAll { $0.0 == handle } }
   }
 
-  public func hasListeners(_ event: String) -> Bool { !(handlers[event]?.isEmpty ?? true) }
+  public func hasListeners(_ event: String) -> Bool {
+    !(handlers[event]?.isEmpty ?? true) || (externalListeners?(event) ?? false)
+  }
 
   public func emit(_ event: String, _ payload: Value = .null) {
-    guard let list = handlers[event] else { return }
-    for (_, h) in list { h(payload) }
+    if let list = handlers[event] { for (_, h) in list { h(payload) } }
+    forward?(event, payload)
   }
 }
 

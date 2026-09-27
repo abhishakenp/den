@@ -1,12 +1,13 @@
 import AppKit
+import Cordis
 import CordisValue
 
-/// Wires the host services together around one Arc-style window.
-/// When cordis `PluginHost` lands, each service's `handle` is registered with
-/// `PluginHost.provide(name, handle)` and `ServiceHost` goes away.
 @MainActor
 public final class DenRuntime {
   public let host = ServiceHost()
+  /// The cordis plugin host. Every host service is provided here, and every host event is
+  /// re-emitted on its bus, so plugins reach the host exactly like they reach each other.
+  public let plugins: PluginHost
   public let window = DenWindowController()
   public let windowService: WindowService
   public let webviews: WebViewsService
@@ -16,7 +17,10 @@ public final class DenRuntime {
   public let storage: StorageService
   public let app: AppService
 
-  public init(storageRoot: URL = StorageService.defaultRoot) {
+  /// `crashMarkerPath: nil` skips cordis' crash signal handlers (tests); the app passes
+  /// `PluginHost.defaultCrashMarkerPath`.
+  public init(storageRoot: URL = StorageService.defaultRoot, crashMarkerPath: String? = nil, pluginCache: String? = nil) {
+    plugins = PluginHost(crashMarkerPath: crashMarkerPath, cacheDirectory: pluginCache)
     windowService = WindowService(window: window)
     webviews = WebViewsService(host: host)
     content = ContentService(host: host, webviews: webviews, window: window)
@@ -25,12 +29,17 @@ public final class DenRuntime {
     storage = StorageService(root: storageRoot)
     app = AppService(host: host, window: window)
     windowService.ui = ui
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app] { host.provide(s) }
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app] {
+      host.provide(s)
+      plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
+    }
+    host.forward = { [unowned plugins] e, v in plugins.emit(e, v) }
+    host.externalListeners = { [unowned plugins] e in plugins.hasListeners(e) }
     window.emit = { [weak host] e, v in host?.emit(e, v) }
     window.onCloseRequest = { [weak app] in app?.shouldClose() ?? true }
   }
 
-  /// Convenience used by the demo driver and tests: `call("webviews", "create", [...])`.
+  /// Calls a host or plugin service.
   @discardableResult
-  public func call(_ service: String, _ method: String, _ args: Value = .null) -> Value { host.call(service, method, args) }
+  public func call(_ service: String, _ method: String, _ args: Value = .null) -> Value { plugins.call(service, method, args) }
 }

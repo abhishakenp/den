@@ -21,12 +21,18 @@ Injects: `window`, `ui`, `storage`, `keys`.
 Events:
 - `spaces.changed {spaces}` fires when the list or any space's fields change.
 - `spaces.current {id, previous, direction}` fires on every switch. `direction` is `next`, `prev` or `jump`.
+- `spaces.editTheme {id}` fires from the space title's "…" button or its "Edit Theme…" menu item. The `theme` plugin opens its picker.
+- `spaces.library` fires when the footer's Library button is clicked.
+
+`switch` also takes `animated` (default true). `update` merges a partial `theme` into the space's theme.
+
+UI node ids: `spaces.title:<spaceId>`, `spaces.icon:<spaceId>`, `spaces.new`, `spaces.library`, dialog `spaces.delete:<spaceId>`. First run seeds three spaces (Personal, Work, Side Project) with Arc-like gradients. Storage keys (ns `spaces`): `spaces`, `current`, `nextId`.
 
 Owns: the sidebar `spaceHeader` and `footer` slots, the window theme per space page, the space-switch shortcuts (Ctrl-1…9, Cmd-Opt-←/→) and swipe handling.
 
 ## `tabs` (plugin `tabs`)
 
-Injects: `spaces`, `webviews`, `content`, `ui`, `storage`, `keys`.
+Injects: `spaces`, `webviews`, `content`, `ui`, `storage`, `keys`, `window`, `app`.
 
 Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, customTitle?, url, pinnedUrl?, favicon?, webviewId, lastActive, audio}`.
 - Favorites are shared across all spaces, so their `spaceId` is `null`.
@@ -50,6 +56,10 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 | `archive` | – | `[{id, title, url, favicon, closedAt, spaceId}]` |
 | `restore` | `id` | `{id}` |
 | `createFolder` | `spaceId?`, `title?`, `tabIds?` | `{id}` |
+| `deleteFolder` | `id` | ok. Archives the tabs inside it (the menu confirms first) |
+| `settings` | `archiveAfterMs?` (0 = never, default 12 h), `suspendAfterMs?` (0 = never, default 30 min) | `{archiveAfterMs, suspendAfterMs}` |
+
+`rename` also renames folders. Tab and webview ids are the same (`tab-<n>`); folder ids are `folder-<n>`. Other UI node ids: `tabs.nav`, `tabs.url`, `tabs.divider:<spaceId>`, `tabs.newtab:<spaceId>`, dialog `tabs.deleteFolder:<id>`. The New Tab row and the URL pill call `commands.open` (`new` / `edit`). Dropping a tab on the content calls `peek.split`. Cmd-W first closes an open command bar (`commands.close`) or peek (`peek.close`). State lives in storage ns `tabs`, keys `state` and `settings`. First run seeds sample favorites, pinned tabs, a folder and today tabs.
 
 Events:
 - `tabs.changed {spaceId}` fires on any change to the lists.
@@ -59,7 +69,7 @@ Events:
 Owns:
 - the sidebar `header` (URL pill and nav buttons), `favorites`, `pinned` and `today` slots
 - the content layout for the selected tab
-- tab shortcuts: Cmd-W, Cmd-Shift-T, Cmd-D, Cmd-Shift-K, Cmd-1…9, Ctrl-Tab, Cmd-Opt-↑/↓, Cmd-[ and Cmd-]
+- tab shortcuts: Cmd-W, Cmd-Shift-T, Cmd-D, Cmd-Shift-K, Cmd-1…9, Ctrl-Tab, Cmd-Opt-↑/↓, Cmd-[ and Cmd-], plus Ctrl-Z (undo sidebar action, as in Arc's "Use ⌃Z to undo" toast), Cmd-R, Cmd-. (stop), Cmd-S (sidebar) and Cmd-Shift-C (copy URL)
 - auto-archive of idle today tabs (12 h by default, configurable, and it can be turned off)
 - tab suspension of idle tabs through `webviews.suspend`
 
