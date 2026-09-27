@@ -8,7 +8,7 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -19,6 +19,20 @@ public enum HostScenarios {
       seedSidebar(rt, appearance: appearance, colors: empty ? [] : accent)
       showContent(rt)
       themePicker(rt, colors: empty ? [] : ["#b98cff", "#ff9fc8"], appearance: appearance)
+    case "contextMenu":
+      seedSidebar(rt, appearance: appearance)
+      showContent(rt)
+      rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "id": "today", "children": [
+        ["type": "divider", "id": "div", "action": "Clear"], ["type": "newTabRow", "id": "newtab"],
+        ["type": "tabRow", "id": "t1", "title": "Example Domain", "icon": "sf:globe", "selected": true, "menu": tabMenu],
+        ["type": "tabRow", "id": "t2", "title": "Release notes", "icon": "sf:doc.text"],
+      ]]])
+      // A native menu is its own window: it can't be rendered with cacheDisplay, so this scenario
+      // only opens it (scripts capture den's own windows with `screencapture -l`).
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        guard let row = find("t1", in: rt.ui.sidebarView), let m = row.menu(for: NSEvent.mouseEvent(with: .rightMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!) else { return }
+        m.popUp(positioning: nil, at: NSPoint(x: 120, y: 30), in: row)
+      }
     default: break
     }
     return rt.window.window
@@ -44,6 +58,27 @@ public enum HostScenarios {
   static func showContent(_ rt: DenRuntime) {
     let id = page(rt, id: "t1", title: "Example Domain", body: "This page is local HTML rendered by den's scenario runner, so snapshots never need the network.")
     rt.call("content", "show", ["panes": [.string(id)]])
+  }
+
+  static let tabMenu: Value = [
+    ["id": "copy", "title": "Copy Link", "icon": "sf:link", "key": "cmd+shift+c"],
+    ["id": "duplicate", "title": "Duplicate", "icon": "sf:plus.square.on.square"],
+    ["id": "rename", "title": "Rename…", "icon": "sf:pencil"],
+    ["separator": true],
+    ["id": "pin", "title": "Pin Tab", "icon": "sf:pin", "key": "cmd+d"],
+    ["id": "move", "title": "Move to Space", "icon": "sf:arrow.right.square", "items": [
+      ["id": "move:personal", "title": "Personal", "icon": "sf:house.fill", "checked": true],
+      ["id": "move:work", "title": "Work", "icon": "sf:briefcase.fill"],
+      ["separator": true], ["id": "move:new", "title": "New Space…", "icon": "sf:plus"],
+    ]],
+    ["separator": true],
+    ["id": "archive", "title": "Archive Tab", "icon": "sf:archivebox", "key": "cmd+w", "destructive": true],
+  ]
+
+  static func find(_ id: String, in v: NSView) -> NodeView? {
+    if let n = v as? NodeView, n.nodeId == id { return n }
+    for s in v.subviews { if let f = find(id, in: s) { return f } }
+    return nil
   }
 
   // MARK: Sample content

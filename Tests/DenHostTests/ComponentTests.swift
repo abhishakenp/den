@@ -76,3 +76,32 @@ struct ComponentTests {
     #expect(rt.call("ui", "get")["overlays"] == [])
   }
 }
+
+extension ComponentTests {
+  @Test func contextMenusSupportSubmenusIconsDestructiveAndKeys() throws {
+    let rt = Self.runtime()
+    var got: [Value] = []
+    rt.host.on("ui.action") { got.append($0) }
+    _ = rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "tabRow", "id": "t", "title": "T", "menu": [
+      ["id": "copy", "title": "Copy Link", "icon": "sf:link", "key": "cmd+shift+c"],
+      ["separator": true],
+      ["id": "move", "title": "Move to Space", "icon": "sf:arrow.right.square", "items": [
+        ["header": "Spaces"], ["id": "move:work", "title": "Work"], ["id": "move:home", "title": "Home", "checked": true, "enabled": false],
+      ]],
+      ["id": "archive", "title": "Archive Tab", "icon": "sf:archivebox", "key": "cmd+w", "destructive": true],
+    ]]])
+    let row = try #require(rt.ui.sidebarView.slot("sidebar.today", page: 0)?.root)
+    let ev = NSEvent.mouseEvent(with: .rightMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+    let m = try #require(row.menu(for: ev))
+    #expect(m.items.map(\.isSeparatorItem) == [false, true, false, false])
+    #expect(m.items[0].keyEquivalent == "c" && m.items[0].keyEquivalentModifierMask == [.command, .shift] && m.items[0].image != nil)
+    let sub = try #require(m.items[2].submenu)
+    #expect(sub.items[0].isSectionHeader && sub.items[1].title == "Work")
+    #expect(sub.items[2].state == .on && !sub.items[2].isEnabled)
+    #expect(m.items[3].attributedTitle?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == ContextMenu.destructiveColor)
+    #expect(m.items[3].keyEquivalent == "w")
+    // Picking a submenu item emits `menu` with its id.
+    _ = sub.items[1].target?.perform(sub.items[1].action, with: sub.items[1])
+    #expect(got.last?["id"] == "t" && got.last?["action"] == "menu" && got.last?["value"] == "move:work")
+  }
+}

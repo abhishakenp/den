@@ -27,5 +27,15 @@ host() { # name scenario appearance
 host theme-picker themePicker light
 host theme-picker-dark themePicker dark
 host theme-picker-empty-dark themePickerEmpty dark
+# Native menus are separate windows: open one and capture it through its own window id.
+menu() { # name appearance
+  build/den.app/Contents/MacOS/Den --storage "$store" --appearance "$2" --scenario contextMenu --stay &
+  local pid=$!; sleep 3.5
+  local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; for w in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where w[kCGWindowOwnerPID as String] as? Int32 == p && w[kCGWindowLayer as String] as? Int == 101 { print(w[kCGWindowNumber as String]!) }' $pid | head -1)
+  [[ -n $id ]] && screencapture -o -x -l$id "$out/$1.png"
+  kill $pid
+}
+menu context-menu light
+menu context-menu-dark dark
 # Store at 1x (1280 pt wide) to keep the repo small.
 for f in $out/*.png; do sips -Z 1280 "$f" --out "$f" >/dev/null; done

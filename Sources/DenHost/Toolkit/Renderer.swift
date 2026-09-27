@@ -27,20 +27,12 @@ public class NodeView: FlippedView, Themable {
 
   public override var mouseDownCanMoveWindow: Bool { false }
 
-  /// Optional native context menu: node.menu = [{id, title, icon?} | {separator: true}]
+  /// Optional native context menu (see `ContextMenu` for the item shapes): separators, section
+  /// headers, submenus, SF Symbol icons, destructive items and key-equivalent hints.
   public override func menu(for event: NSEvent) -> NSMenu? {
     let items = node.list("menu")
     guard !items.isEmpty else { return nil }
-    let m = NSMenu()
-    for it in items {
-      if it.flag("separator") { m.addItem(.separator()); continue }
-      let mi = NSMenuItem(title: it.str("title"), action: #selector(menuPicked(_:)), keyEquivalent: "")
-      mi.target = self
-      mi.representedObject = it.str("id")
-      if it.str("icon").hasPrefix("sf:") { mi.image = NSImage(systemSymbolName: String(it.str("icon").dropFirst(3)), accessibilityDescription: nil) }
-      m.addItem(mi)
-    }
-    return m
+    return ContextMenu.build(items, target: self, action: #selector(menuPicked(_:)))
   }
   @objc func menuPicked(_ sender: NSMenuItem) { emit("menu", .string(sender.representedObject as? String ?? "")) }
 }

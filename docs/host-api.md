@@ -121,7 +121,9 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 
 **Details that apply to several nodes:**
 - **Icons.** A node icon can be `sf:<symbol>`, an http(s) image URL (cached), `app:icon`, or text/emoji.
-- **Context menus.** Any node can carry `menu: [{id, title, icon?} | {separator: true}]`. The host shows it as a native context menu and emits `menu` with the picked item's id.
+- **Context menus.** Any node can carry `menu: [item]`, shown as a native context menu. Picking an item emits `menu` with its id (submenu items included). Item shapes:
+  - `{id, title, icon?, key?, destructive?, enabled=true, checked?, items?}`. `icon` is an `sf:` symbol. `key` is a chord hint drawn on the right (`cmd+w`), display only; the real binding lives in `keys`. `destructive` draws the title and icon in DestructiveButtonFace red (#F53714). `items` makes it a submenu ("Move to Space ▸").
+  - `{separator: true}` and `{header: "Title"}` (section header).
 - **Drag reorder.** Dragging emits `reorder {source, target, position: before|after|into}` with a haptic tick. Dropping on the web content emits `dropOnContent {source, side: left|center|right}`.
 - **View reuse.** Views are reused by `type` + `id`, so it's cheap to resend a whole tree on every change.
 

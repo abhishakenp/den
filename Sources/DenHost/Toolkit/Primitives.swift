@@ -151,7 +151,7 @@ public final class IconView: NSView, Themable {
           rect.fill(using: .sourceAtop)
           return true
         }
-        tinted.draw(in: r, from: .zero, operation: .sourceOver, fraction: tint.alphaComponent)
+        tinted.draw(in: r, from: .zero, operation: .sourceOver, fraction: tint.alphaComponent, respectFlipped: true, hints: nil)
       } else {
         NSGraphicsContext.current?.imageInterpolation = .high
         let path = NSBezierPath(roundedRect: b, xRadius: b.width * 0.2, yRadius: b.height * 0.2)

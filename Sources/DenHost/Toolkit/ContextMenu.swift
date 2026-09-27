@@ -1,0 +1,60 @@
+import AppKit
+import CordisValue
+
+/// Native context menus built from a node's `menu` field.
+///
+/// Item shapes:
+///   {id, title, icon?, key?, destructive?, enabled=true, checked?, items?: [item]}   (items = submenu)
+///   {separator: true}
+///   {header: "Title"}                                                                 (section header)
+/// - `icon`: `sf:<symbol>` (tinted red when destructive).
+/// - `key`: a chord hint shown on the right (`cmd+w`, `ctrl+shift+=`); display only, the real
+///   binding lives in the `keys` service.
+/// Picking an item emits `menu` with the item's id (submenu items too).
+@MainActor
+enum ContextMenu {
+  static let destructiveColor = NSColor(srgbRed: 0xF5 / 255, green: 0x37 / 255, blue: 0x14 / 255, alpha: 1)  // spec §3 DestructiveButtonFace
+
+  static func build(_ items: [Value], target: AnyObject, action: Selector) -> NSMenu {
+    let m = NSMenu()
+    m.autoenablesItems = false
+    for it in items {
+      if it.flag("separator") { m.addItem(.separator()); continue }
+      if let h = it["header"].string { m.addItem(.sectionHeader(title: h)); continue }
+      let mi = NSMenuItem(title: it.str("title"), action: nil, keyEquivalent: "")
+      mi.representedObject = it.str("id")
+      mi.isEnabled = it.flag("enabled", true)
+      mi.state = it.flag("checked") ? .on : .off
+      let destructive = it.flag("destructive")
+      if it.str("icon").hasPrefix("sf:"), let img = NSImage(systemSymbolName: String(it.str("icon").dropFirst(3)), accessibilityDescription: nil) {
+        if destructive {
+          let cfg = NSImage.SymbolConfiguration(paletteColors: [destructiveColor])
+          mi.image = img.withSymbolConfiguration(cfg) ?? img
+        } else {
+          mi.image = img
+        }
+      }
+      if destructive {
+        mi.attributedTitle = NSAttributedString(string: mi.title, attributes: [.foregroundColor: destructiveColor, .font: NSFont.menuFont(ofSize: 0)])
+      }
+      if let chord = Chord.parse(it.str("key")) {
+        mi.keyEquivalent = chord.key
+        var mask: NSEvent.ModifierFlags = []
+        if chord.mods.contains(.cmd) { mask.insert(.command) }
+        if chord.mods.contains(.shift) { mask.insert(.shift) }
+        if chord.mods.contains(.opt) { mask.insert(.option) }
+        if chord.mods.contains(.ctrl) { mask.insert(.control) }
+        mi.keyEquivalentModifierMask = mask
+      }
+      let sub = it.list("items")
+      if !sub.isEmpty {
+        mi.submenu = build(sub, target: target, action: action)
+      } else {
+        mi.target = target
+        mi.action = action
+      }
+      m.addItem(mi)
+    }
+    return m
+  }
+}
