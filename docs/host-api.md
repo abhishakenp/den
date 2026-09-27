@@ -634,7 +634,7 @@ Host services behind the `connections`, `slack`, `github` and `briefing` plugins
 
 ### Permissions
 
-A plugin declares what it may reach in `Plugins/<id>/permissions.json`, e.g. `{"permissions": ["session:slack.com"]}`. `bundle.sh` copies it to `Contents/PlugIns/<id>.json`, and `PluginLoader` grants it when the plugin loads (user and dev plugins use the same sidecar next to their dylib). Anything undeclared is denied.
+A plugin declares what it may reach in `Plugins/<id>/permissions.json`, e.g. `{"permissions": ["session:slack.com"]}`. `bundle.sh` copies it to `Contents/PlugIns/<id>.json`, and `PluginLoader` grants it when the plugin loads (user and dev plugins use the same sidecar next to their dylib). Anything undeclared is denied. The same sidecar says when a plugin loads: `"launch": "firstFrame"` (spaces, tabs) loads it before the first window, because it paints that window; every other plugin loads right after the first frame, and until then the services it provided last launch are stubs that load it on the first call (`PluginLoader`).
 
 - `session:<domain>`: cookies and site storage of `<domain>` and its subdomains, and `net.fetch` there with cookies.
 - `net:<domain>`: `net.fetch` there without cookies.

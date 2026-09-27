@@ -20,29 +20,22 @@ import os
 //   --measure-launch               print ms from process start to first window on screen, then quit
 //   --storage <dir>                storage root (default ~/Library/Application Support/den/storage)
 //   --no-den-home                  ignore ~/.den (no user plugins, themes, config; nothing watched)
-//   --relaunched [--background]    started by app.relaunch / an update; --background doesn't take focus
-//   --background                   alone (test and measurement runs): doesn't take focus either
+//   --background                   automation: no Dock icon, never activated, every window off-display
+//                                  (Presentation.invisible); --snapshot still renders. Test runs are always so.
+//   --exit-after <seconds>         quit that long after the first window (scripts that capture by window id)
+//   --relaunched [--background]    started by app.relaunch / an update; here --background only means no focus
 //
 // ~/.den (DEN_HOME overrides it): plugins, themes and config.toml, watched and hot-reloaded
 // after the first window (docs/den-home.md). SIGTERM quits cleanly without the quit dialog.
 
 setvbuf(stdout, nil, _IOLBF, 0)
-let traceOn = ProcessInfo.processInfo.environment["DEN_TRACE"] != nil
-@MainActor func trace(_ s: String) {
-  if traceOn { print(String(format: "trace %@ %.1f", s, Date().timeIntervalSince(processStartDate()) * 1000)) }
-}
+let traceOn = LaunchTrace.on
+@MainActor func trace(_ s: String) { LaunchTrace.mark(s) }
 let signposter = OSSignposter(subsystem: "io.github.abhishakenp.den", category: "launch")
 let launchInterval = signposter.beginInterval("launch")
 
 /// Process start time (kernel), so launch time includes dyld + runtime init.
-func processStartDate() -> Date {
-  var info = kinfo_proc()
-  var size = MemoryLayout<kinfo_proc>.stride
-  var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
-  guard sysctl(&mib, 4, &info, &size, nil, 0) == 0 else { return Date() }
-  let tv = info.kp_proc.p_starttime
-  return Date(timeIntervalSince1970: Double(tv.tv_sec) + Double(tv.tv_usec) / 1e6)
-}
+func processStartDate() -> Date { LaunchTrace.processStart }
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -59,7 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var sparkle: DenSparkle?
   /// Set when an update quits den: skip the quit dialog.
   var quittingForUpdate = false
-  var background: Bool { args.contains("--background") }
+  var loadedDeferred = false
+  /// Relaunched by an update: show the window without taking focus.
+  var background: Bool { args.contains("--relaunched") && args.contains("--background") }
+  /// `--background` (automation): no Dock icon, never activated, windows off every display.
+  var invisible: Bool { Presentation.invisible }
   var sigterm: DispatchSourceSignal?
   lazy var sessionLog: DenLog? = home.map { DenLog(url: $0.logs.appendingPathComponent("den.log")) }
 
@@ -68,14 +65,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     return args[i + 1]
   }
 
+  /// Everything up to showing the window happens here, not in didFinishLaunching: between the two,
+  /// AppKit sits idle until LaunchServices' open-application Apple event arrives (tens of ms), and
+  /// building the runtime and the first-frame plugins overlaps that wait.
   func applicationWillFinishLaunching(_ notification: Notification) {
     trace("willFinishLaunching")
     MainMenu.install()
+    trace("menu")
+    setUp()
   }
 
   func applicationDidBecomeActive(_ notification: Notification) { trace("didBecomeActive") }
-  func applicationDidFinishLaunching(_ notification: Notification) {
-    defer { trace("didFinishLaunching.end") }
+
+  func setUp() {
     if let out = ProcessInfo.processInfo.environment["DEN_SAMPLE"] {
       let p = Process()
       p.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
@@ -86,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // --demo without --storage runs on a fresh store, so the plugins' first-run seed shows.
     let root = arg("--storage").map { URL(fileURLWithPath: $0) }
       ?? (args.contains("--demo") ? FileManager.default.temporaryDirectory.appendingPathComponent("den-demo-\(UUID().uuidString)") : StorageService.defaultRoot)
-    trace("didFinishLaunching")
+    trace("setUp")
     runtime = DenRuntime(storageRoot: root, crashMarkerPath: PluginHost.defaultCrashMarkerPath)
     // Unpacked development extensions (docs/den-home.md). Only a path: nothing is read until the first web view.
     runtime.extensions.homeFolder = home?.extensions
@@ -142,13 +144,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     runtime.app.relaunchHandler = { [weak self] background in self?.relaunch(background: background) }
     let hostAPI = DenBuild.running.hostAPI
     let outcome = loader.loadAll(home: home.map { LivePlugins.launchFiles($0, hostAPI: hostAPI) } ?? [], dev: arg("--dev-plugins").map { URL(fileURLWithPath: $0) },
-                                 disabled: home.map(ConfigService.disabledPlugins) ?? [])
+                                 disabled: home.map(ConfigService.disabledPlugins) ?? [], deferring: true)
     trace("plugins")
-    if traceOn || !outcome.failed.isEmpty { print("plugins loaded=\(outcome.loaded) failed=\(outcome.failed) crashed=\(outcome.crashed)") }
-    updates?.crashed = outcome.crashed
-    if let text = PluginLoader.crashToast(outcome.crashed) {
-      runtime.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(text), "icon": "sf:exclamationmark.triangle.fill", "duration": 6000]])
-    }
+    if traceOn { print("plugins firstFrame=\(outcome.loaded) deferred=\(loader.deferred.map { $0.deletingPathExtension().lastPathComponent })") }
     if !runtime.plugins.serviceNames.contains("spaces") {
       runtime.call("window", "setTheme", ["colors": ["#c3b1ff", "#ffb3d1"], "intensity": 0.6, "grain": 0.3])
     }
@@ -159,8 +157,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     trace("setup")
+  }
+
+  func applicationDidFinishLaunching(_ notification: Notification) {
+    trace("didFinishLaunching")
+    defer { trace("didFinishLaunching.end") }
     let w = runtime.window.window
-    if background {
+    if invisible {
+      Presentation.show(w)
+    } else if background {
       // Relaunched by an update while the user works elsewhere: come back without taking focus.
       w.orderFront(nil)
     } else {
@@ -173,10 +178,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     trace("display")
     DispatchQueue.main.async { trace("nextRunloop") }
     // Never keep pages waiting if the window server is slow to report the window visible.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.runtime.content.releaseWebViews() }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+      self?.loadDeferredPlugins()
+      self?.runtime.content.releaseWebViews()
+    }
     // The window server reports the window visible -> first frame is on screen. (In the
     // background it may stay covered, so don't wait for that.)
-    if w.occlusionState.contains(.visible) || background {
+    if w.occlusionState.contains(.visible) || background || invisible {
       firstFrame()
     } else {
       visibleObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in
@@ -196,6 +204,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     runtime.app.launchMs = ms
     // `blank`: nothing on screen, so no WKWebView or WebKit process is ever created.
     if arg("--scenario") == "blank" { runtime.call("content", "show", ["panes": []]) }
+    // Plugins that don't paint the first frame, before any page loads (dark mode styles them).
+    loadDeferredPlugins()
     runtime.content.releaseWebViews()
     // Snapshot folders of den processes that crashed (never this one's).
     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.runtime.webviews.removeStaleSnapshots() }
@@ -205,10 +215,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       if arg("--snapshot") == nil && !args.contains("--stay") { exit(0) }
     }
     DispatchQueue.main.async { [weak self] in self?.startDenHome(firstWindowMs: ms) }
+    if let s = arg("--exit-after").flatMap(Double.init) { DispatchQueue.main.asyncAfter(deadline: .now() + s) { exit(0) } }
     var snapWindow = runtime.window.window
     if let scenario = arg("--scenario") {
       // Host component scenarios (DenHost/Scenarios) first; the rest need --demo.
+      #if Scenarios
       if let w = HostScenarios.apply(scenario, runtime: runtime, appearance: arg("--appearance") ?? "light") { snapWindow = w } else { applyScenario(scenario) }
+      #else
+      applyScenario(scenario)
+      #endif
     }
     if let path = arg("--snapshot") {
       let delay = Double(arg("--snapshot-delay") ?? "4") ?? 4
@@ -221,6 +236,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           exit(ok ? 0 : 1)
         }
       }
+    }
+  }
+
+  /// The plugins `PluginLoader` held back until the first frame (once), and what came of the whole launch load.
+  func loadDeferredPlugins() {
+    guard !loadedDeferred else { return }
+    loadedDeferred = true
+    let outcome = loader.loadDeferred()
+    trace("plugins.deferred")
+    if traceOn || !outcome.failed.isEmpty { print("plugins loaded=\(outcome.loaded) failed=\(outcome.failed) crashed=\(outcome.crashed)") }
+    updates?.crashed = outcome.crashed
+    if let text = PluginLoader.crashToast(outcome.crashed) {
+      runtime.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(text), "icon": "sf:exclamationmark.triangle.fill", "duration": 6000]])
     }
   }
 
@@ -326,8 +354,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
         guard let panel = NSApp.windows.first(where: { $0 is NSPanel && $0.isVisible }) else { print("scenario.cmdO no panel"); exit(1) }
         let web = rt.call("window", "listMini")[0]["webview"].string ?? ""
-        NSApp.activate()
-        panel.makeKeyAndOrderFront(nil)
+        Presentation.activate()
+        Presentation.show(panel)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
           let wasKey = rt.call("window", "listMini")[0]["key"] == true
           let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
@@ -361,8 +389,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       rt.plugins.emit("ui.action", ["id": "commandBar", "action": "tab", "value": ["query": ""]])
     case "mini", "miniOff", "miniInline", "miniPlayer", "miniURL":
       snapMini = s == "mini" || s == "miniURL"
+      #if Scenarios
       MediaScenarios.apply(s, runtime: rt)
-    case "discard": DiscardScenarios.apply(s, runtime: rt)
+      #endif
+    case "discard":
+      #if Scenarios
+      DiscardScenarios.apply(s, runtime: rt)
+      #endif
     case "dialog": rt.plugins.emit("app.quitRequested")
     case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { rt.call("tabs", "clearToday") }
     case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.call("peek", "open", ["url": "https://www.swift.org"]) }
@@ -434,15 +467,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-    if !flag { runtime.window.window.makeKeyAndOrderFront(nil) }
+    if !flag { Presentation.show(runtime.window.window) }
     return true
   }
 }
 
 MainActor.assumeIsolated { trace("main") }
+IconView.prewarmSymbols()
+// Automation relies on flags (--background, --exit-after): a den that doesn't know one must fail,
+// not run on with a window. (Values never start with "--".)
+let knownFlags: Set<String> = [
+  "--demo", "--appearance", "--scenario", "--url", "--dev-plugins", "--snapshot", "--snapshot-delay", "--measure-launch",
+  "--storage", "--no-den-home", "--relaunched", "--background", "--exit-after", "--stay",
+]
+if let bad = CommandLine.arguments.dropFirst().first(where: { $0.hasPrefix("--") && !knownFlags.contains($0) }) {
+  FileHandle.standardError.write(Data("den: unknown flag \(bad); known: \(knownFlags.sorted().joined(separator: " "))\n".utf8))
+  exit(2)
+}
+// Info.plist declares den a UI element (LSUIElement), so LaunchServices never gives an automation
+// launch a Dock tile, not even for the moment before this line. A normal launch becomes a regular
+// app here, before NSApplication finishes launching. `--background` (not the relaunch flavour)
+// stays an accessory app: no Dock icon, no activation.
+let invisibleLaunch = CommandLine.arguments.contains("--background") && !CommandLine.arguments.contains("--relaunched")
 let app = NSApplication.shared
-
-app.setActivationPolicy(.regular)
+MainActor.assumeIsolated { trace("nsapp") }
+MainActor.assumeIsolated { if invisibleLaunch { Presentation.invisible = true } }
+app.setActivationPolicy(invisibleLaunch ? .accessory : .regular)
 let delegate = AppDelegate()
 app.delegate = delegate
+MainActor.assumeIsolated { trace("run") }
 app.run()

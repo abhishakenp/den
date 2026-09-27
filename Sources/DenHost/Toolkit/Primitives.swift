@@ -299,6 +299,17 @@ public final class IconView: NSView, Themable {
 
   static let globe = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
 
+  /// Launch: the first SF Symbol den draws pays for loading the system glyph catalog on the main
+  /// thread. Resolving and rasterizing one glyph on a background queue at process start does
+  /// that in parallel with the rest of launch (NSImage and the catalog are thread-safe).
+  public nonisolated static func prewarmSymbols() {
+    DispatchQueue.global(qos: .userInitiated).async {
+      guard let img = NSImage(systemSymbolName: "globe", accessibilityDescription: nil) else { return }
+      var rect = NSRect(x: 0, y: 0, width: 16, height: 16)
+      _ = img.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+    }
+  }
+
   var isDark: Bool { effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
 
   var isRemote: Bool { spec.hasPrefix("http://") || spec.hasPrefix("https://") || spec.hasPrefix("data:") }
