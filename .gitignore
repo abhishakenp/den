@@ -5,3 +5,4 @@ build/
 .swiftpm/
 .claude/
 dist/
+.vercel/

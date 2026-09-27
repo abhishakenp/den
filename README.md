@@ -10,6 +10,7 @@ A fast, native macOS browser built on WebKit, where everything is a plugin.
 </p>
 
 <p>
+  <a href="https://den-browser.vercel.app"><strong>den-browser.vercel.app</strong></a> ·
   <a href="docs/guide/">User guide</a> ·
   <a href="docs/guide/tips.md">Tips & hidden gems</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
@@ -113,6 +114,10 @@ Updates: release channels (Sparkle for the app, signed hot-swapped plugins) or, 
 Extend den from `~/.den`: drop in plugins (prebuilt `.dylib` or a folder of `.swift` files den compiles), themes and `config.toml`. Changes apply live. See [docs/den-home.md](docs/den-home.md).
 
 The host API that plugins code against is in [docs/host-api.md](docs/host-api.md).
+
+Let your AI agent do it: the [den skill](skills/den/SKILL.md) teaches Claude Code, Codex and other agents to edit `~/.den`, write plugins and read den's logs. Install it with `bunx skills add abhishakenp/den --skill den -g`.
+
+The homepage source is in [`website/`](website/) (Next.js, deployed on Vercel).
 
 ## Design docs
 

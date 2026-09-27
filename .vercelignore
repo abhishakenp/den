@@ -1,0 +1,5 @@
+# Vercel builds only the website (project root directory: website/)
+/*
+!/website
+/website/node_modules
+/website/.next
