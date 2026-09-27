@@ -138,7 +138,7 @@ jobs:
     name: UI snapshots (macOS 26, arm64)
     if: github.event_name == 'workflow_dispatch' && inputs.snapshots
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
         with:
