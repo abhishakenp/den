@@ -86,7 +86,7 @@ Each item is covered by `swift test` or a `--scenario` run of the real app. The 
 </p>
 <p align="center">
   <img src="docs/screenshots/theme-picker-live-dark.png" alt="Theme picker" width="410">
-  <img src="docs/screenshots/preview-github-dark.png" alt="Hover card for a GitHub pull request" width="410">
+  <img src="docs/screenshots/pr-peek-failing-dark.png" alt="PR peek: checks, diff size, failing checks and conflicts" width="410">
 </p>
 
 ## Build and run

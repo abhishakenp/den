@@ -41,7 +41,7 @@ Native menus and the Settings window draw blank through `--snapshot`. Capture th
 | `drop-on-page.png` | the tinted split drop zone over the page | a sidebar tab drag held over the left third of the page |
 | `split-pane-hover.png` | a split pane's × and "Separate" buttons | `split` plus a hover on the second pane |
 | `peek-open.png` | a Peek from ⇧-click with its Open as Tab / Open in Split View buttons | exists as `peek-card.png` from a host scenario; a real ⇧-click in the `peek` app scenario would show the full window |
-| `preview-gmail.png`, `preview-slack.png`, `preview-github-issue.png` | [Hover previews](hover-previews.md#what-the-cards-show) | `previewGitHub`-style scenarios for the Gmail, Slack and issue providers, fed by `MockServices` |
+| `preview-gmail.png`, `preview-slack.png`, `preview-github-issue.png` | [Hover previews](hover-previews.md#what-the-cards-show) | `prFailing`-style scenarios for the Gmail, Slack and issue providers, fed by `MockServices` |
 | `try-for-a-week.png` | [Default browser](getting-started.md#make-den-your-default-browser): the 7-day "Keep den as your default browser?" dialog | a scenario that fakes the week having passed |
 | `settings-general.png` | Settings ▸ General with `~/.den` on (the current `settings.png` says "~/.den is off for this run") | the `settings` scenario with a throwaway `DEN_HOME` instead of `--no-den-home` |
 
