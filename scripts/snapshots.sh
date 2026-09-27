@@ -27,6 +27,8 @@ host() { # name scenario appearance
 host theme-picker themePicker light
 host theme-picker-dark themePicker dark
 host theme-picker-empty-dark themePickerEmpty dark
+host little-arc littleArc light
+host little-arc-dark littleArc dark
 host quit-dialog dialogQuit light
 host quit-dialog-dark dialogQuit dark
 for v in DeleteSpace DeleteFolder ClearArchive; do

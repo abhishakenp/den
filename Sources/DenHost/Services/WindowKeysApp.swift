@@ -7,25 +7,46 @@ import CordisValue
 ///   setTheme {colors: [hex] (≤3), intensity 0–1, grain 0–1, appearance: light|dark|auto, page?}
 ///   setSidebar {width?, hidden?, animated?}     toggleSidebar {animated?}
 ///   setTitle {title}                            get -> {width, hidden, page, fullScreen, dark}
-/// Events: window.sidebarResized {width}, window.sidebarVisibility {hidden}, window.sidebarReveal {revealed}
+///   openMini {webview, space?, width?, height?} -> {id}   Little Arc window (spec §8) hosting one web view
+///   updateMini {id, space?}                     closeMini {id}                listMini -> [{id, webview}]
+/// Events: window.sidebarResized {width}, window.sidebarVisibility {hidden}, window.sidebarReveal {revealed},
+///   window.miniAction {id, webview, action: open|copy}, window.miniClosed {id, webview}
 @MainActor
 public final class WindowService: HostService {
   public let name = "window"
   let wc: DenWindowController
   weak var ui: UIService?
+  let mini: MiniWindows
 
-  public init(window: DenWindowController) { wc = window }
+  public init(window: DenWindowController) {
+    wc = window
+    mini = MiniWindows(window: window)
+  }
+
+  /// Gives the Little Arc windows access to web views and the event bus.
+  func attach(webviews: WebViewsService, host: ServiceHost) {
+    mini.webviews = webviews
+    mini.host = host
+    host.on("webviews.url") { [weak self] v in self?.mini.noteURL(v) }
+    host.on("webviews.favicon") { [weak self] v in self?.mini.noteURL(v) }
+  }
 
   public func handle(method: String, args: Value) -> Value {
     switch method {
     case "setTheme":
       wc.setTheme(Theme(args), page: args["page"].int.map(Int.init))
       ui?.refreshPalette()
+      mini.refreshTheme()
     case "setSidebar":
       if let w = args["width"].double { wc.setSidebarWidth(CGFloat(w), animated: args.flag("animated", false)) }
       if let h = args["hidden"].bool { wc.setSidebarHidden(h, animated: args.flag("animated", true)) }
     case "toggleSidebar":
       wc.setSidebarHidden(!wc.sidebarHidden, animated: args.flag("animated", true))
+    case "openMini": return mini.open(args)
+    case "updateMini": return mini.update(args)
+    case "closeMini": return mini.close(args)
+    case "listMini":
+      return .array(mini.windows.values.sorted { $0.id < $1.id }.map { ["id": .string($0.id), "webview": .string($0.webview)] })
     case "setTitle":
       wc.window.title = args.str("title", "den")
     case "get":

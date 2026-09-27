@@ -8,7 +8,7 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -23,6 +23,13 @@ public enum HostScenarios {
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
       rt.call("ui", "set", ["slot": "dialog", "tree": dialogs[name]!])
+    case "littleArc":
+      seedSidebar(rt, appearance: appearance)
+      showContent(rt)
+      let id = page(rt, id: "mini", title: "Example Domain", host: "example.com",
+                    body: "Links from other apps open here, in a small floating window. Open it in a space with ⌘O.")
+      let r = rt.call("window", "openMini", ["webview": .string(id), "space": "Personal"])
+      return rt.windowService.mini.windows[r.str("id")]?.panel
     case "contextMenu":
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
@@ -135,14 +142,14 @@ public enum HostScenarios {
 
   /// Creates a web view showing local HTML (no network), for content/peek/mini scenarios.
   @discardableResult
-  static func page(_ rt: DenRuntime, id: String, title: String, body: String, tint: String = "#f4f1ff") -> String {
+  static func page(_ rt: DenRuntime, id: String, title: String, host: String? = nil, body: String, tint: String = "#f4f1ff") -> String {
     rt.call("webviews", "create", ["id": .string(id)])
     let html = """
       <html><head><title>\(title)</title><style>body{font:16px -apple-system;margin:0;padding:64px 72px;background:\(tint);color:#222}
       h1{font-size:30px;margin:0 0 16px}p{line-height:1.5;max-width:560px;color:#444}</style></head>
       <body><h1>\(title)</h1><p>\(body)</p></body></html>
       """
-    rt.webviews.materialize(id)?.loadHTMLString(html, baseURL: URL(string: "https://\(id).example/"))
+    rt.webviews.materialize(id)?.loadHTMLString(html, baseURL: URL(string: "https://\(host ?? id + ".example")/"))
     return id
   }
 }

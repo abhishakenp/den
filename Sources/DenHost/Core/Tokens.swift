@@ -94,6 +94,19 @@ public enum Tokens {
   public static let toastRightInset: CGFloat = 20  // estimate
   public static let toastDefaultDurationMs = 2200  // estimate
 
+  // MARK: Little Arc (spec §8; PX = measured on the spec's arc_littlearc_page.png)
+  public static let miniDefaultSize = CGSize(width: 1185, height: 832)  // spec §8 (after a URL loads)
+  public static let miniMinSize = CGSize(width: 490, height: 329)  // spec §8: the command-bar-only state
+  public static let miniScreenMargin: CGFloat = 20  // spec §8: 20 pt from the screen's right edge and below the menu bar
+  public static let miniBarHeight: CGFloat = 47  // spec §8
+  public static let miniTrafficLightOrigin = CGPoint(x: 9, y: 15)  // spec §8
+  public static let miniTrafficLightPitch: CGFloat = 23  // PX: centers at about 17 / 40 / 63 pt
+  public static let miniFieldX: CGFloat = 83  // PX
+  public static let miniFieldTop: CGFloat = 8  // PX
+  public static let miniFieldHeight: CGFloat = 30.5  // PX
+  public static let miniFieldRadius: CGFloat = 8  // estimate
+  public static let miniOpenButtonRightInset: CGFloat = 7  // PX: button x 1033–1178 in a 1185 window
+
   // MARK: Theme picker (spec §4; PX = measured on the spec's arc_theme_picker.png, @2x)
   public static let themePickerSize = CGSize(width: 356, height: 508)  // spec §4
   public static let themePickerCornerRadius: CGFloat = 20  // spec §4 (continuous)

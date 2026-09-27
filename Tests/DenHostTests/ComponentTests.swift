@@ -136,3 +136,36 @@ extension ComponentTests {
     #expect(d.title.stringValue == "Clear the Archive?" && d.frame.height > 248 - 1)
   }
 }
+
+extension ComponentTests {
+  @Test func littleArcWindowHostsOneWebView() throws {
+    let rt = Self.runtime()
+    var got: [(String, Value)] = []
+    for e in ["window.miniAction", "window.miniClosed"] { rt.host.on(e) { got.append((e, $0)) } }
+    #expect(rt.call("window", "openMini", ["webview": "nope"]).isError)
+    let wid = rt.call("webviews", "create", ["url": "https://example.com"])["id"]
+    let r = rt.call("window", "openMini", ["webview": wid, "space": "Work"])
+    let id = try #require(r["id"].string)
+    let m = try #require(rt.windowService.mini.windows[id])
+    // Spec §8: 1185x832, 20 pt from the screen's right edge and below the menu bar.
+    let vis = (rt.window.window.screen ?? NSScreen.main)!.visibleFrame
+    #expect(m.panel.frame.size == CGSize(width: min(1185, vis.width - 40), height: min(832, vis.height - 40)))
+    #expect(m.panel.frame.maxX == vis.maxX - 20 && m.panel.frame.maxY == vis.maxY - 20)
+    #expect(m.panel.isFloatingPanel)
+    let web = try #require(rt.webviews.record(wid.string!)?.webView)
+    #expect(web.window === m.panel)
+    m.root.layoutSubtreeIfNeeded()
+    #expect(m.content.frame.minY == 47 && m.bar.open.name.stringValue == "Work")
+    #expect(rt.call("window", "listMini") == [["id": .string(id), "webview": wid]])
+    m.bar.open.onClick?()
+    #expect(got.last?.0 == "window.miniAction" && got.last?.1["action"] == "open" && got.last?.1["webview"] == wid)
+    _ = rt.call("window", "updateMini", ["id": .string(id), "space": "Home"])
+    #expect(m.bar.open.name.stringValue == "Home")
+    #expect(rt.call("window", "closeMini", ["id": .string(id)]) == .ok)
+    #expect(got.last?.0 == "window.miniClosed" && web.superview == nil)
+    #expect(rt.call("window", "listMini") == [])
+    // The detached web view can be shown in the main window again ("Open in space").
+    _ = rt.call("content", "show", ["panes": [wid]])
+    #expect(web.window === rt.window.window)
+  }
+}

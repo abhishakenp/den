@@ -25,8 +25,14 @@ The code lives in `Sources/DenHost/Services/`. `DenRuntime` registers every serv
 | `toggleSidebar` | `animated?` | ok |
 | `setTitle` | `title` | ok |
 | `get` | – | `{width, hidden, page, fullScreen, dark}` |
+| `openMini` | `webview`, `space?` (name on the "Open in" button), `width?`, `height?` | `{id}`. Opens a Little Arc window hosting that web view |
+| `updateMini` | `id`, `space?` | ok |
+| `closeMini` | `id` | ok. The web view is detached, not closed |
+| `listMini` | – | `[{id, webview}]` |
 
-Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `window.sidebarReveal {revealed}`.
+Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `window.sidebarReveal {revealed}`, `window.miniAction {id, webview, action: open|copy}`, `window.miniClosed {id, webview}`.
+
+**Little Arc** (spec §8) is a floating panel, 1185x832 by default, placed 20 pt from the screen's right edge and 20 pt below the menu bar. A 47 pt bar holds the traffic lights, a URL field (site icon, centered domain, copy-link button → `action: copy`) and an "Open in <space> ⌘O" button (→ `action: open`). The web view fills the rest, with no inset card. The bar follows the main window's theme. For "Open in space", the plugin calls `closeMini` and then shows the same web view with `content.show`; closing the window emits `miniClosed`, and the plugin decides whether to close the web view. The ⌘O shortcut itself is bound by the plugin through `keys`.
 
 - Themes are kept per space page. The background blends between page themes while you swipe.
 - The sidebar resizes by dragging its edge; a double-click on the edge resets the width.

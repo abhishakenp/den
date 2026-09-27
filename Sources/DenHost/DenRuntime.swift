@@ -29,12 +29,13 @@ public final class DenRuntime {
     storage = StorageService(root: storageRoot)
     app = AppService(host: host, window: window)
     windowService.ui = ui
+    windowService.attach(webviews: webviews, host: host)
     for s: HostService in [windowService, webviews, content, ui, keys, storage, app] {
       host.provide(s)
       plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }
-    host.forward = { [unowned plugins] e, v in plugins.emit(e, v) }
-    host.externalListeners = { [unowned plugins] e in plugins.hasListeners(e) }
+    host.forward = { [weak plugins] e, v in plugins?.emit(e, v) }
+    host.externalListeners = { [weak plugins] e in plugins?.hasListeners(e) ?? false }
     window.emit = { [weak host] e, v in host?.emit(e, v) }
     window.onCloseRequest = { [weak app] in app?.shouldClose() ?? true }
   }
