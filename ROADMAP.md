@@ -41,7 +41,8 @@ Only tick an item after checking it against the code and tests on `origin/main`.
   - ⏳ user-granted permissions for third-party plugins
 - 🟡 Lazy loading for plugins and services
   - ✅ optional features do no work until used: Settings, connections, previews, the briefing build nothing at launch; nothing polls until a connection exists
-  - ⏳ load plugin dylibs on first use instead of at launch
+  - ✅ only the plugins that paint the first window load before it (`"launch": "firstFrame"` in their sidecar: spaces, tabs); the rest load right after it, and until then their services are stubs that load the plugin on the first call
+  - ⏳ load plugin dylibs on first use of a command or event (needs manifest-declared keys, menus and commands)
 - ✅ Settings system, per plugin, editable at runtime (`settings` service; Settings window ⌘, with plugin-contributed sections; settings also editable from the command bar)
 - ✅ Command registry: every command bar action is a command; `[shortcuts]` in `config.toml` binds any command id or menu item
 - 🟡 Crash isolation
@@ -58,7 +59,7 @@ Moving feature code out of `DenHost` so the host holds only platform capabilitie
 - ⏳ 0. Baseline: snapshot goldens, pixel-diff script, launch/memory noise bands, signposts
 - ⏳ 1. Guardrail test against new host strings, overlay slots and host → plugin calls
 - ⏳ 2. Move logic with no UI to plugins (suggestions, config appliers, AI prompts, theme picker math)
-- ⏳ 3. `DenDev` split: scenarios, mock services and the snapshotter out of the release binary
+- ✅ 3. `DenDev` split: scenarios and mock services are behind the `Scenarios` package trait; release bundles leave them out and no longer link Network.framework (the snapshotter stays: `--snapshot` works in release)
 - ⏳ 4. `ui.layer`, `ui.styles`, `ui.palette` alongside the old slots
 - ⏳ 5. New generic nodes and behaviors, each with a golden test
 - ⏳ 6. Migrate screens one by one (toast → dialogs → library → briefing/connections → hover card → theme picker → sidebar rows → command bar → peek → Little Arc)
@@ -338,7 +339,8 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ Bounded waits in WebKit tests (10 s budgets), web views closed after each test, timing-sensitive tests retried once by the updater and `release.sh`
 - ✅ No unbounded waits: every suite carries a per-test watchdog (`Tests/DenTestSupport`) that fails a test past its limit with what it was waiting on, and stops the run with a stack sample when the main thread is stuck; waits are deadline-based and event-driven (`Wait.until`, bounded JS/callback awaits), host deadlines (session/webviews eval, suggest debounce) take an injected clock, and `scripts/test.sh` runs suites serially with a cap on the whole run
 - ✅ Test windows are invisible (alpha 0 in the window server, still "on screen" for AppKit and WebKit); the test process never activates or shows a Dock icon
-- ⏳ A `--background` test mode: no Dock icon, no activation, auto-quit; test instances never left running
+- ✅ A `--background` automation mode for app launches: no Dock icon, never activated, windows off every display, `--snapshot` still renders; automated launches quit by themselves and scripts SIGKILL any that don't (`scripts/lib/launch.zsh`)
+- ✅ `--snapshot` never hangs on a web view that doesn't paint (10 s bound per view)
 
 ## Decided 2026-09-28
 
