@@ -38,6 +38,9 @@ let settle = Double(opt("--settle") ?? "10")!
 let cpuSecs = Double(opt("--cpu") ?? "0")!
 let openURL = opt("--url").flatMap(URL.init(string:))
 let shot = opt("--shot")
+/// `--any-alpha`: also count a fully transparent window (den `--background`, measured without
+/// showing anything on screen).
+let anyAlpha = argv.contains("--any-alpha")
 func real(_ p: String) -> String { guard let r = realpath(p, nil) else { return p }; defer { free(r) }; return String(cString: r) }
 guard let bundle = Bundle(url: appURL), let exe = bundle.executableURL.map({ real($0.path) }) else { die("not an app bundle: \(appURL.path)") }
 
@@ -102,7 +105,7 @@ func waitForWindow(existing: Set<pid_t>, deadline: Double) -> Win? {
       for w in list {
         guard let pid = w[kCGWindowOwnerPID as String] as? pid_t, !existing.contains(pid) else { continue }
         let mine = pathCache[pid] ?? { let m = pidPath(pid) == exe; pathCache[pid] = m; return m }()
-        guard mine, (w[kCGWindowLayer as String] as? Int) == 0, ((w[kCGWindowAlpha as String] as? Double) ?? 1) > 0,
+        guard mine, (w[kCGWindowLayer as String] as? Int) == 0, anyAlpha || ((w[kCGWindowAlpha as String] as? Double) ?? 1) > 0,
               let b = w[kCGWindowBounds as String] as? [String: Any],
               let wd = (b["Width"] as? NSNumber)?.intValue, let ht = (b["Height"] as? NSNumber)?.intValue,
               wd >= 100, ht >= 100 else { continue }

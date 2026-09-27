@@ -352,9 +352,9 @@ final class ActionButtonNode: NodeView {
   override func update(_ v: Value) {
     let old = node
     super.update(v)
-    if pill == nil || old.str("title") != v.str("title") || old.str("style") != v.str("style") {
+    if pill == nil || old.str("title") != v.str("title") || old.str("style") != v.str("style") || old.str("keycap") != v.str("keycap") {
       pill?.removeFromSuperview()
-      let p = PillButton(title: v.str("title"), style: Self.pillStyle(v.str("style", "secondary"))) { [weak self] in self?.emit("click") }
+      let p = PillButton(title: v.str("title"), style: Self.pillStyle(v.str("style", "secondary")), keycap: v.str("keycap")) { [weak self] in self?.emit("click") }
       addSubview(p)
       pill = p
       p.apply(r.palette)
@@ -463,6 +463,8 @@ class SettingRowNode: NodeView {
     [icon, title, subtitle].forEach { addSubview($0) }
   }
   required init?(coder: NSCoder) { fatalError() }
+  /// `shortcut` ("⌥⌘B", or space-separated keys like "esc") as keycaps before the control.
+  var caps: [Keycap] = []
   override func update(_ v: Value) {
     super.update(v)
     icon.spec = v.str("icon")
@@ -470,12 +472,34 @@ class SettingRowNode: NodeView {
     title.stringValue = v.str("title")
     subtitle.stringValue = v.str("subtitle")
     subtitle.isHidden = subtitle.stringValue.isEmpty
+    let sc = v.str("shortcut")
+    let keys = sc.contains(" ") ? sc.split(separator: " ").map(String.init) : sc.map { String($0) }
+    while caps.count > keys.count { caps.removeLast().removeFromSuperview() }
+    while caps.count < keys.count {
+      let k = Keycap()
+      addSubview(k)
+      caps.append(k)
+    }
+    for (k, t) in zip(caps, keys) { k.text = t }
     apply(r.palette)
     needsLayout = true
   }
-  override func apply(_ p: Palette) { title.textColor = p.textPrimary; subtitle.textColor = p.textSecondary; icon.tint = p.textPrimary }
+  override func apply(_ p: Palette) {
+    title.textColor = p.textPrimary
+    subtitle.textColor = p.textSecondary
+    icon.tint = p.textPrimary
+    caps.forEach { $0.apply(p, onAccent: false) }
+  }
   override func height(for w: CGFloat) -> CGFloat { subtitle.isHidden ? Tokens.settingRowHeight : Tokens.settingRowHeight + 8 }
   var control: NSView? { nil }
+  /// Width of what sits at the right edge (the control); subclasses with several views override
+  /// this and `layoutTrailing`.
+  var trailingWidth: CGFloat { control?.fittingSize.width ?? 0 }
+  func layoutTrailing(right: CGFloat) {
+    guard let c = control else { return }
+    let s = c.fittingSize
+    c.frame = NSRect(x: right - s.width, y: ((bounds.height - s.height) / 2).rounded(), width: s.width, height: s.height)
+  }
   override func layout() {
     let h = bounds.height
     var x: CGFloat = 14
@@ -484,11 +508,17 @@ class SettingRowNode: NodeView {
       x = 44
     }
     var right = bounds.width - 12
-    if let c = control {
-      let s = c.fittingSize
-      c.frame = NSRect(x: right - s.width, y: ((h - s.height) / 2).rounded(), width: s.width, height: s.height)
-      right = c.frame.minX - 10
+    let tw = trailingWidth
+    if tw > 0 {
+      layoutTrailing(right: right)
+      right -= tw + 10
     }
+    for k in caps.reversed() {
+      let w = k.preferredWidth
+      k.frame = NSRect(x: right - w, y: ((h - 20) / 2).rounded(), width: w, height: 20)
+      right -= w + 3
+    }
+    if !caps.isEmpty { right -= 7 }
     if subtitle.isHidden {
       title.frame = NSRect(x: x, y: (h - 18) / 2, width: max(0, right - x), height: 18)
     } else {

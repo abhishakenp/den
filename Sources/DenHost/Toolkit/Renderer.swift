@@ -69,6 +69,7 @@ public final class Renderer {
     // Generic composition nodes (CardNodes.swift): cards, popovers, any plugin surface.
     "stack": CardStackNode.self, "label": LabelNode.self, "icon": IconNode.self, "image": ImageNode.self,
     "badge": BadgeNode.self, "meter": MeterNode.self, "note": NoteNode.self, "item": ItemNode.self, "action": ActionNode.self,
+    "panel": PopoverCardNode.self, "valueRow": ValueRowNode.self,
   ]
 
   public init(palette: Palette, emit: @escaping (String, String, Value) -> Void) {

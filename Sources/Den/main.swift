@@ -378,6 +378,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case "rename":
       // Double-click the first today tab: the inline title editor.
       if let id = rt.call("tabs", "list").list("today").first?["id"] { rt.plugins.emit("ui.action", ["id": id, "action": "doubleClick"]) }
+    case "shieldsPanel", "shieldsHTTPS", "shieldsLookalike":
+      // The shields plugin: its per-site panel over a real page (after the lists are compiled, so
+      // the counts are real), and den's two interstitials, reached by real navigations.
+      let url = s == "shieldsHTTPS" ? "http://httpforever.com/" : s == "shieldsLookalike" ? "https://xn--pple-43d.com/" : (arg("--url") ?? "https://www.theverge.com/")
+      func go(_ tries: Int) {
+        let ready = (rt.call("sitepolicy", "list").array ?? []).filter { $0.flag("ready") }.count
+        guard ready >= 3 || tries > 240 || s != "shieldsPanel" else {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { go(tries + 1) }
+          return
+        }
+        let id = rt.call("tabs", "open", ["url": .string(url)])["id"]
+        rt.call("tabs", "select", ["id": id])
+        guard s == "shieldsPanel" else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+          rt.call("shields", "open", ["id": id])
+          print("scenario.ready shields=\(rt.call("sitepolicy", "get", ["id": id]))")
+        }
+      }
+      go(0)
     case "page":
       guard let u = arg("--url") else { print("scenario.page needs --url"); exit(1) }
       let id = rt.call("tabs", "open", ["url": .string(u)])["id"]

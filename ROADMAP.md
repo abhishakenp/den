@@ -203,7 +203,9 @@ Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 - ⏳ Fill in APIs Apple leaves out where feasible: `bookmarks`, `sidePanel`, `downloads`, `history`, `identity`
 - ⏳ Extension keyboard `commands` and context-menu items in den's menus
 - ⏳ Native messaging bridge (password managers)
-- ⏳ Built-in ad/tracker blocker: filter lists compiled to content rule lists (e.g. `adblock-rust` or AdGuard's `SafariConverterLib`), plus CSS hiding and scriptlets
+- ✅ Built-in ad/tracker blocker: EasyList, EasyPrivacy and the EasyList Cookie List compiled to WebKit content rules at release time with `adblock-rust`, including element hiding ([Shields](docs/plugin-services.md#shields-plugin-shields)); offers to step aside when uBlock Origin Lite is installed
+- ⏳ Scriptlets and procedural cosmetic filters (content rules can't express them)
+- ⏳ Filter-list updates between releases (`sitepolicy` already reads `~/.den/updates/lists`; the updater doesn't deliver lists yet)
 - ✅ uBlock Origin Lite works (full uBlock Origin can't, since WebKit has no blocking `webRequest`)
 - ✅ Minimum macOS: 26 Tahoe. No support for older versions; newer-OS APIs (macOS 27) used when available
 
@@ -257,13 +259,15 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 ## Privacy and security
 
 - ✅ Dark mode for every website: follows den's appearance, native dark sites left alone, no script, no flash; per-site Follow / Always Dark / Always Light / Off
-- ⏳ Shields: one per-site panel from the URL pill (blocker on/off, permissions, zoom, autoplay, pop-ups, "forget this site")
-- ⏳ Tracker blocking
-- ⏳ Strip tracking parameters on every navigation and on copy (needs a list with a usable licence)
-- ⏳ Skip bounce-tracking redirects
-- ⏳ Auto-handle cookie banners
-- ⏳ HTTPS-first
-- ⏳ Readable international domain names, with lookalike-domain warnings
+- ✅ Shields: one per-site panel from the URL pill (⌥⌘S): blocker and cookie banners on/off, autoplay, pop-ups, zoom, camera/mic, real blocked counts, "Forget This Site"; offers a reload after a change and warns about unsaved input
+- ✅ Tracker blocking
+- ✅ Strip tracking parameters on every navigation (den's own list), so copied tab URLs are clean too
+- ⏳ Clean "Copy Link" from a page's context menu
+- ✅ Skip bounce-tracking redirects (den's own list of click trackers; security redirectors left alone)
+- ✅ Hide cookie banners (EasyList Cookie List)
+- ⏳ Answer consent dialogs with the most private choice (DuckDuckGo's autoconsent measured; not shipped)
+- ✅ HTTPS-first, with den's page when a site has no HTTPS
+- ✅ Readable international domain names (spoofable ones stay in Punycode), with lookalike-domain warnings
 - 🟡 Per-site permissions UI
   - ✅ camera/mic answers remembered per site until quit
   - ⏳ a UI to review and change them

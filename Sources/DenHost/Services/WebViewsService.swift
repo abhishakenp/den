@@ -684,7 +684,14 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   func recordFor(_ w: WKWebView) -> WebRecord? { records.values.first { $0.webView === w } }
 
-  public func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
+  /// The preferences variant (WebKit calls only this one when it exists), so `sitepolicy` can set
+  /// per-navigation web page preferences (HTTPS-first, autoplay, pop-ups).
+  public func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, preferences: WKWebpagePreferences,
+                      decisionHandler: @escaping @MainActor (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+    decide(webView, action, preferences) { decisionHandler($0, preferences) }
+  }
+
+  func decide(_ webView: WKWebView, _ action: WKNavigationAction, _ preferences: WKWebpagePreferences, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
     guard let r = recordFor(webView), let target = action.request.url else { return decisionHandler(.allow) }
     let mainFrame = action.targetFrame?.isMainFrame ?? true
     let rules = r.rules.isEmpty ? defaultRules : r.rules
@@ -706,10 +713,28 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       host.emit("webviews.newWindow", ["id": .string(r.id), "url": .string(target.absoluteString), "background": .bool(bg)])
       return
     }
+    if mainFrame, let sp = sitePolicy, case let .cancel(then) = sp.decide(r, webView, action, preferences) {
+      decisionHandler(.cancel)
+      DispatchQueue.main.async { then() }
+      return
+    }
     decisionHandler(.allow)
   }
 
+  /// Per-site policy (`sitepolicy`), set when that service is first used.
+  weak var sitePolicy: SitePolicyService?
+
+  /// WebKit SPI (`_WKNavigationDelegatePrivate`): a content rule list acted on a load. WebKit only
+  /// calls it because this object responds to it; the count stays in `sitepolicy`.
+  @objc(_webView:contentRuleListWithIdentifier:performedAction:forURL:)
+  func contentRuleList(_ webView: WKWebView, identifier: NSString, performedAction action: NSObject, forURL url: NSURL) {
+    guard let sp = sitePolicy, let r = recordFor(webView) else { return }
+    let blocked = action.responds(to: NSSelectorFromString("blockedLoad")) && (action.value(forKey: "blockedLoad") as? Bool ?? false)
+    sp.performed(r, list: identifier as String, blocked: blocked)
+  }
+
   public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    if let sp = sitePolicy, let r = recordFor(webView) { sp.committed(r, webView) }
     // A new document: its script reports afresh.
     guard let r = recordFor(webView), !r.frames.isEmpty else { return }
     r.frames = [:]
@@ -803,8 +828,10 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
     if let r = recordFor(webView) { onFinish?(r.id) }
+    if let sp = sitePolicy, let r = recordFor(webView), sp.failed(r, webView, error) { return }
     let url = ((error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? webView.url
     guard let url, let page = WebErrorPage.page(for: error, url: url) else { return }
+    if let r = recordFor(webView) { sitePolicy?.passThrough(r, url) }
     webView.loadSimulatedRequest(URLRequest(url: url), responseHTML: WebErrorPage.html(page, url: url, colors: prompts?.errorPageColors))
   }
 

@@ -96,6 +96,19 @@ for v in DeleteSpace DeleteFolder ClearArchive; do
   host dialog-$n dialog$v light
   host dialog-$n-dark dialog$v dark
 done
+# Shields: the per-site panel over a real page (it waits for the lists to compile in the fresh store),
+# and the HTTPS-first and lookalike interstitials, reached by real navigations. Invisible windows.
+if [[ -f build/den.app/Contents/PlugIns/shields.dylib ]]; then
+  shields_shot() { # name scenario appearance delay
+    build/den.app/Contents/MacOS/den --background --no-den-home --storage "$store/shields" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "$4"
+  }
+  shields_shot shields-panel shieldsPanel light 45
+  shields_shot shields-panel-dark shieldsPanel dark 30
+  shields_shot shields-https shieldsHTTPS light 14
+  shields_shot shields-https-dark shieldsHTTPS dark 14
+  shields_shot shields-lookalike shieldsLookalike light 6
+  shields_shot shields-lookalike-dark shieldsLookalike dark 6
+fi
 # Connections + briefing: real plugins against the local fake Slack/GitHub (MockServices), private profile.
 # The briefing waits for Foundation Models (plain lists when Apple Intelligence is unavailable).
 if [[ -f build/den.app/Contents/PlugIns/briefing.dylib ]]; then

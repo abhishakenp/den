@@ -33,6 +33,8 @@ public final class WebPrompts {
   private let backdrop = ModalBackdrop(dim: Tokens.dialogBackdropAlpha)
   /// "<origin> <camera|microphone>" -> allowed, for this session.
   public private(set) var mediaDecisions: [String: Bool] = [:]
+  /// Drops one remembered camera/microphone answer (`"<origin> <device>"`), e.g. "forget this site".
+  func forgetMedia(_ key: String) { mediaDecisions[key] = nil }
 
   init(window: DenWindowController?, palette: @escaping () -> Palette?) {
     self.window = window

@@ -1,0 +1,8 @@
+[package]
+name = "cbconv"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+adblock = { version = "0.13.3", features = ["content-blocking"] }
+serde_json = "1.0.151"

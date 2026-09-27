@@ -1,4 +1,5 @@
 import AppKit
+import CordisValue
 import WebKit
 
 // thin-host: feature-specific, migrate to plugin: the error copy and page HTML belong to a plugin;
@@ -56,6 +57,7 @@ enum WebErrorPage {
     "clock": "<circle cx='12' cy='12' r='8.5'/><path d='M12 7.5V12l3 2'/>",
     "lock": "<rect x='5.5' y='10.5' width='13' height='9.5' rx='2.5'/><path d='M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5'/>",
     "warn": "<path d='M12 4l9 15.5H3z'/><path d='M12 10v4.5'/><circle cx='12' cy='17.3' r='.8' fill='currentColor' stroke='none'/>",
+    "shield": "<path d='M12 3.5l7 2.8v5.2c0 4.4-3 7.9-7 9-4-1.1-7-4.6-7-9V6.3z'/><path d='M12 8.5v4.5'/><circle cx='12' cy='16' r='.8' fill='currentColor' stroke='none'/>",
   ]
 
   /// The current space's colors as CSS values (from den's `Palette`), so the page matches the
@@ -69,6 +71,65 @@ enum WebErrorPage {
   static func css(_ c: NSColor) -> String {
     let s = c.usingColorSpace(.sRGB) ?? c
     return String(format: "rgba(%d,%d,%d,%.3f)", Int((s.redComponent * 255).rounded()), Int((s.greenComponent * 255).rounded()), Int((s.blueComponent * 255).rounded()), s.alphaComponent)
+  }
+
+  /// A plugin-worded interstitial (`sitepolicy.interstitial`): the error page's look with up to
+  /// three buttons. `page`: `{kind, icon: lock|warn|search|clock|wifi|shield, title, message,
+  /// detail?, url?, buttons: [{id, title, style: primary|secondary, key?: "return"|"escape"}]}`.
+  /// A button is a link to `den-action:<id>`, which `sitepolicy` turns into
+  /// `sitepolicy.interstitialAction`; its key (↩ or esc) is shown on it as a keycap.
+  static func interstitial(_ page: Value, colors: Colors? = nil) -> String {
+    let icon = icons[page.str("icon")] ?? icons["warn"]!
+    var buttons = ""
+    for b in page.list("buttons").prefix(3) {
+      let id = b.str("id").filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "." }
+      let key = b.str("key")
+      let cap = key == "return" ? "<kbd>↩</kbd>" : key == "escape" ? "<kbd>esc</kbd>" : ""
+      let cls = b.str("style") == "primary" ? "primary" : "secondary"
+      buttons += "<a class=\"btn \(cls)\" href=\"den-action:\(id)\" data-key=\"\(escape(key))\">\(escape(b.str("title")))\(cap)</a>"
+    }
+    let detail = page.str("detail").isEmpty ? "" : "<p class=\"detail\">\(escape(page.str("detail")))</p>"
+    let shown = page.str("url").isEmpty ? "" : "<p class=\"url\">\(escape(page.str("url")))</p>"
+    return """
+      <!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light dark">
+      <title>\(escape(page.str("title")))</title>
+      <style>
+      \(vars(colors))
+      html,body{height:100%;margin:0}
+      body{background:var(--bg);color:var(--fg);font:13px -apple-system,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;-webkit-user-select:none}
+      main{max-width:440px;padding:32px;text-align:center}
+      svg{width:44px;height:44px;color:var(--icon);fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+      h1{font-size:20px;font-weight:600;margin:18px 0 8px;letter-spacing:-.01em}
+      p{margin:0;color:var(--sub);line-height:1.45}
+      .detail{margin-top:8px}
+      .url{margin-top:6px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;-webkit-user-select:text}
+      .buttons{margin-top:22px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+      .btn{display:inline-flex;align-items:center;gap:8px;border-radius:6px;font:13px -apple-system,system-ui;padding:8px 14px;text-decoration:none;cursor:default}
+      .primary{background:var(--pill);color:var(--on)}
+      .secondary{color:var(--fg);box-shadow:inset 0 0 0 1px var(--line)}
+      .btn:active{filter:brightness(.9)}
+      kbd{font:11px -apple-system,system-ui;padding:1px 5px;border-radius:4px;background:var(--line)}
+      .primary kbd{background:rgba(255,255,255,.22)}
+      </style></head><body data-den-interstitial="\(escape(page.str("kind")))"><main>
+      <svg viewBox="0 0 24 24" aria-hidden="true">\(icon)</svg>
+      <h1>\(escape(page.str("title")))</h1><p>\(escape(page.str("message")))</p>\(detail)\(shown)
+      <div class="buttons">\(buttons)</div>
+      </main><script>
+      addEventListener('keydown',e=>{const k=e.key==='Enter'?'return':e.key==='Escape'?'escape':'';if(!k)return;
+      const b=document.querySelector('.btn[data-key="'+k+'"]');if(b){e.preventDefault();b.click()}});
+      </script></body></html>
+      """
+  }
+
+  /// CSS variables: the space's palette, else neutral light/dark via `prefers-color-scheme`.
+  static func vars(_ colors: Colors?) -> String {
+    if let c = colors {
+      return ":root{color-scheme:\(c.dark ? "dark" : "light");--bg:\(c.background);--fg:\(c.text);--sub:\(c.secondary);--pill:\(c.accent);--on:\(c.onAccent);--icon:\(c.secondary);--line:\(c.dark ? "rgba(255,255,255,.18)" : "rgba(0,0,0,.14)")}"
+    }
+    return """
+      :root{--bg:#f7f7f9;--fg:rgba(14,15,16,.9);--sub:rgba(0,0,0,.5);--pill:#3139fb;--on:#fff;--icon:rgba(0,0,0,.35);--line:rgba(0,0,0,.14)}
+      @media (prefers-color-scheme:dark){:root{--bg:#1c1b22;--fg:rgba(255,255,255,.85);--sub:rgba(255,255,255,.5);--icon:rgba(255,255,255,.35);--line:rgba(255,255,255,.18)}}
+      """
   }
 
   static func html(_ p: Page, url: URL?, colors: Colors? = nil) -> String {

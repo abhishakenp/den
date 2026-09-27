@@ -25,6 +25,8 @@ public final class DenRuntime {
   public let schedule: ScheduleService
   /// Per-site user stylesheets and appearance (the `darkmode` plugin), and den's password vault.
   public let pageStyle: PageStyleService
+  /// Per-site content rule lists, page preferences, HTTPS-first and the navigation guard (`shields`).
+  public let sitePolicy: SitePolicyService
   public let vault: VaultService
   /// Chrome/Firefox extensions (docs/host-api.md#extensions). Nothing WebKit-side exists until
   /// something is installed.
@@ -57,6 +59,11 @@ public final class DenRuntime {
     ai = AIService(host: host)
     schedule = ScheduleService(host: host, storage: storage)
     pageStyle = PageStyleService(host: host, webviews: webviews)
+    // Compiled rule lists live next to storage for the real profile, inside any other root.
+    sitePolicy = SitePolicyService(host: host, webviews: webviews,
+                                   storeRoot: storageRoot.standardizedFileURL == StorageService.defaultRoot.standardizedFileURL
+                                     ? storageRoot.deletingLastPathComponent().appendingPathComponent("ContentRules", isDirectory: true)
+                                     : storageRoot.appendingPathComponent("contentrules", isDirectory: true))
     vault = VaultService(host: host, webviews: webviews)
     // No platform passkeys without Apple's entitlement: pages are told so (Passkeys.swift).
     webviews.configureHooks.append { _, c in Passkeys.configure(c) }
@@ -89,7 +96,11 @@ public final class DenRuntime {
       return (e.str("name", "Google"), u)
     }
     webviews.pageActions = pa
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions, settings, media, speech, translate] {
+    sitePolicy.prompts = webviews.prompts
+    sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
+    sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
+    sitePolicy.resource = { [permissions] p, f in permissions.resource(p, f) }
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, extensions, settings, media, speech, translate] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

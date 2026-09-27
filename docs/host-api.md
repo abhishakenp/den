@@ -259,6 +259,10 @@ ui.set {slot: "popover", tree: {type: "themePicker", id: "theme", anchor: "space
 - **Haptics.** A tick when a dot is grabbed, when it crosses each 4-dot cell, at each 10% of intensity and at each grain step.
 - **Dismiss.** Esc emits `dismiss {reason: "escape"}` (the `theme` plugin reverts); a click outside emits `dismiss` with no value (it saves). The plugin clears the slot (`tree: null`).
 
+### Panel popover
+
+`ui.set {slot: "popover", tree: {type: "panel", id, anchor, width? (320), icon?, tone?: accent|warning|secondary, title, subtitle?, children}}`: a popover body made of ordinary nodes (the Shields panel). A header (icon, title, subtitle) over the children, 10 pt apart with 14 pt padding; children are usually `section`s of `toggleRow` / `choiceRow` / `valueRow`, plus `paragraph` and `buttonRow`. It is placed like the theme picker, next to the node `anchor`. Esc and a click outside emit `dismiss`. Theme tokens throughout (surface, text, accent, destructive for `warning`). Snapshots: `docs/screenshots/shields-panel*.png`.
+
 ### Space icon reorder
 
 A `spaceIcon` with `reorderable: true` can be dragged along the footer strip (`SpaceIconReorder` in Rows.swift). Picking it up lifts it (scale 1.15, a haptic), it follows the pointer clamped to the strip, and the other reorderable icons glide into their new slots as it passes their midpoints (0.2 s, Dia's (0.2, 0.8, 0.2, 1) curve; Reduce Motion snaps), with a haptic tick per slot. On drop it settles into its slot and, if the slot changed, emits `move {index}` (the index among the row's reorderable icons). Nothing is emitted while dragging; the owner re-sends the tree in the new order. Arc's reorder timing was never measured, so the values are estimates (`Tokens.spaceIconLift*`, `spaceIconReorderDuration`).
@@ -296,11 +300,12 @@ A `spaceIcon` with `reorderable: true` can be dragged along the footer strip (`S
 | `section` | `id?`, `title`, `accessory?`, `children` | – (caption header over a rounded card, hairlines between rows) |
 | `todoRow` | `id`, `title`, `subtitle?`, `icon`, `done`, `url?` | `toggle {done}` (checkbox; flips locally at once), `open` |
 | `feedRow` | `id`, `title`, `subtitle?`, `icon`, `time?`, `badge?`, `unread?` | `open` |
-| `actionButton` | `id`, `title`, `style: primary\|secondary\|destructive` | `click` |
+| `actionButton` | `id`, `title`, `style: primary\|secondary\|destructive`, `keycap?` (e.g. "⌘R") | `click` |
 | `buttonRow` | `children` (actionButtons), `align?: leading\|center` | – |
 | `connectionRow` | `id`, `title`, `icon`, `status`, `connected`, `button: {title, style}`, `secondaryButton?: {id, title, style}` | `click`, `secondary` |
-| `toggleRow` | `id`, `title`, `subtitle?`, `icon?`, `on` | `toggle {on}` |
-| `choiceRow` | `id`, `title`, `subtitle?`, `options: [{id, title}]`, `selected` | `select {option}` |
+| `toggleRow` | `id`, `title`, `subtitle?`, `icon?`, `on`, `shortcut?` ("⌥⌘B", drawn one keycap per key; space-separated for several) | `toggle {on}` |
+| `choiceRow` | `id`, `title`, `subtitle?`, `options: [{id, title}]`, `selected`, `shortcut?` | `select {option}` |
+| `valueRow` | `id`, `title`, `subtitle?`, `icon?`, `value?`, `tone?: success\|warning\|secondary`, `shortcut?`, `buttons?: [{id, icon}]` | `click {button}` |
 | `extensionRow` | `id`, `icon`, `title`, `subtitle?`, `on`, `note?` (accent caption, e.g. "Update 2.0") | `toggle {on}` (switch), `open` (row) |
 
 ### ui.card (popover cards and hover intent)
@@ -580,6 +585,34 @@ Events: `pagestyle.tone {id, host, tone: dark|light, dark}` (`dark`: the page's 
 - Web views inherit den's window appearance, so `prefers-color-scheme` matches den unless a rule sets `appearance` for that site.
 - `detect` adds one WKUserScript in the isolated `den-style` world. It sets `data-den-tone` on `<html>` from the first opaque background under the viewport center (then the body, then the text color), at the first frame, DOMContentLoaded, load and 1 s later.
 - Apple Pay: WebKit removed the "no Apple Pay with injected scripts" rule in 2022 (WebKit commit `aa041a623c`, bug 236254), so neither the sheet nor the detector disables it. Details: [research/dark-mode.md](research/dark-mode.md).
+
+## sitepolicy
+
+Per-site web policy for every web view (the `shields` plugin's host half, [plugin-services.md](plugin-services.md#shields-plugin-shields)). Generic like `pagestyle`: the host applies, the plugin owns the lists, the strings and the choices. Nothing exists until the first call.
+
+| Method | Args | Returns |
+|---|---|---|
+| `load` | `name`, `file` (absolute, or relative to a plugin's resources with `plugin`), `version` | `{pending}` or `{ready}`. A WebKit content rule list (JSON, or `.lzfse`-compressed JSON) under the identifier `name@version` |
+| `define` | `name`, `json` (≤ 256 KB) | the same, for a small inline list (the version is a hash of the JSON) |
+| `list` | – | `[{name, id, ready, cached, ms, error?}]` |
+| `rules` | `default: {lists, autoplay?, popups?}`, `hosts: {<host>: {…}}` | ok. `autoplay`: `allow`, `sound` (only muted autoplay) or `none`; `popups`: `allow` or `block`. Looked up like `pagestyle` (host, parent domains, `default`; no `www.`) |
+| `https` | `enabled`, `allow: [host]` | ok. HTTPS-first for main-frame http navigations, except `allow` and local hosts (loopback, private addresses, `.local`, `.test`, single-label names) |
+| `guard` | `service`, `method` (`""` turns it off) | ok. See below |
+| `get` | `id` | `{host, url, lists, active, blocked, blockedByList, blockedCounts, rewrites: [{kind, from, to}], upgraded, connection: secure\|mixed\|insecure\|local, httpAllowed, autoplay, popups, interstitial}` for the page now in that web view |
+| `interstitial` | `id`, `url`, `page: {kind, icon: lock\|warn\|shield\|…, title, message, detail?, url?, buttons: [{id, title, style: primary\|secondary, key?: return\|escape}]}` | ok. A full-page warning in den's error-page look (the space's palette), loaded for `url` |
+| `forget` | `host`, `profile?` | `{pending}`, then `sitepolicy.forgotten {host, removed}`. Removes every website data record (cookies, storage, caches, service workers…) of the host's registrable domain, and its camera/microphone answers |
+| `permissions` / `resetPermissions` | `host` | `[{origin, kind: camera\|microphone, allowed}]` / ok |
+| `unsaved` | `id`, `request?` | `{request}`, then `sitepolicy.unsaved {request, id, unsaved}`: edited form fields, or text in a focused editor, in the main frame |
+| `support` | – | `{autoplay, popups, blockedCounts}`: which WebKit SPI is present |
+
+Events: `sitepolicy.loaded {name, ok, cached, ms, error?}`, `sitepolicy.changed {id}` (blocked counts moved; at most every 250 ms per page, only while someone listens), `sitepolicy.rewritten {id, kind, from, to}`, `sitepolicy.httpsUnavailable {id, url, error, code}`, `sitepolicy.interstitialAction {id, action, url}`, `sitepolicy.forgotten`, `sitepolicy.unsaved`.
+
+- **Rule lists.** Compiled once into den's own store (`~/Library/Application Support/den/ContentRules`; `<storage>/contentrules` for any other `--storage`), looked up by identifier on later launches (a lookup, not a compile), older versions of the same name deleted. The rules file is read and decompressed off the main thread, and only when this version was never compiled. A web view gets the lists of its site's rule when it is created and at every main-frame navigation decision, so the first load is already filtered. WebKit caps a list at 150,000 rules and applies `ignore-previous-rules` only inside its own list.
+- **Blocked counts** come from WebKit's `_webView:contentRuleListWithIdentifier:performedAction:forURL:` navigation-delegate SPI, which reports each load a list blocked. They are real counts per page, reset when a new page commits. If WebKit ever stops calling it, `blockedCounts` stays true but the numbers stay 0; `support.blockedCounts` reports whether the SPI class exists.
+- **Autoplay and pop-ups** are set per navigation with `WKWebpagePreferences`' `_autoplayPolicy` / `_popUpPolicy` SPI (checked with `responds(to:)`; `support` says whether they exist). Without them WebKit's defaults apply (pop-ups only from a click).
+- **HTTPS-first** uses the public `preferredHTTPSNavigationPolicy = .errorOnFailure` (macOS 15.2+): WebKit tries `https://`, and when that fails for a reason other than being offline, den emits `httpsUnavailable` so the plugin can show its interstitial (WebKit's own `userMediatedFallbackToHTTP` never completes in a third-party `WKWebView`; checked with a probe). Checked on the real web (ShieldsLiveTests): `http://example.com/` commits as `https://example.com/`; `http://httpforever.com/` (its server refuses TLS) gets the interstitial, and Continue loads it over http. neverssl.com is no test for this: it answers over HTTPS on some of its random subdomains.
+- **The guard.** For every main-frame http(s) GET that isn't back/forward or a reload, the host calls `<service>.<method> {id, url, source, link}` synchronously (the plugin answers from memory). The answer `{action: "rewrite", url, kind}` cancels the navigation and loads `url` instead (at most 4 rewrites in 2 s per page); `{action: "interstitial", page}` cancels it and shows the page; `{action: "block"}` cancels it; anything else allows it. WebKit asks again for server redirects, so a redirect that adds tracking parameters goes through the guard too.
+- **Interstitial buttons** are links to `den-action:<id>`; the host turns a click into `interstitialAction` only while that page is the one showing in that web view. Return and Esc press the buttons whose `key` says so, and show as keycaps on them. The interstitial's own load (and den's error pages) skip the guard and HTTPS-first.
 
 ## vault
 

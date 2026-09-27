@@ -122,7 +122,7 @@ enum URLs {
   static func display(_ url: String) -> String {
     if url.isEmpty || url == "about:blank" { return "" }
     if Text.hasPrefix(lower(url), "data:") { return "data:" + mediaType(url) }
-    return host(url)
+    return IDN.display(host(url))
   }
 
   static func isWeb(_ url: String) -> Bool {
