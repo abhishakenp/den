@@ -276,10 +276,10 @@ final class TabsCore {
         folder,
       ]
       today[s] = [
-        tab("Arc (web browser) - Wikipedia", "https://en.wikipedia.org/wiki/Arc_(web_browser)", pinnedUrl: false),
+        tab("macOS - Apple", "https://www.apple.com/macos/", pinnedUrl: false),
         tab("Hacker News", "https://news.ycombinator.com", pinnedUrl: false),
         tab("WebKit Blog", "https://webkit.org/blog/", pinnedUrl: false),
-        tab("The Verge", "https://www.theverge.com", pinnedUrl: false),
+        tab("WebKit | Apple Developer Documentation", "https://developer.apple.com/documentation/webkit", pinnedUrl: false),
       ]
       selected[s] = today[s]![0]
     }

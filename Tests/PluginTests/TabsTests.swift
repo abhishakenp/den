@@ -25,7 +25,7 @@ struct TabsTests {
     // The selected tab is in the content area, and the URL pill shows its simplified domain.
     #expect(h.rt.call("content", "get")["panes"] == [.string(h.selected!)])
     let pill = h.tree("sidebar.header", 0)["children"][1]
-    #expect(pill["text"] == "en.wikipedia.org")
+    #expect(pill["text"] == "apple.com")
     #expect(h.rt.call("ui", "get")["pages"] == 3)
   }
 
