@@ -338,3 +338,11 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ Bounded waits in WebKit tests (10 s budgets), web views closed after each test, timing-sensitive tests retried once by the updater and `release.sh`
 - ⏳ Find every remaining hang; bound every wait with a timeout; deterministic under load
 - ⏳ A `--background` test mode: no Dock icon, no activation, auto-quit; test instances never left running
+
+## Decided 2026-09-28
+
+- ⏳ Link status pill: a bottom pill with the hovered link's URL, moving away from the cursor (Arc)
+- ⏳ Emoji tab and folder icons, from rename and the right-click menu (Arc)
+- ⏳ Same tab in multiple windows: opt-in, ships with multi-window support
+- ⏳ AI tab tidying: Apple on-device model, off by default, enable in Settings, never automatic unless enabled
+- ⏳ Web panels: optional low-priority plugin. Zen removed theirs for a Firefox-specific sandbox issue (Mozilla bug 1935985, per Zen discussion #7314) that doesn't apply to WebKit, where a panel is an ordinary sandboxed web view
