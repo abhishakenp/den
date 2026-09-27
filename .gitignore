@@ -1,2 +1,5 @@
 .pixel/
 .DS_Store
+.build/
+build/
+.swiftpm/
