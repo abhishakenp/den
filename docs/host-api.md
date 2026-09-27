@@ -54,10 +54,11 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 | `print` | `id?` | ok. The print panel, as a sheet on the window |
 | `inspect` | `id?`, `console?` | ok, or an error if WebKit has no entry point. Opens the Web Inspector (or its console) |
 | `viewSource` | `id?` | `{pending}`. Opens the page's current DOM as a new tab (see below) |
-| `suspend` | `id` | ok. Full discard: saves `interactionState` and a snapshot, then destroys the view. The next show restores it |
+| `suspend` | `id`, `force?` | `{suspended: true}`, or `{suspended: false, reason}`. Full discard: keeps `interactionState` (back/forward list and scroll, ~1 KB), destroys the WKWebView, and its WebContent process exits. The page's snapshot is already on disk (below). Without `force` it refuses a page that plays media (`media`), is in picture in picture (`pip`), uses the camera or microphone (`capture`), holds unsaved form input (`form`), or is on screen (`visible`: a pane, peek, Little Arc, the mini player) |
+| `setMuted` | `id`, `muted` | ok. WebKit's page mute (`_setPageMuted:`, Safari's tab mute): every frame, `<audio>`/`<video>` and WebAudio, without changing the page's own `muted`. Kept across discards while the tab lives. Emits `webviews.muted` |
 | `snapshot` | `id`, `path`, `width?` (pt; a small copy at 2x, for previews), `format?: png\|jpeg` | `{pending}`, then the event `webviews.snapshot {id, path, ok}`. A view that can't draw (not in the window) writes its last snapshot, if any |
 | `eval` | `id`, `plugin`, `script` (a function body that `return`s JSON data, ≤ 4 KB), `request?`, `timeoutMs?` (5000) | `{request}`, then `webviews.evalResult {request, webview, ok, value \| error}`. Only for a live page (it never loads or wakes one), in an isolated content world, and only when `plugin` has `session:<the page's host>` |
-| `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, suspended, live, profile}` |
+| `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted, media: {playing, pip, dirty, video?}, suspended, live, profile, snapshot}` |
 | `list` | – | `[id]` |
 | `setLinkPolicy` | `id` (or `"*"` for the default), `rules: [{when: crossSite\|sameSite\|any, hosts?: [suffix], modifiers?: [cmd,shift,opt,ctrl], event}]` | ok |
 
@@ -67,7 +68,9 @@ Events:
 - `webviews.favicon {id,url}`
 - `webviews.progress {id,progress,loading}`
 - `webviews.state {id,canGoBack,canGoForward}`
-- `webviews.audio {id,playing}`
+- `webviews.audio {id,playing}` (audible media)
+- `webviews.muted {id,muted}`
+- `webviews.media {id,playing,pip,dirty}`: den's page script (its own content world, every frame) reports media and unsaved input when they change; no polling
 - `webviews.newWindow {id,url}`
 - `webviews.crashed {id}`
 - `webviews.suspended {id}`
@@ -116,7 +119,30 @@ Events: `content.focus {id}`, `content.peekAction {action: close|expand|split, w
 - Hovering a pane shows a small dark pill at its top center with **close** and **separate** buttons. They emit `content.paneAction`; the owning plugin closes the pane or moves the page back into its own tab.
 - Dragging a tab (`tabRow`/`favoriteTile`) over the content shows a theme-tinted drop zone: the left or right half, or the whole card for the middle third. Dropping emits `dropOnContent {source, side}`, and a haptic tick marks each side change.
 
-Web views that aren't shown are detached from the window, which lets WebKit suspend them.
+Web views that aren't shown are detached from the window, which lets WebKit suspend them. On the way out a page waits invisibly in the window for a moment while a snapshot is taken (WebKit only snapshots a view in a window): 1280 px wide, JPEG at quality 0.55, written off the main thread to a per-process temporary folder that is removed at quit. It is never kept in memory. When a discarded page is shown again, that snapshot covers the new web view at once and fades out when the page has loaded (at most 1.5 s).
+
+A leaving page whose video is playing goes to the mini player instead (see [media](#media)).
+
+## media
+
+den's mini player (`// thin-host` marker: to move into a plugin over generic primitives). When the video you watch would leave the screen, the tab's live web view moves into a frameless, always-on-top panel (on every Space and over full-screen apps) showing only the video, and moves back when you return: no reload, no second process.
+
+- **Triggers:** switching away from the tab (`content.show` without it); den resigning active, being hidden, or its window losing visibility (covered, minimized, another Space). The last three wait for the window state to hold for 200 ms, so a quick ⌘-Tab away and back does nothing. Coming back returns the video inline where it is, still playing.
+- **Which video:** playing, audible (not muted by the page, its volume or the tab), at least 5 s long or live, at least 200x100 on the page, with a video track, and not closed by the user earlier in the session. One player at a time.
+- **Isolation:** den's page script marks the video (or, from the parent frames, the iframe holding it) and a style makes it fill the viewport on black with everything else invisible. Layout is untouched, so undoing it is exact.
+- **Controls** (on hover, and while paused): back to the tab (also double-click and Esc), system picture in picture, close (pauses; remembered), ±10 s, play/pause, mute and volume, playback speed, a seek bar with elapsed and remaining time. Keys: space, ←/→ (5 s), ↑/↓ volume, M. Drag to move, drag a corner to resize (aspect locked); it snaps to the nearest screen corner, which is remembered with the width. The page reports playback only while the player shows it, on `timeupdate` (at most 4 a second).
+
+| Method | Args | Returns |
+|---|---|---|
+| `get` | – | `{open, webview?, fromWindow?, frame?, settings: {autoMiniPlayer}}` |
+| `settings` | `autoMiniPlayer?` | `{autoMiniPlayer}` (persisted, on by default) |
+| `open` | `webview` | ok, or an error when it plays no video |
+| `control` | `action`, `value?` | ok. What the panel's controls do: `play`, `pause`, `toggle`, `seek` (s), `skip` (±s), `volume` (0–1), `mute` (0/1), `rate`, `pip`, `back`, `close` |
+| `close` | – | ok (pauses the video) |
+
+Events: `media.miniPlayer {webview, open}`, `media.backToTab {webview}` (the tabs plugin selects that tab), `media.playback {webview, t, dur, paused, muted, vol, rate}`.
+
+Picture in picture needs WKPreferences' private `allowsPictureInPictureMediaPlayback` on macOS (set through KVC when WebKit has it); `callAsyncJavaScript` counts as a user gesture for `requestPictureInPicture()`.
 
 ### Web page prompts and error pages
 
@@ -164,11 +190,11 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `navBar` | `id`, `canGoBack`, `canGoForward`, `loading` | `toggleSidebar`, `back`, `forward`, `reload`, `stop` |
 | `urlPill` | `id`, `text`, `progress?`, `loading?`, `placeholder?` | `click`, `copy` |
 | `grid` | `columns?`, `children` | – |
-| `favoriteTile` | `id`, `icon`, `title`, `selected`, `audio` | `click`, `doubleClick`, `reorder` |
+| `favoriteTile` | `id`, `icon`, `title`, `selected`, `audio`, `muted?`, `dropInto?` | `click`, `doubleClick`, `reorder`, `mute` (the speaker badge) |
 | `spaceTitle` | `id`, `title`, `icon?`, `editing?`, `editText?` | `click`, `doubleClick`, `more`, `rename {title}`, `renameCancel` |
 | `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected`, `spaceId?` (makes it a drop target for dragged rows), `reorderable?` | `click`, `move {index}` (after a drag-reorder, see [Space icon reorder](#space-icon-reorder)) |
 | `iconPicker` | `id`, `anchor?`, `title?`, `selected?` (popover slot) | `pick {icon}` (`sf:<name>`, an emoji, or "" to remove), `dismiss {reason?}` |
-| `tabRow` | `id`, `title`, `icon`, `selected`, `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `indent?`, `draggable=true`, `editing?`, `editText?`, `hover=true` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel`, `hover` (see [Hover card](#hover-card)) |
+| `tabRow` | `id`, `title`, `icon`, `selected`, `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `closeTitle?` (the X's tooltip), `indent?`, `draggable=true`, `editing?`, `editText?`, `hover=true`, `dropInto?`, `dropIntoIcon?` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel`, `hover` (see [Hover card](#hover-card)) |
 | `splitRow` | `id`, `selected` (the split is shown), `layout?`, `panes: [{id, title, icon, selected}]` (`selected` = focused pane), `closable=true`, `indent?` | `click {pane}`, `close` (hover X), `reorder` (as target, a tab row can drop `into` it), `dropOnSpace` |
 | `folder` | `id`, `title`, `icon?`, `open`, `children`, `editing?` | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel` |
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
@@ -180,12 +206,13 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss {reason?}` |
 
 **Details that apply to several nodes:**
-- **Icons.** A node icon can be `sf:<symbol>`, an http(s) image URL (cached), an absolute image file path (extension icons), `app:icon`, or text/emoji. In a `dialog`, an image icon draws at 62 pt like `app:icon`; only `sf:` symbols get the hero disc.
+- **Icons.** A node icon can be `sf:<symbol>`, an http(s) or `data:` image URL (cached), an absolute image file path (extension icons), `app:icon`, `site:<domain>`, or text/emoji. In a `dialog`, an image icon draws at 62 pt like `app:icon`; only `sf:` symbols get the hero disc. `site:<domain>` draws an Arc-style letter tile: the domain's first letter ("www." skipped), white on a color derived from the domain (hash → hue), or a globe when the domain is empty (`site:`, for data:, file: and about: pages). A remote image that fails, answers non-2xx, or is Google s2's 16 px placeholder globe falls back to the `site:` tile for the domain it names (s2's `domain=`, else the image's host).
 - **Context menus.** Any node can carry `menu: [item]`, shown as a native context menu. Picking an item emits `menu` with its id (submenu items included). Item shapes:
   - `{id, title, icon?, key?, destructive?, enabled=true, checked?, items?}`. `icon` is an `sf:` symbol. `key` is a chord hint drawn on the right (`cmd+w`), display only; the real binding lives in `keys`. `destructive` draws the title and icon in DestructiveButtonFace red (#F53714). `items` makes it a submenu ("Move to Space ▸").
   - `{separator: true}` and `{header: "Title"}` (section header).
 - **Inline rename.** `editing: true` on a `tabRow` or `folder` swaps its title for a text field holding `editText` (default: `title`), all selected and focused. Return or a click elsewhere emits `rename {title}` (trimmed; may be empty), Esc emits `renameCancel`. The plugin then sends the node without `editing`.
-- **Drag reorder.** Dragging emits `reorder {source, target, position: before|after|into}` with a haptic tick. Dropping on the web content emits `dropOnContent {source, side: left|center|right}`. Dragging a tab row or folder over a footer `spaceIcon` that has a `spaceId` highlights the icon; dropping there emits `dropOnSpace {source, target, spaceId}` (from the dragged row).
+- **Speaker.** A `tabRow` or `favoriteTile` with `audio` or `muted` shows a speaker (a round badge on tiles): a button with a hover fill, a tooltip ("Mute Tab" / "Unmute Tab") and a cross-fade when it flips. A click emits `mute`; the owner calls `webviews.setMuted`.
+- **Drag reorder.** Dragging emits `reorder {source, target, position: before|after|into}` with a haptic tick at every change of target or zone. The middle half of a row that takes drops into it (folders, split rows for a dragged tab, and any row or tile with `dropInto: true`) means `into`, shown as a theme-tinted ring around the row with its `dropIntoIcon`; the top and bottom quarters show the insertion line. Dropping on the web content emits `dropOnContent {source, side: left|center|right}`. Dragging a tab row or folder over a footer `spaceIcon` that has a `spaceId` highlights the icon; dropping there emits `dropOnSpace {source, target, spaceId}` (from the dragged row).
 - **View reuse.** Views are reused by `type` + `id`, so it's cheap to resend a whole tree on every change.
 
 ### Theme picker popover

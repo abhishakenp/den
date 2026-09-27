@@ -16,6 +16,7 @@ public final class DenRuntime {
   public let keys: KeysService
   public let storage: StorageService
   public let app: AppService
+  public let media: MediaService
   // Connections, briefing and feed (docs/host-api.md: permissions, session, net, ai, schedule).
   public let permissions = Permissions()
   public let session: SessionService
@@ -47,6 +48,7 @@ public final class DenRuntime {
     keys = KeysService(host: host)
     storage = StorageService(root: storageRoot)
     app = AppService(host: host, window: window)
+    media = MediaService(host: host, webviews: webviews, content: content, window: window, storage: storage)
     session = SessionService(host: host, webviews: webviews, permissions: permissions)
     net = NetService(host: host, webviews: webviews, permissions: permissions)
     ai = AIService(host: host)
@@ -76,7 +78,7 @@ public final class DenRuntime {
       return (e.str("name", "Google"), u)
     }
     webviews.pageActions = pa
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions, settings] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions, settings, media] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

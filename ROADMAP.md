@@ -72,7 +72,7 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
 
 - ✅ Tab model on `WKWebView`
 - ✅ Profiles with isolated data stores (`WKWebsiteDataStore(forIdentifier:)`), chosen per space
-- ✅ Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard (save state + snapshot, destroy the web view, recreate on focus)
+- ✅ Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard after 5 min (state kept, snapshot on disk, web view and WebContent process gone; the snapshot shows at once on restore). Media, PiP, camera/mic and unsaved input are never discarded
 - 🟡 Session restore and crash recovery
   - ✅ spaces, tabs and selection come back after quit, relaunch and updates (plugin storage); discarded tabs keep `interactionState`
   - ⏳ crash recovery; a "Page crashed · Reload" view
@@ -87,6 +87,8 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
   - ✅ camera and microphone prompts, HTTP sign-in, file panels, JS alert/confirm/prompt
   - ⏳ location, notifications
 - 🟡 Picture-in-picture and media controls (see Media)
+  - ✅ mini player: a playing video follows you when you leave its tab or den (den's own controls; system PiP as a fallback)
+  - ✅ tab mute from the sidebar speaker (WebKit page mute)
 - ✅ Web Inspector, inspect element, console, view source
 - ✅ Default browser handling: Settings, menu bar, command bar banner, "Try for a week"
 - ✅ Error pages (offline, host not found, timeout, can't connect, not private) with Try Again

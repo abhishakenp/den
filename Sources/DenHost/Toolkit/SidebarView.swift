@@ -290,6 +290,9 @@ final class DragController {
   private var source: HoverNode?
   private var ghost: NSImageView?
   private let indicator = NSView()
+  /// "into" feedback: a theme-tinted ring over the target row, with the row's `dropIntoIcon`.
+  private let ring = NSView()
+  private let ringIcon = IconView()
   private var target: (String, String)?
   private(set) weak var spaceTarget: SpaceIconNode?
   private var grabOffset = NSPoint.zero
@@ -298,10 +301,22 @@ final class DragController {
     self.emit = emit
     indicator.wantsLayer = true
     indicator.layer?.cornerRadius = 1
+    ring.wantsLayer = true
+    ring.layer?.borderWidth = 1.5
+    ring.layer?.cornerCurve = .continuous
+    ringIcon.wantsLayer = true
+    ringIcon.layer?.cornerRadius = 5
     dropZone.wantsLayer = true
     dropZone.layer?.cornerRadius = Tokens.cardCornerRadius
     dropZone.layer?.cornerCurve = .continuous
     dropZone.layer?.borderWidth = Tokens.dropZoneBorderWidth
+  }
+
+  /// Where a drop lands on a row (`rel` = pointer y within the row, 0 top … 1 bottom, or x for
+  /// favorite tiles): the middle half means "into" when the row takes drops into it (folders,
+  /// splits, and any row with `dropInto`); otherwise the nearer edge.
+  static func position(rel: CGFloat, into: Bool) -> String {
+    into && rel >= 0.25 && rel <= 0.75 ? "into" : (rel < 0.5 ? "before" : "after")
   }
 
   static func side(at pWin: NSPoint, in cf: NSRect) -> String {
@@ -360,6 +375,27 @@ final class DragController {
     indicator.isHidden = true
   }
 
+  /// The "into" highlight over `row` (nil hides it), below the dragged ghost.
+  func showRing(_ row: HoverNode?) {
+    guard let row, let root else { ring.removeFromSuperview(); ringIcon.removeFromSuperview(); return }
+    let c = accent()
+    let f = root.convert(row.fillRect, from: row)
+    ring.layer?.borderColor = c.withAlphaComponent(0.9).cgColor
+    ring.layer?.backgroundColor = c.withAlphaComponent(0.14).cgColor
+    ring.layer?.cornerRadius = row.cornerRadius
+    ringIcon.spec = row.node.str("dropIntoIcon")
+    ringIcon.tint = c
+    ringIcon.isHidden = ringIcon.spec.isEmpty
+    if ring.superview !== root {
+      if let g = ghost { root.addSubview(ring, positioned: .below, relativeTo: g) } else { root.addSubview(ring) }
+    }
+    ring.frame = f
+    // The split hint sits above the dragged ghost, at the ring's right end, so it stays readable.
+    if ringIcon.superview !== root { root.addSubview(ringIcon) }
+    let s: CGFloat = 16
+    ringIcon.frame = NSRect(x: f.maxX - s - 10, y: f.midY - s / 2, width: s, height: s)
+  }
+
   func candidates(in v: NSView) -> [HoverNode] {
     var out: [HoverNode] = []
     for s in v.subviews where !s.isHidden {
@@ -403,18 +439,20 @@ final class DragController {
       let f = root.convert(hit.bounds, from: hit)
       let pos: String
       if isTile {
-        pos = p.x < f.midX ? "before" : "after"
+        pos = Self.position(rel: (p.x - f.minX) / f.width, into: hit.node.flag("dropInto"))
         indicator.frame = NSRect(x: (pos == "before" ? f.minX - 4 : f.maxX + 2), y: f.minY + 4, width: 2, height: f.height - 8)
       } else {
-        let rel = (p.y - f.minY) / f.height
-        // Folders take rows "into" them; so do splits (a tab joins the split), but not other splits.
-        let into = hit is FolderNode.Header || (hit is SplitRowNode && source is TabRowNode)
-        pos = into && rel > 0.3 && rel < 0.7 ? "into" : (rel < 0.5 ? "before" : "after")
-        indicator.frame = pos == "into" ? f.insetBy(dx: 0, dy: f.height / 2 - 1) : NSRect(x: f.minX + 6, y: (pos == "before" ? f.minY - 2 : f.maxY) , width: f.width - 12, height: 2)
+        // Folders take rows "into" them; so do splits (a tab joins the split), and rows that ask
+        // for it (`dropInto`: the tabs plugin makes a split of two tabs).
+        let into = hit is FolderNode.Header || (hit is SplitRowNode && source is TabRowNode) || hit.node.flag("dropInto")
+        pos = Self.position(rel: (p.y - f.minY) / f.height, into: into)
+        indicator.frame = NSRect(x: f.minX + 6, y: (pos == "before" ? f.minY - 2 : f.maxY), width: f.width - 12, height: 2)
       }
       newTarget = (hit.nodeId, pos)
-      indicator.isHidden = false
+      indicator.isHidden = pos == "into"
+      showRing(pos == "into" ? hit : nil)
     }
+    if newTarget == nil { showRing(nil) }
     if p.x <= root.bounds.maxX + 6 && icon == nil { updateDropZone(nil) }
     if newTarget?.0 != target?.0 || newTarget?.1 != target?.1 {
       target = newTarget
@@ -441,6 +479,7 @@ final class DragController {
     source.alphaValue = 1
     ghost?.removeFromSuperview()
     indicator.removeFromSuperview()
+    showRing(nil)
     updateDropZone(nil)
     ghost = nil
     self.source = nil

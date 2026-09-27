@@ -117,10 +117,98 @@ enum URLs {
     return s.isEmpty ? url : s
   }
 
-  /// Simplified display for the URL pill: the domain, like Arc.
+  /// Simplified display for the URL pill: the domain, like Arc. Never a raw `data:` URL: those
+  /// show their media type ("data:text/html").
   static func display(_ url: String) -> String {
     if url.isEmpty || url == "about:blank" { return "" }
+    if Text.hasPrefix(lower(url), "data:") { return "data:" + mediaType(url) }
     return host(url)
+  }
+
+  static func isWeb(_ url: String) -> Bool {
+    let l = lower(url)
+    return Text.hasPrefix(l, "http://") || Text.hasPrefix(l, "https://")
+  }
+
+  /// "data:image/png;base64,…" -> "image/png" ("text/plain" when omitted, per RFC 2397).
+  static func mediaType(_ url: String) -> String {
+    var out: [UInt8] = []
+    for c in Array(url.utf8).dropFirst(5) {
+      if c == 59 || c == 44 { break }  // ; ,
+      out.append(c)
+    }
+    return out.isEmpty ? "text/plain" : lower(String(decoding: out, as: UTF8.self))
+  }
+
+  /// Fallback title for a page without a usable one: a prettified domain for http(s)
+  /// ("news.ycombinator.com"), the file name for `file:`, "Image" / "Untitled" for `data:`,
+  /// "New Tab" for about:blank or nothing.
+  static func title(_ url: String) -> String {
+    let l = lower(url)
+    if url.isEmpty || l == "about:blank" { return "New Tab" }
+    if isWeb(url) {
+      let h = host(url)
+      return h == url || h.isEmpty ? "Untitled" : h
+    }
+    if Text.hasPrefix(l, "file:") {
+      var bytes = Array(url.utf8)
+      if let q = bytes.firstIndex(where: { $0 == 63 || $0 == 35 }) { bytes = Array(bytes[..<q]) }  // ? #
+      while bytes.last == 47 { bytes.removeLast() }
+      let name = Array(bytes[((bytes.lastIndex(of: 47) ?? 4) + 1)...])
+      let s = percentDecode(name)
+      return s.isEmpty ? "File" : s
+    }
+    if Text.hasPrefix(l, "data:") { return Text.hasPrefix(mediaType(url), "image/") ? "Image" : "Untitled" }
+    return "Untitled"
+  }
+
+  /// A page's title, or `title(url)` when it is blank or is itself a URL (what WebKit reports
+  /// for pages without a <title>).
+  static func pageTitle(_ title: String, _ url: String) -> String {
+    var bytes = Array(title.utf8)
+    while let f = bytes.first, f == 32 || f == 9 || f == 10 || f == 13 { bytes.removeFirst() }
+    while let l = bytes.last, l == 32 || l == 9 || l == 10 || l == 13 { bytes.removeLast() }
+    let t = lower(String(decoding: bytes, as: UTF8.self))
+    if bytes.isEmpty { return Self.title(url) }
+    for p in ["http://", "https://", "data:", "file:", "about:"] where Text.hasPrefix(t, p) { return Self.title(url) }
+    return title
+  }
+
+  /// A saved favicon when it is usable, else `favicon(url)`. Bogus values such as
+  /// "null/favicon.ico" (`location.origin + '/favicon.ico'` on a data: page) don't count, and
+  /// a derived Google s2 icon is recomputed (older saves may carry a garbage domain).
+  static func icon(_ favicon: String?, _ url: String) -> String {
+    guard let f = favicon, usable(f), !Text.hasPrefix(f, s2) else { return Self.favicon(url) }
+    return f
+  }
+
+  /// Is `favicon` an icon spec worth drawing (an http(s) or data:image URL, or a host icon spec)?
+  static func usable(_ favicon: String) -> Bool {
+    let l = lower(favicon)
+    return isWeb(l) || Text.hasPrefix(l, "data:image/") || Text.hasPrefix(l, "sf:") || Text.hasPrefix(l, "site:")
+  }
+
+  static func percentDecode(_ bytes: [UInt8]) -> String {
+    func hex(_ c: UInt8) -> UInt8? {
+      switch c {
+      case 48...57: return c - 48
+      case 65...70: return c - 55
+      case 97...102: return c - 87
+      default: return nil
+      }
+    }
+    var out: [UInt8] = []
+    var j = 0
+    while j < bytes.count {
+      if bytes[j] == 37, j + 2 < bytes.count, let a = hex(bytes[j + 1]), let b = hex(bytes[j + 2]) {
+        out.append(a << 4 | b)
+        j += 3
+      } else {
+        out.append(bytes[j])
+        j += 1
+      }
+    }
+    return String(decoding: out, as: UTF8.self)
   }
 
   /// Comparable form for the pinned-URL drift check: no scheme, no "www.", no fragment,
@@ -140,8 +228,13 @@ enum URLs {
     return normalize(url) != normalize(p)
   }
 
+  static let s2 = "https://www.google.com/s2/favicons?domain="
+
+  /// The site icon for `url`: Google's favicon service for http(s) pages, else `site:` (the
+  /// host's fallback tile; a globe when there is no domain, as for data:, file: and about:).
   static func favicon(_ url: String) -> String {
-    "https://www.google.com/s2/favicons?domain=" + host(url) + "&sz=64"
+    guard isWeb(url) else { return "site:" }
+    return s2 + host(url) + "&sz=64"
   }
 
   static func lower(_ s: String) -> String { Text.lower(s) }

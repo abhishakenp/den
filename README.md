@@ -62,10 +62,11 @@ Much of this already works (below). What's still in progress is in [Coming soon]
 
 Each item is covered by `swift test` or a `--scenario` run of the real app. The [user guide](docs/guide/) has the details, and [Tips & hidden gems](docs/guide/tips.md) has everything you won't find by looking.
 
-- **[Sidebar & tabs](docs/guide/sidebar-and-tabs.md):** favorites, pinned tabs that remember their page, nested folders, Today tabs that archive after 24 h, a searchable Library, ⌃Z undo, drag and drop (onto folders, spaces and the page), idle tabs unloaded after 30 min
+- **[Sidebar & tabs](docs/guide/sidebar-and-tabs.md):** favorites, pinned tabs that remember their page, nested folders, Today tabs that archive after 24 h, a searchable Library, ⌃Z undo, drag and drop (onto folders, spaces, the page, and a tab onto another for a split), a speaker to mute a tab, idle tabs discarded after 5 min in the background (their process exits; a snapshot on disk makes the restore instant)
 - **[Spaces & themes](docs/guide/spaces-and-themes.md):** a theme per space, two-finger swipe, the space menu, footer drag-reorder, a separate profile (logins, cookies) per space
 - **[Command bar](docs/guide/command-bar.md):** tabs in every space, the archive, URLs, web search, site keywords, every command, and settings you can flip right from the bar (⌘T / ⌘L)
 - **[Peek, split view & Little Arc](docs/guide/peek-split-little-arc.md):** ⇧-click any link to Peek, 2–4 panes by dragging a tab onto the page, an opt-in mini window for links from other apps
+- **Mini player:** leave a playing video (another tab, another app, a covered or minimized window) and it follows you in a floating player with den's own controls
 - **[Hover previews](docs/guide/hover-previews.md):** rest on a tab for its PR checks and reviews, next meeting, unread mail, or a snapshot
 - **[Connections & briefing](docs/guide/connections-and-briefing.md):** Slack and GitHub through your own session in den, a morning briefing with todos, on-device summaries
 - **[Extensions](docs/guide/extensions.md):** Chrome Web Store and Firefox Add-ons ("Add to den"), popups, per-site access; uBlock Origin Lite, Dark Reader verified

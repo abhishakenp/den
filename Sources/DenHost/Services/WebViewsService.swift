@@ -3,8 +3,31 @@ import CordisValue
 import CryptoKit
 import WebKit
 
+/// What a page's media and forms are doing, as den's page script reports it (PageScripts).
+public struct PageMedia: Equatable {
+  /// Audible media is playing (the tab row's speaker).
+  public var audible = false
+  /// Any media is playing, muted or not.
+  public var playing = false
+  /// System picture in picture is active.
+  public var pip = false
+  /// A form field holds input that wasn't submitted.
+  public var dirty = false
+  /// The frame's main playing video (or the mini player's video, even while paused).
+  public var video: Value?
+
+  init() {}
+  init(_ v: Value) {
+    audible = v.flag("a")
+    playing = v.flag("p")
+    pip = v.flag("pip")
+    dirty = v.flag("d")
+    video = v["v"].isNull ? nil : v["v"]
+  }
+}
+
 /// One tab's web content. The WKWebView exists only while materialized (shown at least once and
-/// not discarded); otherwise the record keeps url + interactionState + snapshot.
+/// not discarded); otherwise the record keeps url + interactionState, and its snapshot on disk.
 @MainActor
 public final class WebRecord {
   public let id: String
@@ -17,13 +40,45 @@ public final class WebRecord {
   public var audio = false
   public var rules: [LinkRule] = []
   public var interactionState: Any?
-  public var snapshot: NSImage?
+  /// The last snapshot of the page, a small JPEG on disk (never kept in memory).
+  public var snapshotPath: String?
+  /// Muted by the user (`setMuted`); survives discards while the tab lives.
+  public var muted = false
+  /// Media and form state per frame ("main", or the subframe's URL), and the frame it came from.
+  public fileprivate(set) var frames: [String: (frame: WKFrameInfo, media: PageMedia)] = [:]
+  /// Set while the view is being discarded, so nothing adopts it on the way out.
+  public fileprivate(set) var discarding = false
   public fileprivate(set) var webView: WKWebView?
   fileprivate var observers: [NSKeyValueObservation] = []
 
   init(id: String, profile: String, url: String) { (self.id, self.profile, self.url) = (id, profile, url) }
 
-  public var isSuspended: Bool { webView == nil && (interactionState != nil || snapshot != nil) }
+  public var isSuspended: Bool { webView == nil && (interactionState != nil || snapshotPath != nil) }
+
+  /// The page's media state, all frames together.
+  public var media: PageMedia {
+    var m = PageMedia()
+    for (_, f) in frames {
+      m.audible = m.audible || f.media.audible
+      m.playing = m.playing || f.media.playing
+      m.pip = m.pip || f.media.pip
+      m.dirty = m.dirty || f.media.dirty
+    }
+    m.video = videoFrame?.media.video
+    return m
+  }
+
+  /// The frame with the biggest playing video (the main frame wins a tie).
+  public var videoFrame: (frame: WKFrameInfo, media: PageMedia)? {
+    var best: (frame: WKFrameInfo, media: PageMedia)?
+    var area = -1.0
+    for key in frames.keys.sorted(by: { a, b in a == "main" && b != "main" }) {
+      guard let f = frames[key], let v = f.media.video else { continue }
+      let a = v.num("cw") * v.num("ch")
+      if a > area { area = a; best = f }
+    }
+    return best
+  }
 }
 
 /// `webviews` service.
@@ -32,19 +87,25 @@ public final class WebRecord {
 ///   create {id?, url?, profile?}              -> {id}   (lazy: no WKWebView until shown)
 ///   navigate {id, url}  back {id}  forward {id}  reload {id}  stop {id}
 ///   close {id}                                 -> destroys the web view and record
-///   suspend {id}                               -> full discard: saves interactionState + snapshot, destroys the view
+///   suspend {id, force?}                       -> full discard: saves interactionState (+ a snapshot on disk), destroys
+///                                                 the view. Without force it refuses a tab that is on screen, plays
+///                                                 media, is in picture in picture, uses the camera/mic or holds
+///                                                 unsaved form input: {suspended: false, reason}
+///   setMuted {id, muted}                       -> mutes the page (all frames, WebAudio too); kept across discards
 ///   snapshot {id, path, width?, format?}      -> {pending}; later event webviews.snapshot {id, path, ok}
 ///                                                 width (pt) makes a small copy (hover previews); format png|jpeg
 ///   eval {id, plugin, script, request?, timeoutMs?} -> {request}; later webviews.evalResult {request, webview, ok, value | error}
 ///                                                 reads a live page; needs `allowScript(plugin, host)` (session:<host>)
-///   get {id}                                   -> {id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, suspended, live}
+///   get {id}                                   -> {id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted,
+///                                                 media: {playing, pip, dirty, video?}, suspended, live, snapshot}
 ///   list                                       -> [id]
 ///   setLinkPolicy {id | "*", rules: [{when: crossSite|sameSite|any, hosts?: [suffix], modifiers?: [cmd,...], event}]}
 ///
 /// Events: webviews.title {id,title}  webviews.url {id,url}  webviews.favicon {id,url}
 ///   webviews.progress {id,progress,loading}  webviews.state {id,canGoBack,canGoForward}
 ///   webviews.audio {id,playing}  webviews.newWindow {id,url}  webviews.crashed {id}
-///   webviews.suspended {id}  webviews.snapshot {id,path,ok}  + any event named by a link rule: {id,url,source}
+///   webviews.suspended {id}  webviews.snapshot {id,path,ok}  webviews.muted {id,muted}  webviews.media {id, playing, pip, dirty}
+///   + any event named by a link rule: {id,url,source}
 @MainActor
 public final class WebViewsService: NSObject, HostService, WKNavigationDelegate, WKUIDelegate {
   public let name = "webviews"
@@ -60,6 +121,19 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   weak var extensionHooks: ExtensionsService?
   /// zoom / find / print / inspect / viewSource (PageActions.swift); set by `DenRuntime`.
   public internal(set) var pageActions: PageActions?
+  /// Playback updates (`{k: "t", ...}`) of a page whose video the mini player shows.
+  public var onPlayback: ((String, Value) -> Void)?
+  /// A page's media state changed (the mini player follows it).
+  public var onMedia: ((WebRecord) -> Void)?
+  /// A live view is about to be discarded or closed (the mini player lets go of it).
+  public var willDestroy: ((String) -> Void)?
+  /// A navigation finished or failed (the restore placeholder waits for it).
+  public var onFinish: ((String) -> Void)?
+  /// Where discarded pages' snapshots go: a per-process temporary folder, removed at quit.
+  public let snapshotDir = FileManager.default.temporaryDirectory.appendingPathComponent("den-\(getpid())/snapshots", isDirectory: true)
+  /// Widest stored snapshot, in pixels: sharp enough to stand in for the page for the moment a
+  /// restore takes, and for 320 pt hover previews at 2x.
+  public var snapshotMaxWidth: CGFloat = 1280
 
   public init(host: ServiceHost) { self.host = host }
 
@@ -110,7 +184,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     case "reload": if args.flag("fromOrigin") { r.webView?.reloadFromOrigin() } else { r.webView?.reload() }
     case "stop": r.webView?.stopLoading()
     case "close": close(r)
-    case "suspend": suspend(r)
+    case "suspend": return suspend(r, force: args.flag("force"))
+    case "setMuted": setMuted(r, args.flag("muted"))
     case "snapshot":
       snapshot(r, path: args.str("path"), width: args["width"].double.map { CGFloat($0) }, jpeg: args.str("format") == "jpeg")
       return ["pending": true]
@@ -152,8 +227,14 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     config.preferences.isElementFullscreenEnabled = true
     config.preferences.inactiveSchedulingPolicy = .suspend
     config.applicationNameForUserAgent = Self.applicationNameForUserAgent
-    config.userContentController.addUserScript(WKUserScript(source: Self.mediaScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
-    config.userContentController.add(scriptHandler, name: "denMedia")
+    // Picture in picture is off in WKWebView on macOS unless this (private) preference is set:
+    // without it `requestPictureInPicture()` fails with NotSupportedError. KVC finds the
+    // `_setAllowsPictureInPictureMediaPlayback:` setter; guarded so a WebKit without it is fine.
+    if config.preferences.responds(to: NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")) {
+      config.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
+    }
+    config.userContentController.addUserScript(WKUserScript(source: PageScripts.media, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: PageScripts.world))
+    config.userContentController.add(scriptHandler, contentWorld: PageScripts.world, name: PageScripts.handler)
     for h in configureHooks { h(r, config) }
     config.userContentController.addUserScript(WKUserScript(source: DenWebView.contextScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
     config.userContentController.add(scriptHandler, name: "denContext")
@@ -167,7 +248,9 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     w.isInspectable = true
     w.underPageBackgroundColor = .clear
     r.webView = w
+    r.discarding = false
     observe(r, w)
+    if r.muted { Self.applyMuted(w, true) }
     for h in createdHooks { h(r, w) }
     let start = { [weak w] in
       guard let w else { return }
@@ -234,15 +317,26 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       "id": .string(r.id), "url": .string(r.url), "title": .string(r.title), "favicon": .string(r.favicon),
       "loading": .bool(r.loading), "progress": .double(r.progress),
       "canGoBack": .bool(r.webView?.canGoBack ?? false), "canGoForward": .bool(r.webView?.canGoForward ?? false),
-      "audio": .bool(r.audio), "suspended": .bool(r.isSuspended), "live": .bool(r.webView != nil), "profile": .string(r.profile),
+      "audio": .bool(r.audio), "muted": .bool(r.muted), "suspended": .bool(r.isSuspended), "live": .bool(r.webView != nil),
+      "profile": .string(r.profile), "snapshot": r.snapshotPath.map { .string($0) } ?? .null, "media": mediaValue(r.media),
       "zoom": .double(Double(r.webView?.pageZoom ?? 1)),
     ]
   }
 
+  func mediaValue(_ m: PageMedia) -> Value {
+    ["playing": .bool(m.playing), "pip": .bool(m.pip), "dirty": .bool(m.dirty), "video": m.video ?? .null]
+  }
+
   func destroyView(_ r: WebRecord) {
     guard let w = r.webView else { return }
+    willDestroy?(r.id)
     r.observers.forEach { $0.invalidate() }
     r.observers = []
+    r.frames = [:]
+    if r.audio {
+      r.audio = false
+      host.emit("webviews.audio", ["id": .string(r.id), "playing": false])
+    }
     w.configuration.userContentController.removeAllScriptMessageHandlers()
     w.navigationDelegate = nil
     w.uiDelegate = nil
@@ -255,38 +349,182 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   func close(_ r: WebRecord) {
     destroyView(r)
+    if let p = r.snapshotPath { try? FileManager.default.removeItem(atPath: p) }
     records[r.id] = nil
     order.removeAll { $0 == r.id }
     host.emit("webviews.closed", ["id": .string(r.id)])
   }
 
-  /// Full discard: keep back/forward + scroll state and a snapshot, free the WebContent process.
-  func suspend(_ r: WebRecord) {
-    guard let w = r.webView else { return }
+  /// Why a live page must not be discarded right now, or nil. Checked on every idle discard; an
+  /// explicit close (`force`) skips it.
+  public func keepReason(_ r: WebRecord) -> String? {
+    guard let w = r.webView else { return nil }
+    let m = r.media
+    if m.pip { return "pip" }
+    if m.playing { return "media" }
+    if w.cameraCaptureState != .none || w.microphoneCaptureState != .none { return "capture" }
+    if m.dirty { return "form" }
+    if w.window != nil { return "visible" }  // a pane, peek, Little Arc, the mini player (or its snapshot being taken)
+    return nil
+  }
+
+  /// Full discard: keep back/forward + scroll state, free the WKWebView and its WebContent process.
+  /// The snapshot was saved to disk when the page left the screen (`captureSnapshot`); a page still
+  /// on screen (forced) is captured first.
+  func suspend(_ r: WebRecord, force: Bool) -> Value {
+    guard let w = r.webView, !r.discarding else { return ["suspended": true] }
+    if !force, let why = keepReason(r) { return ["suspended": false, "reason": .string(why)] }
+    r.discarding = true
     r.interactionState = w.interactionState
-    w.takeSnapshot(with: nil) { [weak self] img, _ in
+    let finish: @MainActor () -> Void = { [weak self] in
+      guard r.discarding, r.webView === w else { return }
+      self?.destroyView(r)
+      self?.host.emit("webviews.suspended", ["id": .string(r.id)])
+    }
+    if w.window != nil { captureSnapshot(r, then: finish) } else { finish() }
+    return ["suspended": true]
+  }
+
+  /// Saves a small JPEG of the page to disk (`snapshotPath`), for the placeholder a restored tab
+  /// shows at once and for hover previews of pages that aren't live. Only a view in a window can
+  /// draw; the encode runs off the main thread. `then` runs once the view is no longer needed
+  /// (at most 3 s later).
+  public func captureSnapshot(_ r: WebRecord, then: (@MainActor () -> Void)? = nil) {
+    guard let w = r.webView, w.window != nil, w.bounds.width > 1, w.url != nil else { then?(); return }
+    var done = false
+    let finish: @MainActor () -> Void = {
+      guard !done else { return }
+      done = true
+      then?()
+    }
+    // WebKit usually answers in tens of ms; under heavy load it can take seconds.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { MainActor.assumeIsolated { finish() } }
+    let config = WKSnapshotConfiguration()
+    config.afterScreenUpdates = false
+    // WebKit renders it at the final size (points x backing scale), so den never holds a
+    // full-size bitmap or scales one down.
+    let scale = w.window?.backingScaleFactor ?? 2
+    config.snapshotWidth = NSNumber(value: Double(min(w.bounds.width, snapshotMaxWidth / scale)))
+    let path = snapshotDir.appendingPathComponent("\(r.id).jpg")
+    let maxPx = snapshotMaxWidth, dir = snapshotDir
+    w.takeSnapshot(with: config) { img, _ in
       MainActor.assumeIsolated {
-        r.snapshot = img
-        self?.destroyView(r)
-        self?.host.emit("webviews.suspended", ["id": .string(r.id)])
+        guard let cg = img.flatMap(Self.cgImage) else { return finish() }
+        finish()  // the view may go now; the encode doesn't need it
+        // userInitiated: a ~10 ms encode; at utility QoS a busy Mac can starve it for seconds.
+        DispatchQueue.global(qos: .userInitiated).async {
+          try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+          let ok = autoreleasepool { Self.writeSnapshot(cg, maxWidth: maxPx, to: path) }
+          // Give the freed bitmap and encoder buffers back to the system now rather than under
+          // memory pressure (a moment later: the image is released when this block is).
+          DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 0.5) { malloc_zone_pressure_relief(nil, 0) }
+          DispatchQueue.main.async { MainActor.assumeIsolated { if ok { r.snapshotPath = path.path } } }
+        }
       }
+    }
+  }
+
+  /// The bitmap behind a WebKit snapshot. `cgImage(forProposedRect: nil)` returns nil for the
+  /// fractional sizes a `snapshotWidth` snapshot has, so ask for its integral rect.
+  static func cgImage(_ img: NSImage) -> CGImage? {
+    if let rep = img.representations.first(where: { $0 is NSBitmapImageRep }) as? NSBitmapImageRep, let cg = rep.cgImage { return cg }
+    var rect = NSRect(origin: .zero, size: NSSize(width: img.size.width.rounded(.down), height: img.size.height.rounded(.down)))
+    return img.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+  }
+
+  /// Scales `image` down to `maxWidth` pixels (never up) and writes it as JPEG at quality 0.55.
+  /// Not HEIC, although its files are ~40% smaller: ImageIO's HEIC encoder kept ~4 MB of den's
+  /// memory per encode (12 encodes, +51 MB, docs/perf/memory.md); JPEG keeps none.
+  nonisolated static func writeSnapshot(_ image: CGImage, maxWidth: CGFloat, to url: URL) -> Bool {
+    // Redrawn into an opaque sRGB bitmap (WebKit's snapshot has alpha and may be IOSurface-backed).
+    let scale = min(1, maxWidth / CGFloat(max(1, image.width)))
+    let w = max(1, Int((CGFloat(image.width) * scale).rounded())), h = max(1, Int((CGFloat(image.height) * scale).rounded()))
+    guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+          let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+    else { return false }
+    ctx.interpolationQuality = .high
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+    guard let scaled = ctx.makeImage() else { return false }
+    return encode(scaled, to: url)
+  }
+
+  nonisolated static func encode(_ image: CGImage, to url: URL) -> Bool {
+    guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.jpeg" as CFString, 1, nil) else { return false }
+    CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.55] as CFDictionary)
+    return CGImageDestinationFinalize(dest)
+  }
+
+  /// The stored snapshot, decoded (for the restore placeholder and previews).
+  public func storedSnapshot(_ id: String) -> CGImage? {
+    guard let p = records[id]?.snapshotPath, let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: p) as CFURL, nil) else { return nil }
+    return CGImageSourceCreateImageAtIndex(src, 0, nil)
+  }
+
+  /// Removes this process' snapshot folder (at quit).
+  public func removeSnapshots() {
+    try? FileManager.default.removeItem(at: snapshotDir.deletingLastPathComponent())
+  }
+
+  /// Removes snapshot folders of den processes that are gone (a crash), off the main thread.
+  public func removeStaleSnapshots() {
+    DispatchQueue.global(qos: .background).async {
+      let tmp = FileManager.default.temporaryDirectory
+      for name in (try? FileManager.default.contentsOfDirectory(atPath: tmp.path)) ?? [] where name.hasPrefix("den-") {
+        guard let pid = Int32(name.dropFirst(4)), pid != getpid(), kill(pid, 0) != 0, errno == ESRCH else { continue }
+        try? FileManager.default.removeItem(at: tmp.appendingPathComponent(name))
+      }
+    }
+  }
+
+  // MARK: Mute
+
+  /// Mutes the whole page with WebKit's page mute (`_setPageMuted:`, the mechanism behind Safari's
+  /// tab mute): every frame, <audio>/<video> and WebAudio, without touching the page's own `muted`
+  /// state. A WebKit without it falls back to muting the media elements of the main frame.
+  func setMuted(_ r: WebRecord, _ muted: Bool) {
+    guard r.muted != muted else { return }
+    r.muted = muted
+    if let w = r.webView { Self.applyMuted(w, muted) }
+    host.emit("webviews.muted", ["id": .string(r.id), "muted": .bool(muted)])
+  }
+
+  @discardableResult
+  static func applyMuted(_ w: WKWebView, _ muted: Bool) -> Bool {
+    if w.responds(to: NSSelectorFromString("_setPageMuted:")) {
+      w.setValue(NSNumber(value: muted ? 1 : 0), forKey: "pageMuted")  // _WKMediaAudioMuted = 1 << 0
+      return true
+    }
+    w.callAsyncJavaScript("document.querySelectorAll('video,audio').forEach(m => m.muted = muted)", arguments: ["muted": muted], in: nil, in: PageScripts.world)
+    return false
+  }
+
+  /// WebKit's page mute state (`_mediaMutedState` & audio), for tests. nil without the SPI.
+  public func pageMuted(_ id: String) -> Bool? {
+    guard let w = records[id]?.webView, w.responds(to: NSSelectorFromString("_mediaMutedState")) else { return nil }
+    return ((w.value(forKey: "mediaMutedState") as? NSNumber)?.intValue ?? 0) & 1 == 1
+  }
+
+  /// Runs `js` (an async function body) in den's page world, in `frame` (default: main frame).
+  public func runPageScript(_ id: String, _ js: String, arguments: [String: Any] = [:], frame: WKFrameInfo? = nil,
+                            done: (@MainActor (Result<Any, Error>) -> Void)? = nil) {
+    guard let w = records[id]?.webView else { return }
+    w.callAsyncJavaScript(js, arguments: arguments, in: frame, in: PageScripts.world) { res in
+      MainActor.assumeIsolated { done?(res) }
     }
   }
 
   func snapshot(_ r: WebRecord, path: String, width: CGFloat? = nil, jpeg: Bool = false) {
     let id = r.id
     let done: @MainActor (NSImage?) -> Void = { [weak self] taken in
-      // A web view that isn't in a window can't draw: fall back to the last snapshot.
-      let img = taken ?? r.snapshot
+      // A web view that isn't in a window can't draw: fall back to the stored snapshot on disk.
+      let img = taken ?? self?.storedSnapshot(id).map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
       var ok = false
       if let img, !path.isEmpty, let data = Self.encode(img, width: width, jpeg: jpeg) {
         ok = (try? data.write(to: URL(fileURLWithPath: path))) != nil
       }
-      // Only full-size snapshots replace the one a suspended tab shows.
-      if let taken, width == nil { r.snapshot = taken }
       self?.host.emit("webviews.snapshot", ["id": .string(id), "path": .string(path), "ok": .bool(ok)])
     }
-    if let w = r.webView {
+    if let w = r.webView, w.window != nil {
       let config = WKSnapshotConfiguration()
       if let width { config.snapshotWidth = NSNumber(value: Double(width)) }
       w.takeSnapshot(with: config) { img, _ in MainActor.assumeIsolated { done(img) } }
@@ -429,10 +667,18 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     decisionHandler(.allow)
   }
 
+  public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    // A new document: its script reports afresh.
+    guard let r = recordFor(webView), !r.frames.isEmpty else { return }
+    r.frames = [:]
+    mediaChanged(r)
+  }
+
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     guard let r = recordFor(webView) else { return }
     extensionHooks?.pageChanged(webView)
-    webView.evaluateJavaScript(Self.faviconScript) { [weak self] result, _ in
+    onFinish?(r.id)
+    webView.evaluateJavaScript(PageScripts.favicon) { [weak self] result, _ in
       MainActor.assumeIsolated {
         guard let s = result as? String, !s.isEmpty, s != r.favicon else { return }
         r.favicon = s
@@ -441,8 +687,14 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
   }
 
+  public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    if let r = recordFor(webView) { onFinish?(r.id) }
+  }
+
   public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
     guard let r = recordFor(webView) else { return }
+    r.frames = [:]
+    mediaChanged(r)
     host.emit("webviews.crashed", ["id": .string(r.id)])
   }
 
@@ -508,6 +760,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   }
 
   public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    if let r = recordFor(webView) { onFinish?(r.id) }
     let url = ((error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? webView.url
     guard let url, let page = WebErrorPage.page(for: error, url: url) else { return }
     webView.loadSimulatedRequest(URLRequest(url: url), responseHTML: WebErrorPage.html(page, url: url, colors: prompts?.errorPageColors))
@@ -519,19 +772,32 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       w.context = .init(link: b["link"] as? String ?? "", image: b["image"] as? String ?? "", selection: b["selection"] as? String ?? "")
       return
     }
-    guard let w = msg.webView, let r = recordFor(w), let playing = msg.body as? Bool, playing != r.audio else { return }
-    r.audio = playing
-    host.emit("webviews.audio", ["id": .string(r.id), "playing": .bool(playing)])
+    guard let w = msg.webView, let r = recordFor(w), r.webView === w else { return }
+    let body = Self.jsValue(msg.body)
+    if body.str("k") == "t" {
+      onPlayback?(r.id, body)
+      return
+    }
+    guard body.str("k") == "s" else { return }
+    let key = msg.frameInfo.isMainFrame ? "main" : (msg.frameInfo.request.url?.absoluteString ?? "frame")
+    let media = PageMedia(body)
+    if !msg.frameInfo.isMainFrame && !media.playing && !media.dirty && !media.pip && media.video == nil {
+      r.frames[key] = nil
+    } else {
+      r.frames[key] = (msg.frameInfo, media)
+    }
+    mediaChanged(r)
   }
 
-  static let mediaScript = """
-    (function(){var last=null;function s(){var p=false;document.querySelectorAll('video,audio').forEach(function(m){if(!m.paused&&!m.muted&&m.volume>0&&!m.ended)p=true});if(p!==last){last=p;try{webkit.messageHandlers.denMedia.postMessage(p)}catch(e){}}}
-    ['play','playing','pause','ended','volumechange','emptied'].forEach(function(e){document.addEventListener(e,s,true)});})();
-    """
-
-  static let faviconScript = """
-    (function(){var l=document.querySelector('link[rel~="apple-touch-icon"]')||document.querySelector('link[rel~="icon"]')||document.querySelector('link[rel="shortcut icon"]');return l?l.href:(location.origin+'/favicon.ico')})()
-    """
+  func mediaChanged(_ r: WebRecord) {
+    let m = r.media
+    if m.audible != r.audio {
+      r.audio = m.audible
+      host.emit("webviews.audio", ["id": .string(r.id), "playing": .bool(m.audible)])
+    }
+    onMedia?(r)
+    host.emit("webviews.media", ["id": .string(r.id), "playing": .bool(m.playing), "pip": .bool(m.pip), "dirty": .bool(m.dirty)])
+  }
 }
 
 /// Breaks the WKUserContentController -> handler retain cycle.

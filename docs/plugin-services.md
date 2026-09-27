@@ -68,7 +68,7 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 | `deleteFolder` | `id` | ok. Archives the tabs inside it (the menu confirms first) |
 | `split` | `ids` (tab ids), `layout: horizontal\|vertical\|grid` (default horizontal), `focus?` | `{id}` of the split. If one of the tabs is already in a split, the others join it, next to their neighbour in `ids`; otherwise a new split takes the first tab's place. At most 4 tabs. Selects `focus` (default: the last id) |
 | `unsplit` | `id`: a split id ("Separate All Tabs"), or a tab id (only that tab leaves, placed after the split) | ok |
-| `settings` | `archiveAfterMs?` (0 = never, default 12 h), `suspendAfterMs?` (0 = never, default 30 min) | `{archiveAfterMs, suspendAfterMs}` |
+| `settings` | `archiveAfterMs?` (0 = never, default 12 h), `suspendAfterMs?` (0 = never, default 5 min: then the page is discarded, see below) | `{archiveAfterMs, suspendAfterMs}` |
 | `library` | `open?` (default true) | ok. Opens (or closes) the Library sheet |
 
 `rename` also renames folders. Dropping a tab row or folder on another space's footer icon moves it to that space, keeping its section (Arc; a favorite lands in that space's today tabs). In the sidebar, double-clicking a tab row or picking "Rename…" (tabs) / "Rename Folder…" (folders) from the context menu edits the title in place (Arc §2): Return commits, Esc cancels, an empty tab title resets to the page's. Tab and webview ids are the same (`tab-<n>`); folder ids are `folder-<n>`, split ids `split-<n>`. Other UI node ids: `tabs.nav`, `tabs.url`, `tabs.divider:<spaceId>`, `tabs.newtab:<spaceId>`, dialog `tabs.deleteFolder:<id>`.
@@ -91,7 +91,10 @@ Owns:
 - the content layout for the selected tab
 - tab shortcuts: Cmd-W, Cmd-Shift-T, Cmd-D, Cmd-Shift-K, Cmd-1…9, Ctrl-Tab, Cmd-Opt-↑/↓, Cmd-[ and Cmd-], plus Ctrl-Z (undo sidebar action, as in Arc's "Use ⌃Z to undo" toast), Cmd-R, Cmd-. (stop), Cmd-S (sidebar) and Cmd-Shift-C (copy URL)
 - auto-archive of idle today tabs (12 h by default, configurable, and it can be turned off)
-- tab suspension of idle tabs through `webviews.suspend`
+- discarding of idle tabs through `webviews.suspend`: a tab that has been off screen for `suspendAfterMs` (5 min by default, checked every minute) is discarded; the host keeps only its URL, history and scroll (~1 KB) and a snapshot on disk, and its WebContent process exits. The host refuses tabs that play media, are in picture in picture, use the camera or microphone, or hold unsaved form input; they're asked again on the next check
+- tab mute: the speaker on a tab row or favorite tile (and "Mute Tab" / "Unmute Tab" in its menu) calls `webviews.setMuted`; the state lasts while the tab lives. Arc's mute shortcut isn't documented anywhere den's research found, so there is none yet
+- the mini player's "back to tab" (`media.backToTab` selects the tab). Its setting is in the command bar's Settings › Tabs ("Mini player when you leave a playing video", `media.settings`)
+- **drop onto a tab** (Arc, Jan 2024): dropping a tab on the middle half of another tab row or favorite tile makes a split of the two where the target lives, the dragged tab as the right, focused pane; a dragged split takes the tab in. Rows carry `dropInto` and the split hint icon; Ctrl-Z undoes it
 
 ## `commands` (plugin `commandbar`)
 

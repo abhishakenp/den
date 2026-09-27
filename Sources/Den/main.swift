@@ -9,7 +9,9 @@ import os
 //   --appearance light|dark|auto   set every space's appearance through the spaces plugin
 //   --scenario <name>              state before snapshot: main, hidden, reveal, space2, toast, swipe, swipeCommit,
 //                                  load10, load10discard, split, split3, command, commandEdit, commandActions, dialog, peek,
-//                                  littleArcLink, littleArcCmdO (prints scenario.cmdO … ok=true|false, exits), rename, themeLive
+//                                  littleArcLink, littleArcCmdO (prints scenario.cmdO … ok=true|false, exits), rename, themeLive,
+//                                  blank (no web view at all: den's own footprint), discard, mini, miniPlayer, miniURL
+//                                  (discard and miniPlayer print a line per check and exit 0/1)
 //                                  (split*, command*, dialog, peek and littleArcLink need those plugins)
 //                                  page: opens --url <url> as the selected tab (dark mode, sign-in and vault checks)
 //   --dev-plugins <dir>            also load <dir>/*.dylib and hot-reload them when rebuilt
@@ -19,6 +21,7 @@ import os
 //   --storage <dir>                storage root (default ~/Library/Application Support/den/storage)
 //   --no-den-home                  ignore ~/.den (no user plugins, themes, config; nothing watched)
 //   --relaunched [--background]    started by app.relaunch / an update; --background doesn't take focus
+//   --background                   alone (test and measurement runs): doesn't take focus either
 //
 // ~/.den (DEN_HOME overrides it): plugins, themes and config.toml, watched and hot-reloaded
 // after the first window (docs/den-home.md). SIGTERM quits cleanly without the quit dialog.
@@ -56,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var sparkle: DenSparkle?
   /// Set when an update quits den: skip the quit dialog.
   var quittingForUpdate = false
-  var background: Bool { args.contains("--relaunched") && args.contains("--background") }
+  var background: Bool { args.contains("--background") }
   var sigterm: DispatchSourceSignal?
   lazy var sessionLog: DenLog? = home.map { DenLog(url: $0.logs.appendingPathComponent("den.log")) }
 
@@ -191,7 +194,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let ms = Date().timeIntervalSince(processStartDate()) * 1000
     signposter.endInterval("launch", launchInterval)
     runtime.app.launchMs = ms
+    // `blank`: nothing on screen, so no WKWebView or WebKit process is ever created.
+    if arg("--scenario") == "blank" { runtime.call("content", "show", ["panes": []]) }
     runtime.content.releaseWebViews()
+    // Snapshot folders of den processes that crashed (never this one's).
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.runtime.webviews.removeStaleSnapshots() }
     trace("webviews")
     if args.contains("--measure-launch") {
       print(String(format: "launch.firstWindowMs %.1f", ms))
@@ -276,7 +283,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
-    guard runtime != nil, let sessionLog else { return }
+    guard runtime != nil else { return }
+    runtime.webviews.removeSnapshots()
+    guard let sessionLog else { return }
     sessionLog.write(String(format: "quit pid=%d epochMs=%.0f %@", getpid(), Date().timeIntervalSince1970 * 1000, sessionSummary()))
     sessionLog.flush()
   }
@@ -350,6 +359,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case "commandActions":
       rt.call("commands", "open", ["mode": "new"])
       rt.plugins.emit("ui.action", ["id": "commandBar", "action": "tab", "value": ["query": ""]])
+    case "mini", "miniOff", "miniInline", "miniPlayer", "miniURL":
+      snapMini = s == "mini" || s == "miniURL"
+      MediaScenarios.apply(s, runtime: rt)
+    case "discard": DiscardScenarios.apply(s, runtime: rt)
     case "dialog": rt.plugins.emit("app.quitRequested")
     case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { rt.call("tabs", "clearToday") }
     case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.call("peek", "open", ["url": "https://www.swift.org"]) }
@@ -377,7 +390,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
       DispatchQueue.main.asyncAfter(deadline: .now() + Double(ids.count) * 2.5 + 3) {
         rt.call("tabs", "select", ["id": .string(ids.first!)])
-        if s == "load10discard" { for id in ids.dropFirst() { rt.call("webviews", "suspend", ["id": .string(id)]) } }
+        if s == "load10discard" {
+          // An idle discard first (it keeps what must stay, and says why), then forced, so the
+          // measurement always has 9 discarded tabs.
+          var kept: [String] = []
+          for id in ids.dropFirst() {
+            let r = rt.call("webviews", "suspend", ["id": .string(id)])
+            if r["suspended"] == false { kept.append("\(id):\(r.str("reason"))"); rt.call("webviews", "suspend", ["id": .string(id), "force": true]) }
+          }
+          print("scenario.kept \(kept.joined(separator: " "))")
+        }
         let live = ids.filter { rt.call("webviews", "get", ["id": .string($0)]).flag("live") }.count
         print("scenario.ready live=\(live)")
       }
@@ -419,6 +441,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 MainActor.assumeIsolated { trace("main") }
 let app = NSApplication.shared
+
 app.setActivationPolicy(.regular)
 let delegate = AppDelegate()
 app.delegate = delegate

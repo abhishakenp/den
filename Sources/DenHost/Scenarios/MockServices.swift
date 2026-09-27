@@ -27,6 +27,13 @@ public final class MockServices: @unchecked Sendable {
   public static let dCookie = "xoxd-mock-session"
   public static let tokens = ["T01ACME": "xoxc-mock-acme", "T02DEN": "xoxc-mock-den"]
   public static let me = "U01ME"
+  /// Static files by path (the mini player scenario's test page and video), with byte ranges:
+  /// WebKit's media loader asks for `Range: bytes=…` and needs 206 answers.
+  public var files: [String: (type: String, data: Data)] {
+    get { lock.withLock { _files } }
+    set { lock.withLock { _files = newValue } }
+  }
+  private var _files: [String: (type: String, data: Data)] = [:]
 
   public init(now: Date = Date()) { self.now = now }
 
@@ -88,7 +95,8 @@ public final class MockServices: @unchecked Sendable {
         if let data { buffer.append(data) }
         if let req = Self.parse(buffer) {
           let (status, headers, body) = self.respond(req)
-          var head = "HTTP/1.1 \(status) \(status == 200 ? "OK" : status == 302 ? "Found" : "Error")\r\nContent-Length: \(body.count)\r\nConnection: close\r\n"
+          let reason = [200: "OK", 206: "Partial Content", 302: "Found"][status] ?? "Error"
+          var head = "HTTP/1.1 \(status) \(reason)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n"
           for (k, v) in headers { head += "\(k): \(v)\r\n" }
           c.send(content: Data((head + "\r\n").utf8) + body, completion: .contentProcessed { _ in c.cancel() })
           return
@@ -140,12 +148,25 @@ public final class MockServices: @unchecked Sendable {
       """
   }
 
+  /// A static file, or the part `Range: bytes=a-b` asks for.
+  func file(_ type: String, _ data: Data, range: String?) -> (Int, [(String, String)], Data) {
+    var headers = [("Content-Type", type), ("Accept-Ranges", "bytes")]
+    guard let range, range.hasPrefix("bytes="), !data.isEmpty else { return (200, headers, data) }
+    let parts = range.dropFirst(6).split(separator: "-", omittingEmptySubsequences: false).map { Int($0) }
+    let start = min(parts.first.flatMap { $0 } ?? 0, data.count - 1)
+    let end = min(parts.count > 1 ? (parts[1] ?? data.count - 1) : data.count - 1, data.count - 1)
+    guard start <= end else { return (416, headers, Data()) }
+    headers.append(("Content-Range", "bytes \(start)-\(end)/\(data.count)"))
+    return (206, headers, data.subdata(in: start..<(end + 1)))
+  }
+
   func json(_ obj: Any) -> (Int, [(String, String)], Data) {
     (200, [("Content-Type", "application/json; charset=utf-8")], (try? JSONSerialization.data(withJSONObject: obj)) ?? Data())
   }
 
   func respond(_ r: Request) -> (Int, [(String, String)], Data) {
     lock.withLock { _log.append("\(r.method) \(r.path)") }
+    if r.method == "GET", let f = files[r.path] { return file(f.type, f.data, range: r.headers["range"]) }
     if let (type, body) = lock.withLock({ _pages[r.path] }) { return (200, [("Content-Type", type)], body) }
     switch (r.method, r.path) {
     case ("GET", "/slack/signin"):

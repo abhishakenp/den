@@ -51,6 +51,10 @@ public struct Palette: Equatable {
   public var selectedFill: NSColor { dark ? Self.snow(0.20) : NSColor(white: 1, alpha: 0.85) }  // TabCellBackgroundCurrent
   public var selectedShadow: NSColor? { dark ? nil : NSColor(white: 0, alpha: 0.20) }  // TabCellShadowSelected
   public var pressedFill: NSColor { dark ? Self.snow(0.06) : Self.ink(0.06) }  // TabCellBackgroundPressed
+  /// A small control inside a row (close X, speaker): must read over the row's own hover and
+  /// selected fills, which are translucent white in light mode (estimate).
+  public var controlHoverFill: NSColor { dark ? Self.snow(0.14) : Self.ink(0.08) }
+  public var controlPressedFill: NSColor { dark ? Self.snow(0.22) : Self.ink(0.14) }
   public var pillFill: NSColor { dark ? Self.snow(0.10) : Self.ink(0.05) }  // SidebarItemBackground
   public var pillHoverFill: NSColor { dark ? Self.snow(0.15) : Self.ink(0.10) }  // SidebarItemHoveredBackground
   public var tileFill: NSColor { dark ? Self.snow(0.10) : Self.ink(0.05) }  // estimate: favorites use SidebarItemBackground
@@ -200,8 +204,10 @@ public final class ImageCache {
     if waiting[url] != nil { waiting[url]!.append(done); return }
     guard let u = URL(string: url) else { return done(nil) }
     waiting[url] = [done]
-    session.dataTask(with: u) { data, _, _ in
-      let bytes = data
+    session.dataTask(with: u) { data, response, _ in
+      // An HTTP error is a failure even with a body (an error page, or a service's placeholder).
+      let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+      let bytes = (200..<300).contains(status) ? data : nil
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
           var img = bytes.flatMap { NSImage(data: $0) }
@@ -218,27 +224,94 @@ public final class ImageCache {
   }
 }
 
-/// Draws an icon spec: "sf:<symbol>", an http(s) image URL, an absolute file path, or text/emoji. Falls back to a
-/// letter tile when a remote image fails.
+/// Site identity for pages without a usable icon or title: the domain shown in a letter tile,
+/// and its color. Pure functions, so tests can pin the derivation.
+public enum Sites {
+  /// "https://www.example.com/a" -> "example.com"; "" for URLs without a web host (data:,
+  /// file:, about:).
+  public static func domain(_ url: String) -> String {
+    guard let u = URL(string: url), let scheme = u.scheme?.lowercased(), scheme == "http" || scheme == "https",
+          let h = u.host?.lowercased(), !h.isEmpty else { return "" }
+    return h.hasPrefix("www.") ? String(h.dropFirst(4)) : h
+  }
+
+  /// The domain a remote icon stands for: Google s2's `domain=` parameter, else the icon's host.
+  public static func domain(ofIcon spec: String) -> String {
+    if spec.contains("/s2/favicons"), let c = URLComponents(string: spec),
+       let d = c.queryItems?.first(where: { $0.name == "domain" })?.value {
+      let h = domain("https://" + d)
+      return h.contains(".") || h == "localhost" ? h : ""
+    }
+    return domain(spec)
+  }
+
+  /// A short label for a page's location (Little Arc's field, library subtitles): the domain,
+  /// a `file:` URL's file name, else "".
+  public static func label(_ url: String) -> String {
+    let d = domain(url)
+    if !d.isEmpty { return d }
+    if let u = URL(string: url), u.isFileURL { return u.lastPathComponent == "/" ? "" : u.lastPathComponent }
+    return ""
+  }
+
+  /// The tile's letter: the domain's first character, uppercased ("www." dropped).
+  public static func letter(_ domain: String) -> String {
+    let d = domain.hasPrefix("www.") ? String(domain.dropFirst(4)) : domain
+    return d.first.map { String($0).uppercased() } ?? ""
+  }
+
+  /// Hue in [0, 1) derived from the domain (FNV-1a), stable across launches and machines.
+  public static func hue(_ domain: String) -> CGFloat {
+    var d = domain.lowercased()
+    if d.hasPrefix("www.") { d = String(d.dropFirst(4)) }
+    var h: UInt32 = 2_166_136_261
+    for b in d.utf8 { h = (h ^ UInt32(b)) &* 16_777_619 }
+    return CGFloat(h % 360) / 360
+  }
+
+  /// The tile color: the domain's hue at a soft saturation. Yellows and greens are luminous, so
+  /// they get darker (peak at 72°) to keep the white letter readable.
+  public static func tileColor(_ domain: String, dark: Bool) -> NSColor {
+    let h = hue(domain)
+    let luminous = max(0, 1 - abs(h - 0.2) / 0.2)
+    return NSColor(hue: h, saturation: dark ? 0.52 : 0.58, brightness: (dark ? 0.68 : 0.80) - 0.18 * luminous, alpha: 1)
+  }
+}
+
+/// Draws an icon spec: "sf:<symbol>", "app:icon", "site:<domain>" (a letter tile in a color
+/// derived from the domain, or a globe when the domain is empty), an http(s) or data: image
+/// URL, an absolute image file path (extension icons), or text/emoji. A remote image that fails to load (or answers non-2xx) becomes the
+/// `site:` tile for `fallbackDomain`, else for the domain the icon URL names (Google s2's
+/// `domain=`, else its host); with no domain, a globe.
 public final class IconView: NSView, Themable {
   public var spec = "" { didSet { if spec != oldValue { reload() } } }
+  /// Letter drawn on a plain tile when `spec` is empty.
   public var fallbackLetter = "" { didSet { needsDisplay = true } }
+  /// Domain for the tile a failed remote icon falls back to (overrides the one derived from `spec`).
+  public var fallbackDomain = "" { didSet { needsDisplay = true } }
   public var tint: NSColor = .labelColor { didSet { needsDisplay = true } }
   private var image: NSImage?
   private var isSymbol = false
+  /// The remote icon failed: draw the site tile instead.
+  private var failed = false
 
   public override var isFlipped: Bool { true }
+
+  static let globe = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+
+  var isDark: Bool { effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
+
+  var isRemote: Bool { spec.hasPrefix("http://") || spec.hasPrefix("https://") || spec.hasPrefix("data:") }
 
   public override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
     needsDisplay = true
   }
 
-  var isDark: Bool { effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
-
   func reload() {
     image = nil
     isSymbol = false
+    failed = false
     if spec == "app:icon" {
       image = NSApp.applicationIconImage
     } else if spec.hasPrefix("sf:") {
@@ -246,12 +319,14 @@ public final class IconView: NSView, Themable {
       isSymbol = true
     } else if spec.hasPrefix("/") {
       image = ImageCache.shared.file(spec)
-    } else if spec.hasPrefix("http://") || spec.hasPrefix("https://") || spec.hasPrefix("data:") {
+      failed = image == nil
+    } else if isRemote {
       let s = spec
       if let c = ImageCache.shared.cached(s) { image = c } else {
         ImageCache.shared.load(s) { [weak self] img in
           guard let self, self.spec == s else { return }
           self.image = img
+          self.failed = img == nil
           self.needsDisplay = true
         }
       }
@@ -264,59 +339,67 @@ public final class IconView: NSView, Themable {
   public override func draw(_ dirtyRect: NSRect) {
     let b = bounds
     if let img = image {
-      if isSymbol {
-        let cfg = NSImage.SymbolConfiguration(pointSize: b.height * 0.78, weight: .medium)
-        let sym = img.withSymbolConfiguration(cfg) ?? img
-        let s = sym.size
-        let r = NSRect(x: b.midX - s.width / 2, y: b.midY - s.height / 2, width: s.width, height: s.height)
-        // Fill with the opaque tint, then apply its alpha when compositing: filling a translucent
-        // tint `.sourceAtop` would leave the black template showing through.
-        let opaque = tint.withAlphaComponent(1)
-        let tinted = NSImage(size: s, flipped: false) { rect in
-          sym.draw(in: rect)
-          opaque.set()
-          rect.fill(using: .sourceAtop)
-          return true
-        }
-        tinted.draw(in: r, from: .zero, operation: .sourceOver, fraction: tint.alphaComponent, respectFlipped: true, hints: nil)
-      } else {
-        NSGraphicsContext.current?.imageInterpolation = .high
-        let path = NSBezierPath(roundedRect: b, xRadius: b.width * 0.2, yRadius: b.height * 0.2)
-        NSGraphicsContext.saveGraphicsState()
-        path.addClip()
-        // Dark monochrome icons (GitHub) are drawn inverted in dark mode, or they'd disappear.
-        let drawn = isDark ? (ImageCache.shared.darkVariant(spec, img) ?? img) : img
-        drawn.draw(in: b, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-        NSGraphicsContext.restoreGraphicsState()
-      }
+      if isSymbol { return drawSymbol(img, in: b) }
+      NSGraphicsContext.current?.imageInterpolation = .high
+      let path = NSBezierPath(roundedRect: b, xRadius: b.width * 0.2, yRadius: b.height * 0.2)
+      NSGraphicsContext.saveGraphicsState()
+      path.addClip()
+      // Dark monochrome icons (GitHub) are drawn inverted in dark mode, or they'd disappear.
+      let drawn = isDark ? (ImageCache.shared.darkVariant(spec, img) ?? img) : img
+      drawn.draw(in: b, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+      NSGraphicsContext.restoreGraphicsState()
       return
     }
-    let remote = spec.hasPrefix("http") || spec.hasPrefix("/") || spec.isEmpty
-    let text = remote ? String(fallbackLetter.prefix(1)).uppercased() : spec
-    if text.isEmpty, remote, !spec.isEmpty, let globe = NSImage(systemSymbolName: "globe", accessibilityDescription: nil) {
-      // No favicon and no title to letter: the globe symbol, drawn as a vector at this size.
-      let sym = globe.withSymbolConfiguration(.init(pointSize: b.height * 0.78, weight: .medium)) ?? globe
-      let sz = sym.size
-      let opaque = tint.withAlphaComponent(1)
-      let tinted = NSImage(size: sz, flipped: false) { rect in
-        sym.draw(in: rect)
-        opaque.set()
-        rect.fill(using: .sourceAtop)
-        return true
-      }
-      tinted.draw(in: NSRect(x: b.midX - sz.width / 2, y: b.midY - sz.height / 2, width: sz.width, height: sz.height), from: .zero,
-                  operation: .sourceOver, fraction: tint.alphaComponent, respectFlipped: true, hints: nil)
-      return
+    if spec.hasPrefix("site:") { return drawSite(String(spec.dropFirst(5)), in: b) }
+    if isRemote || spec.hasPrefix("/") {
+      // Loading or failed: the site tile (a cached favicon was already set in reload()).
+      return drawSite(fallbackDomain.isEmpty ? Sites.domain(ofIcon: spec) : fallbackDomain, in: b)
     }
-    guard !text.isEmpty else { return }
-    if remote {
+    if spec.isEmpty {
+      let text = String(fallbackLetter.prefix(1)).uppercased()
+      guard !text.isEmpty else { return }
       tint.withAlphaComponent(0.18).setFill()
       NSBezierPath(roundedRect: b, xRadius: b.width * 0.25, yRadius: b.height * 0.25).fill()
+      return drawText(text, in: b, scale: 0.62, color: tint)
     }
-    let font = NSFont.systemFont(ofSize: b.height * (remote ? 0.62 : 0.86), weight: .semibold)
-    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: tint]
+    drawText(spec, in: b, scale: 0.86, color: tint)
+  }
+
+  /// The `site:` tile: the domain's letter, white on its derived color; a globe without one.
+  func drawSite(_ domain: String, in b: NSRect) {
+    let letter = Sites.letter(domain)
+    guard let c = letter.unicodeScalars.first, CharacterSet.alphanumerics.contains(c) else {
+      if let g = Self.globe { drawSymbol(g, in: b, scale: 0.86) }
+      return
+    }
+    Sites.tileColor(domain, dark: isDark).setFill()
+    NSBezierPath(roundedRect: b, xRadius: b.width * 0.2, yRadius: b.height * 0.2).fill()
+    drawText(letter, in: b, scale: 0.62, color: .white, weight: .bold)
+  }
+
+  func drawText(_ text: String, in b: NSRect, scale: CGFloat, color: NSColor, weight: NSFont.Weight = .semibold) {
+    var font = NSFont.systemFont(ofSize: b.height * scale, weight: weight)
+    if weight == .bold, let d = font.fontDescriptor.withDesign(.rounded) { font = NSFont(descriptor: d, size: font.pointSize) ?? font }
+    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
     let s = (text as NSString).size(withAttributes: attrs)
     (text as NSString).draw(at: NSPoint(x: b.midX - s.width / 2, y: b.midY - s.height / 2), withAttributes: attrs)
+  }
+
+  func drawSymbol(_ img: NSImage, in b: NSRect, scale: CGFloat = 0.78) {
+    let cfg = NSImage.SymbolConfiguration(pointSize: b.height * scale, weight: .medium)
+    let sym = img.withSymbolConfiguration(cfg) ?? img
+    let s = sym.size
+    let r = NSRect(x: b.midX - s.width / 2, y: b.midY - s.height / 2, width: s.width, height: s.height)
+    // Fill with the opaque tint, then apply its alpha when compositing: filling a translucent
+    // tint `.sourceAtop` would leave the black template showing through.
+    let opaque = tint.withAlphaComponent(1)
+    let tinted = NSImage(size: s, flipped: false) { rect in
+      sym.draw(in: rect)
+      opaque.set()
+      rect.fill(using: .sourceAtop)
+      return true
+    }
+    tinted.draw(in: r, from: .zero, operation: .sourceOver, fraction: tint.alphaComponent, respectFlipped: true, hints: nil)
   }
 }
 
@@ -358,10 +441,14 @@ public final class IconButton: NSView, Themable, Hoverable {
     icon.frame = NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s)
   }
 
+  /// Circular hover fill instead of the rounded square.
+  var round = false
+
   public override func draw(_ dirtyRect: NSRect) {
     guard hovering && enabled else { return }
     hoverFill.setFill()
-    NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+    let r = round ? bounds.height / 2 : 6
+    NSBezierPath(roundedRect: bounds, xRadius: r, yRadius: r).fill()
   }
 
   public override func updateTrackingAreas() {
@@ -371,6 +458,9 @@ public final class IconButton: NSView, Themable, Hoverable {
   }
   public override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
   public override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
+  /// Acts on the click that also focuses its window (the mini player, which never activates den).
+  var firstMouse = false
+  public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { firstMouse }
   public override func mouseDown(with event: NSEvent) {}
   public override func mouseUp(with event: NSEvent) {
     if enabled && bounds.contains(convert(event.locationInWindow, from: nil)) { action() }

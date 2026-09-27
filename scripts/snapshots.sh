@@ -42,6 +42,10 @@ host peek-card peekCard light
 host peek-card-dark peekCard dark
 host split-view-chrome splitView light
 host drop-indicator-dark dropIndicator dark
+host drop-on-tab dropOnTab light
+host drop-on-tab-dark dropOnTab dark
+host tab-audio tabAudio light
+host tab-audio-dark tabAudio dark
 host library library light
 host library-dark library dark
 host library-clear-dark libraryClear dark

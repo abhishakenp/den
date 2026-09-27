@@ -216,7 +216,7 @@ final class PeekCore {
     guard let id = newWebview("peek-", url: url, profile: profile) else { return .err("peek: cannot create a web view") }
     peek = id
     peekSource = source
-    env.call("content", "peek", ["webview": .string(id), "title": .string(URLs.display(url))])
+    env.call("content", "peek", ["webview": .string(id), "title": .string(URLs.title(url))])
     if !escBound {
       env.call("keys", "bind", ["chord": "esc", "event": "peek.key.close", "title": "Close Peek", "menu": "View"])
       escBound = true

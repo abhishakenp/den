@@ -32,8 +32,11 @@ extension CommandBarCore {
                   type: "choice", options: [(.int(43_200_000), "12 hours"), (.int(86_400_000), "24 hours"), (.int(604_800_000), "7 days"),
                                             (.int(2_592_000_000), "30 days"), (.int(0), "Never")], keywords: ["auto archive", "close", "clean up"]),
     PluginSetting(service: "tabs", field: "suspendAfterMs", title: "Unload inactive tabs after", pane: "Tabs", icon: "sf:moon.zzz",
-                  type: "choice", options: [(.int(900_000), "15 minutes"), (.int(1_800_000), "30 minutes"), (.int(3_600_000), "1 hour"), (.int(0), "Never")],
+                  type: "choice", options: [(.int(300_000), "5 minutes"), (.int(900_000), "15 minutes"), (.int(1_800_000), "30 minutes"), (.int(3_600_000), "1 hour"), (.int(0), "Never")],
                   keywords: ["memory", "sleep", "suspend", "discard"]),
+    // Arc: "Enable Picture in Picture when you leave a video tab" (host `media` service).
+    PluginSetting(service: "media", field: "autoMiniPlayer", title: "Mini player when you leave a playing video", pane: "Tabs", icon: "sf:pip",
+                  type: "toggle", options: [], keywords: ["picture in picture", "pip", "video", "mini player", "youtube"]),
     PluginSetting(service: "briefing", field: "enabled", title: "Morning briefing", pane: "Briefing", icon: "sf:sun.max", type: "toggle",
                   options: [], keywords: ["daily", "schedule", "summary"]),
   ]

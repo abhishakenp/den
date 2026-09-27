@@ -16,12 +16,13 @@ final class TabsCore {
     var favicon: String?
     var lastActive: Int64
     var audio = false
+    var muted = false  // runtime only, like `audio`: a tab stays muted while it lives
 
     var displayTitle: String {
       if let c = customTitle, !c.isEmpty { return c }
-      return title.isEmpty ? URLs.display(url) : title
+      return URLs.pageTitle(title, url)
     }
-    var icon: String { favicon ?? URLs.favicon(url) }
+    var icon: String { URLs.icon(favicon, url) }
     var drift: Bool { URLs.drifted(url: url, pinned: pinnedUrl) }
 
     var value: Value {
@@ -83,7 +84,10 @@ final class TabsCore {
   static let maxPanes = 4
   /// 24 hours (Arc: 12). A tab opened late in the day is still there the next morning; see docs/defaults.md.
   static let defaultArchiveAfterMs: Int64 = 24 * 3_600_000
-  static let defaultSuspendAfterMs: Int64 = 30 * 60_000  // den's choice: 30 minutes
+  // den's choice: 5 minutes in the background, then the page is discarded (its WebContent
+  // process exits; the host keeps the URL, history and a snapshot on disk). The host refuses
+  // tabs that play media, hold unsaved input or are on screen (docs/perf/memory.md).
+  static let defaultSuspendAfterMs: Int64 = 5 * 60_000
   static let tickMs: UInt64 = 60_000
 
   let env: PluginEnv
@@ -455,8 +459,8 @@ final class TabsCore {
       guard !url.isEmpty else { return .err("tabs: addToArchive needs a url") }
       let sid = args.sOpt("spaceId").flatMap { pageIndex($0) != nil ? $0 : nil } ?? currentSpace
       let id = newId("tab-")
-      archive.insert(["id": .string(id), "title": .string(args.sOpt("title") ?? URLs.display(url)), "url": .string(url),
-                      "favicon": .string(args.sOpt("favicon") ?? URLs.favicon(url)), "closedAt": .int(env.now()), "spaceId": .string(sid)], at: 0)
+      archive.insert(["id": .string(id), "title": .string(URLs.pageTitle(args.s("title"), url)), "url": .string(url),
+                      "favicon": .string(URLs.icon(args.sOpt("favicon"), url)), "closedAt": .int(env.now()), "spaceId": .string(sid)], at: 0)
       if archive.count > 500 { archive.removeLast() }
       saveSoon()
       env.emit("tabs.changed", ["spaceId": .string(sid)])
@@ -504,8 +508,8 @@ final class TabsCore {
     return [
       "id": .string(id), "spaceId": .str(loc.flatMap { space(of: $0.0) }), "kind": .string(loc.map { kind(of: $0.0) } ?? "today"),
       "folderId": folderId, "title": .string(t.displayTitle), "customTitle": .str(t.customTitle), "url": .string(t.url),
-      "pinnedUrl": .str(t.pinnedUrl), "favicon": .str(t.favicon), "webviewId": .string(id), "lastActive": .int(t.lastActive),
-      "audio": .bool(t.audio),
+      "pinnedUrl": .str(t.pinnedUrl), "favicon": .str(t.favicon.flatMap { URLs.usable($0) ? $0 : nil }), "webviewId": .string(id), "lastActive": .int(t.lastActive),
+      "audio": .bool(t.audio), "muted": .bool(t.muted),
     ]
   }
 
@@ -657,13 +661,14 @@ final class TabsCore {
         if !st.s("title").isEmpty { tabs[id]?.title = st.s("title") }
         if !st.s("favicon").isEmpty { tabs[id]?.favicon = st.s("favicon") }
         tabs[id]?.audio = st.b("audio")
+        tabs[id]?.muted = st.b("muted")
       }
     }
   }
 
   func open(_ url: String, space sid: String, kind: String, background: Bool, index: Int?, adopt: String? = nil) -> String {
     let id = adopt ?? newId("tab-")
-    let t = Tab(id: id, title: URLs.display(url), url: url, pinnedUrl: kind == "today" ? nil : url, lastActive: env.now())
+    let t = Tab(id: id, title: URLs.title(url), url: url, pinnedUrl: kind == "today" ? nil : url, lastActive: env.now())
     tabs[id] = t
     let box: Box = kind == "favorite" ? .favorites : kind == "pinned" ? .pinned(sid) : .today(sid)
     var list = ids(box)
@@ -736,7 +741,7 @@ final class TabsCore {
     tabs[id] = nil
     mru.removeAll { $0 == id }
     tidySplits()
-    env.call("webviews", "suspend", ["id": .string(id)])
+    env.call("webviews", "suspend", ["id": .string(id), "force": true])
     env.emit("tabs.closed", ["id": .string(id)])
   }
 
@@ -752,7 +757,7 @@ final class TabsCore {
     } else {
       // Pinned tabs and favorites are only unloaded.
       tabs[id]?.lastActive = env.now()
-      env.call("webviews", "suspend", ["id": .string(id)])
+      env.call("webviews", "suspend", ["id": .string(id), "force": true])
     }
     if wasSelected {
       selected[sid] = nil
@@ -1056,8 +1061,10 @@ final class TabsCore {
       }
     }
     if suspendAfterMs > 0 {
+      // Idle discard. The host refuses what must stay (on screen, media, PiP, camera/mic,
+      // unsaved input) and says why; such a tab is asked again on the next tick.
       let onScreen = Set(splitOf(shown).flatMap { splits[$0]?.children } ?? [shown])
-      for (id, t) in tabs where !onScreen.contains(id) && !t.audio && now - t.lastActive > suspendAfterMs {
+      for (id, t) in tabs where !onScreen.contains(id) && now - t.lastActive > suspendAfterMs {
         if env.call("webviews", "get", ["id": .string(id)]).b("live") {
           env.call("webviews", "suspend", ["id": .string(id)])
         }
@@ -1123,14 +1130,16 @@ final class TabsCore {
       let id = splits[fid]?.children.first ?? fid
       guard let t = tabs[id] else { return nil }
       return ["type": "favoriteTile", "id": .string(id), "icon": .string(t.icon), "title": .string(t.displayTitle), "selected": .bool(id == sel),
-              "audio": .bool(t.audio), "menu": .array(menu(for: id, box: .favorites))]
+              "audio": .bool(t.audio), "muted": .bool(t.muted), "menu": .array(menu(for: id, box: .favorites)), "dropInto": true]
     })]])
   }
 
   func row(_ id: String, _ sid: String, box: Box) -> Value {
     let t = tabs[id]!
     var r: Value = ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(selected[sid] == id),
-                    "audio": .bool(t.audio), "drift": .bool(kind(of: box) != "today" && t.drift), "menu": .array(menu(for: id, box: box))]
+                    "audio": .bool(t.audio), "muted": .bool(t.muted), "drift": .bool(kind(of: box) != "today" && t.drift), "menu": .array(menu(for: id, box: box)),
+                    "closeTitle": .string(kind(of: box) == "today" ? "Archive Tab" : "Close Tab"),
+                    "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1"]
     if editing == id { r.put("editing", true) }
     return r
   }
@@ -1186,6 +1195,9 @@ final class TabsCore {
     var m: [Value] = [["id": "copy", "title": "Copy Link", "icon": "sf:link"], ["id": "duplicate", "title": "Duplicate", "icon": "sf:plus.square.on.square"]]
     // Favorites are icon tiles with no title to edit in place.
     if box != .favorites { m.append(["id": "rename", "title": "Rename…", "icon": "sf:pencil"]) }
+    if t.audio || t.muted {
+      m.append(t.muted ? ["id": "unmute", "title": "Unmute Tab", "icon": "sf:speaker.wave.2"] : ["id": "mute", "title": "Mute Tab", "icon": "sf:speaker.slash"])
+    }
     let k = kind(of: box)
     if k != "today" && t.drift {
       m.append(["id": "reset", "title": "Go Back to Pinned URL", "icon": "sf:arrow.uturn.backward"])
@@ -1285,9 +1297,11 @@ final class TabsCore {
     env.on("tabs.key.stop") { [self] _ in web("stop") }
     env.on("tabs.key.sidebar") { [self] _ in env.call("window", "toggleSidebar") }
     env.on("tabs.key.copy") { [self] _ in copyURL() }
-    for e in ["webviews.title", "webviews.url", "webviews.favicon", "webviews.progress", "webviews.state", "webviews.audio"] {
+    for e in ["webviews.title", "webviews.url", "webviews.favicon", "webviews.progress", "webviews.state", "webviews.audio", "webviews.muted"] {
       env.on(e) { [self] v in webEvent(e, v) }
     }
+    // The mini player's "back to tab" (host `media` service).
+    env.on("media.backToTab") { [self] v in if tabs[v.s("webview")] != nil { select(v.s("webview")) } }
     // target=_blank and window.open (foreground); ⌘-click / middle-click / "Open Link in New Tab"
     // come with `background: true` (⌘⇧-click: false).
     env.on("webviews.newWindow") { [self] v in
@@ -1302,6 +1316,12 @@ final class TabsCore {
   }
 
   func shownTab() -> String? { shown.isEmpty ? nil : shown }
+
+  /// Mutes or unmutes a tab's page (the speaker on its row or tile, or its menu).
+  func toggleMute(_ id: String) {
+    guard let t = tabs[id] else { return }
+    env.call("webviews", "setMuted", ["id": .string(id), "muted": .bool(!t.muted)])
+  }
 
   /// A click in (or Ctrl-Shift-N to) another pane of the shown split selects that pane's tab,
   /// without re-laying out the content.
@@ -1418,6 +1438,7 @@ final class TabsCore {
     case "webviews.url": tabs[id]?.url = v.s("url")
     case "webviews.favicon": if let u = v.sOpt("url") { tabs[id]?.favicon = u }
     case "webviews.audio": tabs[id]?.audio = v.b("playing")
+    case "webviews.muted": tabs[id]?.muted = v.b("muted")
     default:
       if isSelected { renderHeader() }  // progress / back-forward state
       return
@@ -1444,6 +1465,16 @@ final class TabsCore {
       _ = split(sp.children + [src], layout: sp.layout, focus: src)
       return
     }
+    if pos == "into", tabs[dst] != nil {
+      // Onto a tab (Arc, Jan 2024): the two become a split where the target lives, the dragged
+      // tab as the right pane and focused. A dragged split takes the tab in instead.
+      if tabs[src] != nil, splitOf(src) == nil || splitOf(src) != splitOf(dst) {
+        _ = split([dst, src], layout: "horizontal", focus: src)
+      } else if let sp = splits[src], splitOf(dst) == nil {
+        _ = split(sp.children + [dst], layout: sp.layout, focus: dst)
+      }
+      return
+    }
     if folders[src] != nil {
       // Folders live in the pinned section, never inside themselves.
       if case .today = box { return }
@@ -1466,6 +1497,7 @@ final class TabsCore {
       case "renameCancel": endRename(id, nil)
       case "close": close(id)
       case "reset": reset(id)
+      case "mute": toggleMute(id)
       case "reorder": handleReorder(value)
       case "dropOnSpace": moveToSpace(id, value.s("spaceId"))
       case "dropOnContent":
@@ -1596,7 +1628,8 @@ final class TabsCore {
   func renderLibrary() {
     guard libraryOpen else { return }
     let items: [Value] = archive.map { e in
-      ["id": e["id"], "title": e["title"], "url": e["url"], "icon": .string(e.sOpt("favicon") ?? URLs.favicon(e.s("url"))), "closedAt": e["closedAt"]]
+      ["id": e["id"], "title": .string(URLs.pageTitle(e.s("title"), e.s("url"))), "url": e["url"], "icon": .string(URLs.icon(e.sOpt("favicon"), e.s("url"))),
+       "closedAt": e["closedAt"]]
     }
     env.call("ui", "set", ["slot": "overlay.library", "tree": [
       "type": "library", "id": .string(Self.libraryId), "title": "Archive", "placeholder": "Search archived tabs",
@@ -1649,6 +1682,7 @@ final class TabsCore {
       }
     case "duplicate": _ = duplicate(id)
     case "rename": beginRename(id)
+    case "mute", "unmute": toggleMute(id)
     case "reset": reset(id)
     case "replacePinned":
       checkpoint()

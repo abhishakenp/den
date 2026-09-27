@@ -212,23 +212,49 @@ struct ServiceTests {
   @Test func suspendDiscardsAndRestores() async throws {
     let rt = Self.runtime()
     let id = rt.call("webviews", "create", ["id": "t"])["id"].string!
+    let other = rt.call("webviews", "create", ["id": "o"])["id"].string!
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     let web = try #require(rt.webviews.record(id)?.webView)
-    _ = rt.call("webviews", "navigate", ["id": .string(id), "url": "https://example.com/"])
+    web.loadHTMLString("<title>Local</title><body style='background:#fdd'><h1>Hello</h1></body>", baseURL: URL(string: "https://local.test/page"))
     for _ in 0..<100 where web.isLoading || web.title?.isEmpty != false { try await Task.sleep(for: .milliseconds(50)) }
+    // On screen: an idle discard is refused; an explicit one isn't needed here.
+    #expect(rt.call("webviews", "suspend", ["id": .string(id)]) == ["suspended": false, "reason": "visible"])
+    // Leaving the screen saves a small snapshot to disk.
+    _ = rt.call("content", "show", ["panes": [.string(other)]])
+    for _ in 0..<60 where rt.webviews.record(id)?.snapshotPath == nil { try await Task.sleep(for: .milliseconds(50)) }
+    let path = try #require(rt.webviews.record(id)?.snapshotPath)
+    #expect(path.hasSuffix(".jpg") && FileManager.default.fileExists(atPath: path))
+    #expect(web.superview == nil)
     var suspended = false
     rt.host.on("webviews.suspended") { _ in suspended = true }
-    _ = rt.call("webviews", "suspend", ["id": .string(id)])
-    for _ in 0..<60 where !suspended { try await Task.sleep(for: .milliseconds(50)) }
+    #expect(rt.call("webviews", "suspend", ["id": .string(id)]) == ["suspended": true])
+    #expect(suspended)  // off screen: discarded at once
     let st = rt.call("webviews", "get", ["id": .string(id)])
-    #expect(st["live"] == false && st["suspended"] == true)
-    #expect(rt.webviews.record(id)?.snapshot != nil)
-    // Showing it again recreates the web view from the saved interaction state.
+    #expect(st["live"] == false && st["suspended"] == true && st["snapshot"] == .string(path))
+    // Showing it again recreates the web view from the saved state, under its snapshot.
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     let again = try #require(rt.webviews.record(id)?.webView)
     #expect(again !== web)
-    for _ in 0..<100 where again.url == nil { try await Task.sleep(for: .milliseconds(50)) }
-    #expect(again.url?.absoluteString == "https://example.com/")
+    #expect(rt.content.isCovered(id))
+    for _ in 0..<100 where rt.content.isCovered(id) { try await Task.sleep(for: .milliseconds(50)) }
+    #expect(!rt.content.isCovered(id))
+    // Closing forgets the snapshot file.
+    _ = rt.call("webviews", "close", ["id": .string(id)])
+    #expect(!FileManager.default.fileExists(atPath: path))
+  }
+
+  @Test func muteUsesThePageMute() async throws {
+    let rt = Self.runtime()
+    let id = rt.call("webviews", "create", ["id": "m"])["id"].string!
+    var events: [Value] = []
+    rt.host.on("webviews.muted") { events.append($0) }
+    _ = rt.call("webviews", "setMuted", ["id": .string(id), "muted": true])  // before it's live: kept
+    #expect(rt.call("webviews", "get", ["id": .string(id)])["muted"] == true)
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    #expect(rt.webviews.pageMuted(id) == true)
+    _ = rt.call("webviews", "setMuted", ["id": .string(id), "muted": false])
+    #expect(rt.webviews.pageMuted(id) == false)
+    #expect(events.map { $0["muted"] } == [true, false])
   }
 
   @Test func dragReorderEmitsTargetAndPosition() throws {

@@ -55,7 +55,7 @@ struct SettingsTests {
     _ = archive.target?.perform(archive.action, with: archive)
     #expect(h.tabs("settings")["archiveAfterMs"] == .int(7 * 86_400_000))
     let slider = try #require(rows.first { $0.key == "suspendAfterMinutes" }?.accessory as? NSSlider)
-    #expect(slider.doubleValue == 30)
+    #expect(slider.doubleValue == 5)  // the default: discard after 5 minutes off screen
     slider.doubleValue = 0
     _ = slider.target?.perform(slider.action, with: slider)
     #expect(h.tabs("settings")["suspendAfterMs"] == 0)

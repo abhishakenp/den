@@ -1140,14 +1140,13 @@ final class CommandBarCore {
 
   func tabRow(_ t: Value, score: Int, strength: Int = 0) -> Row {
     let current = env.call("spaces", "current").s("id")
-    var sub = URLs.display(t.s("url"))
-    if !sub.isEmpty { sub = "— " + sub }
+    var sub = Self.dash(URLs.display(t.s("url")))
     let sid = t.s("spaceId")
     if !sid.isEmpty && sid != current {
       for sp in env.call("spaces", "list").array ?? [] where sp.s("id") == sid { sub += " · " + sp.s("name") }
     }
     return Row(
-      id: "tab:" + t.s("id"), icon: t.sOpt("favicon") ?? URLs.favicon(t.s("url")), title: t.s("title"), subtitle: sub, accessory: "Switch to Tab",
+      id: "tab:" + t.s("id"), icon: URLs.icon(t.sOpt("favicon"), t.s("url")), title: URLs.pageTitle(t.s("title"), t.s("url")), subtitle: sub, accessory: "Switch to Tab",
       keycap: "→", act: .tab(t.s("id")), key: "tab:" + t.s("id"), score: score, strength: strength)
   }
 
@@ -1199,7 +1198,7 @@ final class CommandBarCore {
       let norm = URLs.normalize(u.url)
       guard !u.url.isEmpty, !seen.contains(norm), let m = Self.match(q, title: u.title, url: u.url) else { continue }
       seen.append(norm)
-      out.append(Row(id: "hist:" + norm, icon: URLs.favicon(u.url), title: u.title.isEmpty ? URLs.display(u.url) : u.title, subtitle: "— " + URLs.display(u.url),
+      out.append(Row(id: "hist:" + norm, icon: URLs.favicon(u.url), title: URLs.pageTitle(u.title, u.url), subtitle: Self.dash(URLs.display(u.url)),
                      act: .url(u.url), key: k, score: m + usageScore(k), strength: m))
     }
     out += archiveRows(q, limit: 10, exclude: seen)
@@ -1215,12 +1214,15 @@ final class CommandBarCore {
       guard !seen.contains(norm), let m = Self.match(q, title: e.s("title"), url: u) else { continue }
       seen.append(norm)
       let key = "url:" + norm
-      out.append(Row(id: "arch:" + e.s("id"), icon: e.sOpt("favicon") ?? URLs.favicon(u), title: e.s("title").isEmpty ? URLs.display(u) : e.s("title"),
-                     subtitle: "— " + URLs.display(u), accessory: "Archived", act: .archived(e.s("id"), u), key: key,
+      out.append(Row(id: "arch:" + e.s("id"), icon: URLs.icon(e.sOpt("favicon"), u), title: URLs.pageTitle(e.s("title"), u),
+                     subtitle: Self.dash(URLs.display(u)), accessory: "Archived", act: .archived(e.s("id"), u), key: key,
                      score: (q.isEmpty ? -n : m - 5) + usageScore(key), strength: m))
     }
     return Self.top(out, limit)
   }
+
+  /// "— example.com", or nothing when there is no domain to show.
+  static func dash(_ s: String) -> String { s.isEmpty ? "" : "— " + s }
 
   /// The best `limit` rows, keeping the input order among equal scores.
   static func top(_ rows: [Row], _ limit: Int) -> [Row] {

@@ -26,6 +26,9 @@ public final class ContentService: HostService {
   public private(set) var focused: String?
   private var cards: [String: CardView] = [:]
   private let emptyCard = CardView()
+  /// Where a page that just left the screen waits (invisible, still in the window) while its
+  /// snapshot is taken: WebKit only snapshots a view that is in a window.
+  private let parking = NSView()
   public let peek = PeekOverlayView()
   public private(set) var peekId: String?
   private var clickMonitor: Any?
@@ -34,12 +37,22 @@ public final class ContentService: HostService {
   public var holdWebViews = false
   /// Space accent for the focused-pane ring (set by the ui service on palette changes).
   public var accent: NSColor? { didSet { cards.values.forEach { $0.focusColor = accent } } }
+  /// Asked for each live page leaving the screen: true when the mini player takes its web view.
+  public var adoptLeaving: ((String) -> Bool)?
+  /// Called before a page's web view goes (back) into its card: the mini player lets go of it.
+  public var willAttach: ((String) -> Void)?
+  /// Restore placeholders: a discarded page's snapshot, shown until the page has loaded.
+  private var covers: [String: NSView] = [:]
+  /// Longest a restore placeholder stays up.
+  public var coverTimeout: TimeInterval = 1.5
 
   public init(host: ServiceHost, webviews: WebViewsService, window: DenWindowController) {
     self.host = host
     self.webviews = webviews
     self.wc = window
     wc.contentArea.addSubview(emptyCard)
+    parking.alphaValue = 0
+    wc.contentArea.addSubview(parking, positioned: .below, relativeTo: nil)
     peek.isHidden = true
     wc.overlays.addSubview(peek, positioned: .below, relativeTo: nil)
     peek.onAction = { [weak self] action in self?.peekAction(action) }
@@ -47,6 +60,8 @@ public final class ContentService: HostService {
     wc.onLayout = { [weak self] in prev?(); self?.layout() }
     host.on("webviews.closed") { [weak self] v in self?.forget(v.str("id")) }
     host.on("webviews.detached") { [weak self] v in self?.cards[v.str("id")]?.clip.subviews.forEach { $0.removeFromSuperview() } }
+    let prevFinish = webviews.onFinish
+    webviews.onFinish = { [weak self] id in prevFinish?(id); self?.uncover(id) }
     clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] e in
       MainActor.assumeIsolated { self?.noteClick(e) }
       return e
@@ -80,7 +95,16 @@ public final class ContentService: HostService {
     ratios = r
     for id in old.subtracting(ids) where id != peekId {
       cards[id]?.removeFromSuperview()
-      webviews.record(id)?.webView?.removeFromSuperview()
+      uncover(id, animated: false)
+      guard let r = webviews.record(id), let w = r.webView, w.superview != nil, w.superview === cards[id]?.clip else { continue }
+      if adoptLeaving?(id) == true { continue }
+      // Keep a picture of the page on disk (for a later restore and for previews), then let it go.
+      parking.frame = cards[id]?.frame ?? w.frame
+      parking.addSubview(w)
+      webviews.captureSnapshot(r) { [weak self, weak w] in
+        guard let self, let w, w.superview === self.parking else { return }
+        w.removeFromSuperview()
+      }
     }
     for id in ids {
       let card = cards[id] ?? CardView()
@@ -91,14 +115,60 @@ public final class ContentService: HostService {
       cards[id] = card
       card.showsPaneControls = ids.count > 1
       if card.superview !== wc.contentArea { wc.contentArea.addSubview(card) }
-      if !holdWebViews, let w = webviews.materialize(id), w.superview !== card.clip {
-        card.clip.subviews.forEach { $0.removeFromSuperview() }
-        card.clip.addSubview(w)
+      if !holdWebViews {
+        let wasLive = webviews.record(id)?.webView != nil
+        if wasLive { willAttach?(id) }
+        if let w = webviews.materialize(id), w.superview !== card.clip {
+          card.clip.subviews.forEach { $0.removeFromSuperview() }
+          card.clip.addSubview(w)
+          if !wasLive { cover(id, in: card) }
+        }
       }
     }
     emptyCard.isHidden = !ids.isEmpty
     layout()
     setFocus(f ?? (ids.contains(focused ?? "") ? focused : ids.first), makeFirstResponder: true)
+  }
+
+  /// A restored (previously discarded) page shows its last snapshot at once, over the new web
+  /// view, until the page has loaded (or `coverTimeout`), then fades to the live page.
+  func cover(_ id: String, in card: CardView) {
+    guard covers[id] == nil, let img = webviews.storedSnapshot(id) else { return }
+    let v = SnapshotCover(image: img)
+    card.clip.addSubview(v)
+    v.frame = card.clip.bounds
+    covers[id] = v
+    DispatchQueue.main.asyncAfter(deadline: .now() + coverTimeout) { [weak self, weak v] in
+      MainActor.assumeIsolated { if let v, self?.covers[id] === v { self?.uncover(id) } }
+    }
+  }
+
+  func uncover(_ id: String, animated: Bool = true) {
+    guard let v = covers.removeValue(forKey: id) else { return }
+    guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { v.removeFromSuperview(); return }
+    NSAnimationContext.runAnimationGroup({ c in
+      c.duration = 0.15
+      v.animator().alphaValue = 0
+    }, completionHandler: { MainActor.assumeIsolated { v.removeFromSuperview() } })
+  }
+
+  /// Whether a restore placeholder is up (tests, scenarios).
+  public func isCovered(_ id: String) -> Bool { covers[id] != nil }
+
+  /// Takes a pane's live web view out of its card (the mini player shows it while den's window
+  /// isn't visible); `reattach` puts it back.
+  public func detachForMini(_ id: String) -> WKWebView? {
+    guard panes.contains(id), let w = webviews.record(id)?.webView, w.superview === cards[id]?.clip else { return nil }
+    w.removeFromSuperview()
+    return w
+  }
+
+  public func reattach(_ id: String) {
+    guard panes.contains(id), let card = cards[id], let w = webviews.record(id)?.webView, w.superview !== card.clip else { return }
+    willAttach?(id)
+    card.clip.addSubview(w)
+    card.needsLayout = true
+    if id == focused { wc.window.makeFirstResponder(w) }
   }
 
   /// Ends `holdWebViews`: creates and attaches the web views of the panes on screen.
@@ -187,6 +257,21 @@ public final class ContentService: HostService {
     guard let id = peekId else { return }
     host.emit("content.peekAction", ["action": .string(action), "webview": .string(id)])
   }
+}
+
+/// A discarded page's last snapshot, standing in for it while the restored page loads. It never
+/// takes clicks (they go to the live page underneath).
+final class SnapshotCover: NSView {
+  init(image: CGImage) {
+    super.init(frame: .zero)
+    wantsLayer = true
+    layer?.contents = image
+    layer?.contentsGravity = .resizeAspectFill
+    layer?.backgroundColor = NSColor.white.cgColor
+  }
+  required init?(coder: NSCoder) { fatalError() }
+  override var isFlipped: Bool { true }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// Floating peek card over the content area: dimmed backdrop, rounded card, and a column of round

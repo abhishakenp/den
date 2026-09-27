@@ -120,10 +120,13 @@ final class MiniBarView: FlippedView {
   override var mouseDownCanMoveWindow: Bool { true }
 
   func set(url: String, favicon: String) {
-    let host = URL(string: url)?.host.map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0 } ?? url
-    domain.stringValue = host
-    siteIcon.spec = favicon.isEmpty ? "sf:magnifyingglass" : favicon
-    siteIcon.fallbackLetter = host
+    // Never a raw data:/about: URL in the field: the domain, a file name, or nothing.
+    let host = Sites.domain(url)
+    domain.stringValue = Sites.label(url)
+    // A favicon that isn't a real URL ("null/favicon.ico" on a data: page) counts as none.
+    let usable = favicon.hasPrefix("http://") || favicon.hasPrefix("https://") || favicon.hasPrefix("data:image/")
+    siteIcon.spec = usable ? favicon : "sf:magnifyingglass"
+    siteIcon.fallbackDomain = host
   }
 
   func apply(_ p: Palette) {

@@ -14,7 +14,7 @@ enum Cards {
     var t: Value = [
       "type": "hoverCard", "id": .string(PreviewsCore.cardId), "anchor": .string(req.anchor),
       "icon": .string(req.icon.isEmpty ? "sf:globe" : req.icon),
-      "title": .string(req.title.isEmpty ? URLs.display(req.url) : req.title),
+      "title": .string(req.url.isEmpty ? req.title : URLs.pageTitle(req.title, req.url)),
       "subtitle": .string(URLs.display(req.url)),
     ]
     for k in fields where !data[k].isNull { t.put(k, data[k]) }
@@ -38,7 +38,7 @@ enum Cards {
     var rows: [Value] = []
     for item in req.items.prefix(6) {
       let url = item.s("url")
-      var row: Value = ["id": item["id"], "title": .string(item.sOpt("title") ?? URLs.display(url)), "subtitle": .string(URLs.display(url)),
+      var row: Value = ["id": item["id"], "title": .string(URLs.pageTitle(item.s("title"), url)), "subtitle": .string(URLs.display(url)),
                         "icon": .string(item.sOpt("icon") ?? "sf:globe")]
       if let d = cached(url), !d["summary"].isNull {
         row.put("accessory", d["summary"]["text"])

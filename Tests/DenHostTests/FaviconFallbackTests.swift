@@ -23,8 +23,9 @@ struct FaviconFallbackTests {
     #expect(!ImageCache.isServiceFallback("https://example.com/favicon.ico", Self.bitmap(16)))  // a site's own small icon stays
   }
 
-  /// With no favicon and no title, the view draws the globe symbol as a vector: at 2x its edges
-  /// are anti-aliased at device pixels (sharp), not a 16 px bitmap scaled up.
+  /// A favicon that doesn't load draws a vector fallback (the site's letter tile, or the globe
+  /// symbol without a domain): at 2x its edges are anti-aliased at device pixels (sharp), not a
+  /// 16 px bitmap scaled up.
   @Test func missingFaviconDrawsAVectorGlobeAtBackingScale() throws {
     let v = IconView(frame: NSRect(x: 0, y: 0, width: 16, height: 16))
     v.spec = "https://nothing.invalid/favicon.ico"  // never loads in a test

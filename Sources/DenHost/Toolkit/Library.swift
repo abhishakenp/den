@@ -138,9 +138,13 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
     return f.string(from: d)
   }
 
-  static func host(_ url: String) -> String {
-    guard let h = URL(string: url)?.host else { return url }
-    return h.hasPrefix("www.") ? String(h.dropFirst(4)) : h
+  /// The subtitle's location: the domain or file name, never a raw data:/about: URL.
+  static func host(_ url: String) -> String { Sites.label(url) }
+
+  /// Row tooltip: the URL, but not a data: URL's (possibly huge) payload.
+  static func tooltip(_ url: String) -> String? {
+    if url.isEmpty || url == "about:blank" { return nil }
+    return url.hasPrefix("data:") ? String(url.prefix(while: { $0 != "," && $0 != ";" })) : url
   }
 
   static func time(_ closedAt: Double?) -> String {
@@ -172,6 +176,7 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
       r.title.stringValue = it.str("title", "Untitled")
       let sub = it["subtitle"].string ?? [Self.host(it.str("url")), Self.time(it["closedAt"].double)].filter { !$0.isEmpty }.joined(separator: " · ")
       r.subtitle.stringValue = sub
+      r.icon.fallbackDomain = Sites.domain(it.str("url"))
       let iid = r.itemId
       r.onRestore = { [weak self] in self?.send("restore", ["item": .string(iid)]) }
       rows.append(r)

@@ -8,7 +8,7 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard", "briefingSheet", "connectionsSheet", "findBar"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard", "briefingSheet", "connectionsSheet", "findBar", "dropOnTab", "tabAudio", "iconFallbacks"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -52,6 +52,46 @@ public enum HostScenarios {
       rt.call("content", "show", ["panes": [.string(a), .string(b)], "orientation": "horizontal", "focus": .string(b)])
       rt.window.contentArea.layoutSubtreeIfNeeded()
       rt.content.card(b)?.setControlsVisible(true)
+    case "dropOnTab":
+      // Drag "Design review" onto the middle of "Example Domain": the row rings, with the split hint.
+      seedSidebar(rt, appearance: appearance)
+      showContent(rt)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        let w = rt.window.window
+        rt.window.root.layoutSubtreeIfNeeded()
+        guard let src = find("t3", in: rt.ui.sidebarView) as? HoverNode, let dst = find("t1", in: rt.ui.sidebarView) as? HoverNode else { return }
+        func ev(_ t: NSEvent.EventType, _ p: NSPoint) -> NSEvent {
+          NSEvent.mouseEvent(with: t, location: p, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        }
+        let start = src.convert(NSPoint(x: src.bounds.midX, y: src.bounds.midY), to: nil)
+        let end = dst.convert(NSPoint(x: dst.bounds.midX - 30, y: dst.bounds.midY), to: nil)
+        rt.ui.drag.begin(src, event: ev(.leftMouseDown, start))
+        rt.ui.drag.move(ev(.leftMouseDragged, end))
+      }
+    case "tabAudio":
+      // Speaker controls: a row playing audio (hovered), a muted row, and favorite tiles with badges.
+      seedSidebar(rt, appearance: appearance)
+      showContent(rt)
+      rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "favs", "children": [
+        ["type": "favoriteTile", "id": "f1", "icon": "sf:play.rectangle.fill", "title": "YouTube", "audio": true],
+        ["type": "favoriteTile", "id": "f2", "icon": "sf:music.note", "title": "Music", "audio": true, "muted": true],
+        ["type": "favoriteTile", "id": "f3", "icon": "sf:envelope.fill", "title": "Mail"],
+        ["type": "favoriteTile", "id": "f4", "icon": "sf:calendar", "title": "Calendar"],
+      ]]])
+      rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "id": "today", "children": [
+        ["type": "divider", "id": "div", "action": "Clear"], ["type": "newTabRow", "id": "newtab"],
+        ["type": "tabRow", "id": "t1", "title": "YouTube", "icon": "sf:play.rectangle.fill", "selected": true, "audio": true],
+        ["type": "tabRow", "id": "t2", "title": "Podcast episode 42", "icon": "sf:mic.fill", "audio": true, "muted": true],
+        ["type": "tabRow", "id": "t3", "title": "Design review", "icon": "sf:paintbrush.pointed.fill"],
+      ]]])
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        rt.window.root.layoutSubtreeIfNeeded()
+        guard let row = find("t2", in: rt.ui.sidebarView) as? TabRowNode else { return }
+        row.hovering = true
+        row.hoverChanged()
+        row.layoutSubtreeIfNeeded()
+        row.audio.hovering = true
+      }
     case "dropIndicator":
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
@@ -95,6 +135,14 @@ public enum HostScenarios {
                     body: "Links from other apps open here, in a small floating window. Open it in a space with ⌘O.")
       let r = rt.call("window", "openMini", ["webview": .string(id), "space": "Personal"])
       return rt.windowService.mini.windows[r.str("id")]?.panel
+    case "iconFallbacks":
+      // Pages without a usable favicon or title: `site:` letter tiles and globe tiles, with the
+      // titles `URLs.title` gives (what the tabs plugin sends for these URLs).
+      seedSidebar(rt, appearance: appearance)
+      showContent(rt)
+      iconFallbacks(rt)
+      // The built-in tabs plugin renders its own sidebar once loaded: draw ours again after it.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 2) { iconFallbacks(rt) }
     case "contextMenu":
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
@@ -112,6 +160,34 @@ public enum HostScenarios {
     default: break
     }
     return rt.window.window
+  }
+
+  /// Sidebar rows for pages without a usable favicon or title (`iconFallbacks`).
+  static func iconFallbacks(_ rt: DenRuntime) {
+    let tile: (String, String) -> Value = { id, icon in ["type": "favoriteTile", "id": .string(id), "icon": .string(icon), "title": .string(id)] }
+    rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "favs", "children": [
+      tile("linear.app", "site:linear.app"), tile("figma.com", "site:figma.com"), tile("notion.so", "site:notion.so"), tile("Untitled", "site:"),
+    ]]])
+    rt.call("ui", "set", ["slot": "sidebar.header", "tree": ["type": "list", "spacing": 0, "children": [
+      ["type": "navBar", "id": "nav", "canGoBack": false, "canGoForward": false, "loading": false],
+      ["type": "urlPill", "id": "url", "text": "data:text/html"],
+    ]]])
+    let row: (String, String, String, Bool) -> Value = { id, title, icon, sel in
+      ["type": "tabRow", "id": .string(id), "title": .string(title), "icon": .string(icon), "selected": .bool(sel)]
+    }
+    rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "id": "today", "children": [
+      ["type": "divider", "id": "div", "action": "Clear"], ["type": "newTabRow", "id": "newtab"],
+      row("t1", "Untitled", "site:", true),
+      row("t2", "news.ycombinator.com", "site:news.ycombinator.com", false),
+      row("t3", "My Notes.html", "site:", false),
+      row("t4", "localhost", "site:localhost", false),
+      row("t5", "Image", "site:", false),
+      ["type": "splitRow", "id": "s1", "layout": "horizontal", "panes": [
+        ["id": "s1a", "title": "example.com", "icon": "site:example.com"], ["id": "s1b", "title": "swift.org", "icon": "site:swift.org"],
+      ]],
+      row("t6", "Stripe Dashboard", "site:dashboard.stripe.com", false),
+      row("t7", "github.com", "site:github.com", false),
+    ]]])
   }
 
   /// What the `theme` plugin does: open the picker next to the space title and apply every
@@ -260,7 +336,8 @@ public enum HostScenarios {
     ]]])
     rt.call("ui", "set", ["slot": "sidebar.spaceHeader", "tree": ["type": "spaceTitle", "id": "space-0", "title": "Personal", "icon": "sf:house.fill"]])
     let row: (String, String, String, Bool) -> Value = { id, title, icon, sel in
-      ["type": "tabRow", "id": .string(id), "title": .string(title), "icon": .string(icon), "selected": .bool(sel)]
+      ["type": "tabRow", "id": .string(id), "title": .string(title), "icon": .string(icon), "selected": .bool(sel),
+       "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1"]
     }
     rt.call("ui", "set", ["slot": "sidebar.pinned", "tree": ["type": "list", "id": "pinned", "children": [
       row("p1", "Documentation", "sf:book.closed.fill", false),

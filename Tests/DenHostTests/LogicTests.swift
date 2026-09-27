@@ -56,4 +56,21 @@ struct LogicTests {
     #expect(g3[0].height == 600 && g3[1].height == 295)
     #expect(SplitLayout.frames(count: 1, orientation: .grid, in: b, gap: 10) == [b])
   }
+
+  @Test func siteTileDerivesFromTheDomain() {
+    // FNV-1a hash -> hue: fixed values, so a tile keeps its color across launches.
+    #expect(Sites.hue("example.com") == CGFloat(278) / 360)
+    #expect(Sites.hue("news.ycombinator.com") == CGFloat(62) / 360)
+    #expect(Sites.hue("www.Example.com") == Sites.hue("example.com"))
+    #expect(Sites.hue("swift.org") != Sites.hue("github.com"))
+    #expect(Sites.letter("www.github.com") == "G")
+    #expect(Sites.letter("") == "")
+    #expect(Sites.domain("https://www.GitHub.com/x") == "github.com")
+    #expect(Sites.domain("data:text/html,x") == "" && Sites.domain("about:blank") == "" && Sites.domain("file:///a") == "")
+    #expect(Sites.domain(ofIcon: "https://www.google.com/s2/favicons?domain=swift.org&sz=64") == "swift.org")
+    #expect(Sites.domain(ofIcon: "https://www.google.com/s2/favicons?domain=data&sz=64") == "")
+    #expect(Sites.domain(ofIcon: "https://cdn.site.io/favicon.ico") == "cdn.site.io")
+    #expect(Sites.label("file:///Users/me/a%20b.pdf") == "a b.pdf")
+    #expect(Sites.label("data:text/html,x") == "")
+  }
 }

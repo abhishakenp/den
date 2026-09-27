@@ -279,10 +279,10 @@ final class GridNode: NodeView {
   }
 }
 
-/// {type:"favoriteTile", id, icon, title, selected, audio}  actions: click, doubleClick, reorder
+/// {type:"favoriteTile", id, icon, title, selected, audio, muted?}  actions: click, doubleClick, reorder, mute (speaker badge)
 final class FavoriteTileNode: HoverNode {
   let icon = IconView()
-  let audio = IconView()
+  lazy var audio = SpeakerBadge { [weak self] in self?.emit("mute") }
   override var cornerRadius: CGFloat { Tokens.favoriteTileCornerRadius }
   override var baseFill: NSColor? { palette.tileFill }
   override var draggable: Bool { true }
@@ -296,15 +296,99 @@ final class FavoriteTileNode: HoverNode {
     super.update(v)
     icon.spec = v.str("icon")
     icon.fallbackLetter = v.str("title")
-    audio.spec = "sf:speaker.wave.2.fill"
-    audio.isHidden = !v.flag("audio")
+    audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
+    audio.isHidden = !(v.flag("audio") || v.flag("muted"))
   }
-  override func apply(_ p: Palette) { icon.tint = p.text; audio.tint = p.accent; needsDisplay = true }
+  override func apply(_ p: Palette) { icon.tint = p.text; audio.apply(p); needsDisplay = true }
   override func layout() {
     let s = Tokens.favoriteIconSize
     icon.frame = NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s)
-    audio.frame = NSRect(x: bounds.width - 15, y: 4, width: 11, height: 11)
+    // A small round badge in the top-right corner, clear of the icon (den's estimate).
+    audio.frame = NSRect(x: bounds.width - 21, y: 3, width: 18, height: 18)
   }
+}
+
+/// The speaker on a tab row or favorite tile: shows that the tab plays audio (or is muted), and
+/// mutes or unmutes it on click, like Arc. Hover fill, tooltip, and a quick cross-fade when the
+/// state flips. `badge` draws it on a small round plate (favorite tiles).
+@MainActor
+final class SpeakerBadge: NSView, Themable, Hoverable {
+  var hoverGroup: HoverGroup { .control }
+  let icon = IconView()
+  let action: () -> Void
+  var badge = false
+  private(set) var muted = false
+  var hovering = false { didSet { needsDisplay = true } }
+  private var pressed = false { didSet { needsDisplay = true } }
+  private var fill = NSColor(white: 0, alpha: 0.06)
+  private var hoverFill = NSColor(white: 0, alpha: 0.1)
+  private var plate = NSColor.white
+
+  init(badge: Bool = true, action: @escaping () -> Void) {
+    self.action = action
+    self.badge = badge
+    super.init(frame: .zero)
+    wantsLayer = true
+    addSubview(icon)
+    icon.wantsLayer = true
+  }
+  required init?(coder: NSCoder) { fatalError() }
+  override var isFlipped: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { false }
+
+  func set(playing: Bool, muted m: Bool) {
+    let spec = m ? "sf:speaker.slash.fill" : "sf:speaker.wave.2.fill"
+    if spec != icon.spec, !icon.spec.isEmpty, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+      let t = CATransition()
+      t.type = .fade
+      t.duration = 0.15
+      icon.layer?.add(t, forKey: "flip")
+    }
+    icon.spec = spec
+    muted = m
+    toolTip = m ? "Unmute Tab" : "Mute Tab"
+    setAccessibilityLabel(toolTip)
+    setAccessibilityRole(.button)
+  }
+
+  func apply(_ p: Palette) {
+    icon.tint = muted ? p.secondaryText : (badge ? p.accent : p.secondaryText)
+    hoverFill = p.controlHoverFill
+    fill = p.controlPressedFill
+    plate = p.dark ? NSColor(white: 0.18, alpha: 0.95) : NSColor(white: 1, alpha: 0.95)
+    needsDisplay = true
+  }
+
+  override func layout() {
+    super.layout()
+    let s = (bounds.height * (badge ? 0.58 : 0.66)).rounded()
+    icon.frame = NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s)
+  }
+
+  override func draw(_ dirtyRect: NSRect) {
+    if badge {
+      plate.setFill()
+      NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1)).fill()
+    }
+    guard hovering || pressed else { return }
+    (pressed ? fill : hoverFill).setFill()
+    let r = badge ? bounds.height / 2 : 5
+    NSBezierPath(roundedRect: bounds.insetBy(dx: badge ? 1 : 0, dy: badge ? 1 : 0), xRadius: r, yRadius: r).fill()
+  }
+
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    trackingAreas.forEach(removeTrackingArea)
+    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+  override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func mouseDown(with event: NSEvent) { pressed = true }
+  override func mouseUp(with e: NSEvent) {
+    pressed = false
+    if bounds.contains(convert(e.locationInWindow, from: nil)) { action() }
+  }
+  override func accessibilityPerformPress() -> Bool { action(); return true }
 }
 
 // MARK: - Space
@@ -606,14 +690,14 @@ final class RenameSupport {
 
 // MARK: - Tabs
 
-/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, indent?, muted?, editing?, editText?}
+/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, editing?, editText?}
 /// actions: click {modifiers?}, doubleClick, close, reset (favicon click while drifted), mute, contextMenu/menu, reorder,
 /// dropOnContent, rename {title} / renameCancel (while `editing`)
 final class TabRowNode: HoverNode {
   let icon = IconView()
   let label = makeLabel()
   let drift = makeLabel("/", size: Tokens.tabRowFontSize, weight: .medium)
-  let audio = IconView()
+  lazy var audio = SpeakerBadge(badge: false) { [weak self] in self?.emit("mute") }
   lazy var close = IconButton(symbol: "xmark", size: 22) { [weak self] in self?.emit("close") }
   lazy var rename = RenameSupport(owner: self, label: label)
   override var draggable: Bool { node.flag("draggable", true) && !rename.active }
@@ -632,8 +716,9 @@ final class TabRowNode: HoverNode {
     icon.spec = v.str("icon")
     icon.fallbackLetter = v.str("title")
     drift.isHidden = !v.flag("drift")
-    audio.spec = v.flag("muted") ? "sf:speaker.slash.fill" : "sf:speaker.wave.2.fill"
+    audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))
+    close.toolTip = v.str("closeTitle", "Close Tab")
     apply(r.palette)
     rename.update(v)
     needsLayout = true
@@ -644,8 +729,9 @@ final class TabRowNode: HoverNode {
     rename.editor?.textColor = p.text
     drift.textColor = p.tertiaryText
     icon.tint = p.text
-    audio.tint = p.secondaryText
+    audio.apply(p)
     close.apply(p)
+    close.hoverFill = p.controlHoverFill
     needsDisplay = true
   }
   override func height(for w: CGFloat) -> CGFloat { Tokens.tabRowHeight }
@@ -661,13 +747,12 @@ final class TabRowNode: HoverNode {
     }
     var right = bounds.width - 6
     if !close.isHidden { close.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 26 }
-    if !audio.isHidden { audio.frame = NSRect(x: right - 16, y: (h - 13) / 2, width: 14, height: 13); right -= 20 }
+    if !audio.isHidden { audio.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 24 }
     label.frame = NSRect(x: x, y: (h - 18) / 2, width: max(0, right - x), height: 18)
     rename.layout()
   }
   override func clicked(at p: NSPoint, event: NSEvent) {
     if node.flag("drift"), icon.frame.insetBy(dx: -4, dy: -4).contains(p) { emit("reset"); return }
-    if !audio.isHidden, audio.frame.insetBy(dx: -4, dy: -4).contains(p) { emit("mute"); return }
     super.clicked(at: p, event: event)
   }
   override func mouseUp(with event: NSEvent) {
@@ -722,7 +807,7 @@ final class SplitRowNode: HoverNode {
     for (s, p) in zip(segments, panes) {
       s.id = p.str("id")
       s.focused = p.flag("selected")
-      s.label.stringValue = p.str("title", "Untitled")
+      s.label.stringValue = p.str("title").isEmpty ? "Untitled" : p.str("title")
       s.icon.spec = p.str("icon")
       s.icon.fallbackLetter = p.str("title")
     }
@@ -740,6 +825,7 @@ final class SplitRowNode: HoverNode {
       s.icon.alphaValue = strong ? 1 : 0.6
     }
     close.apply(p)
+    close.hoverFill = p.controlHoverFill
     needsDisplay = true
   }
   override func height(for w: CGFloat) -> CGFloat { Tokens.tabRowHeight }

@@ -273,8 +273,13 @@ struct TabsTests {
     h.tabs("select", ["id": .string(today[1])])
     h.tabs("select", ["id": .string(today[0])])
     #expect(h.rt.call("webviews", "get", ["id": .string(today[1])])["live"] == true)
-    // 31 minutes idle: the background tab is suspended, the visible one is not.
-    h.clock += 31 * 60_000
+    // The page that left the screen waits in the window while its snapshot is taken.
+    for _ in 0..<40 where h.rt.webviews.record(today[1])?.webView?.window != nil { try? await Task.sleep(for: .milliseconds(50)) }
+    // 4 minutes idle: kept. 6 minutes (default 5): the background tab is discarded, the visible one is not.
+    h.clock += 4 * 60_000
+    core.tick()
+    #expect(h.rt.call("webviews", "get", ["id": .string(today[1])])["live"] == true)
+    h.clock += 2 * 60_000
     core.tick()
     #expect(await h.waitUnloaded(today[1]))
     #expect(h.rt.call("webviews", "get", ["id": .string(today[0])])["live"] == true)
@@ -291,6 +296,87 @@ struct TabsTests {
     core.tick()
     #expect(h.ids("today").count == 2)
     #expect(h.storage("tabs", "settings")["archiveAfterMs"] == 0)
+  }
+
+  @Test func speakerMutesTheTab() async throws {
+    let h = Harness()
+    let core = h.startTabs()
+    let id = h.ids("today")[0]
+    h.tabs("select", ["id": .string(id)])
+    // A page playing audio: the row shows the speaker.
+    h.rt.plugins.emit("webviews.audio", ["id": .string(id), "playing": true])
+    var row = h.tree("sidebar.today", 0)["children"].array?.first { $0.s("id") == id } ?? .null
+    #expect(row["audio"] == true && row["muted"] == false)
+    #expect(row["menu"].array?.contains { $0.s("id") == "mute" } == true)
+    // Clicking the speaker mutes the page through the host; the row and menu follow.
+    h.action(id, "mute")
+    #expect(h.rt.call("webviews", "get", ["id": .string(id)])["muted"] == true)
+    #expect(h.rt.webviews.pageMuted(id) == true)
+    row = h.tree("sidebar.today", 0)["children"].array?.first { $0.s("id") == id } ?? .null
+    #expect(row["muted"] == true && row["menu"].array?.contains { $0.s("id") == "unmute" } == true)
+    #expect(core.tabValue(id)["muted"] == true)
+    // The menu item unmutes.
+    h.action(id, "menu", "unmute")
+    #expect(h.rt.call("webviews", "get", ["id": .string(id)])["muted"] == false)
+    // A favorite tile carries the same state.
+    let fav = h.ids("favorites")[0]
+    h.rt.plugins.emit("webviews.audio", ["id": .string(fav), "playing": true])
+    h.action(fav, "mute")
+    let tile = h.tree("sidebar.favorites", 0)["children"].array?.first { $0.s("id") == fav } ?? .null
+    #expect(tile["audio"] == true && tile["muted"] == true)
+  }
+
+  /// Arc (Jan 2024): dropping a tab onto the middle of another makes a split of the two.
+  @Test func dropOntoATabMakesASplit() {
+    // Row geometry: the middle half is "into" for rows that take it, the edges reorder.
+    #expect(DragController.position(rel: 0.1, into: true) == "before")
+    #expect(DragController.position(rel: 0.3, into: true) == "into")
+    #expect(DragController.position(rel: 0.7, into: true) == "into")
+    #expect(DragController.position(rel: 0.9, into: true) == "after")
+    #expect(DragController.position(rel: 0.4, into: false) == "before")
+    #expect(DragController.position(rel: 0.6, into: false) == "after")
+    let h = Harness()
+    h.startTabs()
+    let s0 = h.spaceIds[0]
+    let today = h.ids("today", s0)
+    let row = h.tree("sidebar.today", 0)["children"].array?.first { $0.s("id") == today[1] } ?? .null
+    #expect(row["dropInto"] == true && row["dropIntoIcon"] == "sf:rectangle.split.2x1")
+    // A tab onto itself: nothing.
+    h.action(today[1], "reorder", ["source": .string(today[1]), "target": .string(today[1]), "position": "into"])
+    #expect(h.ids("today", s0) == today)
+    // today[2] onto today[0]: one split where today[0] was, today[2] on the right and selected.
+    h.action(today[2], "reorder", ["source": .string(today[2]), "target": .string(today[0]), "position": "into"])
+    let items = h.tabs("list", ["spaceId": .string(s0)])["today"].array ?? []
+    #expect(items.count == today.count - 1)
+    #expect(items[0]["split"] == true && items[0]["children"].array?.map { $0.s("id") } == [today[0], today[2]])
+    #expect(h.selected == today[2])
+    #expect(h.rt.call("content", "get")["panes"] == [.string(today[0]), .string(today[2])])
+    // Undo puts both tabs back.
+    h.key("ctrl+z")
+    #expect(h.ids("today", s0) == today)
+    // Pinned onto pinned: the split stays in pinned; a favorite onto a favorite stays in favorites.
+    let pinned = h.ids("pinned", s0).filter { !$0.hasPrefix("folder-") }
+    h.action(pinned[1], "reorder", ["source": .string(pinned[1]), "target": .string(pinned[0]), "position": "into"])
+    #expect(h.tabs("list", ["spaceId": .string(s0)])["pinned"].array?.first?["split"] == true)
+    let favs = h.ids("favorites")
+    h.action(favs[1], "reorder", ["source": .string(favs[1]), "target": .string(favs[0]), "position": "into"])
+    let fav0 = h.tabs("list")["favorites"].array?.first ?? .null
+    #expect(fav0["split"] == true && fav0["children"].array?.map { $0.s("id") } == [favs[0], favs[1]])
+    // A today tab onto a pinned tab joins the pinned side (it takes the pinned kind).
+    h.action(today[3], "reorder", ["source": .string(today[3]), "target": .string(pinned.count > 2 ? pinned[2] : favs[2]), "position": "into"])
+    #expect(!h.ids("today", s0).contains(today[3]))
+    // A split dropped onto a tab takes the tab in.
+    let sp = h.tabs("list", ["spaceId": .string(s0)])["pinned"].array?.first?.s("id") ?? ""
+    h.action(sp, "reorder", ["source": .string(sp), "target": .string(today[1]), "position": "into"])
+    #expect(!h.ids("today", s0).contains(today[1]))
+  }
+
+  @Test func miniPlayerBackToTabSelectsIt() {
+    let h = Harness()
+    h.startTabs()
+    let id = h.ids("today")[2]
+    h.rt.plugins.emit("media.backToTab", ["webview": .string(id)])
+    #expect(h.selected == id)
   }
 
   @Test func shortcutsNavigateTabs() {
