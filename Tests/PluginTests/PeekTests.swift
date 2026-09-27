@@ -199,10 +199,10 @@ struct PeekTests {
     #expect(h.todayItems[0]["layout"] == "horizontal")
     #expect(h.panes == [t[0], t[1]])
     #expect(h.rt.call("content", "get")["orientation"] == "horizontal")
-    // Rendered as one row holding both tabs.
+    // Rendered as one split row holding both tabs.
     let row = h.tree("sidebar.today", 0)["children"][2]
-    #expect(row["id"].string == "tabs.split:" + sid)
-    #expect(row["children"].array?.count == 2)
+    #expect(row["type"] == "splitRow" && row["id"].string == sid)
+    #expect(row["panes"].array?.map { $0.s("id") } == [t[0], t[1]])
     // Ctrl-Shift-2 focuses the second pane; tabs follows with the selection.
     h.key("ctrl+shift+2")
     #expect(h.rt.call("content", "get")["focus"].string == t[1])
@@ -215,7 +215,7 @@ struct PeekTests {
     let added = h.panes[2]
     #expect(h.selected == added)
     // Grid layout through the split's menu.
-    h.action("tabs.split:" + sid, "menu", .string("layout:" + sid + ":grid"))
+    h.action(sid, "menu", .string("layout:" + sid + ":grid"))
     #expect(h.rt.call("content", "get")["orientation"] == "grid")
     #expect(h.todayItems[0]["layout"] == "grid")
     // A fourth pane is allowed; a fifth is not.
@@ -239,6 +239,54 @@ struct PeekTests {
     #expect(h2.todayItems.allSatisfy { $0["split"] != true })
     #expect(Array(h2.ids("today").prefix(3)) == [t[0], t[1], t[2]])
     #expect(h2.panes.count == 1)
+  }
+
+  /// The split's own sidebar row: a segment per pane, click focuses a pane, a tab dropped "into"
+  /// the row joins the split, the hover X separates it.
+  @Test func splitRowSegmentsClickDropAndClose() throws {
+    let h = Harness()
+    h.startPeek()
+    let w = h.rt.window.window
+    w.orderFront(nil)
+    let t = h.ids("today")
+    let sid = try #require(h.peek("split", ["ids": [.string(t[0]), .string(t[1])], "layout": "horizontal"])["id"].string)
+    w.contentView?.layoutSubtreeIfNeeded()
+    h.rt.ui.sidebarView.layoutSubtreeIfNeeded()
+    let row = try #require(HostScenarios.find(sid, in: h.rt.ui.sidebarView) as? SplitRowNode)
+    row.layoutSubtreeIfNeeded()
+    #expect(row.segments.map(\.id) == [t[0], t[1]])
+    #expect(row.node.flag("selected"))
+    #expect(row.segments.filter(\.focused).map(\.id) == [h.selected!])
+    // Segments split the row evenly and don't overlap.
+    #expect(row.segments[0].frame.maxX <= row.segments[1].frame.minX)
+    #expect(abs(row.segments[0].frame.width - row.segments[1].frame.width) < 1)
+    #expect(!row.segments[0].label.isHidden)
+    // A real click on the first segment focuses that pane.
+    func ev(_ type: NSEvent.EventType, _ v: NSView, _ p: NSPoint) -> NSEvent {
+      NSEvent.mouseEvent(with: type, location: v.convert(p, to: nil), modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+    }
+    let p0 = NSPoint(x: row.segments[0].frame.midX, y: row.bounds.midY)
+    row.mouseDown(with: ev(.leftMouseDown, row, p0))
+    row.mouseUp(with: ev(.leftMouseUp, row, p0))
+    #expect(h.selected == t[0])
+    #expect(h.rt.call("content", "get")["focus"].string == t[0])
+    #expect(row.segments.filter(\.focused).map(\.id) == [t[0]])
+    // Drag the next today tab into the middle of the split row: it joins as a third pane.
+    let other = try #require(HostScenarios.find(t[2], in: h.rt.ui.sidebarView) as? TabRowNode)
+    let drag = h.rt.ui.drag
+    drag.begin(other, event: ev(.leftMouseDown, other, NSPoint(x: other.bounds.midX, y: other.bounds.midY)))
+    drag.move(ev(.leftMouseDragged, row, NSPoint(x: row.bounds.midX, y: row.bounds.midY)))
+    drag.end(ev(.leftMouseUp, row, NSPoint(x: row.bounds.midX, y: row.bounds.midY)))
+    #expect(h.panes == [t[0], t[1], t[2]])
+    #expect(h.todayItems[0]["children"].array?.map { $0.s("id") } == [t[0], t[1], t[2]])
+    let row3 = try #require(HostScenarios.find(sid, in: h.rt.ui.sidebarView) as? SplitRowNode)
+    #expect(row3.segments.count == 3)
+    // The hover X separates the split back into tabs.
+    h.action(sid, "close")
+    #expect(h.todayItems.prefix(3).map { $0.s("id") } == [t[0], t[1], t[2]])
+    #expect(h.tree("sidebar.today", 0)["children"].array?.contains { $0["type"] == "splitRow" } == false)
+    h.key("ctrl+z")
+    #expect(h.todayItems[0]["split"] == true)
   }
 
   @Test func splitShrinksToOneTabAndDissolves() {

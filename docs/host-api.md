@@ -125,6 +125,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `spaceTitle` | `id`, `title`, `icon?` | `click`, `more` |
 | `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected`, `spaceId?` (makes it a drop target for dragged rows) | `click` |
 | `tabRow` | `id`, `title`, `icon`, `selected`, `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `indent?`, `draggable=true`, `editing?`, `editText?` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel` |
+| `splitRow` | `id`, `selected` (the split is shown), `layout?`, `panes: [{id, title, icon, selected}]` (`selected` = focused pane), `closable=true`, `indent?` | `click {pane}`, `close` (hover X), `reorder` (as target, a tab row can drop `into` it), `dropOnSpace` |
 | `folder` | `id`, `title`, `icon?`, `open`, `children`, `editing?` | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel` |
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
 | `newTabRow` | `id`, `title?` | `click` |

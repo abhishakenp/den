@@ -489,6 +489,116 @@ final class TabRowNode: HoverNode {
   override func otherMouseUp(with event: NSEvent) { if event.buttonNumber == 2 { emit("close") } }
 }
 
+/// A split view as one sidebar item (Arc §7: "a split is its own tab"): one 36 pt row holding a
+/// segment per pane (favicon + title), split by hairlines. While the split is shown, the focused
+/// pane sits in an inner chip and the others dim. Segment geometry is den's estimate (Arc's split
+/// row was never measured, spec §12).
+/// {type:"splitRow", id, selected, layout?, panes: [{id, title, icon, selected}], closable=true, indent?}
+/// actions: click {pane}, close (hover X: separate), reorder, dropOnSpace, contextMenu/menu
+final class SplitRowNode: HoverNode {
+  @MainActor final class Segment {
+    let icon = IconView()
+    let label = makeLabel()
+    var frame = NSRect.zero
+    var id = ""
+    var focused = false
+  }
+  var segments: [Segment] = []
+  lazy var close = IconButton(symbol: "xmark", size: 22) { [weak self] in self?.emit("close") }
+  let layoutIcon = IconView()
+  static let chipInset: CGFloat = 4
+  override var draggable: Bool { true }
+  override var fillRect: NSRect { bounds.insetBy(dx: 0, dy: (bounds.height - 36) / 2) }
+  required init(renderer: Renderer) {
+    super.init(renderer: renderer)
+    addSubview(close)
+    close.isHidden = true
+  }
+  required init?(coder: NSCoder) { fatalError() }
+  var indent: CGFloat { CGFloat(node.num("indent", 0)) * Tokens.folderIndent }
+  override func hoverChanged() { close.isHidden = !(hovering && node.flag("closable", true)); needsLayout = true }
+  override func update(_ v: Value) {
+    super.update(v)
+    let panes = v.list("panes")
+    while segments.count < panes.count {
+      let s = Segment()
+      addSubview(s.icon)
+      addSubview(s.label)
+      segments.append(s)
+    }
+    while segments.count > panes.count {
+      let s = segments.removeLast()
+      s.icon.removeFromSuperview()
+      s.label.removeFromSuperview()
+    }
+    for (s, p) in zip(segments, panes) {
+      s.id = p.str("id")
+      s.focused = p.flag("selected")
+      s.label.stringValue = p.str("title", "Untitled")
+      s.icon.spec = p.str("icon")
+      s.icon.fallbackLetter = p.str("title")
+    }
+    toolTip = panes.map { $0.str("title") }.joined(separator: "  |  ")
+    apply(r.palette)
+    needsLayout = true
+    needsDisplay = true
+  }
+  override func apply(_ p: Palette) {
+    let shown = node.flag("selected")
+    for s in segments {
+      let strong = !shown || s.focused
+      s.label.textColor = strong ? p.text : p.secondaryText
+      s.label.font = .systemFont(ofSize: Tokens.tabRowFontSize, weight: shown && s.focused ? .medium : .regular)
+      s.icon.tint = p.text
+      s.icon.alphaValue = strong ? 1 : 0.6
+    }
+    close.apply(p)
+    needsDisplay = true
+  }
+  override func height(for w: CGFloat) -> CGFloat { Tokens.tabRowHeight }
+  override func layout() {
+    let h = bounds.height, s = Tokens.tabRowIconSize
+    var right = bounds.width - 4
+    if !close.isHidden { close.frame = NSRect(x: right - 24, y: (h - 22) / 2, width: 22, height: 22); right -= 26 }
+    let left = indent + 2
+    let n = CGFloat(max(1, segments.count))
+    let w = ((right - left) / n).rounded(.down)
+    for (i, seg) in segments.enumerated() {
+      seg.frame = NSRect(x: left + CGFloat(i) * w, y: fillRect.minY, width: w, height: fillRect.height)
+      // Favicon + title; a narrow segment (3–4 panes) keeps only the favicon, centered.
+      let pad: CGFloat = 7
+      let titleRoom = w - pad * 2 - s - 6
+      if titleRoom < 40 {
+        seg.icon.frame = NSRect(x: seg.frame.midX - s / 2, y: (h - s) / 2, width: s, height: s)
+        seg.label.isHidden = true
+      } else {
+        seg.icon.frame = NSRect(x: seg.frame.minX + pad, y: (h - s) / 2, width: s, height: s)
+        seg.label.isHidden = false
+        seg.label.frame = NSRect(x: seg.icon.frame.maxX + 6, y: (h - 18) / 2, width: titleRoom, height: 18)
+      }
+    }
+  }
+  override func draw(_ dirtyRect: NSRect) {
+    super.draw(dirtyRect)
+    let shown = node.flag("selected")
+    let chip = segments.first { shown && $0.focused }
+    if let c = chip {
+      let r = c.frame.insetBy(dx: Self.chipInset - 2, dy: Self.chipInset)
+      (palette.dark ? Palette.snow(0.10) : Palette.ink(0.06)).setFill()
+      NSBezierPath(roundedRect: r, xRadius: Tokens.tabRowCornerRadius - 3, yRadius: Tokens.tabRowCornerRadius - 3).fill()
+    }
+    // Hairlines between segments, hidden next to the chip.
+    palette.divider.setFill()
+    for (a, b) in zip(segments, segments.dropFirst()) where a !== chip && b !== chip {
+      NSRect(x: b.frame.minX - 0.5, y: bounds.midY - 8, width: 1, height: 16).fill()
+    }
+  }
+  override func clicked(at p: NSPoint, event: NSEvent) {
+    let seg = segments.first { $0.frame.contains(NSPoint(x: p.x, y: $0.frame.midY)) } ?? segments.first
+    emit("click", ["pane": .string(seg?.id ?? "")])
+  }
+}
+
 /// {type:"folder", id, title, icon?, open, children, editing?}  actions: toggle, click, reorder (as target: position "into"),
 /// rename {title} / renameCancel (while `editing`)
 final class FolderNode: NodeView {

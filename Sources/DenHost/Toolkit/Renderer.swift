@@ -49,7 +49,7 @@ public final class Renderer {
     "button": ButtonNode.self, "navBar": NavBarNode.self, "urlPill": URLPillNode.self,
     "grid": GridNode.self, "favoriteTile": FavoriteTileNode.self, "spaceTitle": SpaceTitleNode.self,
     "tabRow": TabRowNode.self, "folder": FolderNode.self, "divider": DividerNode.self,
-    "newTabRow": NewTabRowNode.self, "spaceIcon": SpaceIconNode.self,
+    "newTabRow": NewTabRowNode.self, "spaceIcon": SpaceIconNode.self, "splitRow": SplitRowNode.self,
     "themePicker": ThemePickerNode.self,
   ]
 

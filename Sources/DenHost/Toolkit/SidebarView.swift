@@ -406,7 +406,9 @@ final class DragController {
         indicator.frame = NSRect(x: (pos == "before" ? f.minX - 4 : f.maxX + 2), y: f.minY + 4, width: 2, height: f.height - 8)
       } else {
         let rel = (p.y - f.minY) / f.height
-        pos = hit is FolderNode.Header && rel > 0.3 && rel < 0.7 ? "into" : (rel < 0.5 ? "before" : "after")
+        // Folders take rows "into" them; so do splits (a tab joins the split), but not other splits.
+        let into = hit is FolderNode.Header || (hit is SplitRowNode && source is TabRowNode)
+        pos = into && rel > 0.3 && rel < 0.7 ? "into" : (rel < 0.5 ? "before" : "after")
         indicator.frame = pos == "into" ? f.insetBy(dx: 0, dy: f.height / 2 - 1) : NSRect(x: f.minX + 6, y: (pos == "before" ? f.minY - 2 : f.maxY) , width: f.width - 12, height: 2)
       }
       newTarget = (hit.nodeId, pos)

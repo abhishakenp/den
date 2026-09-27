@@ -821,7 +821,7 @@ final class TabsCore {
   /// "Move to <Space>" and dropping a row on a footer space icon: the tab (or folder) keeps its
   /// section (pinned stays pinned) in the other space; a favorite lands in that space's today.
   func moveToSpace(_ id: String, _ sid: String) {
-    guard pageIndex(sid) != nil, tabs[id] != nil || folders[id] != nil else { return }
+    guard pageIndex(sid) != nil, tabs[id] != nil || folders[id] != nil || splits[id] != nil else { return }
     let kind = folders[id] != nil ? "pinned" : kindOf(id)
     if kind != "favorite" && (spaceOf(id) ?? folders[id]?.spaceId) == sid { return }
     _ = move(["id": .string(id), "spaceId": .string(sid), "kind": .string(kind == "favorite" ? "today" : kind)])
@@ -1076,17 +1076,13 @@ final class TabsCore {
                        ["separator": true], ["id": "deleteFolder", "title": "Delete Folder…", "icon": "sf:trash"]]]
     }
     if let sp = splits[id] {
-      // One sidebar item: the split's tabs side by side (Arc §7). Clicking a pane's half focuses it.
+      // One sidebar item: the split's tabs side by side (Arc §7). Clicking a pane's segment focuses it.
       let sel = selected[sid]
       let on = sp.children.contains(sel ?? "")
-      return ["type": "row", "id": .string("tabs.split:" + id), "height": 36, "spacing": 2, "selected": .bool(on),
-              "menu": .array(splitMenu(id)),
-              "children": .array(sp.children.compactMap { c -> Value? in
-                guard tabs[c] != nil else { return nil }
-                var r = row(c, sid, box: .split(id))
-                r.put("selected", .bool(c == sel))
-                r.put("menu", .array(splitMenu(id)))
-                return r
+      return ["type": "splitRow", "id": .string(id), "selected": .bool(on), "layout": .string(sp.layout), "menu": .array(splitMenu(id)),
+              "panes": .array(sp.children.compactMap { c -> Value? in
+                guard let t = tabs[c] else { return nil }
+                return ["id": .string(c), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(c == sel)]
               })]
     }
     guard tabs[id] != nil else { return nil }
@@ -1344,12 +1340,20 @@ final class TabsCore {
 
   func handleReorder(_ value: Value) {
     let src = value.s("source"), dst = value.s("target"), pos = value.s("position")
-    guard src != dst, tabs[src] != nil || folders[src] != nil, let (tb, ti) = locate(dst) else { return }
+    guard src != dst, tabs[src] != nil || folders[src] != nil || splits[src] != nil, let (tb, ti) = locate(dst) else { return }
+    // A split never goes inside another split.
+    if splits[src] != nil, case .split = tb { return }
     var box = tb
     var index = pos == "after" ? ti + 1 : ti
     if pos == "into", folders[dst] != nil {
       box = .folder(dst)
       index = folders[dst]!.children.count
+    }
+    if pos == "into", let sp = splits[dst] {
+      // A tab dropped on a split row joins it as its last pane (Arc: drag a tab onto another).
+      guard tabs[src] != nil, !sp.children.contains(src) else { return }
+      _ = split(sp.children + [src], layout: sp.layout, focus: src)
+      return
     }
     if folders[src] != nil {
       // Folders live in the pinned section, never inside themselves.
@@ -1408,6 +1412,23 @@ final class TabsCore {
       }
       return
     }
+    if let sp = splits[id] {
+      switch action {
+      case "click":
+        let pane = value.s("pane")
+        if sp.children.contains(pane) {
+          select(pane)
+        } else if let first = sp.children.first {
+          select(first)
+        }
+      case "close": unsplit(id)
+      case "reorder": handleReorder(value)
+      case "dropOnSpace": moveToSpace(id, value.s("spaceId"))
+      case "menu": _ = splitMenuPicked(value.string ?? "")
+      default: break
+      }
+      return
+    }
     switch id {
     case "tabs.nav":
       if action == "toggleSidebar" { env.call("window", "toggleSidebar") } else { web(action) }
@@ -1417,7 +1438,6 @@ final class TabsCore {
     default:
       if Text.hasPrefix(id, "tabs.divider:"), action == "clear" { clearToday(Text.dropPrefix(id, "tabs.divider:")) }
       if Text.hasPrefix(id, "tabs.newtab:"), action == "click" { openCommandBar("new") }
-      if Text.hasPrefix(id, "tabs.split:"), action == "menu" { _ = splitMenuPicked(value.string ?? "") }
       if Text.hasPrefix(id, "tabs.deleteFolder:"), action == "button" {
         env.call("ui", "set", ["slot": "dialog", "tree": nil])
         let fid = Text.dropPrefix(id, "tabs.deleteFolder:")
