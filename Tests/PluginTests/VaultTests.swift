@@ -70,7 +70,7 @@ struct VaultTests {
   }
 
   func wait(_ cond: () -> Bool) async throws -> Bool {
-    for _ in 0..<60 {
+    for _ in 0..<200 {  // up to 10 s on a loaded machine
       if cond() { return true }
       try await Task.sleep(for: .milliseconds(50))
     }

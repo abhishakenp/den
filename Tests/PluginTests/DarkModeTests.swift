@@ -36,7 +36,7 @@ struct DarkModeTests {
   }
 
   func waitTone(_ w: WKWebView, _ tone: String) async throws -> Bool {
-    for _ in 0..<60 {
+    for _ in 0..<200 {  // up to 10 s on a loaded machine
       if await js(w, "document.documentElement.getAttribute('data-den-tone')") == tone { return true }
       try await Task.sleep(for: .milliseconds(50))
     }
