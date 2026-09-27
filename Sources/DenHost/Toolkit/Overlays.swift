@@ -41,30 +41,48 @@ class PanelView: FlippedView, Themable {
 @MainActor
 final class CommandBarView: PanelView, NSTextFieldDelegate {
   final class Row: FlippedView {
-    let icon = IconView(), title = makeLabel(size: 14), subtitle = makeLabel(size: 12), accessory = makeLabel(size: 11, weight: .medium)
+    let icon = IconView(), title = makeLabel(size: 14), subtitle = makeLabel(size: 13), accessory = makeLabel(size: 12, weight: .medium)
+    let keycap = Keycap()
     var rowId = ""
     var selected = false { didSet { needsDisplay = true } }
+    var hovering = false { didSet { needsDisplay = true } }
     var accent: NSColor = .controlAccentColor
+    var hoverFill: NSColor = .clear
     var onClick: (() -> Void)?
     override init(frame: NSRect) {
       super.init(frame: frame)
-      [icon, title, subtitle, accessory].forEach { addSubview($0) }
+      [icon, title, subtitle, accessory, keycap].forEach { addSubview($0) }
     }
     required init?(coder: NSCoder) { fatalError() }
+    /// Spec §2: highlight inset 10 horizontally and 2 vertically inside the 50 pt row, radius 6.
+    var highlight: NSRect { bounds.insetBy(dx: Tokens.commandBarHighlightInsetX, dy: Tokens.commandBarHighlightInsetY) }
     override func draw(_ dirtyRect: NSRect) {
-      guard selected else { return }
-      accent.setFill()
-      NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
+      guard selected || hovering else { return }
+      (selected ? accent : hoverFill).setFill()
+      NSBezierPath(roundedRect: highlight, xRadius: Tokens.commandBarHighlightRadius, yRadius: Tokens.commandBarHighlightRadius).fill()
     }
     override func layout() {
+      // Spec §2: favicon 16x16 at +16, title at +43, trailing accessory label + 21x21 keycap.
       let h = bounds.height
-      icon.frame = NSRect(x: 12, y: (h - 18) / 2, width: 18, height: 18)
-      let aw = ceil(accessory.intrinsicContentSize.width) + 4
-      accessory.frame = NSRect(x: bounds.width - aw - 12, y: (h - 15) / 2, width: aw, height: 15)
-      let tw = min(ceil(title.intrinsicContentSize.width) + 6, bounds.width * 0.62)
-      title.frame = NSRect(x: 42, y: (h - 18) / 2, width: tw, height: 18)
-      subtitle.frame = NSRect(x: 42 + tw + 8, y: (h - 16) / 2 + 1, width: max(0, bounds.width - aw - 30 - (42 + tw + 8)), height: 16)
+      icon.frame = NSRect(x: 16, y: (h - 16) / 2, width: 16, height: 16)
+      var right = bounds.width - 16
+      keycap.isHidden = keycap.text.isEmpty
+      if !keycap.isHidden { keycap.frame = NSRect(x: right - 21, y: (h - 21) / 2, width: 21, height: 21); right -= 29 }
+      let aw = accessory.stringValue.isEmpty ? 0 : ceil(accessory.textWidth) + 4
+      accessory.frame = NSRect(x: right - aw, y: (h - 16) / 2, width: aw, height: 16)
+      right -= aw + 12
+      let tw = min(ceil(title.textWidth) + 6, max(0, right - 43))
+      title.frame = NSRect(x: 43, y: (h - 18) / 2, width: tw, height: 18)
+      let sx = 43 + tw + 6
+      subtitle.frame = NSRect(x: sx, y: (h - 17) / 2, width: max(0, right - sx), height: 17)
     }
+    override func updateTrackingAreas() {
+      super.updateTrackingAreas()
+      trackingAreas.forEach(removeTrackingArea)
+      addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
     override func mouseUp(with event: NSEvent) { onClick?() }
   }
 
@@ -127,6 +145,7 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
         r.title.stringValue = rv.str("title")
         r.subtitle.stringValue = rv.str("subtitle")
         r.accessory.stringValue = rv.str("accessory")
+        r.keycap.text = rv.str("keycap")
         r.onClick = { [weak self, rid = r.rowId] in self?.submit(rid, modifiers: []) }
         r.toolTip = rv.str("subtitle")
         rows.append(r)
@@ -142,43 +161,46 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
   override func apply(_ p: Palette) {
     super.apply(p)
     palette = p
-    input.textColor = p.dark ? .white : .black
-    searchIcon.tint = p.secondaryText
-    separator.layer?.backgroundColor = p.divider.cgColor
+    input.textColor = p.panelText
+    searchIcon.tint = p.panelSecondaryText
+    separator.layer?.backgroundColor = NSColor(white: p.dark ? 1 : 0, alpha: 0.10).cgColor  // HairlineDivider
+    // Spec §2 measured a theme/accent-tinted highlight; den uses the space accent.
     let accent = p.accent
     for r in rows {
       r.selected = r.rowId == selected
       r.accent = accent
-      let fg: NSColor = r.selected ? .white : (p.dark ? .white : .black)
-      r.title.textColor = fg
-      r.subtitle.textColor = r.selected ? NSColor(white: 1, alpha: 0.75) : p.secondaryText
-      r.accessory.textColor = r.selected ? NSColor(white: 1, alpha: 0.85) : p.secondaryText
-      r.icon.tint = fg
+      r.hoverFill = p.rowHover
+      r.title.textColor = r.selected ? .white : p.panelText
+      r.subtitle.textColor = r.selected ? NSColor(white: 1, alpha: 0.7) : p.panelSecondaryText
+      r.accessory.textColor = r.selected ? NSColor(white: 1, alpha: 0.85) : p.panelSecondaryText
+      r.icon.tint = r.selected ? .white : p.panelText
+      r.keycap.apply(p, onAccent: r.selected)
     }
-    for h in headers { h.textColor = p.secondaryText }
+    for h in headers { h.textColor = p.panelSecondaryText }
   }
 
   var contentHeight: CGFloat {
     let n = min(rows.count, Tokens.commandBarMaxRows)
     let sections = headers.filter { !$0.stringValue.isEmpty }.count
-    return Tokens.commandBarInputHeight + (n > 0 ? CGFloat(n) * Tokens.commandBarRowHeight + CGFloat(sections) * 24 + 14 : 0)
+    return Tokens.commandBarInputHeight + (n > 0 ? CGFloat(n) * Tokens.commandBarRowHeight + CGFloat(sections) * 26 + 12 : 0)
   }
 
   override func layout() {
     super.layout()
     let ih = Tokens.commandBarInputHeight
-    searchIcon.frame = NSRect(x: 18, y: (ih - 18) / 2, width: 18, height: 18)
-    input.frame = NSRect(x: 46, y: (ih - 24) / 2, width: bounds.width - 62, height: 24)
+    // Spec §2: search icon 18x18 at x 23, text field starting at x 53 (panel coords).
+    searchIcon.frame = NSRect(x: 23, y: (ih - 18) / 2, width: 18, height: 18)
+    input.frame = NSRect(x: 53, y: (ih - 24) / 2, width: bounds.width - 53 - 20, height: 24)
     separator.frame = NSRect(x: 0, y: ih, width: bounds.width, height: rows.isEmpty ? 0 : 1)
     list.frame = NSRect(x: 0, y: ih + 1, width: bounds.width, height: bounds.height - ih - 1)
-    var y: CGFloat = 6
+    var y: CGFloat = 4
     var ri = 0
     var shown = 0
     for (si, sec) in node.list("sections").enumerated() {
       let h = headers[si]
       if !h.stringValue.isEmpty {
-        h.frame = NSRect(x: 18, y: y + 5, width: bounds.width - 36, height: 16)
-        y += 24
+        h.frame = NSRect(x: 23, y: y + 6, width: bounds.width - 46, height: 16)
+        y += 26
       }
       for _ in sec.list("rows") {
         let r = rows[ri]
@@ -186,7 +208,7 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
         r.isHidden = shown >= Tokens.commandBarMaxRows
         if r.isHidden { continue }
         shown += 1
-        r.frame = NSRect(x: 8, y: y, width: bounds.width - 16, height: Tokens.commandBarRowHeight)
+        r.frame = NSRect(x: Tokens.commandBarRowInset, y: y, width: bounds.width - 2 * Tokens.commandBarRowInset, height: Tokens.commandBarRowHeight)
         y += Tokens.commandBarRowHeight
       }
     }
@@ -229,12 +251,14 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
 
 // MARK: - Dialog
 
-/// {type:"dialog", id, title, message?, icon?, buttons: [{id, title, style: default|cancel|destructive}], checkbox?: {id, title, checked}}
-/// action (id = dialog id): button {button, checked}
+/// {type:"dialog", id, title, message?, icon?, buttons: [{id, title, style: default|cancel|destructive|secondary}], checkbox?: {id, title, checked}}
+/// action (id = dialog id): button {button, checked}. Return/Escape press the default/cancel buttons.
+/// Layout follows Arc's quit sheet (spec §5): left-aligned icon and title, buttons in a row at the
+/// bottom right, each with its keyboard hint as a keycap.
 @MainActor
 final class DialogView: PanelView {
   let icon = IconView()
-  let title = makeLabel(size: 15, weight: .semibold)
+  let title = makeLabel(size: 17, weight: .semibold)  // estimate: size UNVERIFIED
   let message = NSTextField(wrappingLabelWithString: "")
   var buttons: [PillButton] = []
   var checkbox: NSButton?
@@ -254,12 +278,13 @@ final class DialogView: PanelView {
     icon.spec = v.str("icon")
     icon.isHidden = icon.spec.isEmpty
     title.stringValue = v.str("title")
-    title.alignment = .center
     message.stringValue = v.str("message")
-    message.alignment = .center
+    message.isHidden = message.stringValue.isEmpty
     buttons.forEach { $0.removeFromSuperview() }
     buttons = v.list("buttons").enumerated().map { i, b in
-      let btn = PillButton(title: b.str("title"), style: b.str("style")) { [weak self] in self?.pressed(i) }
+      let style = b.str("style", "secondary")
+      let key = style == "default" ? "↩" : (style == "cancel" ? "esc" : "")
+      let btn = PillButton(title: b.str("title"), style: style, keycap: key) { [weak self] in self?.pressed(i) }
       surface.addSubview(btn)
       return btn
     }
@@ -277,51 +302,82 @@ final class DialogView: PanelView {
 
   override func apply(_ p: Palette) {
     super.apply(p)
+    surface.layer?.backgroundColor = p.popover.cgColor
     title.textColor = p.text
     message.textColor = p.secondaryText
     icon.tint = p.accent
     buttons.forEach { $0.apply(p) }
   }
 
-  /// Return / Escape trigger the default / cancel buttons.
-  override func keyDown(with event: NSEvent) {
-    let styles = node.list("buttons").map { $0.str("style") }
-    if event.keyCode == 36, let i = styles.firstIndex(of: "default") { pressed(i); return }
-    if event.keyCode == 53, let i = styles.firstIndex(of: "cancel") { pressed(i); return }
-    super.keyDown(with: event)
-  }
-  override var acceptsFirstResponder: Bool { true }
-
   func pressed(_ i: Int) {
     let spec = node.list("buttons")[i]
     emit(node.str("id", "dialog"), "button", ["button": .string(spec.str("id")), "checked": .bool(checkbox?.state == .on)])
   }
 
+  /// Return / Escape trigger the default / cancel buttons.
+  override func keyDown(with event: NSEvent) {
+    let styles = node.list("buttons").map { $0.str("style") }
+    if event.keyCode == 36 || event.keyCode == 76, let i = styles.firstIndex(of: "default") { pressed(i); return }
+    if event.keyCode == 53, let i = styles.firstIndex(of: "cancel") { pressed(i); return }
+    super.keyDown(with: event)
+  }
+  override func cancelOperation(_ sender: Any?) {
+    if let i = node.list("buttons").firstIndex(where: { $0.str("style") == "cancel" }) { pressed(i) }
+  }
+  override var acceptsFirstResponder: Bool { true }
+
+  var messageHeight: CGFloat {
+    message.isHidden ? 0 : message.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: Tokens.dialogWidth - 2 * Tokens.dialogPadding, height: 1000)).height
+  }
+
   var contentHeight: CGFloat {
-    let w = Tokens.dialogWidth - 48
-    let mh = message.stringValue.isEmpty ? 0 : message.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: w, height: 1000)).height
-    return 24 + (icon.isHidden ? 0 : 52) + 22 + (mh > 0 ? mh + 8 : 0) + (checkbox == nil ? 0 : 30) + 20 + CGFloat(buttons.count) * 36 + 16
+    // Spec §5: 450x248 with icon (62) at 38, title at 117, no message.
+    let pad = Tokens.dialogPadding
+    var h = pad + (icon.isHidden ? 0 : Tokens.dialogIconSize + 17) + 22
+    if !message.isHidden { h += 8 + messageHeight }
+    if checkbox != nil { h += 30 }
+    h += 33 + Tokens.dialogButtonHeight + pad
+    return max(icon.isHidden ? 0 : 248, h)
   }
 
   override func layout() {
     super.layout()
-    let w = bounds.width - 48
-    var y: CGFloat = 24
-    if !icon.isHidden { icon.frame = NSRect(x: (bounds.width - 44) / 2, y: y, width: 44, height: 44); y += 52 }
-    title.frame = NSRect(x: 24, y: y, width: w, height: 20); y += 26
-    if !message.stringValue.isEmpty {
-      let mh = message.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: w, height: 1000)).height
-      message.frame = NSRect(x: 24, y: y, width: w, height: mh); y += mh + 8
+    let pad = Tokens.dialogPadding, w = bounds.width - 2 * pad
+    var y = pad
+    if !icon.isHidden { icon.frame = NSRect(x: pad, y: y, width: Tokens.dialogIconSize, height: Tokens.dialogIconSize); y += Tokens.dialogIconSize + 17 }
+    title.frame = NSRect(x: pad, y: y, width: w, height: 22); y += 22
+    if !message.isHidden { message.frame = NSRect(x: pad, y: y + 8, width: w, height: messageHeight); y += 8 + messageHeight }
+    if let c = checkbox { c.sizeToFit(); c.frame.origin = NSPoint(x: pad - 2, y: y + 8) }
+    // Buttons: one row, right-aligned, 7 pt apart, bottom padding 38.
+    var x = bounds.width - pad
+    let by = bounds.height - pad - Tokens.dialogButtonHeight
+    for b in buttons.reversed() {
+      let bw = b.preferredWidth
+      x -= bw
+      b.frame = NSRect(x: x, y: by, width: bw, height: Tokens.dialogButtonHeight)
+      x -= Tokens.dialogButtonGap
     }
-    if let c = checkbox {
-      c.sizeToFit()
-      c.frame.origin = NSPoint(x: (bounds.width - c.frame.width) / 2, y: y + 4); y += 30
-    }
-    y += 12
-    // Arc stacks full-width buttons vertically.
-    for b in buttons {
-      b.frame = NSRect(x: 20, y: y, width: bounds.width - 40, height: 32); y += 36
-    }
+  }
+}
+
+/// Small keycap ("esc", "↩", "→") drawn inside buttons and command bar rows.
+@MainActor
+final class Keycap: NSView {
+  var text = "" { didSet { needsDisplay = true } }
+  var fill: NSColor = NSColor(white: 0, alpha: 0.05)
+  var fg: NSColor = .secondaryLabelColor
+  func apply(_ p: Palette, onAccent: Bool) {
+    fill = onAccent ? NSColor(white: 1, alpha: 0.2) : NSColor(white: p.dark ? 1 : 0, alpha: 0.05)  // AccessoryBackground (spec §2)
+    fg = onAccent ? NSColor(white: 1, alpha: 0.9) : p.panelSecondaryText
+    needsDisplay = true
+  }
+  var preferredWidth: CGFloat { max(21, ceil((text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium)]).width) + 10) }
+  override func draw(_ dirtyRect: NSRect) {
+    fill.setFill()
+    NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill()
+    let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: fg]
+    let sz = (text as NSString).size(withAttributes: attrs)
+    (text as NSString).draw(at: NSPoint(x: (bounds.width - sz.width) / 2, y: (bounds.height - sz.height) / 2), withAttributes: attrs)
   }
 }
 
@@ -358,7 +414,7 @@ final class ToastView: FlippedView, Themable {
     label.textColor = .white
     icon.tint = .white
   }
-  var contentWidth: CGFloat { ceil(label.intrinsicContentSize.width) + (icon.isHidden ? 40 : 64) }
+  var contentWidth: CGFloat { ceil(label.textWidth) + (icon.isHidden ? 40 : 64) }
   override func layout() {
     super.layout()
     var x: CGFloat = 16
@@ -376,35 +432,51 @@ final class BackdropView: NSView {
   override var mouseDownCanMoveWindow: Bool { false }
 }
 
-/// Full-width dialog button: accent-filled for the default action, subtle otherwise.
+/// Dialog button: primary (#3139FB) for the default action, subtle otherwise, with an optional keycap.
 @MainActor
 final class PillButton: FlippedView, Themable {
   let label = makeLabel(size: 13, weight: .medium)
+  let keycap = Keycap()
   let style: String
   let action: () -> Void
   var fill: NSColor = .gray
+  var border: NSColor?
   var pressedDown = false { didSet { needsDisplay = true } }
-  init(title: String, style: String, action: @escaping () -> Void) {
+  init(title: String, style: String, keycap key: String = "", action: @escaping () -> Void) {
     self.style = style
     self.action = action
     super.init(frame: .zero)
     label.stringValue = title
-    label.alignment = .center
+    keycap.text = key
+    keycap.isHidden = key.isEmpty
     addSubview(label)
+    addSubview(keycap)
   }
   required init?(coder: NSCoder) { fatalError() }
+  var preferredWidth: CGFloat { ceil(label.textWidth) + 32 + (keycap.isHidden ? 0 : keycap.preferredWidth + 8) }
   func apply(_ p: Palette) {
+    border = nil
     switch style {
-    case "default": fill = p.accent; label.textColor = .white
-    case "destructive": fill = p.pillFill; label.textColor = .systemRed
-    default: fill = p.pillFill; label.textColor = p.dark ? .white : .black
+    case "default": fill = p.primaryButton; label.textColor = .white
+    case "destructive": fill = p.destructive; label.textColor = .white
+    default:
+      fill = p.pillFill
+      border = NSColor(white: p.dark ? 1 : 0, alpha: 0.12)  // estimate
+      label.textColor = p.text
     }
+    keycap.apply(p, onAccent: style == "default" || style == "destructive")
     needsDisplay = true
   }
-  override func layout() { label.frame = NSRect(x: 8, y: (bounds.height - 17) / 2, width: bounds.width - 16, height: 17) }
+  override func layout() {
+    let lw = ceil(label.textWidth) + 2
+    label.frame = NSRect(x: 16, y: (bounds.height - 17) / 2, width: lw, height: 17)
+    keycap.frame = NSRect(x: 16 + lw + 6, y: (bounds.height - 20) / 2, width: keycap.preferredWidth, height: 20)
+  }
   override func draw(_ dirtyRect: NSRect) {
+    let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)  // estimate: radius
     (pressedDown ? fill.blended(withFraction: 0.15, of: .black) ?? fill : fill).setFill()
-    NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
+    path.fill()
+    if let border { border.setStroke(); path.lineWidth = 1; path.stroke() }
   }
   override func mouseDown(with event: NSEvent) { pressedDown = true }
   override func mouseUp(with event: NSEvent) {

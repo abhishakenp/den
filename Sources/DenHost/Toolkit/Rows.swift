@@ -10,6 +10,7 @@ class HoverNode: NodeView {
   var cornerRadius: CGFloat { Tokens.tabRowCornerRadius }
   var fillRect: NSRect { bounds }
   var baseFill: NSColor? { nil }
+  var hoverColor: NSColor { palette.hoverFill }
   private var downPoint: NSPoint?
   private var dragging = false
   var draggable: Bool { false }
@@ -26,9 +27,9 @@ class HoverNode: NodeView {
     let path = NSBezierPath(roundedRect: fillRect, xRadius: cornerRadius, yRadius: cornerRadius)
     if selected {
       NSGraphicsContext.saveGraphicsState()
-      if !palette.dark {
+      if let c = palette.selectedShadow {
         let sh = NSShadow()
-        sh.shadowColor = NSColor(white: 0, alpha: 0.1)  // estimate
+        sh.shadowColor = c  // spec §3 TabCellShadowSelected; blur/offset UNVERIFIED (estimate)
         sh.shadowBlurRadius = 2
         sh.shadowOffset = NSSize(width: 0, height: -0.5)
         sh.set()
@@ -37,7 +38,7 @@ class HoverNode: NodeView {
       path.fill()
       NSGraphicsContext.restoreGraphicsState()
     } else if hovering {
-      palette.hoverFill.setFill()
+      hoverColor.setFill()
       path.fill()
     } else if let f = baseFill {
       f.setFill()
@@ -113,16 +114,17 @@ final class NavBarNode: NodeView {
   override func height(for w: CGFloat) -> CGFloat { Tokens.navRowHeight }
   override var mouseDownCanMoveWindow: Bool { true }
   override func layout() {
-    let s = Tokens.navButtonSize
-    // Sidebar toggle sits right after the traffic lights; nav buttons are right-aligned.
-    let y = Tokens.trafficLightCenterY - s / 2
-    buttons[0].frame = NSRect(x: Tokens.trafficLightLeading + Tokens.trafficLightSpacing * 2 + 18 - Tokens.sidebarPadding, y: y, width: s, height: s)
-    var x = bounds.width - s
-    for b in buttons[1...].reversed() {
-      b.frame = NSRect(x: x, y: y, width: s, height: s)
-      x -= s + 2
+    // Spec §1 (sidebar coordinates): toggle at x 77, back/forward/reload at x 122/156/190, y 7, 32x32.
+    // This node sits inside the sidebar padding, so convert from sidebar x.
+    let s = Tokens.navButtonSize, pad = Tokens.sidebarPadding, y: CGFloat = 7
+    buttons[0].frame = NSRect(x: 77 - pad, y: y, width: s, height: s)
+    // Right-aligned so they track the sidebar width: at 228 wide (node width 212) the x values are
+    // 114/148/182 in node coordinates = 122/156/190 in the sidebar.
+    for (i, b) in buttons[1...].enumerated() {
+      b.frame = NSRect(x: bounds.width - 98 + CGFloat(i) * 34, y: y, width: s, height: s)
     }
   }
+
 }
 
 /// Simplified URL pill. {type:"urlPill", id, text, progress?, loading?, secure?, placeholder?}
@@ -133,6 +135,7 @@ final class URLPillNode: HoverNode {
   lazy var copy = IconButton(symbol: "link", size: 22) { [weak self] in self?.emit("copy") }
   override var cornerRadius: CGFloat { Tokens.urlPillCornerRadius }
   override var baseFill: NSColor? { palette.pillFill }
+  override var hoverColor: NSColor { palette.pillHoverFill }
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
     addSubview(lock)
@@ -146,8 +149,7 @@ final class URLPillNode: HoverNode {
     super.update(v)
     let t = v.str("text")
     label.stringValue = t.isEmpty ? v.str("placeholder", "Search or Enter URL…") : t
-    lock.spec = v.flag("secure") ? "sf:lock.fill" : ""
-    lock.isHidden = !v.flag("secure")
+    lock.isHidden = true  // Arc shows the bare domain (spec §1: text at x = 20)
     apply(r.palette)
     needsDisplay = true
     needsLayout = true
@@ -161,8 +163,7 @@ final class URLPillNode: HoverNode {
   override func height(for w: CGFloat) -> CGFloat { Tokens.urlPillHeight }
   override func layout() {
     let h = bounds.height
-    var x: CGFloat = 12
-    if !lock.isHidden { lock.frame = NSRect(x: x, y: (h - 11) / 2, width: 11, height: 11); x += 17 }
+    let x: CGFloat = 12  // spec §1: text at sidebar x = 20
     copy.frame = NSRect(x: bounds.width - 28, y: (h - 22) / 2, width: 22, height: 22)
     label.frame = NSRect(x: x, y: (h - 17) / 2, width: bounds.width - x - 32, height: 17)
   }
@@ -238,7 +239,7 @@ final class FavoriteTileNode: HoverNode {
 
 /// {type:"spaceTitle", id, title, icon?}  actions: click, menu (the "…" button), toggle (collapse pinned)
 final class SpaceTitleNode: HoverNode {
-  let label = makeLabel(size: 12, weight: .semibold)
+  let label = makeLabel(size: 13.5, weight: .semibold)  // spec §1
   let icon = IconView()
   lazy var more = IconButton(symbol: "ellipsis", size: 22) { [weak self] in self?.emit("more") }
   required init(renderer: Renderer) {
@@ -258,13 +259,14 @@ final class SpaceTitleNode: HoverNode {
     icon.isHidden = icon.spec.isEmpty
     needsLayout = true
   }
-  override func apply(_ p: Palette) { label.textColor = p.secondaryText; icon.tint = p.secondaryText; more.apply(p) }
-  override func height(for w: CGFloat) -> CGFloat { 28 }
+  override func apply(_ p: Palette) { label.textColor = p.text; icon.tint = p.text; more.apply(p) }
+  override func height(for w: CGFloat) -> CGFloat { Tokens.spaceTitleHeight }
   override func layout() {
-    var x: CGFloat = 8
-    if !icon.isHidden { icon.frame = NSRect(x: x, y: 7, width: 14, height: 14); x += 20 }
-    label.frame = NSRect(x: x, y: 6, width: bounds.width - x - 30, height: 16)
-    more.frame = NSRect(x: bounds.width - 26, y: 3, width: 22, height: 22)
+    // Spec §1 (sidebar coords): icon 26x26 at x 13, name at x 41, "More" at x 213.
+    let h = bounds.height, pad = Tokens.sidebarPadding
+    icon.frame = NSRect(x: 13 - pad + 6, y: (h - 14) / 2, width: 14, height: 14)  // glyph drawn inside the 26 pt icon box
+    label.frame = NSRect(x: 41 - pad, y: (h - 18) / 2, width: bounds.width - (41 - pad) - 30, height: 18)
+    more.frame = NSRect(x: bounds.width - 24, y: (h - 22) / 2, width: 22, height: 22)
   }
 }
 
@@ -325,7 +327,7 @@ final class TabRowNode: HoverNode {
   }
   required init?(coder: NSCoder) { fatalError() }
   var indent: CGFloat { CGFloat(node.num("indent", 0)) * Tokens.folderIndent }
-  override var fillRect: NSRect { bounds.insetBy(dx: 0, dy: 0) }
+  override var fillRect: NSRect { bounds.insetBy(dx: 0, dy: (bounds.height - 36) / 2) }  // spec §1: 212x36 highlight
   override func hoverChanged() { close.isHidden = !(hovering && node.flag("closable", true)) ; needsLayout = true }
   override func update(_ v: Value) {
     super.update(v)
@@ -342,7 +344,7 @@ final class TabRowNode: HoverNode {
   override func apply(_ p: Palette) {
     label.textColor = p.text
     label.font = .systemFont(ofSize: Tokens.tabRowFontSize, weight: node.flag("selected") ? .medium : .regular)
-    drift.textColor = p.secondaryText
+    drift.textColor = p.tertiaryText
     icon.tint = p.text
     audio.tint = p.secondaryText
     close.apply(p)
@@ -362,7 +364,7 @@ final class TabRowNode: HoverNode {
     var right = bounds.width - 6
     if !close.isHidden { close.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 26 }
     if !audio.isHidden { audio.frame = NSRect(x: right - 16, y: (h - 13) / 2, width: 14, height: 13); right -= 20 }
-    label.frame = NSRect(x: x, y: (h - 17) / 2, width: max(0, right - x), height: 17)
+    label.frame = NSRect(x: x, y: (h - 18) / 2, width: max(0, right - x), height: 18)
   }
   override func clicked(at p: NSPoint, event: NSEvent) {
     if node.flag("drift"), icon.frame.insetBy(dx: -4, dy: -4).contains(p) { emit("reset"); return }
@@ -383,6 +385,7 @@ final class FolderNode: NodeView {
     let icon = IconView()
     let label = makeLabel()
     override var draggable: Bool { true }
+    override var fillRect: NSRect { bounds.insetBy(dx: 0, dy: (bounds.height - 36) / 2) }
     required init(renderer: Renderer) {
       super.init(renderer: renderer)
       [chevron, icon, label].forEach { addSubview($0) }
@@ -459,15 +462,15 @@ final class DividerNode: HoverNode {
     needsDisplay = true
   }
   override func height(for w: CGFloat) -> CGFloat { Tokens.dividerHeight }
-  var lineEnd: CGFloat { button.isHidden ? bounds.width - 8 : bounds.width - button.intrinsicContentSize.width - 30 }
+  var lineEnd: CGFloat { button.isHidden ? bounds.width - 8 : bounds.width - button.textWidth - 30 }
   override func layout() {
-    let bw = ceil(button.intrinsicContentSize.width) + 4
+    let bw = ceil(button.textWidth) + 4
     button.frame = NSRect(x: bounds.width - bw - 6, y: (bounds.height - 14) / 2, width: bw, height: 14)
     arrow.frame = NSRect(x: button.frame.minX - 13, y: (bounds.height - 9) / 2, width: 9, height: 9)
   }
   override func draw(_ dirtyRect: NSRect) {
     palette.divider.setFill()
-    NSRect(x: 8, y: (bounds.height / 2).rounded(), width: max(0, lineEnd - 8), height: 1).fill()
+    NSRect(x: 8, y: (bounds.height / 2).rounded(), width: max(0, lineEnd - 8), height: 0.5).fill()  // spec §1: 0.5 pt
   }
   override func clicked(at p: NSPoint, event: NSEvent) {
     if !button.isHidden, p.x > lineEnd { emit("clear") }
@@ -476,6 +479,7 @@ final class DividerNode: HoverNode {
 
 /// {type:"newTabRow", id, title?} -> action "click"
 final class NewTabRowNode: HoverNode {
+  override var fillRect: NSRect { bounds.insetBy(dx: 0, dy: (bounds.height - 36) / 2) }
   let icon = IconView()
   let label = makeLabel()
   required init(renderer: Renderer) {
@@ -492,8 +496,8 @@ final class NewTabRowNode: HoverNode {
   override func apply(_ p: Palette) { label.textColor = p.secondaryText; icon.tint = p.secondaryText; needsDisplay = true }
   override func height(for w: CGFloat) -> CGFloat { Tokens.tabRowHeight }
   override func layout() {
-    let h = bounds.height, s: CGFloat = 13
-    icon.frame = NSRect(x: Tokens.tabRowPaddingX + 1.5, y: (h - s) / 2, width: s, height: s)
-    label.frame = NSRect(x: Tokens.tabRowPaddingX + Tokens.tabRowIconSize + 8, y: (h - 17) / 2, width: bounds.width - 44, height: 17)
+    let h = bounds.height, s: CGFloat = 14
+    icon.frame = NSRect(x: Tokens.tabRowPaddingX + 2, y: (h - s) / 2, width: s, height: s)
+    label.frame = NSRect(x: Tokens.tabRowPaddingX + Tokens.tabRowIconSize + 8, y: (h - 18) / 2, width: bounds.width - 44, height: 18)
   }
 }

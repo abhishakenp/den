@@ -3,13 +3,14 @@ import Foundation
 
 /// Every visual constant of den's chrome lives here, so estimates can be swapped for values
 /// measured on a real Arc build (docs/reference/arc-ui-spec.md) in one place.
-/// `// estimate` = not measured; taken from screenshots, third-party write-ups, or taste.
+/// `// spec` = measured on Arc 1.166.0, see docs/reference/arc-ui-spec.md (section noted).
+/// `// estimate` = not measured (UNVERIFIED in the spec); taken from taste or third-party write-ups.
 public enum Tokens {
   // MARK: Window / content card
   public static let windowMinSize = CGSize(width: 640, height: 420)  // estimate
   public static let windowDefaultSize = CGSize(width: 1280, height: 820)  // estimate
-  public static let cardInset: CGFloat = 8  // estimate: gap between card and window edge (top/right/bottom)
-  public static let cardCornerRadius: CGFloat = 8  // estimate
+  public static let cardInset: CGFloat = 10  // spec §1: top/right/bottom 10, left flush to the sidebar; 10 all round when hidden
+  public static let cardCornerRadius: CGFloat = 6  // spec §1
   public static let cardShadowOpacity: Float = 0.14  // estimate
   public static let cardShadowRadius: CGFloat = 3  // estimate
   public static let cardShadowOffsetY: CGFloat = -1  // estimate (AppKit y-up)
@@ -17,7 +18,7 @@ public enum Tokens {
   public static let splitGap: CGFloat = 8  // estimate
 
   // MARK: Sidebar
-  public static let sidebarDefaultWidth: CGFloat = 240  // estimate (third-party ~240 px)
+  public static let sidebarDefaultWidth: CGFloat = 228  // spec §1
   public static let sidebarMinWidth: CGFloat = 180  // estimate
   public static let sidebarMaxWidth: CGFloat = 420  // estimate
   public static let sidebarCollapseDragWidth: CGFloat = 120  // estimate: dragging below this hides the sidebar
@@ -29,24 +30,25 @@ public enum Tokens {
   public static let sidebarSectionSpacing: CGFloat = 10  // estimate
 
   // MARK: Traffic lights + header
-  public static let trafficLightLeading: CGFloat = 16  // estimate: x of the close button
-  public static let trafficLightCenterY: CGFloat = 20  // estimate: from window top
-  public static let trafficLightSpacing: CGFloat = 20  // system default spacing (centre to centre) // estimate
-  public static let navRowHeight: CGFloat = 40  // estimate: row shared with traffic lights
-  public static let navButtonSize: CGFloat = 26  // estimate
-  public static let urlPillHeight: CGFloat = 34  // estimate
-  public static let urlPillCornerRadius: CGFloat = 10  // estimate
-  public static let urlPillFontSize: CGFloat = 13  // estimate
+  public static let trafficLightXs: [CGFloat] = [12, 35, 58]  // spec §1: left edges of the 16 pt buttons
+  public static let trafficLightTop: CGFloat = 16  // spec §1: top edge, from window top
+  public static let trafficLightSize: CGFloat = 16  // spec §1
+  public static let navRowHeight: CGFloat = 46  // spec §1: URL pill starts at y = 46
+  public static let navButtonSize: CGFloat = 32  // spec §1: toggle at (77,7), back/fwd/reload at x 122/156/190, y 7
+  public static let urlPillHeight: CGFloat = 36  // spec §1: x 8–220, y 46–82
+  public static let urlPillCornerRadius: CGFloat = 12  // spec §1
+  public static let urlPillFontSize: CGFloat = 13  // spec §1 (derived from x-height)
 
   // MARK: Rows
-  public static let tabRowHeight: CGFloat = 34  // estimate
-  public static let tabRowCornerRadius: CGFloat = 8  // estimate
-  public static let tabRowSpacing: CGFloat = 2  // estimate
-  public static let tabRowIconSize: CGFloat = 16  // estimate
-  public static let tabRowPaddingX: CGFloat = 10  // estimate
-  public static let tabRowFontSize: CGFloat = 13  // estimate
+  public static let tabRowHeight: CGFloat = 41  // spec §1: row pitch
+  public static let tabRowCornerRadius: CGFloat = 12  // spec §1: selected highlight radius
+  public static let tabRowSpacing: CGFloat = 0  // spec §1: the 41 pt pitch includes the gap
+  public static let tabRowIconSize: CGFloat = 18  // spec §1: favicon 18x18 at x = 17
+  public static let tabRowPaddingX: CGFloat = 9  // spec §1: favicon at x = 17 (8 sidebar padding + 9)
+  public static let tabRowFontSize: CGFloat = 13.5  // spec §1 (derived from cap height)
   public static let folderIndent: CGFloat = 14  // estimate
-  public static let dividerHeight: CGFloat = 24  // estimate
+  public static let dividerHeight: CGFloat = 24  // estimate (line itself: 0.5 pt, spec §1)
+  public static let spaceTitleHeight: CGFloat = 38  // estimate (icon 26 at x 13, name at x 41: spec §1)
 
   // MARK: Favorites
   public static let favoriteColumns = 4  // estimate
@@ -56,27 +58,36 @@ public enum Tokens {
   public static let favoriteIconSize: CGFloat = 20  // estimate
 
   // MARK: Footer / space switcher
-  public static let footerHeight: CGFloat = 44  // estimate
-  public static let spaceIconSize: CGFloat = 24  // estimate
+  public static let footerHeight: CGFloat = 50  // spec §1: switcher strip 144x50 at y 750 of 800
+  public static let spaceIconSize: CGFloat = 26  // spec §1 (space title icon 26x26)
   public static let spaceDotSize: CGFloat = 6  // estimate
 
   // MARK: Overlays
-  public static let commandBarWidth: CGFloat = 680  // estimate
-  public static let commandBarTopRatio: CGFloat = 0.18  // estimate: top of bar as fraction of window height
-  public static let commandBarCornerRadius: CGFloat = 14  // estimate
+  public static let commandBarWidth: CGFloat = 766  // spec §2
+  public static let commandBarTopRatio: CGFloat = 231.0 / 800.0  // spec §2: top y = 231 in an 800 pt window
+  public static let commandBarCornerRadius: CGFloat = 15  // spec §2
   public static let commandBarInputHeight: CGFloat = 54  // estimate
   public static let commandBarInputFontSize: CGFloat = 18  // estimate
-  public static let commandBarRowHeight: CGFloat = 40  // estimate
+  public static let commandBarRowHeight: CGFloat = 50  // spec §2
   public static let commandBarMaxRows = 8  // estimate
+  public static let commandBarRowInset: CGFloat = 7  // spec §2: rows inset 7 from the panel
+  public static let commandBarHighlightInsetX: CGFloat = 10  // spec §2 (inside the row)
+  public static let commandBarHighlightInsetY: CGFloat = 2  // spec §2
+  public static let commandBarHighlightRadius: CGFloat = 6  // spec §2
   public static let peekInset: CGFloat = 44  // estimate: peek card inset from the content area
   public static let peekCornerRadius: CGFloat = 10  // estimate
   public static let peekBackdropAlpha: CGFloat = 0.18  // estimate
-  public static let dialogWidth: CGFloat = 380  // estimate
-  public static let dialogCornerRadius: CGFloat = 14  // estimate
-  public static let dialogBackdropAlpha: CGFloat = 0.2  // estimate
+  public static let dialogWidth: CGFloat = 450  // spec §5 (quit sheet 450x248)
+  public static let dialogCornerRadius: CGFloat = 26.5  // spec §5
+  public static let dialogPadding: CGFloat = 38  // spec §5: icon at (38,38), title at (38,117)
+  public static let dialogIconSize: CGFloat = 62  // spec §5
+  public static let dialogButtonHeight: CGFloat = 38  // spec §5 (37–40)
+  public static let dialogButtonGap: CGFloat = 7  // spec §5
+  public static let dialogBackdropAlpha: CGFloat = 0.55  // spec §3/§5
   public static let toastHeight: CGFloat = 36  // estimate
   public static let toastCornerRadius: CGFloat = 10  // estimate
-  public static let toastBottomInset: CGFloat = 18  // estimate
+  public static let toastTopInset: CGFloat = 12  // estimate: spec §6 anchors toasts to the window's top-right; margin UNVERIFIED
+  public static let toastRightInset: CGFloat = 20  // estimate
   public static let toastDefaultDurationMs = 2200  // estimate
 
   // MARK: Theme rendering
@@ -88,7 +99,9 @@ public enum Tokens {
   public static let grainTileSize = 128  // estimate
 
   // MARK: Motion
-  public static let animationDuration: TimeInterval = 0.2  // estimate (third-party "0.2 s ease-out")
-  public static let spaceSwitchDuration: TimeInterval = 0.28  // estimate
+  public static let animationDuration: TimeInterval = 0.2  // estimate (generic; sidebar uses the measured values below)
+  public static let spaceSwitchDuration: TimeInterval = 0.29  // spec §7: sidebar slides ~280–300 ms; content swaps instantly
+  public static let sidebarHideDuration: TimeInterval = 0.067  // spec §7: ~67 ms, strong ease-out
+  public static let sidebarShowDuration: TimeInterval = 0.083  // spec §7: ~83 ms, ease-out
   public static let swipeCommitFraction: CGFloat = 0.35  // estimate: swipe past this fraction commits
 }

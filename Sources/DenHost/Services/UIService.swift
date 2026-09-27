@@ -133,14 +133,7 @@ public final class UIService: HostService {
       layoutOverlays()
       wc.window.makeFirstResponder(commandBar.input)
       commandBar.input.currentEditor()?.selectAll(nil)
-      if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-        commandBar.alphaValue = 0
-        commandBar.layer?.setAffineTransform(CGAffineTransform(scaleX: 0.98, y: 0.98))
-        NSAnimationContext.runAnimationGroup { c in
-          c.duration = 0.14  // estimate
-          commandBar.animator().alphaValue = 1
-        }
-      }
+      // Spec §2/§7: the command bar appears and disappears in one frame, no animation.
     }
     layoutOverlays()
   }
@@ -172,7 +165,7 @@ public final class UIService: HostService {
     if !reduce {
       t.alphaValue = 0
       let final = t.frame
-      t.frame = final.offsetBy(dx: 0, dy: 12)
+      t.frame = final.offsetBy(dx: 0, dy: -8)
       NSAnimationContext.runAnimationGroup { c in
         c.duration = 0.22  // estimate
         c.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -210,13 +203,12 @@ public final class UIService: HostService {
       let w = Tokens.dialogWidth, h = dialog.contentHeight
       dialog.frame = NSRect(x: ((b.width - w) / 2).rounded(), y: ((b.height - h) / 2 - 20).rounded(), width: w, height: h)
     }
-    let cf = wc.overlays.convert(wc.contentArea.frame, from: wc.contentArea.superview)
-    var y = cf.maxY - Tokens.toastBottomInset
-    for t in toasts.reversed() {
+    // Spec §6: toasts are anchored to the window's top-right corner.
+    var y = Tokens.toastTopInset
+    for t in toasts {
       let w = t.contentWidth, h = Tokens.toastHeight
-      y -= h
-      t.frame = NSRect(x: (cf.midX - w / 2).rounded(), y: y, width: w, height: h)
-      y -= 8
+      t.frame = NSRect(x: (b.width - Tokens.toastRightInset - w).rounded(), y: y, width: w, height: h)
+      y += h + 8
     }
   }
 }

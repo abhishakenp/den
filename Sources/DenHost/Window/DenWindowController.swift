@@ -141,8 +141,11 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     container.frame = NSRect(x: 0, y: wh - h, width: container.frame.width, height: h)
     let dx: CGFloat = sidebarHidden ? Tokens.sidebarOverlayInset : 0
     for (i, b) in buttons.enumerated() {
+      // Spec §1: 16 pt buttons with left edges at x = 12/35/58 and top edge at y = 16.
       let s = b.frame.size
-      b.setFrameOrigin(NSPoint(x: Tokens.trafficLightLeading + dx + CGFloat(i) * Tokens.trafficLightSpacing - s.width / 2 + 6, y: h - Tokens.trafficLightCenterY - dx - s.height / 2))
+      let x = Tokens.trafficLightXs[min(i, 2)] + dx + (Tokens.trafficLightSize - s.width) / 2
+      let top = Tokens.trafficLightTop + dx + (Tokens.trafficLightSize - s.height) / 2
+      b.setFrameOrigin(NSPoint(x: x, y: h - top - s.height))
     }
   }
 
@@ -168,7 +171,7 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     guard hidden != sidebarHidden else { return }
     sidebarHidden = hidden
     sidebarRevealed = false
-    relayout(animated: animated)
+    relayout(animated: animated, duration: hidden ? Tokens.sidebarHideDuration : Tokens.sidebarShowDuration)
     emit("window.sidebarVisibility", ["hidden": .bool(hidden)])
   }
 
@@ -188,10 +191,10 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: w)  // estimate: grace period
   }
 
-  func relayout(animated: Bool) {
+  func relayout(animated: Bool, duration: TimeInterval = Tokens.animationDuration) {
     if animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
       NSAnimationContext.runAnimationGroup { ctx in
-        ctx.duration = Tokens.animationDuration
+        ctx.duration = duration
         ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
         ctx.allowsImplicitAnimation = true
         root.layoutSubtreeIfNeeded()

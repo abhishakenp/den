@@ -179,7 +179,7 @@ final class TextNode: NodeView {
   }
   override func apply(_ p: Palette) { label.textColor = ["caption", "secondary"].contains(node.str("style")) ? p.secondaryText : p.text }
   override func height(for w: CGFloat) -> CGFloat { ceil(label.intrinsicContentSize.height) + 4 }
-  override var preferredWidth: CGFloat? { ceil(label.intrinsicContentSize.width) + 4 }
+  override var preferredWidth: CGFloat? { ceil(label.textWidth) + 4 }
   override func layout() { label.frame = bounds.insetBy(dx: 2, dy: 2) }
 }
 
@@ -205,7 +205,7 @@ final class ButtonNode: NodeView {
   var size: CGFloat { CGFloat(node.num("size", 28)) }
   override func apply(_ p: Palette) { button.apply(p); label.textColor = p.text }
   override func height(for w: CGFloat) -> CGFloat { size }
-  override var preferredWidth: CGFloat? { size + (label.isHidden ? 0 : ceil(label.intrinsicContentSize.width) + 6) }
+  override var preferredWidth: CGFloat? { size + (label.isHidden ? 0 : ceil(label.textWidth) + 6) }
   override func layout() {
     button.frame = NSRect(x: 0, y: (bounds.height - size) / 2, width: size, height: size)
     label.frame = NSRect(x: size + 2, y: (bounds.height - 16) / 2, width: max(0, bounds.width - size - 2), height: 16)

@@ -122,6 +122,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if let state = r.interactionState {
       w.interactionState = state
       r.interactionState = nil
+      // Some states (e.g. loadHTMLString pages) don't restore; fall back to the last URL.
+      if w.backForwardList.currentItem == nil, let url = URL(string: r.url), r.url != "about:blank" { w.load(URLRequest(url: url)) }
     } else if let url = URL(string: r.url), r.url != "about:blank" {
       w.load(URLRequest(url: url))
     }

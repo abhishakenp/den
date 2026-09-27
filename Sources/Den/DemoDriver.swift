@@ -83,6 +83,8 @@ final class DemoDriver {
 
   // MARK: Model helpers
 
+  func allTabIds() -> [String] { (spaces.flatMap { $0.pinned + $0.folders.flatMap(\.tabs) + $0.today } + favorites).map(\.id) }
+
   var space: Space {
     get { spaces[current] }
     set { spaces[current] = newValue }
@@ -152,12 +154,12 @@ final class DemoDriver {
     rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "favs", "children": .array(favorites.map {
       ["type": "favoriteTile", "id": .string($0.id), "icon": .string($0.icon), "title": .string($0.title), "selected": .bool($0.id == sel), "audio": .bool($0.audio)]
     })]])
-    var footer: [Value] = [["type": "button", "id": "library", "icon": "sf:tray.full", "tooltip": "Library"], ["type": "spacer"]]
+    var footer: [Value] = [["type": "button", "id": "library", "icon": "sf:tray.full", "tooltip": "Library", "size": 32], ["type": "spacer"]]
     for (i, s) in spaces.enumerated() {
       footer.append(["type": "spaceIcon", "id": .string("space-\(i)"), "icon": .string(s.icon), "title": .string(s.name), "selected": .bool(i == current)])
     }
-    footer += [["type": "spacer"], ["type": "button", "id": "newSpace", "icon": "sf:plus", "tooltip": "New Space"]]
-    rt.call("ui", "set", ["slot": "sidebar.footer", "tree": ["type": "row", "id": "footer", "height": 32, "spacing": 2, "children": .array(footer)]])
+    footer += [["type": "spacer"], ["type": "button", "id": "newSpace", "icon": "sf:plus", "tooltip": "New Space", "size": 32]]
+    rt.call("ui", "set", ["slot": "sidebar.footer", "tree": ["type": "row", "id": "footer", "height": 50, "spacing": 2, "children": .array(footer)]])
   }
 
   func showSelected() {
@@ -230,10 +232,10 @@ final class DemoDriver {
       let isURL = WebViewsService.normalize(query) != nil && !query.contains(" ")
       sections.append(("", [[
         "id": "go", "icon": .string(isURL ? "sf:globe" : "sf:magnifyingglass"), "title": .string(query),
-        "subtitle": .string(isURL ? "— Open URL" : "— Search Google"), "accessory": "↩",
+        "subtitle": .string(isURL ? "— Open URL" : "— Search Google"), "keycap": "↩",
       ]]))
     }
-    sections.append(("Tabs", tabs.map { ["id": .string("tab:" + $0.id), "icon": .string($0.icon), "title": .string($0.title), "subtitle": .string(Self.host($0.url)), "accessory": "Switch to Tab"] }))
+    sections.append(("Tabs", tabs.map { ["id": .string("tab:" + $0.id), "icon": .string($0.icon), "title": .string($0.title), "subtitle": .string(Self.host($0.url)), "accessory": "Switch to Tab", "keycap": "→"] }))
     let actions: [(String, String, String)] = [("act:split", "sf:rectangle.split.2x1", "Add Split View"), ("act:sidebar", "sf:sidebar.left", "Toggle Sidebar"),
                                                 ("act:copy", "sf:link", "Copy URL"), ("act:theme", "sf:paintpalette", "Toggle Dark Mode")]
     let acts = actions.filter { q.isEmpty || $0.2.lowercased().contains(q) }
@@ -297,7 +299,8 @@ final class DemoDriver {
       ("cmd+shift+c", "demo.copyURL", "Copy URL", "Edit"), ("cmd+r", "demo.reload", "Reload Page", "View"),
       ("cmd+[", "demo.back", "Back", "View"), ("cmd+]", "demo.forward", "Forward", "View"),
       ("cmd+opt+left", "demo.prevSpace", "Previous Space", "Spaces"), ("cmd+opt+right", "demo.nextSpace", "Next Space", "Spaces"),
-      ("ctrl+shift+=", "demo.split", "Add Split View", "View"),
+      ("ctrl+shift+=", "demo.split", "Add Split View", "View"), ("cmd+shift+k", "demo.clear", "Clear Today Tabs", "Tabs"),
+      ("ctrl+z", "demo.undoClear", "Undo Clear", "Tabs"),
     ]
     for (c, e, t, m) in binds { rt.call("keys", "bind", ["chord": .string(c), "event": .string(e), "title": .string(t), "menu": .string(m)]) }
     for i in 1...spaces.count {
@@ -325,6 +328,8 @@ final class DemoDriver {
     h.on("demo.nextSpace") { [weak self] _ in self.map { $0.switchSpace($0.current + 1, animated: true) } }
     h.on("demo.space") { [weak self] v in self?.switchSpace(Int(v["payload"].int ?? 0), animated: true) }
     h.on("demo.split") { [weak self] _ in self?.addSplit() }
+    h.on("demo.clear") { [weak self] _ in self?.clearToday() }
+    h.on("demo.undoClear") { [weak self] _ in self?.undoClear() }
     h.on("demo.peek") { [weak self] v in self?.peek(v.str("url")) }
     h.on("content.peekAction") { [weak self] v in self?.peekAction(v.str("action"), v.str("webview")) }
     h.on("ui.action") { [weak self] v in self?.action(v.str("id"), v.str("action"), v["value"]) }
@@ -334,14 +339,16 @@ final class DemoDriver {
     h.on("webviews.newWindow") { [weak self] v in self?.newTab(v.str("url"), title: Self.host(v.str("url"))) }
     h.on("app.openURL") { [weak self] v in v.list("urls").compactMap(\.string).forEach { self?.newTab($0, title: Self.host($0)) } }
     rt.call("app", "interceptQuit", ["enabled": true])
-    h.on("app.quitRequested") { [weak self] _ in self?.showQuitDialog() }
+    h.on("app.quitRequested") { [weak self] _ in
+      guard let self else { return }
+      if self.rt.call("storage", "get", ["ns": "demo", "key": "skipQuitDialog"]).bool == true { self.rt.call("app", "quit") } else { self.showQuitDialog() }
+    }
   }
 
   func showQuitDialog() {
     rt.call("ui", "set", ["slot": "dialog", "tree": [
-      "type": "dialog", "id": "quit", "icon": "sf:power", "title": "Quit den?", "message": "Your spaces and pinned tabs are saved. Today tabs will be restored the next time you open den.",
-      "buttons": [["id": "quit", "title": "Quit", "style": "default"], ["id": "cancel", "title": "Cancel", "style": "cancel"]],
-      "checkbox": ["id": "dontAsk", "title": "Don't ask again", "checked": false],
+      "type": "dialog", "id": "quit", "icon": "app:icon", "title": "Quit den?",
+      "buttons": [["id": "always", "title": "Always quit", "style": "secondary"], ["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "quit", "title": "Quit", "style": "default"]],
     ]])
   }
 
@@ -383,7 +390,9 @@ final class DemoDriver {
     case ("cmdbar", "dismiss"), ("commandBar", "dismiss"): closeCommandBar()
     case ("quit", "button"):
       rt.call("ui", "set", ["slot": "dialog", "tree": nil])
-      rt.call("app", "quit", ["confirm": .bool(value.str("button") == "quit")])
+      let b = value.str("button")
+      if b == "always" { rt.call("storage", "set", ["ns": "demo", "key": "skipQuitDialog", "value": true]) }
+      rt.call("app", "quit", ["confirm": .bool(b != "cancel")])
     case ("sidebar", "page"):
       current = Int(value.int ?? 0)
       split = nil
@@ -396,12 +405,7 @@ final class DemoDriver {
     case ("nav", "stop"): rt.call("webviews", "stop", ["id": .string(space.selected)])
     case ("url", "click"): openCommandBar(prefill: find(space.selected)?.url ?? "")
     case ("url", "copy"): copyURL()
-    case ("div", "clear"):
-      for t in space.today { rt.call("webviews", "close", ["id": .string(t.id)]) }
-      space.today = []
-      if find(space.selected) == nil { space.selected = space.pinned.first?.id ?? "" }
-      renderSpace(current)
-      showSelected()
+    case ("div", "clear"): clearToday()
     case (_, "toggle"):
       if let i = space.folders.firstIndex(where: { $0.id == id }) { space.folders[i].open.toggle(); renderSpace(current) }
     case (_, "click") where id.hasPrefix("space-"):
@@ -424,6 +428,26 @@ final class DemoDriver {
       if src != space.selected, find(src) != nil { split = value.str("side") == "left" ? [src, space.selected] : [space.selected, src]; showSelected() }
     default: break
     }
+  }
+
+  var lastCleared: [Tab] = []
+
+  /// Spec §5: clearing is instant, with an undo toast instead of a confirmation.
+  func clearToday() {
+    lastCleared = space.today.filter { $0.id != space.selected }
+    let keep = space.today.filter { $0.id == space.selected }
+    for t in lastCleared { rt.call("webviews", "suspend", ["id": .string(t.id)]) }
+    space.today = keep
+    renderSpace(current)
+    showSelected()
+    rt.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Today tabs cleared · ⌃Z to bring them back", "icon": "sf:checkmark.circle.fill"]])
+  }
+
+  func undoClear() {
+    guard !lastCleared.isEmpty else { return }
+    space.today += lastCleared
+    lastCleared = []
+    renderSpace(current)
   }
 
   func reorder(_ src: String, _ dst: String, _ pos: String) {

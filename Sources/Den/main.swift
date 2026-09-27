@@ -12,6 +12,11 @@ import os
 //   --measure-launch               print ms from process start to first window on screen, then quit
 //   --storage <dir>                storage root (default ~/Library/Application Support/den/storage)
 
+setvbuf(stdout, nil, _IOLBF, 0)
+let traceOn = ProcessInfo.processInfo.environment["DEN_TRACE"] != nil
+@MainActor func trace(_ s: String) {
+  if traceOn { print(String(format: "trace %@ %.1f", s, Date().timeIntervalSince(processStartDate()) * 1000)) }
+}
 let signposter = OSSignposter(subsystem: "io.github.abhishakenp.den", category: "launch")
 let launchInterval = signposter.beginInterval("launch")
 
@@ -31,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var runtime: DenRuntime!
   var demo: DemoDriver?
   var pendingURLs: [URL] = []
+  var visibleObserver: NSObjectProtocol?
 
   func arg(_ name: String) -> String? {
     guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
@@ -38,12 +44,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillFinishLaunching(_ notification: Notification) {
+    trace("willFinishLaunching")
     MainMenu.install()
   }
 
+  func applicationDidBecomeActive(_ notification: Notification) { trace("didBecomeActive") }
   func applicationDidFinishLaunching(_ notification: Notification) {
+    defer { trace("didFinishLaunching.end") }
+    if let out = ProcessInfo.processInfo.environment["DEN_SAMPLE"] {
+      let p = Process()
+      p.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
+      p.arguments = ["\(getpid())", "1", "1", "-file", out]
+      try? p.run()
+      usleep(150_000)
+    }
     let root = arg("--storage").map { URL(fileURLWithPath: $0) } ?? StorageService.defaultRoot
+    trace("didFinishLaunching")
     runtime = DenRuntime(storageRoot: root)
+    trace("runtime")
     runtime.app.open(pendingURLs)
     pendingURLs = []
 
@@ -55,15 +73,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       runtime.call("window", "setTheme", ["colors": ["#c3b1ff", "#ffb3d1"], "intensity": 0.6, "grain": 0.3])
     }
 
+    trace("setup")
     let w = runtime.window.window
     w.makeKeyAndOrderFront(nil)
+    trace("orderFront")
     NSApp.activate()
+    trace("activate")
     w.displayIfNeeded()
-    // First frame committed -> window is on screen.
-    CATransaction.setCompletionBlock { [weak self] in
-      DispatchQueue.main.async { MainActor.assumeIsolated { self?.firstFrame() } }
+    trace("display")
+    DispatchQueue.main.async { trace("nextRunloop") }
+    // The window server reports the window visible -> first frame is on screen.
+    if w.occlusionState.contains(.visible) {
+      firstFrame()
+    } else {
+      visibleObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated {
+          guard let self, w.occlusionState.contains(.visible), let o = self.visibleObserver else { return }
+          NotificationCenter.default.removeObserver(o)
+          self.visibleObserver = nil
+          self.firstFrame()
+        }
+      }
     }
-    CATransaction.commit()
   }
 
   func firstFrame() {
@@ -100,12 +131,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       d.query = "swi"
       d.renderCommandBar(replace: true)
     case "dialog": d.showQuitDialog()
-    case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { d.copyURL() }
+    case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { d.clearToday() }
     case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { d.peek("https://www.swift.org") }
     case "space2": d.switchSpace(1, animated: false)
-    case "suspend":
-      // Measure: show 10 tabs one after another, then report.
-      break
+    case "load10", "load10discard":
+      // Memory measurement: show 10 tabs one after another (each gets a live WKWebView),
+      // then go back to the first; with "discard", fully discard the other 9.
+      let ids = d.allTabIds().prefix(10)
+      for (i, id) in ids.enumerated() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 2.5) { d.select(id) }
+      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + Double(ids.count) * 2.5 + 3) {
+        d.select(ids.first!)
+        if s == "load10discard" { for id in ids.dropFirst() { self.runtime.call("webviews", "suspend", ["id": .string(id)]) } }
+        let live = ids.filter { self.runtime.call("webviews", "get", ["id": .string($0)]).flag("live") }.count
+        print("scenario.ready live=\(live)")
+      }
     default: break
     }
   }
@@ -126,6 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 }
 
+MainActor.assumeIsolated { trace("main") }
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
 let delegate = AppDelegate()

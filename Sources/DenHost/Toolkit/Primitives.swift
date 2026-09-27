@@ -9,22 +9,33 @@ public struct Palette {
 
   public init(theme: Theme, dark: Bool) { (self.theme, self.dark) = (theme, dark) }
 
-  public var text: NSColor { dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0, alpha: 0.82) }  // estimate
-  public var secondaryText: NSColor { dark ? NSColor(white: 1, alpha: 0.55) : NSColor(white: 0, alpha: 0.5) }  // estimate
-  public var hoverFill: NSColor { dark ? NSColor(white: 1, alpha: 0.07) : NSColor(white: 1, alpha: 0.32) }  // estimate
-  public var selectedFill: NSColor { dark ? NSColor(white: 1, alpha: 0.15) : NSColor(white: 1, alpha: 0.88) }  // estimate
-  public var pillFill: NSColor { dark ? NSColor(white: 1, alpha: 0.08) : NSColor(white: 0, alpha: 0.055) }  // estimate
-  public var tileFill: NSColor { dark ? NSColor(white: 1, alpha: 0.08) : NSColor(white: 1, alpha: 0.38) }  // estimate
-  public var divider: NSColor { dark ? NSColor(white: 1, alpha: 0.12) : NSColor(white: 0, alpha: 0.1) }  // estimate
+  // Values from docs/reference/arc-ui-spec.md §3 unless marked estimate.
+  static func ink(_ a: CGFloat) -> NSColor { NSColor(srgbRed: 0x0E / 255, green: 0x0F / 255, blue: 0x10 / 255, alpha: a) }
+  static func snow(_ a: CGFloat) -> NSColor { NSColor(srgbRed: 0xFA / 255, green: 0xFB / 255, blue: 1, alpha: a) }
+  public var text: NSColor { dark ? NSColor(white: 1, alpha: 0.80) : Self.ink(0.90) }  // ForegroundPrimary
+  public var secondaryText: NSColor { dark ? NSColor(white: 1, alpha: 0.50) : NSColor(white: 0, alpha: 0.50) }  // ForegroundSecondary
+  public var tertiaryText: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.30) }  // ForegroundTertiary / TabCellSlash
+  public var hoverFill: NSColor { dark ? Self.snow(0.08) : NSColor(white: 1, alpha: 0.32) }  // TabCellBackgroundPrevious (hover rule UNVERIFIED)
+  public var selectedFill: NSColor { dark ? Self.snow(0.20) : NSColor(white: 1, alpha: 0.85) }  // TabCellBackgroundCurrent
+  public var selectedShadow: NSColor? { dark ? nil : NSColor(white: 0, alpha: 0.20) }  // TabCellShadowSelected
+  public var pressedFill: NSColor { dark ? Self.snow(0.06) : Self.ink(0.06) }  // TabCellBackgroundPressed
+  public var pillFill: NSColor { dark ? Self.snow(0.10) : Self.ink(0.05) }  // SidebarItemBackground
+  public var pillHoverFill: NSColor { dark ? Self.snow(0.15) : Self.ink(0.10) }  // SidebarItemHoveredBackground
+  public var tileFill: NSColor { dark ? Self.snow(0.10) : Self.ink(0.05) }  // estimate: favorites use SidebarItemBackground
+  public var divider: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.15) }  // SidebarSeparator
+  public var primaryButton: NSColor { NSColor(srgbRed: 0x31 / 255, green: 0x39 / 255, blue: 0xFB / 255, alpha: 1) }  // primary button #3139FB
+  public var destructive: NSColor { NSColor(srgbRed: 0xF5 / 255, green: 0x37 / 255, blue: 0x14 / 255, alpha: 1) }  // DestructiveButtonFace
+  public var rowHover: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.05) }  // command bar RowHoverBackground
+  public var panelText: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.80) }  // command bar TextPrimary
+  public var panelSecondaryText: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.33) }  // command bar TextSecondary
   public var accent: NSColor {
     guard let a = theme.accent else { return .controlAccentColor }
     return (dark ? a.mix(RGB(1, 1, 1), 0.25) : a.mix(RGB(0, 0, 0), 0.15)).ns
   }
-  /// Surface for floating panels (command bar, dialog, toast), tinted slightly with the theme.
-  public var panel: NSColor {
-    let base = dark ? RGB(0.16, 0.16, 0.17) : RGB(1, 1, 1)
-    return (theme.accent.map { base.mix($0, dark ? 0.12 : 0.05) } ?? base).ns
-  }
+  /// Command bar surface: (28,27,34) dark measured (spec §2); light = PopoverBackground #FAFBFF.
+  public var panel: NSColor { dark ? NSColor(srgbRed: 28 / 255, green: 27 / 255, blue: 34 / 255, alpha: 1) : Self.snow(1) }
+  /// Dialog surface: PopoverBackground #FAFBFF / #151C30 (spec §3).
+  public var popover: NSColor { dark ? NSColor(srgbRed: 0x15 / 255, green: 0x1C / 255, blue: 0x30 / 255, alpha: 1) : Self.snow(1) }
   public var toast: NSColor {
     let base = dark ? RGB(0.2, 0.2, 0.21) : RGB(0.12, 0.12, 0.13)
     return (theme.accent.map { base.mix($0, 0.45) } ?? base).ns
@@ -96,7 +107,9 @@ public final class IconView: NSView, Themable {
   func reload() {
     image = nil
     isSymbol = false
-    if spec.hasPrefix("sf:") {
+    if spec == "app:icon" {
+      image = NSApp.applicationIconImage
+    } else if spec.hasPrefix("sf:") {
       image = NSImage(systemSymbolName: String(spec.dropFirst(3)), accessibilityDescription: nil)
       isSymbol = true
     } else if spec.hasPrefix("http://") || spec.hasPrefix("https://") || spec.hasPrefix("data:") {
@@ -218,4 +231,9 @@ func makeLabel(_ s: String = "", size: CGFloat = Tokens.tabRowFontSize, weight: 
   l.maximumNumberOfLines = 1
   l.cell?.truncatesLastVisibleLine = true
   return l
+}
+
+extension NSTextField {
+  /// Width of the rendered string (intrinsicContentSize under-reports for truncating labels).
+  var textWidth: CGFloat { ceil(attributedStringValue.size().width) + 2 }
 }

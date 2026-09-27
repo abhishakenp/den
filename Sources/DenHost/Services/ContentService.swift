@@ -217,7 +217,7 @@ public final class PeekOverlayView: FlippedView {
     backdrop.frame = bounds
     let i = Tokens.peekInset
     card.frame = bounds.insetBy(dx: i, dy: i).offsetBy(dx: 0, dy: 10)
-    let bw = min(card.frame.width, max(200, ceil(titleLabel.intrinsicContentSize.width) + 110))
+    let bw = min(card.frame.width, max(200, ceil(titleLabel.textWidth) + 110))
     bar.frame = NSRect(x: card.frame.maxX - bw, y: card.frame.minY - 34, width: bw, height: 28)
     var x = bar.bounds.width
     for v in bar.subviews.compactMap({ $0 as? IconButton }).sorted(by: { $0.tag < $1.tag }) {
