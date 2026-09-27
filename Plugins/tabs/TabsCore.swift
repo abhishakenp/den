@@ -1124,7 +1124,7 @@ final class TabsCore {
     let list = today[sid] ?? []
     var kids: [Value] = [
       list.isEmpty ? ["type": "divider", "id": .string("tabs.divider:" + sid)] : ["type": "divider", "id": .string("tabs.divider:" + sid), "action": "Clear"],
-      ["type": "newTabRow", "id": .string("tabs.newtab:" + sid), "title": "New Tab (live)"],
+      ["type": "newTabRow", "id": .string("tabs.newtab:" + sid), "title": "New Tab"],
     ]
     kids += list.compactMap { node($0, sid, parent: .today(sid)) }
     env.call("ui", "set", ["slot": "sidebar.today", "page": p, "tree": ["type": "list", "id": .string("tabs.today:" + sid), "children": .array(kids)]])
