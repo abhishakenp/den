@@ -105,12 +105,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       print(String(format: "launch.firstWindowMs %.1f", ms))
       if arg("--snapshot") == nil && !args.contains("--stay") { exit(0) }
     }
-    if let scenario = arg("--scenario") { applyScenario(scenario) }
+    var snapWindow = runtime.window.window
+    if let scenario = arg("--scenario") {
+      // Host component scenarios (DenHost/Scenarios) first; the rest need --demo.
+      if let w = HostScenarios.apply(scenario, runtime: runtime, appearance: arg("--appearance") ?? "light") { snapWindow = w } else { applyScenario(scenario) }
+    }
     if let path = arg("--snapshot") {
       let delay = Double(arg("--snapshot-delay") ?? "4") ?? 4
       DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
         Task { @MainActor in
-          let ok = await Snapshotter.write(self.runtime.window.window, to: path)
+          let ok = await Snapshotter.write(snapWindow, to: path)
           print(ok ? "snapshot: \(path)" : "snapshot: FAILED")
           exit(ok ? 0 : 1)
         }
