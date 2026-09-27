@@ -6,3 +6,4 @@ build/
 .claude/
 dist/
 .vercel/
+.vercel
