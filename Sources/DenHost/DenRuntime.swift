@@ -42,6 +42,8 @@ public final class DenRuntime {
     ai = AIService(host: host)
     schedule = ScheduleService(host: host, storage: storage)
     Self.permissionsByHost[ObjectIdentifier(plugins)] = permissions
+    // `webviews.eval` reads a live page only for a plugin with `session:<that page's host>`.
+    webviews.allowScript = { [permissions] plugin, host in MainActor.assumeIsolated { permissions.allowsSession(plugin, host: host) } }
     windowService.ui = ui
     windowService.attach(webviews: webviews, host: host)
     for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule] {

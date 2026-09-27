@@ -33,7 +33,10 @@ public final class WebRecord {
 ///   navigate {id, url}  back {id}  forward {id}  reload {id}  stop {id}
 ///   close {id}                                 -> destroys the web view and record
 ///   suspend {id}                               -> full discard: saves interactionState + snapshot, destroys the view
-///   snapshot {id, path}                        -> {pending}; later event webviews.snapshot {id, path, ok}
+///   snapshot {id, path, width?, format?}      -> {pending}; later event webviews.snapshot {id, path, ok}
+///                                                 width (pt) makes a small copy (hover previews); format png|jpeg
+///   eval {id, plugin, script, request?, timeoutMs?} -> {request}; later webviews.evalResult {request, webview, ok, value | error}
+///                                                 reads a live page; needs `allowScript(plugin, host)` (session:<host>)
 ///   get {id}                                   -> {id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, suspended, live}
 ///   list                                       -> [id]
 ///   setLinkPolicy {id | "*", rules: [{when: crossSite|sameSite|any, hosts?: [suffix], modifiers?: [cmd,...], event}]}
@@ -75,8 +78,10 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     case "stop": r.webView?.stopLoading()
     case "close": close(r)
     case "suspend": suspend(r)
-    case "snapshot": snapshot(r, path: args.str("path"))
+    case "snapshot":
+      snapshot(r, path: args.str("path"), width: args["width"].double.map { CGFloat($0) }, jpeg: args.str("format") == "jpeg")
       return ["pending": true]
+    case "eval": return evaluate(r, args)
     case "get": return state(r)
     case "setLinkPolicy": r.rules = args.list("rules").compactMap(LinkRule.init)
     default: return .error("webviews: unknown method '\(method)'")
@@ -206,20 +211,100 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
   }
 
-  func snapshot(_ r: WebRecord, path: String) {
+  func snapshot(_ r: WebRecord, path: String, width: CGFloat? = nil, jpeg: Bool = false) {
     let id = r.id
-    let done: @MainActor (NSImage?) -> Void = { [weak self] img in
+    let done: @MainActor (NSImage?) -> Void = { [weak self] taken in
+      // A web view that isn't in a window can't draw: fall back to the last snapshot.
+      let img = taken ?? r.snapshot
       var ok = false
-      if let img, !path.isEmpty, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
-        ok = (try? png.write(to: URL(fileURLWithPath: path))) != nil
+      if let img, !path.isEmpty, let data = Self.encode(img, width: width, jpeg: jpeg) {
+        ok = (try? data.write(to: URL(fileURLWithPath: path))) != nil
       }
-      if let img { r.snapshot = img }
+      // Only full-size snapshots replace the one a suspended tab shows.
+      if let taken, width == nil { r.snapshot = taken }
       self?.host.emit("webviews.snapshot", ["id": .string(id), "path": .string(path), "ok": .bool(ok)])
     }
     if let w = r.webView {
-      w.takeSnapshot(with: nil) { img, _ in MainActor.assumeIsolated { done(img) } }
+      let config = WKSnapshotConfiguration()
+      if let width { config.snapshotWidth = NSNumber(value: Double(width)) }
+      w.takeSnapshot(with: config) { img, _ in MainActor.assumeIsolated { done(img) } }
     } else {
-      DispatchQueue.main.async { done(r.snapshot) }
+      DispatchQueue.main.async { done(nil) }
+    }
+  }
+
+  /// PNG (or JPEG, quality 0.72) of `img`, scaled to `width` points at 2x when given.
+  static func encode(_ img: NSImage, width: CGFloat?, jpeg: Bool) -> Data? {
+    var rep: NSBitmapImageRep?
+    if let width, img.size.width > 0 {
+      let px = Int((width * 2).rounded()), py = Int((img.size.height * width * 2 / img.size.width).rounded())
+      guard px > 0, py > 0, let b = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: py, bitsPerSample: 8, samplesPerPixel: 4,
+                                                      hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+      NSGraphicsContext.saveGraphicsState()
+      NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: b)
+      NSGraphicsContext.current?.imageInterpolation = .high
+      img.draw(in: NSRect(x: 0, y: 0, width: px, height: py))
+      NSGraphicsContext.restoreGraphicsState()
+      rep = b
+    } else if let tiff = img.tiffRepresentation {
+      rep = NSBitmapImageRep(data: tiff)
+    }
+    return jpeg ? rep?.representation(using: .jpeg, properties: [.compressionFactor: 0.72]) : rep?.representation(using: .png, properties: [:])
+  }
+
+  // MARK: Page reads
+
+  /// Gate for `eval`: may `plugin` read a page on `host`? The runtime wires this to the plugin's
+  /// declared `session:<domain>` permissions; nil denies everything.
+  public var allowScript: ((_ plugin: String, _ host: String) -> Bool)?
+  public var maxScriptBytes = 4096
+  private var nextEval = 1
+
+  /// Runs `script` (a function body that `return`s JSON-compatible data) in the live page, in an
+  /// isolated content world the page's own scripts can't see. Only live views: reading a page never
+  /// loads or wakes one.
+  func evaluate(_ r: WebRecord, _ args: Value) -> Value {
+    let plugin = args.str("plugin")
+    guard let w = r.webView else { return .error("webviews: '\(r.id)' is not loaded") }
+    let host = (w.url ?? URL(string: r.url))?.host?.lowercased() ?? ""
+    guard !host.isEmpty, allowScript?(plugin, host) == true else { return .error("webviews: '\(plugin)' may not read \(host.isEmpty ? "this page" : host)") }
+    let script = args.str("script")
+    guard !script.isEmpty, script.utf8.count <= maxScriptBytes else { return .error("webviews: script must be 1…\(maxScriptBytes) bytes") }
+    var request = args.str("request")
+    if request.isEmpty { request = "eval-\(nextEval)"; nextEval += 1 }
+    let id = r.id
+    var finished = false
+    let finish: @MainActor (Value) -> Void = { [weak self] payload in
+      guard !finished else { return }
+      finished = true
+      self?.host.emit("webviews.evalResult", payload.with("request", .string(request)).with("webview", .string(id)))
+    }
+    let timeout = DispatchWorkItem { MainActor.assumeIsolated { finish(["ok": false, "error": "webviews: script timed out"]) } }
+    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(max(200, min(Int(args.num("timeoutMs", 5000)), 20_000))), execute: timeout)
+    w.callAsyncJavaScript(script, arguments: [:], in: nil, in: .world(name: "den-plugins")) { result in
+      MainActor.assumeIsolated {
+        timeout.cancel()
+        switch result {
+        case let .success(v): finish(["ok": true, "value": Self.jsValue(v)])
+        case let .failure(e): finish(["ok": false, "error": .string("webviews: script failed: \(e.localizedDescription)")])
+        }
+      }
+    }
+    return ["request": .string(request)]
+  }
+
+  /// WebKit's bridged JS values (NSNumber, NSString, NSArray, NSDictionary, NSNull) as `Value`.
+  nonisolated static func jsValue(_ any: Any?, depth: Int = 0) -> Value {
+    guard let any, depth < 12 else { return .null }
+    switch any {
+    case let n as NSNumber:
+      if CFGetTypeID(n) == CFBooleanGetTypeID() { return .bool(n.boolValue) }
+      let d = n.doubleValue
+      return d == d.rounded() && abs(d) < 9e15 ? .int(Int64(d)) : .double(d)
+    case let s as String: return .string(s)
+    case let a as [Any]: return .array(a.prefix(500).map { jsValue($0, depth: depth + 1) })
+    case let o as [String: Any]: return .object(o.keys.sorted().map { ($0, jsValue(o[$0], depth: depth + 1)) })
+    default: return .null
     }
   }
 

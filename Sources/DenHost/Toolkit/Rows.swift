@@ -51,10 +51,17 @@ class HoverNode: NodeView {
     trackingAreas.forEach(removeTrackingArea)
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
-  override func mouseEntered(with event: NSEvent) { hovering = true }
-  override func mouseExited(with event: NSEvent) { hovering = false }
+  override func mouseEntered(with event: NSEvent) {
+    hovering = true
+    r.hover?.entered(self)
+  }
+  override func mouseExited(with event: NSEvent) {
+    hovering = false
+    r.hover?.exited(self)
+  }
 
   override func mouseDown(with event: NSEvent) {
+    r.hover?.pressed(self)
     downPoint = event.locationInWindow
     dragging = false
     if event.clickCount == 2 { emit("doubleClick") }

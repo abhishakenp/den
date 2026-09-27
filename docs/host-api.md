@@ -47,7 +47,8 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 | `navigate` | `id`, `url` | ok |
 | `back`, `forward`, `reload`, `stop`, `close` | `id` | ok |
 | `suspend` | `id` | ok. Full discard: saves `interactionState` and a snapshot, then destroys the view. The next show restores it |
-| `snapshot` | `id`, `path` | `{pending}`, then the event `webviews.snapshot {id, path, ok}` |
+| `snapshot` | `id`, `path`, `width?` (pt; a small copy at 2x, for previews), `format?: png\|jpeg` | `{pending}`, then the event `webviews.snapshot {id, path, ok}`. A view that can't draw (not in the window) writes its last snapshot, if any |
+| `eval` | `id`, `plugin`, `script` (a function body that `return`s JSON data, ≤ 4 KB), `request?`, `timeoutMs?` (5000) | `{request}`, then `webviews.evalResult {request, webview, ok, value \| error}`. Only for a live page (it never loads or wakes one), in an isolated content world, and only when `plugin` has `session:<the page's host>` |
 | `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, suspended, live, profile}` |
 | `list` | – | `[id]` |
 | `setLinkPolicy` | `id` (or `"*"` for the default), `rules: [{when: crossSite\|sameSite\|any, hosts?: [suffix], modifiers?: [cmd,shift,opt,ctrl], event}]` | ok |
@@ -64,6 +65,7 @@ Events:
 - `webviews.suspended {id}`
 - `webviews.detached {id}`
 - `webviews.closed {id}`
+- `webviews.evalResult {request, webview, ok, value | error}`
 - One event per link rule, named by the rule's `event` field: `{id, url, source}`.
 
 The link policy is declarative because `WKNavigationDelegate` decisions are synchronous. A matched rule cancels the navigation and emits the rule's event. Only main-frame link clicks are routed, and a plain rule never catches cmd-clicks.
@@ -101,7 +103,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 **Slots:**
 - `sidebar.header`, `sidebar.favorites`, `sidebar.footer`
 - Per space page: `sidebar.spaceHeader`, `sidebar.pinned`, `sidebar.today`
-- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections` (see [Briefing page](#briefing-page-and-connections-sheet))
+- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections` (see [Briefing page](#briefing-page-and-connections-sheet)), `hoverCard` (see [Hover card](#hover-card))
 
 **Event:** `ui.action {id, action, value}`
 
@@ -124,7 +126,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `favoriteTile` | `id`, `icon`, `title`, `selected`, `audio` | `click`, `doubleClick`, `reorder` |
 | `spaceTitle` | `id`, `title`, `icon?` | `click`, `more` |
 | `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected`, `spaceId?` (makes it a drop target for dragged rows) | `click` |
-| `tabRow` | `id`, `title`, `icon`, `selected`, `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `indent?`, `draggable=true`, `editing?`, `editText?` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel` |
+| `tabRow` | `id`, `title`, `icon`, `selected`, `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `indent?`, `draggable=true`, `editing?`, `editText?`, `hover=true` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel`, `hover` (see [Hover card](#hover-card)) |
 | `splitRow` | `id`, `selected` (the split is shown), `layout?`, `panes: [{id, title, icon, selected}]` (`selected` = focused pane), `closable=true`, `indent?` | `click {pane}`, `close` (hover X), `reorder` (as target, a tab row can drop `into` it), `dropOnSpace` |
 | `folder` | `id`, `title`, `icon?`, `open`, `children`, `editing?` | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel` |
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
@@ -195,6 +197,30 @@ ui.set {slot: "popover", tree: {type: "themePicker", id: "theme", anchor: "space
 | `connectionRow` | `id`, `title`, `icon`, `status`, `connected`, `button: {title, style}`, `secondaryButton?: {id, title, style}` | `click`, `secondary` |
 | `toggleRow` | `id`, `title`, `subtitle?`, `icon?`, `on` | `toggle {on}` |
 | `choiceRow` | `id`, `title`, `subtitle?`, `options: [{id, title}]`, `selected` | `select {option}` |
+
+### Hover card
+
+Dia-style previews next to the sidebar. Hovering a `tabRow`, `favoriteTile`, `folder` or `splitRow` (unless it has `hover: false`) for a moment emits `ui.action {id: <row id>, action: "hover"}`. The row's owner asks for content, and whoever owns previews (the `previews` plugin) answers with `ui.set {slot: "hoverCard", tree}`. The host owns the timing; the plugins own the content.
+
+- **Intent** (`HoverIntent`). The first card waits for a 450 ms dwell; passing over rows quickly shows nothing. While a card is up, or for 600 ms after one closed, the next row's card shows at once (no second dwell), and the card glides to it. Moving off the row closes the card after a 200 ms grace, so the pointer can cross the 8 pt gap onto it; the card stays while the pointer is on it. Clicking a row closes its card until the pointer leaves that row. Dia's values aren't in its app resources, so all four are estimates (`Tokens.hoverCard*`).
+- **Closing.** The card closes on mouse-out, when an action or row on it is clicked, when anything modal opens (`overlay.*`, `dialog`, `popover`), or when the tree is set to null. Each close emits `ui.action {id: "hoverCard", action: "close", value: {anchor}}`.
+- **Anchoring.** A tree must carry `anchor` (the hovered row's id); a tree for a row that is no longer hovered is dropped. The card sits 8 pt right of the sidebar (or of the revealed sidebar overlay), its top level with the row, clamped to the window with a 10 pt margin.
+- **Look.** 320 wide, 14 pt continuous radius, PopoverBackground #FAFBFF / #151C30 with a 0.5 pt border (PopoverBorder in dark mode) and PopoverShadow (#151C32 α0.30 / α0.80), spec §3. It fades in with a 4 pt slide over 0.16 s on Dia's (0.2, 0.8, 0.2, 1) curve and fades out in 0.1 s; Reduce Motion turns both off. The geometry is an estimate.
+- **Cost.** Nothing runs until a dwell starts: no timers, views or events. The host logs intent-to-visible time (`os_log` category `hoverCard`, `lastShownMs`); the `--scenario preview*` snapshots print it.
+
+Tree: `{type: "hoverCard", anchor, id? ("hoverCard"), icon, title, subtitle?, accessory?, badges?, sections?, image?, imageVersion?, imagePending?, actions?, footer?, empty?, loading?}`
+
+| Field | Shape | Notes |
+|---|---|---|
+| header | `icon`, `title` (up to 2 lines), `subtitle` (domain), `accessory` (right, e.g. `#482`) | `icon` as in any node |
+| `badges` | `[{text, style, icon?}]` | Pills that wrap. `style`: `success`, `failure`, `pending`, `merged`, `accent`, `attention`, `neutral` |
+| `sections` | `[{title?, rows: [{id, title, subtitle?, icon?, status?, accessory?, url?}]}]` | `status` tints the icon and accessory with the badge colors. A row with a `url` highlights on hover and emits `open {row, url, anchor}` |
+| `image` | local path or http(s) URL | A page snapshot, 16:10, aspect-filled from the top. `imagePending` keeps its space with a placeholder; bump `imageVersion` to reload the same path |
+| `actions` | `[{id, title, icon?, style: primary\|secondary, url?}]` | Buttons along the bottom; emit `action {action, anchor, url}` |
+| `loading` | bool | Skeleton lines while the first answer is on its way |
+| `empty`, `footer` | text | A hint (e.g. "Sign in to …") and a small bottom line |
+
+Actions arrive as `ui.action {id: <tree id>, action, value}`. Snapshots: `--scenario previewGitHub|previewCalendar|previewPage|previewFolder` (`docs/screenshots/preview-*.png`).
 
 ### Dialogs
 

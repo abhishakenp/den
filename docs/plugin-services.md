@@ -61,10 +61,15 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 | `split` | `ids` (tab ids), `layout: horizontal\|vertical\|grid` (default horizontal), `focus?` | `{id}` of the split. If one of the tabs is already in a split, the others join it, next to their neighbour in `ids`; otherwise a new split takes the first tab's place. At most 4 tabs. Selects `focus` (default: the last id) |
 | `unsplit` | `id`: a split id ("Separate All Tabs"), or a tab id (only that tab leaves, placed after the split) | ok |
 | `settings` | `archiveAfterMs?` (0 = never, default 12 h), `suspendAfterMs?` (0 = never, default 30 min) | `{archiveAfterMs, suspendAfterMs}` |
+| `library` | `open?` (default true) | ok. Opens (or closes) the Library sheet |
 
 `rename` also renames folders. Dropping a tab row or folder on another space's footer icon moves it to that space, keeping its section (Arc; a favorite lands in that space's today tabs). In the sidebar, double-clicking a tab row or picking "Rename…" (tabs) / "Rename Folder…" (folders) from the context menu edits the title in place (Arc §2): Return commits, Esc cancels, an empty tab title resets to the page's. Tab and webview ids are the same (`tab-<n>`); folder ids are `folder-<n>`, split ids `split-<n>`. Other UI node ids: `tabs.nav`, `tabs.url`, `tabs.divider:<spaceId>`, `tabs.newtab:<spaceId>`, dialog `tabs.deleteFolder:<id>`.
 
 **Splits** (Arc §7) are sidebar items like tabs: they sit in favorites, pinned, a folder or today, and their tabs take that kind. Selecting any tab of a split shows the whole split (`content.show` with every pane, the split's layout and that tab focused); focusing another pane (click or Ctrl-Shift-N) makes its tab the selected one. The sidebar item is a `splitRow` node (id = the split id): a segment per pane, the focused one in a chip while the split is shown. Clicking a segment selects that tab, its hover X separates the split, a tab row dropped into its middle joins the split, and its menu offers the other layouts and "Separate All Tabs". Splits can be dragged like tabs and dropped on a footer space icon. A split left with one tab (archive, close, move) dissolves into that tab. Splits persist in `state.splits`. The New Tab row and the URL pill call `commands.open` (`new` / `edit`). Dropping a tab on the content calls `peek.split`. Cmd-W first closes an open command bar (`commands.close`) or peek (`peek.close`); Cmd-Shift-T first asks `peek.reopen {after}` (with the newest archive entry's `closedAt`) and restores a tab only if that fails. Links from other apps (`app.openURL` and `app.pendingURLs`, read one timer turn after start) go to `peek.openExternal` first, and open as today tabs only when it returns `claimed: false` or fails. State lives in storage ns `tabs`, keys `state` and `settings`. First run seeds sample favorites, pinned tabs, a folder and today tabs.
+
+**Library** (Arc's Archive). The footer's Library button (`spaces.library`) opens the archive in the host's `overlay.library` sheet (node id `tabs.library`), newest first, grouped by day. Search filters in the sheet. Clicking an entry (or Return on the first match) restores it as a selected today tab in its space and closes the sheet. "Clear Archive" asks first (dialog `tabs.clearArchive`), then empties the archive and closes the archived pages' web views. Esc, the close button or the dim closes it.
+
+**Hover previews.** A `hover` action on a tab row or favorite calls `previews.show {anchor, url, title, icon, webview, selected, kind}`; on a folder, `previews.show {anchor, kind: "folder", title, items: [{id, title, url, icon}]}` with every tab inside it; on a split, the focused pane's tab stands for it. Without the `previews` plugin nothing happens.
 
 Events:
 - `tabs.changed {spaceId}` fires on any change to the lists.
@@ -72,7 +77,7 @@ Events:
 - `tabs.opened {id}`, `tabs.closed {id}`.
 
 Owns:
-- the sidebar `header` (URL pill and nav buttons), `favorites`, `pinned` and `today` slots
+- the sidebar `header` (URL pill and nav buttons), `favorites`, `pinned` and `today` slots, and the `overlay.library` sheet
 - the content layout for the selected tab
 - tab shortcuts: Cmd-W, Cmd-Shift-T, Cmd-D, Cmd-Shift-K, Cmd-1…9, Ctrl-Tab, Cmd-Opt-↑/↓, Cmd-[ and Cmd-], plus Ctrl-Z (undo sidebar action, as in Arc's "Use ⌃Z to undo" toast), Cmd-R, Cmd-. (stop), Cmd-S (sidebar) and Cmd-Shift-C (copy URL)
 - auto-archive of idle today tabs (12 h by default, configurable, and it can be turned off)
@@ -184,6 +189,45 @@ Injects `ui`, `storage`, `keys`, `schedule`, `ai`; calls `connections`, `tabs` a
 - Ranking: kind (review 50, dm 46, thread 44, ci 40, mention 34, assigned 22) + recency (up to +24 in the last day) + affinity (+3 per earlier open of the same person or place, max +15).
 - Todos persist (ns `briefing`, key `todos`) with done state; checked ones go after a day. Feed items stay in memory. Opening a todo or feed item opens its URL in a tab.
 - ⇧⌘B and the "Daily Briefing" command. UI ids: sheet `briefing`, `briefing.refresh`, `briefing.connections`, `briefing.connect:<id>`, `briefing.todo:<itemId>`, `briefing.feed:<itemId>`, `briefing.enabled`, `briefing.time`.
+
+## `previews` (plugin `previews`)
+
+Injects: `ui`, `webviews`, `storage`. It also calls `net`, `session` and `tabs` when they exist. Permissions (`permissions.json`): `net:api.github.com`, and `session:` for `github.com`, `calendar.google.com`, `mail.google.com` and `slack.com`.
+
+Dia-style hover cards for sidebar tabs. It's a plugin of its own rather than part of `tabs`: `tabs` only says what is hovered, and everything site-specific (providers, permissions, caches) lives here, so it can be left out or replaced, and other plugins can add providers without touching `tabs`.
+
+| Method | Args | Returns |
+|---|---|---|
+| `show` | `anchor` (row id), `url`, `title?`, `icon?`, `webview?`, `selected?`, `kind?`, `items?` (folders) | ok. Puts a card in the host's `hoverCard` slot at once and fills it in when the provider answers |
+| `hide` | – | ok. Clears the slot |
+| `register` | `pattern`, `provider`, `owner?`, `ttlMs?` (60000) | ok. An external provider for URLs matching `pattern` |
+| `unregister` | `provider` | ok |
+| `answer` | `request`, `card` | ok. An external provider's answer: a card fragment (below) |
+| `providers` | – | `[{provider, pattern, builtin}]` |
+| `match` | `url` | `{provider}` |
+| `get` | `url` | `{provider, data, at}` from the cache, or null |
+| `clear` | – | ok. Drops the caches |
+| `stats` | – | `{fetches, cached, inflight}` |
+
+Events: `previews.request {provider, request, url, anchor, webview, profile}` asks an external provider for a card.
+
+- **Patterns** are `host/path` globs (`*` matches anything, including `/`) against the URL without scheme, `www.`, query or fragment; a leading `*.` also matches the bare domain. The pattern with the most literal characters wins, so a plugin can override a built-in for a narrower pattern (`github.com/apple/*/pull/*`).
+- **Card fragments** (provider answers): any of `title`, `subtitle`, `accessory`, `badges`, `sections`, `actions`, `footer`, `empty`, `image`, plus `summary {text, style}` (a digest shown next to the tab in folder cards) and `noCache` (show it, but ask again on the next hover: sign-in hints, a page that isn't loaded). `{error}` keeps the last good card.
+- **Cost.** Nothing runs until a hover: no timers, no polling, no requests at launch. The card shows at once with the tab's favicon, title and domain (and cached data, if any), with skeleton lines while the first answer loads. Answers are cached per URL for the provider's TTL; a stale card shows at once while it refreshes, and hovers of the same URL share one request.
+- **Actions.** A card button or row with a `url` opens it in a new tab (`tabs.open`).
+
+Built-in providers:
+
+| Provider | Pattern | Card | Source |
+|---|---|---|---|
+| `github.pr` | `github.com/*/*/pull/*` | Open / Draft / Merged / Closed; CI (`N failing`, `N pending`, `Checks passing`) with the failing and running checks first; `Conflicts` (mergeable_state `dirty`); review state (Changes requested, Approved, Review requested) and reviewers; head → base branch; +/− lines and files. TTL 60 s | api.github.com: `pulls/<n>`, then the head commit's `check-runs` and `status` and the PR's `reviews`, in parallel (public repositories, no sign-in). For a private repository (or a rate limit), the PR page read with the user's github.com session (`session.eval`), which gives state and branches |
+| `github.issue` | `github.com/*/*/issues/*` | Open / Closed / Not planned, labels, assignees, comments. TTL 2 min | api.github.com `issues/<n>` |
+| `calendar` | `calendar.google.com/*` | "Rest of today": what's on now, the next event and when, all-day events, and **Join** for the first current or upcoming event with a Meet, Zoom or Teams link. TTL 60 s | The Calendar tab itself (`webviews.eval`): the script reads its event chips' labels in the page's locale and time zone. Only a loaded tab; otherwise a hint |
+| `gmail` | `mail.google.com/*` | Unread count, the newest 4 unread threads (sender, subject, time), Compose. TTL 60 s | Gmail's Atom feed `/mail/u/<n>/feed/atom` with the Google session |
+| `slack` | `app.slack.com/*`, `*.slack.com/*` | Mentions, unread DMs and channels, threads. TTL 30 s | `client.counts` with the Slack session and the workspace's web-client token (read once from app.slack.com's localStorage, kept in memory, as the `slack` plugin does) |
+| `page` | `*` | Title, domain and a snapshot of the tab (320 pt JPEG, kept 30 s per tab and URL). Not for the selected tab, which is already on screen | `webviews.snapshot {width, format: jpeg}` |
+
+Folders get a card listing their tabs, each with its provider's cached `summary` (never a request). Endpoints can be redirected for tests through storage ns `previews`, key `endpoints` (`githubApi`, `githubWeb`, `gmail`, `slackApi`, `slackOrigin`). The Calendar chip format, Gmail's feed and Slack's web API are undocumented or private surfaces: they are tested against mock pages and payloads, not against signed-in accounts.
 
 ## Other plugins
 

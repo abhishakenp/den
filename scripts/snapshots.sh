@@ -39,6 +39,14 @@ host little-arc littleArc light
 host little-arc-dark littleArc dark
 host quit-dialog dialogQuit light
 host quit-dialog-dark dialogQuit dark
+# Hover previews and the Library sheet, on the real plugin sidebar (PreviewScenarios.swift).
+for sc in GitHub Calendar Page Folder; do
+  n=$(echo $sc | tr A-Z a-z)
+  shot preview-$n preview$sc light 5
+  shot preview-$n-dark preview$sc dark 5
+done
+shot library-footer libraryFooter light 4
+shot library-footer-dark libraryFooter dark 4
 for v in DeleteSpace DeleteFolder ClearArchive; do
   n=$(echo $v | sed -E 's/([a-z])([A-Z])/\1-\2/g' | tr A-Z a-z)
   host dialog-$n dialog$v light

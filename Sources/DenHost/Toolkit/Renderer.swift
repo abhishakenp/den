@@ -44,6 +44,8 @@ public final class Renderer {
   /// (node id, action, value) -> emitted as `ui.action` {id, action, value}.
   let emitFn: (String, String, Value) -> Void
   var drag: DragController?
+  /// Hover previews for sidebar rows (set by `UIService`).
+  var hover: HoverCardController?
   static var registry: [String: NodeView.Type] = [
     "list": StackNode.self, "row": RowNode.self, "spacer": SpacerNode.self, "text": TextNode.self,
     "button": ButtonNode.self, "navBar": NavBarNode.self, "urlPill": URLPillNode.self,

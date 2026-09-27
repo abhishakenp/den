@@ -96,6 +96,7 @@ final class TabsCore {
   var today: [String: [String]] = [:]
   var selected: [String: String] = [:]  // space id -> tab id
   var archive: [Value] = []  // newest first: {id, title, url, favicon, closedAt, spaceId}
+  var libraryOpen = false
   var mru: [String] = []  // tab ids, most recent first
   var nextId: Int64 = 1
   var archiveAfterMs = TabsCore.defaultArchiveAfterMs
@@ -140,6 +141,7 @@ final class TabsCore {
   /// Called from the plugin's dispose (hot reload, unload): flush a pending save.
   func stop() {
     if dirty { save() }
+    closeLibrary()
   }
 
   func refreshSpaces() { spaces = env.call("spaces", "list").array ?? [] }
@@ -443,6 +445,8 @@ final class TabsCore {
       guard undo() else { return .err("tabs: nothing to undo") }
     case "archive":
       return .array(archive)
+    case "library":
+      if args.b("open", true) { openLibrary() } else { closeLibrary() }
     case "addToArchive":
       // A page that was never a tab (an auto-closed Little Arc window) goes into the archive.
       let url = args.s("url")
@@ -1198,6 +1202,7 @@ final class TabsCore {
     }
     env.on("tabs.key.clear") { [self] _ in clearToday(currentSpace) }
     env.on("tabs.key.undo") { [self] _ in _ = undo() }
+    env.on("spaces.library") { [self] _ in openLibrary() }
     env.on("tabs.key.recent") { [self] _ in
       if let id = mru.first(where: { $0 != selectedId && tabs[$0] != nil }) { select(id) }
     }
@@ -1383,6 +1388,7 @@ final class TabsCore {
     if tabs[id] != nil {
       switch action {
       case "click": select(id)
+      case "hover": preview(id)
       case "doubleClick": if kindOf(id) != "favorite" { beginRename(id) }
       case "rename": endRename(id, value.s("title"))
       case "renameCancel": endRename(id, nil)
@@ -1402,6 +1408,7 @@ final class TabsCore {
     }
     if folders[id] != nil {
       switch action {
+      case "hover": previewFolder(id)
       case "toggle":
         folders[id]?.open.toggle()
         changed(folders[id]?.spaceId)
@@ -1434,6 +1441,9 @@ final class TabsCore {
           select(first)
         }
       case "close": unsplit(id)
+      case "hover":
+        // The split's focused pane (or its first) stands for it.
+        if let t = sp.children.first(where: { $0 == selectedId }) ?? sp.children.first { preview(t, anchor: id) }
       case "reorder": handleReorder(value)
       case "dropOnSpace": moveToSpace(id, value.s("spaceId"))
       case "menu": _ = splitMenuPicked(value.string ?? "")
@@ -1447,6 +1457,11 @@ final class TabsCore {
     case "tabs.url":
       if action == "click" { openCommandBar("edit") }
       if action == "copy" { copyURL() }
+    case Self.libraryId:
+      libraryAction(action, value)
+    case Self.clearArchiveId:
+      env.call("ui", "set", ["slot": "dialog", "tree": nil])
+      if action == "button", value.s("button") == "clear" { clearArchive() }
     default:
       if Text.hasPrefix(id, "tabs.divider:"), action == "clear" { clearToday(Text.dropPrefix(id, "tabs.divider:")) }
       if Text.hasPrefix(id, "tabs.newtab:"), action == "click" { openCommandBar("new") }
@@ -1456,6 +1471,92 @@ final class TabsCore {
         if value.s("button") == "delete" && folders[fid] != nil { deleteFolder(fid) }
       }
     }
+  }
+
+  // MARK: - Hover previews
+
+  /// The host saw hover intent on a sidebar row: ask the `previews` plugin for a card (if it's
+  /// loaded; without it nothing happens). `anchor` is the row the card points at.
+  func preview(_ id: String, anchor: String? = nil) {
+    guard let t = tabs[id] else { return }
+    env.call("previews", "show", [
+      "anchor": .string(anchor ?? id), "url": .string(t.url), "title": .string(t.displayTitle), "icon": .string(t.icon),
+      "webview": .string(id), "selected": .bool(id == selectedId), "kind": .string(kindOf(id)),
+    ])
+  }
+
+  func previewFolder(_ fid: String) {
+    guard let f = folders[fid] else { return }
+    var items: [Value] = []
+    func add(_ ids: [String]) {
+      for c in ids {
+        if let t = tabs[c] {
+          items.append(["id": .string(c), "title": .string(t.displayTitle), "url": .string(t.url), "icon": .string(t.icon)])
+        } else if let sp = splits[c] {
+          add(sp.children)
+        } else if let sub = folders[c] {
+          add(sub.children)
+        }
+      }
+    }
+    add(f.children)
+    env.call("previews", "show", ["anchor": .string(fid), "kind": "folder", "title": .string(f.title), "icon": "sf:folder.fill", "items": .array(items)])
+  }
+
+  // MARK: - Library (archive sheet)
+
+  static let libraryId = "tabs.library"
+  static let clearArchiveId = "tabs.clearArchive"
+
+  /// The footer's Library button (`spaces.library`) opens the archive in the host's
+  /// `overlay.library` sheet; `tabs` owns that slot.
+  func openLibrary() {
+    libraryOpen = true
+    renderLibrary()
+  }
+
+  func closeLibrary() {
+    guard libraryOpen else { return }
+    libraryOpen = false
+    env.call("ui", "set", ["slot": "overlay.library", "tree": nil])
+  }
+
+  func renderLibrary() {
+    guard libraryOpen else { return }
+    let items: [Value] = archive.map { e in
+      ["id": e["id"], "title": e["title"], "url": e["url"], "icon": .string(e.sOpt("favicon") ?? URLs.favicon(e.s("url"))), "closedAt": e["closedAt"]]
+    }
+    env.call("ui", "set", ["slot": "overlay.library", "tree": [
+      "type": "library", "id": .string(Self.libraryId), "title": "Archive", "placeholder": "Search archived tabs",
+      "empty": "Tabs you close or that archive themselves show up here.", "items": .array(items),
+    ]])
+  }
+
+  func libraryAction(_ action: String, _ value: Value) {
+    switch action {
+    case "restore":
+      closeLibrary()
+      _ = restore(value.s("item"))
+    case "clear":
+      guard !archive.isEmpty else { return }
+      env.call("ui", "set", ["slot": "dialog", "tree": [
+        "type": "dialog", "id": .string(Self.clearArchiveId), "icon": "sf:archivebox", "iconStyle": "destructive",
+        "title": "Clear the Archive?", "message": "Every archived tab is removed for good. This can’t be undone.",
+        "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "clear", "title": "Clear Archive", "style": "destructive", "default": true]],
+      ]])
+    case "dismiss":
+      closeLibrary()
+    default:
+      break  // `input`: the sheet filters locally
+    }
+  }
+
+  func clearArchive() {
+    archive = []
+    collectWebviews()
+    saveSoon()
+    env.emit("tabs.changed", ["spaceId": .string(currentSpace)])
+    renderLibrary()
   }
 
   func confirmDeleteFolder(_ fid: String) {

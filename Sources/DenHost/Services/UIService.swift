@@ -38,6 +38,8 @@ public final class UIService: HostService {
   static let sheetSlots = ["overlay.briefing", "overlay.connections"]
   var sheets: [String: SheetView] = [:]
   var sheetBackdrops: [String: BackdropView] = [:]
+  /// `hoverCard` slot: Dia-style previews next to hovered sidebar rows (HoverCard.swift).
+  public private(set) var hoverCard: HoverCardController!
 
   public init(host: ServiceHost, window: DenWindowController, content: ContentService?) {
     self.host = host
@@ -54,6 +56,14 @@ public final class UIService: HostService {
     drag.accent = { [weak self] in self?.renderer.palette.accentStrong ?? .controlAccentColor }
     drag.overlay = { [weak wc] in wc?.overlays }
     content?.accent = renderer.palette.accentStrong
+    hoverCard = HoverCardController(emit: emitter, palette: { [weak self] in self?.renderer.palette })
+    hoverCard.overlays = wc.overlays
+    hoverCard.anchorFrame = { [weak self] id in self?.anchorFrame(id) }
+    hoverCard.cardLeft = { [weak wc] in
+      guard let wc else { return 0 }
+      return wc.sidebarHidden ? (wc.sidebarRevealed ? wc.sidebar.frame.maxX : 0) : wc.sidebar.frame.maxX
+    }
+    renderer.hover = hoverCard
 
     wc.sidebar.body.addSubview(sidebarView)
     sidebarView.frame = wc.sidebar.body.bounds
@@ -103,6 +113,7 @@ public final class UIService: HostService {
       if popoverOpen { overlays.append("popover") }
       if libraryOpen { overlays.append("overlay.library") }
       for s in Self.sheetSlots where sheets[s] != nil { overlays.append(.string(s)) }
+      if hoverCard.visible { overlays.append("hoverCard") }
       return ["page": .int(Int64(sidebarView.pager.current)), "pages": .int(Int64(sidebarView.pager.pages.count)), "overlays": .array(overlays)]
     default:
       return .error("ui: unknown method '\(method)'")
@@ -111,7 +122,10 @@ public final class UIService: HostService {
   }
 
   func set(_ slot: String, _ tree: Value, page: Int?) -> Value {
+    // Anything modal (command bar, dialogs, sheets, popovers) closes the hover card.
+    if !tree.isNull, slot.hasPrefix("overlay.") || slot == "dialog" || slot == "popover" { hoverCard.intent.hide(warm: false) }
     switch slot {
+    case "hoverCard": hoverCard.set(tree)
     case "overlay.commandBar": setCommandBar(tree)
     case "dialog": setDialog(tree)
     case "toast": if !tree.isNull { showToast(tree) }
@@ -135,6 +149,7 @@ public final class UIService: HostService {
     content?.accent = renderer.palette.accentStrong
     sidebarView.applyPaletteRecursively(renderer.palette)
     wc.overlays.applyPaletteRecursively(renderer.palette)
+    hoverCard.applyPalette(renderer.palette)
   }
 
   // MARK: Overlays
@@ -366,6 +381,7 @@ public final class UIService: HostService {
       let w = Tokens.dialogWidth, h = dialog.contentHeight
       dialog.frame = NSRect(x: ((b.width - w) / 2).rounded(), y: ((b.height - h) / 2 - 20).rounded(), width: w, height: h)
     }
+    hoverCard.layout()
     // Spec §6: toasts are anchored to the window's top-right corner.
     var y = Tokens.toastTopInset
     for t in toasts {

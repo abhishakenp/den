@@ -1,0 +1,3 @@
+{
+  "permissions": ["net:api.github.com", "session:github.com", "session:calendar.google.com", "session:mail.google.com", "session:slack.com"]
+}
