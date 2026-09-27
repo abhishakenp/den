@@ -1,0 +1,21 @@
+name: Prune ci/ branches
+
+# ci/** branches are scratch pushes from scripts/ci-check.sh; delete them 7 days after their last commit.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write # delete refs
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - run: scripts/ci/prune-ci-branches.sh 7
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}

@@ -126,7 +126,7 @@ The homepage source is in [`website/`](website/) (Next.js, deployed on Vercel).
 
 ## Contributing
 
-den is early, and design feedback is the most useful contribution right now. Open an issue to discuss an idea or challenge a decision.
+den is early, and design feedback is the most useful contribution right now. Open an issue to discuss an idea or challenge a decision. To build and test on GitHub Actions instead of your Mac, see [remote build mode](docs/dev.md#remote-build-mode).
 
 ## License
 

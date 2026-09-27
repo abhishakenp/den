@@ -1,0 +1,76 @@
+name: Set up den build
+description: >
+  Selects Xcode 26 (host: Swift 6.3), installs the cached swift.org toolchain with the Embedded Swift
+  stdlib (plugins, via cordis-build and $CORDIS_TOOLCHAIN), and restores the SwiftPM cache.
+inputs:
+  xcode:
+    description: Preferred Xcode app; falls back to the newest /Applications/Xcode_26*.app
+    default: /Applications/Xcode_26.5.app
+  swift-toolchain:
+    description: swift.org toolchain version for the Embedded Swift plugins
+    default: 6.3.2
+outputs:
+  spm-cache-hit:
+    description: Whether .build was restored from an exact key
+    value: ${{ steps.spm.outputs.cache-hit }}
+  spm-cache-key:
+    description: The SwiftPM cache key (save it after the build with actions/cache/save)
+    value: ${{ steps.spm-key.outputs.key }}
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode 26
+      shell: bash
+      env:
+        XCODE_APP: ${{ inputs.xcode }}
+        SWIFT_TOOLCHAIN_VERSION: ${{ inputs.swift-toolchain }}
+      run: |
+        app=$XCODE_APP
+        [[ -d $app ]] || app=$(printf "%s\n" /Applications/Xcode_26*.app | sort -V | tail -1)
+        sudo xcode-select -s "$app/Contents/Developer"
+        sw_vers
+        xcodebuild -version
+        swift --version
+        xcrun --show-sdk-path
+        sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize
+        echo "CORDIS_TOOLCHAIN=$HOME/toolchains/swift-$SWIFT_TOOLCHAIN_VERSION-RELEASE.xctoolchain" >> "$GITHUB_ENV"
+
+    - name: Restore swift.org toolchain
+      id: tc
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/toolchains/swift-${{ inputs.swift-toolchain }}-RELEASE.xctoolchain
+        key: swift-toolchain-${{ inputs.swift-toolchain }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install swift.org toolchain ${{ inputs.swift-toolchain }}
+      shell: bash
+      run: scripts/ci/install-toolchain.sh "${{ inputs.swift-toolchain }}" "$CORDIS_TOOLCHAIN"
+
+    # Saved right away (not in a post step), so a later test failure still keeps the cache.
+    - name: Save swift.org toolchain
+      if: steps.tc.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      continue-on-error: true
+      with:
+        path: ~/toolchains/swift-${{ inputs.swift-toolchain }}-RELEASE.xctoolchain
+        key: swift-toolchain-${{ inputs.swift-toolchain }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: SwiftPM cache key
+      id: spm-key
+      shell: bash
+      run: |
+        echo "prefix=spm-${{ runner.os }}-${{ runner.arch }}-xcode26-${{ hashFiles('Package.resolved') }}-" >> "$GITHUB_OUTPUT"
+        # Per commit, so incremental build products stay fresh; restore falls back to the newest.
+        echo "key=spm-${{ runner.os }}-${{ runner.arch }}-xcode26-${{ hashFiles('Package.resolved') }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore SwiftPM cache
+      id: spm
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          .build
+          ~/Library/Caches/org.swift.swiftpm
+        key: ${{ steps.spm-key.outputs.key }}
+        restore-keys: |
+          ${{ steps.spm-key.outputs.prefix }}
+          spm-${{ runner.os }}-${{ runner.arch }}-xcode26-

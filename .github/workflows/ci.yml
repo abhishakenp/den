@@ -1,22 +1,30 @@
 name: CI
 
+# main: every push and PR. ci/**: scratch branches pushed by scripts/ci-check.sh (remote build
+# mode, docs/dev.md). workflow_dispatch: same build and tests, plus the snapshot job on request.
 on:
   push:
-    branches: [main]
+    branches: [main, "ci/**"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      snapshots:
+        description: Also render the UI snapshot scenarios (scripts/snapshots.sh) and upload the PNGs
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+# One run per ref: a newer push (or dispatch) to the same branch cancels the superseded run.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # Host: Xcode 26's Swift 6.3. Plugins: swift.org toolchain with the Embedded Swift stdlib.
-  XCODE_APP: /Applications/Xcode_26.5.app
-  SWIFT_TOOLCHAIN_VERSION: 6.3.2
+  DEN_SIGN_IDENTITY: "-" # ad hoc: runners have no stable signing identity
+  DEN_CI: "1"
 
 jobs:
   build-test:
@@ -28,45 +36,29 @@ jobs:
         with:
           fetch-depth: 0 # bundle.sh derives CFBundleVersion / DenHostAPI from commit counts
 
-      - name: Select Xcode 26
-        run: |
-          app=$XCODE_APP
-          [[ -d $app ]] || app=$(printf "%s\n" /Applications/Xcode_26*.app | sort -V | tail -1)
-          sudo xcode-select -s "$app/Contents/Developer"
-          sw_vers
-          xcodebuild -version
-          swift --version
-          xcrun --show-sdk-path
-          sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize
-          # cordis-build resolves $CORDIS_TOOLCHAIN first.
-          echo "CORDIS_TOOLCHAIN=$HOME/toolchains/swift-$SWIFT_TOOLCHAIN_VERSION-RELEASE.xctoolchain" >> "$GITHUB_ENV"
-
-      - name: Cache swift.org toolchain
-        uses: actions/cache@v4
-        with:
-          path: ~/toolchains/swift-${{ env.SWIFT_TOOLCHAIN_VERSION }}-RELEASE.xctoolchain
-          key: swift-toolchain-${{ env.SWIFT_TOOLCHAIN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
-
-      - name: Install swift.org toolchain ${{ env.SWIFT_TOOLCHAIN_VERSION }}
-        run: scripts/ci/install-toolchain.sh "$SWIFT_TOOLCHAIN_VERSION" "$CORDIS_TOOLCHAIN"
-
-      - name: Cache SwiftPM
-        uses: actions/cache@v4
-        with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-          key: spm-${{ runner.os }}-${{ runner.arch }}-xcode26-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-${{ runner.arch }}-xcode26-
+      - name: Set up Xcode 26, swift.org toolchain, caches
+        id: setup
+        uses: ./.github/actions/setup
 
       - name: swift build
         run: swift build
 
-      - name: Bundle den.app (ad-hoc signed, Embedded Swift plugins)
+      - name: Bundle den.app (ad hoc signed, Embedded Swift plugins)
         run: |
           scripts/bundle.sh
           ls -l build/den.app/Contents/PlugIns
           codesign -dv build/den.app 2>&1 | grep -E 'Identifier|Signature'
+
+      # Saved before the tests, so a red test run still keeps the build products.
+      - name: Save SwiftPM cache
+        if: steps.setup.outputs.spm-cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ steps.setup.outputs.spm-cache-key }}
 
       - name: Test (scripts/test.sh, UI suites included)
         run: scripts/ci/run-tests.sh
@@ -84,6 +76,25 @@ jobs:
             cat docs/perf/ci-report.md
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Collect crash reports
+        if: always()
+        run: |
+          mkdir -p build/ci-logs/crashes
+          find ~/Library/Logs/DiagnosticReports -newer Package.swift \( -name '*.ips' -o -name '*.crash' \) \
+            -exec cp {} build/ci-logs/crashes/ \; 2>/dev/null || true
+          ls build/ci-logs/crashes
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            build/ci-logs
+            build/**/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload perf results
         if: always()
         uses: actions/upload-artifact@v4
@@ -91,15 +102,53 @@ jobs:
           name: perf
           path: docs/perf
           if-no-files-found: ignore
+          retention-days: 14
 
-      - name: Upload test logs and snapshots
-        if: failure()
+      # A dev build per green main commit (ad hoc signed, not Sparkle-signed): see docs/dev.md.
+      - name: Package den.app
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: ditto -c -k --sequesterRsrc --keepParent build/den.app "den-${GITHUB_SHA::12}.zip"
+
+      - name: Upload den.app
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs
+          name: den-app
+          path: den-*.zip
+          retention-days: 14
+
+  snapshots:
+    name: UI snapshots (macOS 26, arm64)
+    if: github.event_name == 'workflow_dispatch' && inputs.snapshots
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Xcode 26, swift.org toolchain, caches
+        uses: ./.github/actions/setup
+
+      - name: Bundle den.app
+        run: scripts/bundle.sh
+
+      - name: Render snapshot scenarios (scripts/snapshots.sh)
+        run: |
+          mkdir -p build/ci-logs
+          scripts/snapshots.sh 2>&1 | tee build/ci-logs/snapshots.log
+          n=$(git status --porcelain -- docs/screenshots | wc -l | tr -d ' ')
+          count=$(find docs/screenshots -name '*.png' -newer Package.swift | wc -l | tr -d ' ')
+          echo "### Snapshots: $count PNGs rendered, $n differ from the committed ones" >> "$GITHUB_STEP_SUMMARY"
+          git status --porcelain -- docs/screenshots | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshots
           path: |
+            docs/screenshots
             build/ci-logs
-            build/**/*.png
-            .build/**/*.xcresult
-            ~/Library/Logs/DiagnosticReports/*.ips
           if-no-files-found: ignore
+          retention-days: 14
