@@ -184,7 +184,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 
 - 🟡 Mini player: den's own frameless, always-on-top player (seek, volume/mute, ±10 s, speed, back to tab, resize/snap), native PiP as the fallback
 - ⏳ Mini player extras: "Keep on top" toggle, tuck off the screen edge, hostname chip back to the tab, Firefox's PiP keys, subtitles
-- 🟡 AutoPiP like Safari, on by default: leaving a tab that's playing video opens PiP
+- ✅ AutoPiP like Safari, on by default: den's own mini player opens when leaving a tab or app while a video plays
 - ✅ Tabs playing audio are never archived or unloaded, and updates never relaunch during playback
 - ⏳ Camera, mic and screen-share badges on tabs, click to turn off
 - ⏳ Meeting reminder card with Join, snapping to corners, plus a pinned-calendar countdown
@@ -271,11 +271,11 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 - ✅ Per-site zoom, remembered
 - ✅ Copy URL (⇧⌘C) and Copy URL as Markdown (⌥⇧⌘C)
-- 🟡 Reader mode, remembered per site, with read-aloud
-- 🟡 On-device page translation
-- 🟡 Capture: region, element, visible or full page, then copy or save
-- 🟡 Zap an element or remove sticky headers, remembered per site
-- 🟡 Copy link to highlight (text fragments)
+- ✅ Reader mode, remembered per site, with read-aloud (⌃⌘R)
+- ✅ On-device page translation (Apple Translation framework)
+- ✅ Capture: region, element, visible or full page, then copy or save (⇧⌘2)
+- ✅ Zap an element or remove sticky headers, remembered per site
+- ✅ Copy link to highlight (text fragments)
 
 ## Share and clipboard
 
@@ -289,7 +289,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 ## Energy
 
 - 🟡 Zero-resource inactive tabs: aggressive discard, snapshot on disk, instant restore; never discard audio/video/PiP tabs
-  - ✅ idle tabs discarded after 30 min (configurable), tabs playing audio and on-screen tabs never discarded
+  - ✅ idle tabs discarded after 5 min in the background (configurable), tabs playing audio and on-screen tabs never discarded
   - 🟡 near-zero per-tab cost (80 KB measured today against an 8 KB budget), snapshot on disk
 - ⏳ Protect recently used tabs from discard; idle time counts only while den is frontmost
 - ⏳ Battery saver: sooner discards, pause background media and autoplay when unplugged or in Low Power Mode
