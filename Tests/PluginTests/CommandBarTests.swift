@@ -527,8 +527,9 @@ struct CommandBarTests {
     h.action("commandBar", "banner", ["button": "set"])
     #expect(h.browsers.sets.map { $0.1 } == ["http", "https"])
     #expect(h.browsers.sets.allSatisfy { $0.0 == Bundle.main.bundleURL })
-    #expect(await Wait.until("den to be the default browser") { h.rt.call("app", "defaultBrowser")["isDefault"] == true })
-    #expect(h.bar["banner"].isNull)
+    #expect(await Wait.until("den to be the default browser, and the banner gone") {
+      h.rt.call("app", "defaultBrowser")["isDefault"] == true && h.bar["banner"].isNull
+    })
   }
 
   @Test func tryForAWeekAsksAfterSevenDaysAndCanSwitchBack() async {

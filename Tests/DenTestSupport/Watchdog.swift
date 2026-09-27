@@ -3,7 +3,7 @@ import Testing
 
 /// Per-test watchdog. Every suite carries `.watchdog` (checked by `WatchdogCoverageTests`).
 ///
-/// - Each test gets a wall-time limit (`DEN_TEST_LIMIT` seconds, default 90). When it runs out,
+/// - Each test gets a wall-time limit (`DEN_TEST_LIMIT` seconds, default 120). When it runs out,
 ///   the test fails with its name, elapsed time and the last thing it said it was waiting on
 ///   (`Wait.note`, set by every bounded wait below), and its task is cancelled. The bounded waits
 ///   honour cancellation, so a timed-out test normally unwinds and the run continues.
@@ -48,7 +48,7 @@ public struct Watchdog: TestTrait, SuiteTrait, TestScoping {
 }
 
 extension Trait where Self == Watchdog {
-  /// The default per-test limit: `DEN_TEST_LIMIT` seconds, else 90.
+  /// The default per-test limit: `DEN_TEST_LIMIT` seconds, else 120.
   public static var watchdog: Watchdog { Watchdog(seconds: WatchdogMonitor.defaultLimit) }
   public static func watchdog(seconds: Double) -> Watchdog { Watchdog(seconds: seconds) }
 }
@@ -56,7 +56,7 @@ extension Trait where Self == Watchdog {
 /// Tracks running tests on a dedicated thread. Owns the hard stop.
 public final class WatchdogMonitor: @unchecked Sendable {
   public static let shared = WatchdogMonitor()
-  public static let defaultLimit = Double(ProcessInfo.processInfo.environment["DEN_TEST_LIMIT"] ?? "") ?? 90
+  public static let defaultLimit = Double(ProcessInfo.processInfo.environment["DEN_TEST_LIMIT"] ?? "") ?? 120
   static let grace = Double(ProcessInfo.processInfo.environment["DEN_TEST_GRACE"] ?? "") ?? 15
 
   struct Entry {
@@ -72,6 +72,8 @@ public final class WatchdogMonitor: @unchecked Sendable {
   private var next = 0
   private var mainBeat = WatchdogMonitor.now()
   private var thread: Thread?
+  /// Set when the watchdog itself ends the run (its report is already out).
+  nonisolated(unsafe) var stopping = false
 
   static func now() -> Double { ProcessInfo.processInfo.systemUptime }
 
@@ -86,7 +88,7 @@ public final class WatchdogMonitor: @unchecked Sendable {
       // short silently, with exit status 0: say who did it, and fail.
       atexit {
         let running = WatchdogMonitor.shared.runningNames()
-        guard !running.isEmpty else { return }
+        guard !running.isEmpty, !WatchdogMonitor.shared.stopping else { return }
         let stack = Thread.callStackSymbols.prefix(24).joined(separator: "\n    ")
         FileHandle.standardError.write(Data("\nWATCHDOG: the process is exiting while \(running.joined(separator: ", ")) is running. Stack:\n    \(stack)\n".utf8))
         _exit(1)
@@ -154,6 +156,7 @@ public final class WatchdogMonitor: @unchecked Sendable {
       var out = "\n" + text + "\n"
       if let sample = Self.sampleMainThread() { out += "  main thread stack (sample): \(sample)\n" }
       FileHandle.standardError.write(Data(out.utf8))
+      stopping = true
       exit(1)
     }
   }

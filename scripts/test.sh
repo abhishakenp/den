@@ -5,7 +5,7 @@
 # Suites run one at a time (`--no-parallel`): they all share the main actor, and interleaving
 # them only starves each other. DEN_TEST_PARALLEL=1 opts out.
 # Every test has a watchdog (Tests/DenTestSupport/Watchdog.swift): DEN_TEST_LIMIT seconds per
-# test (default 90), then a report of what it was waiting on. The whole run is capped too:
+# test (default 120), then a report of what it was waiting on. The whole run is capped too:
 # DEN_TEST_RUN_LIMIT seconds (default 1800), after which it is killed. A run can fail; it can't hang.
 set -euo pipefail
 cd "$(dirname "$0")/.."

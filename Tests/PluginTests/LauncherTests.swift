@@ -373,14 +373,18 @@ struct LauncherTests {
     for q in ["extensions", "dark mode", "settings", "prefs", "dl", "show zoom", "xyzzy"] {
       for n in 1...q.count {
         let prefix = String(q.prefix(n))
-        let reps = 200
         // What mainResults does per keystroke: the den rows and the Settings rows, ranked.
-        let d = clock.measure {
-          for _ in 0..<reps {
-            _ = core.launcherRows(prefix, settings: false, limit: 4)
-            _ = core.launcherRows(prefix, settings: true, limit: 4)
+        // Best of 5 batches of 4: the minimum is what the code costs, load only ever adds to it
+        // (200 reps averaged took 112 s at load 20 in a debug build and tripped the watchdog).
+        let reps = 4
+        let d = (0..<5).map { _ in
+          clock.measure {
+            for _ in 0..<reps {
+              _ = core.launcherRows(prefix, settings: false, limit: 4)
+              _ = core.launcherRows(prefix, settings: true, limit: 4)
+            }
           }
-        }
+        }.min()!
         perKey.append(ms(d) / Double(reps))
         core.query = prefix
         let r = clock.measure { core.compute() }
