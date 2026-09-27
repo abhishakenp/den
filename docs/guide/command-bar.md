@@ -2,7 +2,7 @@
 
 One box for everything: open a site, search the web, find a tab in any space, dig up something you closed, run a command, or flip a setting.
 
-<p align="center"><img src="../screenshots/command-bar.png" alt="The command bar" width="720"></p>
+<p align="center"><img src="../screenshots/command-bar-dark.png" alt="The command bar" width="720"></p>
 
 ## Opening it
 
@@ -30,7 +30,7 @@ Results come in this order:
 
 Results you pick often and recently rank higher.
 
-<p align="center"><img src="../screenshots/command-bar-git.png" alt="Typing git: search, open tabs, GitHub commands, suggestions" width="620"></p>
+<p align="center"><img src="../screenshots/command-bar-git-dark.png" alt="Typing git: search, open tabs, GitHub commands, suggestions" width="620"></p>
 
 ### Keys inside the bar
 
@@ -70,7 +70,7 @@ Add your own in **Settings ▸ Search ▸ Add a site search**: type the keyword,
 sf = { name = "Swift Forums", url = "https://forums.swift.org/search?q=%s" }
 ```
 
-<p align="center"><img src="../screenshots/settings-search.png" alt="Settings, Search section" width="620"></p>
+<p align="center"><img src="../screenshots/settings-search-dark.png" alt="Settings, Search section" width="620"></p>
 
 **Settings ▸ Search** also picks the default engine (Google out of the box) and turns off **Search suggestions**. Suggestions always come from Google, and what you type is sent to Google as you type. Turn them off and nothing leaves den until you press Return.
 
@@ -105,7 +105,7 @@ You don't need the Settings window for most things. Type a setting's name:
 - A **choice** (like the archive time) shows its value. Return, Tab or → lists the options.
 - A **section** ("Tabs — Settings") opens its settings inside the bar.
 
-<p align="center"><img src="../screenshots/launcher-extensions.png" alt="Typing extensions: the Extensions page as the top hit" width="620"></p>
+<p align="center"><img src="../screenshots/launcher-extensions-dark.png" alt="Typing extensions: the Extensions page as the top hit" width="620"></p>
 
 ## The default-browser banner
 

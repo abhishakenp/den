@@ -5,7 +5,7 @@ A space is a separate sidebar: its own pinned tabs, folders and Today, its own c
 First run gives you three: **Personal**, **Work** and **Side Project**, each with its own gradient. Their icons sit in the sidebar footer.
 
 <p align="center">
-  <img src="../screenshots/main-light.png" alt="The Personal space" width="400">
+  <img src="../screenshots/main-dark.png" alt="The Personal space" width="400">
   <img src="../screenshots/space-2.png" alt="The Work space" width="400">
 </p>
 
@@ -27,13 +27,13 @@ First run gives you three: **Personal**, **Work** and **Side Project**, each wit
 - **Drag a space icon sideways in the footer** to reorder. The others slide out of the way. Or use **Move Left** / **Move Right** in the space menu.
 - **Drop a tab on a space icon** to move it to that space.
 
-<p align="center"><img src="../screenshots/space-reorder.png" alt="Reordering spaces by dragging a footer icon" width="620"></p>
+<p align="center"><img src="../screenshots/space-reorder-dark.png" alt="Reordering spaces by dragging a footer icon" width="620"></p>
 
 ## The space menu
 
 Right-click a space's icon in the footer, or its title at the top of the pinned tabs.
 
-<p align="center"><img src="../screenshots/space-menu.png" alt="The space menu" width="320"></p>
+<p align="center"><img src="../screenshots/space-menu-dark.png" alt="The space menu" width="320"></p>
 
 | Item | Does |
 |---|---|
@@ -47,8 +47,8 @@ Right-click a space's icon in the footer, or its title at the top of the pinned 
 | **Delete Space…** | asks first, then archives every tab and folder in it to the Library. You can't delete your last space |
 
 <p align="center">
-  <img src="../screenshots/space-icon-picker.png" alt="Icon picker" width="400">
-  <img src="../screenshots/space-rename.png" alt="Renaming a space in place" width="400">
+  <img src="../screenshots/space-icon-picker-dark.png" alt="Icon picker" width="400">
+  <img src="../screenshots/space-rename-dark.png" alt="Renaming a space in place" width="400">
 </p>
 
 ## Profiles: separate logins per space
@@ -64,7 +64,7 @@ Every space has its own theme, and the whole window wears it: sidebar, dialogs, 
 
 Open the theme picker from **Edit Theme Color…** in the space menu, the **…** button that appears when you hover the space's title, or **Theme…** in the command bar.
 
-<p align="center"><img src="../screenshots/theme-picker-live.png" alt="The theme picker, with the window previewing the theme live" width="620"></p>
+<p align="center"><img src="../screenshots/theme-picker-live-dark.png" alt="The theme picker, with the window previewing the theme live" width="620"></p>
 
 - **Colors:** click or drag on the dot pad to pick the main color. **+** adds a second and third color (up to 3), **−** removes one. den keeps extra colors in harmony with the first.
 - **Intensity** (the wavy slider) and **grain** (the dial).

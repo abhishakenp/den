@@ -44,8 +44,8 @@ The rules den follows:
 ## Camera, microphone and sign-in prompts
 
 <p align="center">
-  <img src="../screenshots/permission-camera.png" alt="Camera permission prompt" width="400">
-  <img src="../screenshots/http-auth.png" alt="HTTP sign-in prompt" width="400">
+  <img src="../screenshots/permission-camera-dark.png" alt="Camera permission prompt" width="400">
+  <img src="../screenshots/http-auth-dark.png" alt="HTTP sign-in prompt" width="400">
 </p>
 
 - **Camera and microphone:** "Allow \<site\> to use your camera?" with **Don't Allow** / **Allow**. den remembers your answer for that site until you quit.

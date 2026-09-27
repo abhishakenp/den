@@ -2,7 +2,7 @@
 
 How to use den, one page per area. Everything here describes what's on `main` today. What's still being built is on [Coming soon](coming-soon.md).
 
-<p align="center"><img src="../screenshots/main-light.png" alt="den with a few spaces and tabs" width="720"></p>
+<p align="center"><img src="../screenshots/main-dark.png" alt="den with a few spaces and tabs" width="720"></p>
 
 ## Start here
 

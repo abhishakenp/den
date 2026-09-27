@@ -2,7 +2,7 @@
 
 **Rest the pointer on a tab in the sidebar** and a card slides out with what's in it: a pull request's checks, your next meeting, unread mail, or a snapshot of the page. You don't have to switch tabs to check on one.
 
-<p align="center"><img src="../screenshots/preview-github.png" alt="Hover card for a GitHub pull request: checks, reviews, conflicts" width="720"></p>
+<p align="center"><img src="../screenshots/preview-github-dark.png" alt="Hover card for a GitHub pull request: checks, reviews, conflicts" width="720"></p>
 
 ## How it behaves
 
@@ -28,8 +28,8 @@ Nothing is fetched, timed or captured until you actually hover.
 | **Any other page** | a snapshot of the page (not for the tab you're already on) |
 
 <p align="center">
-  <img src="../screenshots/preview-calendar.png" alt="Calendar hover card with a Join button" width="400">
-  <img src="../screenshots/preview-folder.png" alt="Folder hover card" width="400">
+  <img src="../screenshots/preview-calendar-dark.png" alt="Calendar hover card with a Join button" width="400">
+  <img src="../screenshots/preview-folder-dark.png" alt="Folder hover card" width="400">
 </p>
 
 ## The GitHub PR peek

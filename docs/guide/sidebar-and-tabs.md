@@ -2,7 +2,7 @@
 
 The sidebar is den's tab strip, turned on its side. From top to bottom: the URL pill, your **favorites**, the space's **pinned tabs** and folders, a divider with **Clear**, and **Today**'s tabs. The footer holds the Library button, your spaces and **+**.
 
-<p align="center"><img src="../screenshots/main-light.png" alt="The sidebar: favorites, pinned tabs, a folder, Today tabs" width="720"></p>
+<p align="center"><img src="../screenshots/main-dark.png" alt="The sidebar: favorites, pinned tabs, a folder, Today tabs" width="720"></p>
 
 ## The three kinds of tabs
 
@@ -35,7 +35,7 @@ New tabs open at the top of Today. Anything you want to keep, pin (⌘D). Today 
 
 Every tab you close or that archives itself goes to the Library.
 
-<p align="center"><img src="../screenshots/library.png" alt="The Library sheet, grouped by day" width="620"></p>
+<p align="center"><img src="../screenshots/library-dark.png" alt="The Library sheet, grouped by day" width="620"></p>
 
 - Open it with ⌘Y, ⇧⌘L, or the Library button at the bottom left of the sidebar.
 - Type to search titles and URLs. Tabs are grouped by the day they closed.
@@ -61,7 +61,7 @@ Folders live with your pinned tabs.
 - Right-click ▸ **Delete Folder…** archives the tabs inside (⌃Z brings them back).
 - Hover a folder to see what's in it (see [Hover previews](hover-previews.md)).
 
-<p align="center"><img src="../screenshots/dialog-delete-folder.png" alt="Delete folder dialog" width="520"></p>
+<p align="center"><img src="../screenshots/dialog-delete-folder-dark.png" alt="Delete folder dialog" width="520"></p>
 
 ## Renaming
 
@@ -91,7 +91,7 @@ Drag links, URLs or files from other apps onto the sidebar and they open as Toda
 
 ## Right-click a tab
 
-<p align="center"><img src="../screenshots/context-menu.png" alt="Tab context menu" width="320"></p>
+<p align="center"><img src="../screenshots/context-menu-dark.png" alt="Tab context menu" width="320"></p>
 
 **Copy Link**, **Duplicate**, **Rename…**, **Pin Tab** / **Unpin Tab** / **Remove from Favorites**, **Add to Favorites**, **New Folder with Tab**, **Move to \<space\>** for each other space, and **Archive Tab** (Today) or **Close Tab**.
 
@@ -135,4 +135,4 @@ Background tabs you haven't used for 30 minutes are unloaded: they keep their hi
 
 ## Settings ▸ Tabs
 
-<p align="center"><img src="../screenshots/settings-tabs.png" alt="Settings, Tabs section" width="620"></p>
+<p align="center"><img src="../screenshots/settings-tabs-dark.png" alt="Settings, Tabs section" width="620"></p>

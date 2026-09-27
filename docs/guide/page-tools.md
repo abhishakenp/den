@@ -6,7 +6,7 @@ The everyday things you do to a page.
 
 ⌘F opens a small find bar at the top right of the page.
 
-<p align="center"><img src="../screenshots/find-bar.png" alt="The find bar" width="620"></p>
+<p align="center"><img src="../screenshots/find-bar-dark.png" alt="The find bar" width="620"></p>
 
 | Keys | |
 |---|---|
@@ -44,8 +44,8 @@ The link button in the URL pill copies the URL too, and so does **Copy Link** in
 den shows a plain page saying why, with **Try Again**, and the tab keeps the address so nothing's lost: you're offline, the host can't be found, it's taking too long, the connection failed, or the connection isn't private.
 
 <p align="center">
-  <img src="../screenshots/error-offline.png" alt="Offline error page" width="400">
-  <img src="../screenshots/error-secure.png" alt="Not private error page" width="400">
+  <img src="../screenshots/error-offline-dark.png" alt="Offline error page" width="400">
+  <img src="../screenshots/error-secure-dark.png" alt="Not private error page" width="400">
 </p>
 
 ## Reader

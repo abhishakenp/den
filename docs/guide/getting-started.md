@@ -38,7 +38,7 @@ To stay on the latest `main` automatically, see [Updates](updates.md#following-m
 
 den opens straight into a browser. No sign-up, no account, no wizard.
 
-<p align="center"><img src="../screenshots/main-light.png" alt="den on first run" width="720"></p>
+<p align="center"><img src="../screenshots/main-dark.png" alt="den on first run" width="720"></p>
 
 You start with:
 

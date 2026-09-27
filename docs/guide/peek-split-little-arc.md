@@ -6,7 +6,7 @@ Three ways to look at a second page without losing the first.
 
 A Peek opens a link in a card floating over the current page. Close it and you're exactly where you were.
 
-<p align="center"><img src="../screenshots/peek-card.png" alt="A Peek over the current page" width="720"></p>
+<p align="center"><img src="../screenshots/peek-card-dark.png" alt="A Peek over the current page" width="720"></p>
 
 **It opens when you:**
 

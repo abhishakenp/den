@@ -2,7 +2,7 @@
 
 Connect Slack and GitHub, and den turns what's waiting for you into a short morning briefing with a todo list. There are no den accounts, no OAuth apps and no den servers: den reads each service through the session you signed in to **inside den**, from your Mac.
 
-<p align="center"><img src="../screenshots/briefing.png" alt="The daily briefing: a summary, todos and a feed" width="720"></p>
+<p align="center"><img src="../screenshots/briefing-dark.png" alt="The daily briefing: a summary, todos and a feed" width="720"></p>
 
 > [!NOTE]
 > Connections are tested end to end against local fake Slack and GitHub servers. A first sign-in against the real services hasn't been verified yet. If something's off, please [open an issue](https://github.com/abhishakenp/den/issues).
@@ -15,7 +15,7 @@ From any of:
 - The command bar: **Connect Slack**, **Connect GitHub**, or **Connections…**.
 - The briefing page, while nothing's connected.
 
-<p align="center"><img src="../screenshots/settings-connections.png" alt="Settings, Connections" width="620"></p>
+<p align="center"><img src="../screenshots/settings-connections-dark.png" alt="Settings, Connections" width="620"></p>
 
 What happens:
 
@@ -33,7 +33,7 @@ If you sign out of the site later, den notices, removes the connection and tells
 
 Every workspace you're signed in to is read. When there's more than one, a sheet lets you choose which show up in your briefing ("Shown in your briefing"). Change it later with **Workspaces…** in Settings ▸ Connections.
 
-<p align="center"><img src="../screenshots/connections-sheet.png" alt="Choosing Slack workspaces" width="520"></p>
+<p align="center"><img src="../screenshots/connections-sheet-dark.png" alt="Choosing Slack workspaces" width="520"></p>
 
 ## What den reads
 
@@ -62,7 +62,7 @@ Open it with **⇧⌘B** or **Daily Briefing** in the command bar.
 
 Settings ▸ Briefing turns the morning briefing off, sets its time (5:00 AM to 12:00 PM), and changes the shortcut.
 
-<p align="center"><img src="../screenshots/settings-briefing.png" alt="Settings, Briefing" width="620"></p>
+<p align="center"><img src="../screenshots/settings-briefing-dark.png" alt="Settings, Briefing" width="620"></p>
 
 ## Privacy
 

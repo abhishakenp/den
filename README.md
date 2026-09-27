@@ -20,7 +20,7 @@ A fast, native macOS browser built on WebKit, where everything is a plugin.
 > [!IMPORTANT]
 > den is in early development. It browses the web with an Arc-style sidebar, spaces, split view and a command bar, but there are no downloads, import or sync yet. The first pre-release, [0.1.0-alpha.1](https://github.com/abhishakenp/den/releases/tag/v0.1.0-alpha.1), is out; see [Getting started](docs/guide/getting-started.md).
 
-<p align="center"><img src="docs/screenshots/main-light.png" alt="den main window with demo data" width="820"></p>
+<p align="center"><img src="docs/screenshots/main-dark.png" alt="den main window with demo data" width="820"></p>
 
 ## What is den?
 
@@ -80,12 +80,12 @@ Each item is covered by `swift test` or a `--scenario` run of the real app. The 
 - **[Updates](docs/guide/updates.md)** that hot-swap plugins, and **[performance](docs/guide/performance.md)** measured, not claimed: 20 MB idle, about 210 ms to first window (on a loaded machine)
 
 <p align="center">
-  <img src="docs/screenshots/command-bar.png" alt="Command bar" width="410">
+  <img src="docs/screenshots/command-bar-dark.png" alt="Command bar" width="410">
   <img src="docs/screenshots/split-view.png" alt="Split view" width="410">
 </p>
 <p align="center">
-  <img src="docs/screenshots/theme-picker-live.png" alt="Theme picker" width="410">
-  <img src="docs/screenshots/preview-github.png" alt="Hover card for a GitHub pull request" width="410">
+  <img src="docs/screenshots/theme-picker-live-dark.png" alt="Theme picker" width="410">
+  <img src="docs/screenshots/preview-github-dark.png" alt="Hover card for a GitHub pull request" width="410">
 </p>
 
 ## Build and run

@@ -26,7 +26,7 @@ If an installed extension later asks for more access, den asks again ("wants mor
 Hover the URL pill at the top of the sidebar: pinned extensions show there, with their badges, next to a puzzle-piece button for the rest. Click an icon for its popup; click outside or press Esc to close it.
 
 <p align="center">
-  <img src="../screenshots/extensions-menu.png" alt="The extensions menu in the URL pill" width="400">
+  <img src="../screenshots/extensions-menu-dark.png" alt="The extensions menu in the URL pill" width="400">
   <img src="../screenshots/extensions-popup.png" alt="An extension popup" width="400">
 </p>
 
@@ -34,7 +34,7 @@ Hover the URL pill at the top of the sidebar: pinned extensions show there, with
 
 Type **Extensions** in the command bar, or choose **Manage Extensions** from the puzzle menu.
 
-<p align="center"><img src="../screenshots/extensions-page.png" alt="The Extensions page" width="720"></p>
+<p align="center"><img src="../screenshots/extensions-page-dark.png" alt="The Extensions page" width="720"></p>
 
 For each extension:
 
