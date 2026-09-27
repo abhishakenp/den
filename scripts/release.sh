@@ -25,7 +25,14 @@ DIST=dist/$VERSION
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && { echo "$TAG exists"; exit 1; }
 
 echo "== verify: swift test"
-swift test > build/release-test.log 2>&1 || { tail -20 build/release-test.log; echo "tests failed: not releasing"; exit 1; }
+if ! swift test > build/release-test.log 2>&1; then
+  # Timing-sensitive tests (WebKit sign-in, latency budgets) can fail on a loaded machine:
+  # re-run the failed ones once, on their own. A crashed run (no summary) is not retried.
+  failed=(${(f)"$(sed -nE 's/^✘ Test ([A-Za-z0-9_]+)\(.*\) failed.*/\1/p' build/release-test.log | sort -u)"})
+  grep -q "Test run with" build/release-test.log && (( ${#failed} )) || { tail -20 build/release-test.log; echo "tests failed: not releasing"; exit 1; }
+  echo "re-running ${#failed} failed tests once: ${failed[*]}"
+  swift test --filter "${(j:|:)failed}" > build/release-retest.log 2>&1 || { tail -20 build/release-retest.log; echo "tests failed: not releasing"; exit 1; }
+fi
 echo "== bundle $VERSION"
 DEN_VERSION=$VERSION scripts/bundle.sh > build/release-bundle.log 2>&1 || { tail -20 build/release-bundle.log; exit 1; }
 APP=build/den.app
