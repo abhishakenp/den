@@ -40,11 +40,17 @@ final class ConnectionsCore {
   var registered: [String] = []
   var registerAttempts = 0
   var retrying = false
+  /// Providers whose auto-connect the user undid: sign-ins no longer connect them until a manual
+  /// Connect (storage ns `connections`, key `declined`).
+  var declined: [String: Bool] = [:]
 
   init(env: PluginEnv) { self.env = env }
 
   func start() {
     accounts = env.call("storage", "get", ["ns": .string(Self.ns), "key": "accounts"]).array ?? []
+    if case let .object(pairs) = env.call("storage", "get", ["ns": .string(Self.ns), "key": "declined"]) {
+      for (k, v) in pairs where v.bool == true { declined[k] = true }
+    }
     env.on("ui.action") { [self] v in action(v) }
     env.on("commands.run") { [self] v in command(v.s("id")) }
     env.on("webviews.url") { [self] v in
@@ -157,6 +163,7 @@ final class ConnectionsCore {
         v.put("connected", false)
         v.put("pending", .bool(pending[p.id] != nil))
       }
+      if declined[p.id] == true { v.put("declined", true) }
       return v
     })
   }
@@ -171,6 +178,7 @@ final class ConnectionsCore {
 
   func connect(_ id: String, url: String?, profile: String?) -> Value {
     guard let p = provider(id) else { return .err("connections: no provider " + id) }
+    setDeclined(id, false)
     if account(id) != nil {
       toast(p.title + " is already connected", icon: "sf:checkmark.circle.fill")
       return .okay
@@ -202,9 +210,25 @@ final class ConnectionsCore {
   func report(_ args: Value) {
     let id = args.s("id")
     guard let p = provider(id) else { return }
+    // `auto`: the provider noticed a sign-in or sign-out by itself (launch, a cookie change), not
+    // because the user pressed Connect.
+    let auto = args.b("auto")
+    if auto {
+      if declined[id] == true { return }
+      if !args.b("connected") {
+        // Signed out while connected: the expired path. Nothing to do otherwise (and a pending
+        // Connect keeps its own sign-in tab and probes).
+        guard pending[id] == nil, let a = account(id), (a.sOpt("profile") ?? "default") == (args.sOpt("profile") ?? "default") else { return }
+        var e = args
+        e.put("expired", true)
+        e.put("auto", false)
+        return report(e)
+      }
+    }
     if args.b("connected") {
       let wasPending = pending[id] != nil
       let isNew = account(id) == nil
+      let autoNew = auto && isNew && !wasPending
       let profile = args.sOpt("profile") ?? pending[id]?.profile ?? "default"
       var teams = args.a("teams")
       // Keep the user's workspace choices across re-probes.
@@ -221,7 +245,11 @@ final class ConnectionsCore {
       accounts.append(acct)
       save()
       pending[id] = nil
-      if isNew {
+      if autoNew {
+        // Found on its own: say so, with Undo (no sheet pops open unasked).
+        env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "id": .string(Self.undoPrefix + id), "text": .string(p.title + " connected"),
+                                                       "icon": "sf:checkmark.circle.fill", "action": "Undo", "duration": 8000]])
+      } else if isNew {
         toast(p.title + " connected", icon: "sf:checkmark.circle.fill")
         if teams.count > 1 { sheetOpen = true }
       }
@@ -246,6 +274,26 @@ final class ConnectionsCore {
       changed()
       render()
     }
+  }
+
+  static let undoPrefix = "connections.undo:"
+
+  func setDeclined(_ id: String, _ on: Bool) {
+    guard (declined[id] == true) != on else { return }
+    declined[id] = on ? true : nil
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": "declined", "value": .object(declined.keys.sorted().map { ($0, .bool(true)) })])
+  }
+
+  /// Undo on the "<Title> connected" toast: disconnect quietly and stop auto-connecting it.
+  func undoAutoConnect(_ id: String) {
+    guard provider(id) != nil else { return }
+    setDeclined(id, true)
+    pending[id] = nil
+    guard account(id) != nil else { return }
+    accounts.removeAll { $0.s("id") == id }
+    save()
+    changed()
+    render()
   }
 
   func disconnect(_ id: String) -> Value {
@@ -344,6 +392,7 @@ final class ConnectionsCore {
   func action(_ v: Value) {
     let id = v.s("id"), act = v.s("action")
     if id == Self.sheetId && act == "dismiss" { closeSheet(); return }
+    if Text.hasPrefix(id, Self.undoPrefix), act == "toast" { undoAutoConnect(Text.dropPrefix(id, Self.undoPrefix)); return }
     if Text.hasPrefix(id, "connections.row:") {
       let pid = Text.dropPrefix(id, "connections.row:")
       if account(pid) != nil { _ = disconnect(pid) } else if pending[pid] != nil {

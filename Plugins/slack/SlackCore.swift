@@ -72,7 +72,29 @@ final class SlackCore {
       if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default") { _ in } }
     }
     env.on("feed.refresh") { [self] _ in refresh() }
+    // Auto-connect: signing in to Slack in den (now or later) connects it. The host observes the
+    // cookie store and tells us when slack.com's cookies change; nothing polls.
+    env.on("session.cookiesChanged") { [self] v in
+      if v.s("domain") == domain { autoProbe(v.sOpt("profile") ?? "default") }
+    }
     register()
+    env.call("session", "watchCookies", ["plugin": .string(Self.id), "domain": .string(domain), "profile": "default"])
+    autoProbe("default")
+  }
+
+  /// A probe nobody asked for (launch, a cookie change). Skipped after the user undid an
+  /// auto-connect; while connected only sign-out matters, so it's a cookie read, no page script.
+  func autoProbe(_ profile: String) {
+    let c = env.call("connections", "get", ["id": .string(Self.id)])
+    if c.b("declined") { return }
+    guard c.b("connected") else { return probe(profile: profile, auto: true) { _ in } }
+    guard (c.sOpt("profile") ?? "default") == profile else { return }
+    requests.call("session", "cookies", ["plugin": .string(Self.id), "domain": .string(domain), "profile": .string(profile)]) { [self] r in
+      if !r.a("cookies").contains(where: { $0.s("name") == "d" && !$0.s("value").isEmpty }) {
+        teams = []
+        env.call("connections", "report", ["id": .string(Self.id), "connected": false, "profile": .string(profile), "auto": true])
+      }
+    }
   }
 
   func register() {
@@ -92,10 +114,10 @@ final class SlackCore {
   // MARK: Probe
 
   /// Reads the `d` cookie and the workspaces; reports to `connections` and calls `done(found)`.
-  func probe(profile: String, _ done: @escaping (Bool) -> Void) {
+  func probe(profile: String, auto: Bool = false, _ done: @escaping (Bool) -> Void) {
     requests.call("session", "cookies", ["plugin": .string(Self.id), "domain": .string(domain), "profile": .string(profile)]) { [self] r in
       guard r.a("cookies").contains(where: { $0.s("name") == "d" && !$0.s("value").isEmpty }) else {
-        env.call("connections", "report", ["id": .string(Self.id), "connected": false, "profile": .string(profile)])
+        env.call("connections", "report", ["id": .string(Self.id), "connected": false, "profile": .string(profile), "auto": .bool(auto)])
         return done(false)
       }
       requests.call("session", "eval", ["plugin": .string(Self.id), "origin": .string(origin), "script": .string(Self.configScript),
@@ -104,13 +126,13 @@ final class SlackCore {
           list.map { Team(id: $0.s("id"), name: $0.s("name"), url: $0.s("url"), token: $0.s("token"), user: $0.s("user"), icon: $0.s("icon")) }
         } ?? []
         guard !teams.isEmpty else {
-          env.call("connections", "report", ["id": .string(Self.id), "connected": false, "profile": .string(profile)])
+          env.call("connections", "report", ["id": .string(Self.id), "connected": false, "profile": .string(profile), "auto": .bool(auto)])
           return done(false)
         }
         let account = teams[0].name  // connections adds "· N workspaces"
         let list: [Value] = teams.map { t in ["id": .string(t.id), "name": .string(t.name), "url": .string(t.url), "icon": .string(t.icon), "enabled": true] }
         env.call("connections", "report", ["id": .string(Self.id), "connected": true, "profile": .string(profile),
-                                            "account": .string(account), "teams": .array(list)])
+                                            "account": .string(account), "teams": .array(list), "auto": .bool(auto)])
         done(true)
       }
     }
@@ -343,12 +365,22 @@ final class SlackCore {
       summary = who + " mentioned you in " + where_ + ": " + text
     }
     if teams.count > 1 { detail += " · " + t.name }
-    return [
+    let channel = r.sOpt("channel") ?? m["channel"].s("id")
+    var extra: [(String, Value)] = []
+    if kind != "dm" && !channel.isEmpty {
+      // A channel the user can mark important (briefing): keyed by workspace, so the same
+      // channel name in two workspaces stays two choices.
+      extra.append(("importantKey", .string("slack:" + t.id + ":" + channel)))
+      extra.append(("importantTitle", .string(where_ + (teams.count > 1 ? " · " + t.name : ""))))
+    }
+    var item: Value = [
       "id": .string("slack:" + t.id + ":" + (r.sOpt("channel") ?? m["channel"].s("id")) + ":" + m.s("ts")),
       "source": .string(Self.id), "kind": .string(kind), "title": .string(text.isEmpty ? "(no text)" : text),
       "detail": .string(detail), "url": .string(url), "ts": .int(Web.slackMs(m.s("ts"))), "icon": .string(Self.icon),
       "badge": .string(badge), "actor": .string(who), "where": .string(t.name + " " + where_),
       "actionable": true, "summary": .string(summary),
     ]
+    for (k, v) in extra { item.put(k, v) }
+    return item
   }
 }

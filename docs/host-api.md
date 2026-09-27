@@ -668,6 +668,10 @@ Reads what a signed-in site exposes, from den's own `WKWebsiteDataStore` for a p
 |---|---|---|
 | `cookies` | `plugin`, `domain`, `profile?` | `session.result {id, ok, cookies: [{name, value, domain, path, secure, httpOnly, expires?}]}` (HttpOnly included) |
 | `eval` | `plugin`, `origin`, `script` (≤ 4 KB function body that `return`s JSON), `profile?`, `timeoutMs?` (10 s) | `session.result {id, ok, value}` or `{id, ok: false, error}` |
+| `watchCookies` | `plugin`, `domain`, `profile?` (`default`) | ok (idempotent). Then `session.cookiesChanged {domain, profile}` whenever the cookies covering `domain` change: a sign-in or sign-out in den. Never carries values; the plugin reads them with `cookies` |
+| `unwatchCookies` | `plugin`, `domain`, `profile?` | ok |
+
+`watchCookies` is how connection plugins auto-connect, and it is event-driven: nothing polls. While at least one watch exists on a profile, a `WKHTTPCookieStoreObserver` sits on that profile's cookie store, and KVO on `isLoading` watches that profile's web views, because on macOS 26 the observer stops firing for good once anything reads the store after it was added (measured: every `Set-Cookie` notifies without reads, nothing after the first `getAllCookies`, and re-adding doesn't revive it), while a sign-in always ends with a page load on the site. Either signal schedules one coalesced read (300 ms, a one-shot work item) that compares each watched domain's cookies with a fingerprint taken at watch time (sorted `name=value`, in memory only) and emits only for domains that really changed. With no watches there's no observer, no KVO and no timer (`CookieWatchTests`).
 
 `eval` runs in a hidden, never-shown `WKWebView` in that profile's data store, on an empty local document whose origin is `origin` (loaded with `loadHTMLString(baseURL:)`, so no request is made), in an isolated content world. That document sees the origin's localStorage (verified in `ConnectionsTests`). Any navigation is refused; the view is destroyed after the result.
 

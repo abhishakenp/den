@@ -151,6 +151,7 @@ struct ConnectionsTests {
   final class Tabs {
     var opened: [String] = []
     var toasts: [String] = []
+    var toastTrees: [Value] = []
   }
 
   /// The harness env, with toasts recorded (they auto-dismiss after 2.2 s on screen).
@@ -158,7 +159,10 @@ struct ConnectionsTests {
     var e = h.env
     let base = e.invoke
     e.invoke = { s, m, a in
-      if s == "ui", m == "set", a.s("slot") == "toast" { tabs.toasts.append(a["tree"].s("text")) }
+      if s == "ui", m == "set", a.s("slot") == "toast" {
+        tabs.toasts.append(a["tree"].s("text"))
+        tabs.toastTrees.append(a["tree"])
+      }
       return base(s, m, a)
     }
     return e
@@ -402,6 +406,168 @@ struct ConnectionsTests {
     h.rt.call("briefing", "refresh")
     #expect(await until(20) { !h.rt.call("connections", "get", ["id": "github"]).b("connected") })
     #expect(tabs.toasts.last?.hasPrefix("Signed out of GitHub") == true)
+  }
+
+  // MARK: Auto-connect
+
+  func githubCookie(_ name: String, _ value: String) -> HTTPCookie {
+    HTTPCookie(properties: [.domain: ".gh.example", .path: "/", .name: name, .value: value, .secure: "TRUE", .expires: Date().addingTimeInterval(3600)])!
+  }
+
+  /// Signing in to github.com in den connects GitHub by itself (the host's cookie observer emits
+  /// `session.cookiesChanged`), with "GitHub connected · Undo"; Undo sticks until a manual Connect.
+  @Test func autoConnectToastsWithUndoAndRemembersTheDecline() async {
+    let h = Harness()
+    let tabs = Tabs()
+    h.rt.plugins.provide("tabs") { method, a in
+      if method == "open" { tabs.opened.append(a.s("url")); return ["id": .string("tab-\(tabs.opened.count)")] }
+      return ["ok": true]
+    }
+    h.rt.plugins.provide("spaces") { method, _ in method == "current" ? ["id": "s1"] : [["id": "s1", "name": "Personal", "profile": .string(Self.profile)]] }
+    h.rt.call("storage", "set", ["ns": "github", "key": "base", "value": "https://gh.example"])
+    h.rt.permissions.grant("github", ["session:gh.example"])
+    let c = ConnectionsCore(env: env(h, tabs))
+    h.rt.plugins.provide("connections") { a, b in c.handle(a, b) }
+    c.start()
+    let g = GitHubCore(env: h.env)
+    g.start()
+    // It watches its own cookie domain from the start; nothing is connected yet.
+    #expect(await until { h.rt.session.observedProfiles == ["default"] })
+    #expect(!h.rt.call("connections", "get", ["id": "github"]).b("connected"))
+    #expect(tabs.toasts.isEmpty && tabs.opened.isEmpty)
+
+    // The user signs in to github.com in a tab: the cookies change.
+    let store = h.rt.webviews.store(for: Self.profile).httpCookieStore
+    await store.setCookie(githubCookie("logged_in", "yes"))
+    await store.setCookie(githubCookie("dotcom_user", "octo-den"))
+    h.rt.plugins.emit("session.cookiesChanged", ["domain": "gh.example", "profile": .string(Self.profile)])
+    #expect(await until { h.rt.call("connections", "get", ["id": "github"]).b("connected") })
+    #expect(h.rt.call("connections", "get", ["id": "github"]).s("account") == "@octo-den")
+    #expect(tabs.toasts == ["GitHub connected"])
+    #expect(tabs.toastTrees.last?.s("action") == "Undo")
+    #expect(tabs.toastTrees.last?.s("id") == "connections.undo:github")
+    #expect(tabs.opened.isEmpty)  // no sign-in tab, no sheet
+    #expect(h.rt.ui.sheets["overlay.connections"] == nil)
+
+    // Undo: disconnected quietly, and later sign-ins don't reconnect it.
+    h.action("connections.undo:github", "toast")
+    #expect(!h.rt.call("connections", "get", ["id": "github"]).b("connected"))
+    #expect(h.rt.call("connections", "get", ["id": "github"]).b("declined"))
+    #expect(h.storage("connections", "declined") == ["github": true])
+    #expect(tabs.toasts == ["GitHub connected"])
+    h.rt.plugins.emit("session.cookiesChanged", ["domain": "gh.example", "profile": .string(Self.profile)])
+    try? await Task.sleep(for: .milliseconds(600))
+    #expect(!h.rt.call("connections", "get", ["id": "github"]).b("connected"))
+
+    // A fresh start (relaunch) keeps the decline.
+    let c2 = ConnectionsCore(env: h.env)
+    c2.start()
+    #expect(c2.declined["github"] == true)
+
+    // A manual Connect clears it and connects (the ordinary toast, no Undo).
+    h.rt.call("connections", "connect", ["id": "github", "profile": .string(Self.profile)])
+    #expect(await until { h.rt.call("connections", "get", ["id": "github"]).b("connected") })
+    #expect(!h.rt.call("connections", "get", ["id": "github"]).b("declined"))
+    #expect(h.storage("connections", "declined") == [:])
+    #expect(tabs.toasts.last == "GitHub connected")
+    #expect(tabs.toastTrees.last?["action"].isNull == true)
+
+    // Signing out (cookie gone) is noticed the same way: the expired path.
+    for ck in await store.allCookies() where ck.name == "logged_in" { await store.deleteCookie(ck) }
+    h.rt.plugins.emit("session.cookiesChanged", ["domain": "gh.example", "profile": .string(Self.profile)])
+    #expect(await until { !h.rt.call("connections", "get", ["id": "github"]).b("connected") })
+    #expect(tabs.toasts.last?.hasPrefix("Signed out of GitHub") == true)
+  }
+
+  // MARK: Important channels and repos
+
+  @Test func importantItemsRankFirstAndAreNeverDropped() {
+    let now: Int64 = 1_800_000_000_000
+    var items: [Value] = (0..<30).map { i in
+      ["id": .string("r\(i)"), "kind": "review", "ts": .int(now - Int64(i) * 60_000), "importantKey": .string("github:x/r\(i)"), "summary": .string("review \(i)")]
+    }
+    items.append(["id": "old", "kind": "mention", "ts": .int(now - 3_600_000 * 48), "importantKey": "slack:T1:C9", "summary": "old mention"])
+    items.append(["id": "dm", "kind": "dm", "ts": .int(now - 3_600_000 * 72), "summary": "a dm"])
+    let imp: Set<String> = ["slack:T1:C9"]
+    let ranked = BriefingCore.rank(items, now: now, affinity: [:], important: imp)
+    #expect(ranked.first?.s("id") == "old")  // an old mention in an important channel beats fresh reviews
+    // Cut to 25: the important item survives even when it would rank past the cut.
+    let plain = BriefingCore.rank(items, now: now, affinity: [:])
+    #expect(!plain.prefix(25).contains { $0.s("id") == "old" })
+    let kept = BriefingCore.keep(plain, max: 25, important: imp)
+    #expect(kept.count == 26 && kept.contains { $0.s("id") == "old" })
+    // The AI brief's input: all important lines, marked, then the rest up to the cap.
+    let lines = BriefingCore.aiLines(items, important: imp, max: 5)
+    #expect(lines.count == 5)
+    #expect(lines.first == "Important: old mention")
+    #expect(BriefingCore.aiLines(items, important: ["github:x/r1", "github:x/r2", "slack:T1:C9"], max: 2).count == 3)
+    #expect(BriefingCore.plainSummary(ranked).contains("30 review requests"))
+  }
+
+  @Test func importantPickerInSettingsAndCommands() {
+    let h = Harness()
+    var registered: [String: String] = [:]
+    var unregistered: [String] = []
+    h.rt.plugins.provide("commands") { m, a in
+      if m == "register" { registered[a.s("id")] = a.s("title") }
+      if m == "unregister" { unregistered.append(a.s("id")); registered[a.s("id")] = nil }
+      return ["ok": true]
+    }
+    h.rt.plugins.provide("connections") { m, _ in
+      m == "list" ? [["id": "github", "title": "GitHub", "connected": true], ["id": "slack", "title": "Slack", "connected": true]] : .null
+    }
+    var settings: Value = .null
+    var e = h.env
+    let base = e.invoke
+    e.invoke = { s, m, a in
+      if s == "settings", m == "register" { settings = a }
+      return base(s, m, a)
+    }
+    let b = BriefingCore(env: e)
+    h.rt.plugins.provide("briefing") { m, a in b.handle(m, a) }
+    b.start()
+    #expect(registered["briefing.important"] == "Important Channels and Repos…")
+    let now = h.clock
+    h.rt.plugins.emit("feed.items", ["source": "github", "items": [
+      ["id": "g1", "source": "github", "kind": "review", "ts": .int(now - 60_000), "importantKey": "github:denhq/den", "importantTitle": "denhq/den", "summary": "review"],
+      ["id": "g2", "source": "github", "kind": "ci", "ts": .int(now - 120_000), "importantKey": "github:denhq/site", "importantTitle": "denhq/site", "summary": "ci"],
+    ]])
+    h.rt.plugins.emit("feed.items", ["source": "slack", "items": [
+      ["id": "s1", "source": "slack", "kind": "mention", "ts": .int(now - 3_600_000), "importantKey": "slack:T1:C1", "importantTitle": "#eng · Acme", "summary": "m"],
+      ["id": "s2", "source": "slack", "kind": "dm", "ts": .int(now), "summary": "dm"],  // DMs aren't channels
+    ]])
+    #expect(registered["briefing.mark:github:denhq/den"] == "Mark denhq/den as Important")
+    #expect(registered["briefing.mark:slack:T1:C1"] == "Mark #eng · Acme as Important")
+    func control() -> Value { settings["controls"].array?.first { $0.s("key") == "important" } ?? .null }
+    #expect(control()["items"].array?.map { $0.s("id") } == ["github:denhq/den", "github:denhq/site", "slack:T1:C1"])
+    #expect(control()["items"].array?.allSatisfy { $0["buttons"][0].s("id") == "mark" } == true)
+
+    // From the command bar.
+    h.rt.plugins.emit("commands.run", ["id": "briefing.mark:slack:T1:C1"])
+    #expect(h.rt.call("briefing", "importantList") == [["key": "slack:T1:C1", "title": "#eng · Acme", "source": "slack"]])
+    #expect(h.storage("briefing", "important") == [["key": "slack:T1:C1", "title": "#eng · Acme", "source": "slack"]])
+    #expect(registered["briefing.unmark:slack:T1:C1"] == "Unmark #eng · Acme as Important")
+    #expect(registered["briefing.mark:slack:T1:C1"] == nil && unregistered.contains("briefing.mark:slack:T1:C1"))
+    #expect(control()["items"].array?.first?.s("id") == "slack:T1:C1")
+    #expect(control()["items"].array?.first?["buttons"][0].s("id") == "remove")
+    // The older Slack mention now leads the feed.
+    #expect(h.rt.call("briefing", "state")["feed"].array?.first?.s("id") == "s1")
+
+    // From Settings: mark a repo, remove the channel.
+    h.rt.plugins.emit("settings.action", ["id": "briefing", "key": "important", "item": "github:denhq/site", "button": "mark"])
+    h.rt.plugins.emit("settings.action", ["id": "briefing", "key": "important", "item": "slack:T1:C1", "button": "remove"])
+    #expect(h.rt.call("briefing", "importantList").array?.map { $0.s("key") } == ["github:denhq/site"])
+    #expect(h.rt.call("briefing", "state")["feed"].array?.first?.s("id") == "g2")
+    // The service method.
+    #expect(h.rt.call("briefing", "important", ["key": "github:denhq/site", "on": false]) == ["ok": true])
+    #expect(h.rt.call("briefing", "importantList") == [])
+  }
+
+  @Test func feedItemsCarryImportantKeys() {
+    let route = ValueJSON.parse(#"{"results":[{"author_name":"a","issue":{"issue":{"pull_request_id":1}},"repo":{"repository":{"name":"den","owner_login":"denhq"}},"number":7,"hl_title":"t","created":"2026-09-27T00:00:00Z"}],"logged_in":true}"#)!
+    let g = GitHubCore.parse(route, kind: "review", base: "https://github.com")
+    #expect(g[0].s("importantKey") == "github:denhq/den")
+    #expect(g[0].s("importantTitle") == "denhq/den")
   }
 
   // MARK: Pure logic

@@ -50,6 +50,14 @@ final class BriefingCore {
   var registerAttempts = 0
   var retrying = false
   var commandRegistered = false
+  /// Channels and repos the user marked important: `[{key, title, source}]` (storage key
+  /// `important`). Their items rank above everything else and are never cut from the feed or the
+  /// summary. Keys come from feed items' `importantKey` (`slack:<team>:<channel>`, `github:<owner/repo>`).
+  var important: [Value] = []
+  var importantCommands: [String] = []
+  var settingsObserved = false
+  static let maxImportantCommands = 30
+  static let importantBoost: Int64 = 1000
 
   init(env: PluginEnv) {
     self.env = env
@@ -85,13 +93,44 @@ final class BriefingCore {
          "subtitle": "Once a day den gathers what needs you from your connections and lets you know. Only while something is connected.", "default": .bool(enabled)],
         ["key": "time", "type": "choice", "title": "Time", "options": .array(times), "default": .int(now)],
         ["key": "shortcut", "type": "shortcut", "title": "Open the briefing", "default": .string(Self.defaultShortcut)],
+        importantControl(),
       ],
     ])
-    guard !r.isErr else { return }
+    guard !r.isErr, !settingsObserved else { return }
+    settingsObserved = true
     let v = env.call("settings", "get", ["id": .string(Self.ns)])
     for k in ["enabled", "time", "shortcut"] { applySetting(k, v[k]) }
     env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { applySetting(v.s("key"), v["value"]) } }
+    env.on("settings.action") { [self] v in
+      guard v.s("id") == Self.ns, v.s("key") == Self.importantSettingKey else { return }
+      let key = v.s("item")
+      switch v.s("button") {
+      case "remove": setImportant(key, title: "", source: "", on: false)
+      case "mark": setImportant(key, title: "", source: "", on: true)
+      default: break
+      }
+    }
   }
+
+  static let importantSettingKey = "important"
+
+  /// Settings > Briefing > Important channels and repos: the marked ones (Remove), then the
+  /// channels and repos seen in the current feed (Mark Important).
+  func importantControl() -> Value {
+    var items: [Value] = important.map { i in
+      ["id": i["key"], "title": i["title"], "subtitle": .string(Self.sourceName(i.s("source")) + " · Important"), "icon": "sf:star.fill",
+       "buttons": [["id": "remove", "title": "Remove"]]]
+    }
+    for c in candidates().prefix(Self.maxImportantCommands) {
+      items.append(["id": c["key"], "title": c["title"], "subtitle": .string(Self.sourceName(c.s("source")) + " · in your feed"), "icon": "sf:star",
+                    "buttons": [["id": "mark", "title": "Mark Important", "style": "primary"]]])
+    }
+    return ["key": .string(Self.importantSettingKey), "type": "list", "title": "Important channels and repos",
+            "subtitle": "Their messages, reviews and CI come first in the briefing and are never left out of the summary.",
+            "items": .array(items), "empty": "Channels and repos from your feed show up here once Slack or GitHub is connected."]
+  }
+
+  static func sourceName(_ s: String) -> String { s == "slack" ? "Slack" : s == "github" ? "GitHub" : s }
 
   func applySetting(_ key: String, _ v: Value) {
     switch key {
@@ -118,6 +157,7 @@ final class BriefingCore {
 
   func start() {
     todos = load("todos").array ?? []
+    important = load("important").array ?? []
     if case let .object(pairs) = load("affinity") { for (k, v) in pairs { affinity[k] = v.int ?? 0 } }
     let s = load("settings")
     hour = s.i("hour", 8)
@@ -127,7 +167,7 @@ final class BriefingCore {
     bindShortcut(load("shortcut").string ?? Self.defaultShortcut)
     env.on("briefing.key.open") { [self] _ in isOpen ? close() : open() }
     registerSettings()
-    env.on("commands.run") { [self] v in if v.s("id") == "briefing.open" { open() } }
+    env.on("commands.run") { [self] v in command(v.s("id")) }
     env.on("feed.items") { [self] v in received(v) }
     env.on("connections.changed") { [self] _ in
       updateSchedule()
@@ -155,6 +195,12 @@ final class BriefingCore {
     case "close": close(); return .okay
     case "refresh": refresh(reason: args.sOpt("reason") ?? "manual"); return .okay
     case "toggle": toggle(args.s("id"), done: args.b("done", true)); return .okay
+    case "important":
+      let key = args.s("key")
+      guard !key.isEmpty else { return .err("briefing: important needs key") }
+      setImportant(key, title: args.s("title"), source: args.s("source"), on: args.b("on", true))
+      return .okay
+    case "importantList": return .array(important)
     case "settings":
       if !args["hour"].isNull { hour = max(0, min(23, args.i("hour"))) }
       if !args["minute"].isNull { minute = max(0, min(59, args.i("minute"))) }
@@ -244,6 +290,76 @@ final class BriefingCore {
     if let e = v.sOpt("error") { errors[s] = e } else { errors[s] = nil }
     waiting.removeAll { $0 == s }
     if refreshing && waiting.isEmpty { compose() } else if !refreshing { render() }
+    importantChanged(persist: false)
+  }
+
+  // MARK: Important channels and repos
+
+  var importantKeys: Set<String> { Set(important.map { $0.s("key") }) }
+
+  /// Channels and repos seen in the current feed that aren't marked yet, newest first.
+  func candidates() -> [Value] {
+    let marked = importantKeys
+    var latest: [String: Value] = [:]
+    for it in allItems() {
+      let k = it.s("importantKey")
+      guard !k.isEmpty, !marked.contains(k) else { continue }
+      if let old = latest[k], old.i("ts") >= it.i("ts") { continue }
+      latest[k] = ["key": .string(k), "title": .string(it.sOpt("importantTitle") ?? it.s("where")), "source": .string(it.s("source")), "ts": .int(it.i("ts"))]
+    }
+    return latest.values.sorted { a, b in a.i("ts") != b.i("ts") ? a.i("ts") > b.i("ts") : a.s("key") < b.s("key") }
+  }
+
+  func setImportant(_ key: String, title: String, source: String, on: Bool) {
+    let was = importantKeys.contains(key)
+    if on && !was {
+      var t = title, src = source
+      if t.isEmpty || src.isEmpty, let c = candidates().first(where: { $0.s("key") == key }) {
+        if t.isEmpty { t = c.s("title") }
+        if src.isEmpty { src = c.s("source") }
+      }
+      important.append(["key": .string(key), "title": .string(t.isEmpty ? key : t), "source": .string(src)])
+    } else if !on && was {
+      important.removeAll { $0.s("key") == key }
+    } else {
+      return
+    }
+    importantChanged(persist: true)
+    render()
+  }
+
+  func importantChanged(persist: Bool) {
+    if persist { store("important", .array(important)) }
+    registerSettings()
+    registerImportantCommands()
+  }
+
+  /// "Mark #eng as Important" for recent channels and repos in the feed, "Unmark …" for marked
+  /// ones, bounded; re-registered when the feed or the set changes.
+  func registerImportantCommands() {
+    guard commandRegistered else { return }  // the commands plugin isn't there (yet)
+    var want: [(String, String, String)] = []
+    for i in important.prefix(Self.maxImportantCommands) {
+      want.append(("briefing.unmark:" + i.s("key"), "Unmark " + i.s("title") + " as Important", "sf:star.slash"))
+    }
+    for c in candidates().prefix(Self.maxImportantCommands) {
+      want.append(("briefing.mark:" + c.s("key"), "Mark " + c.s("title") + " as Important", "sf:star"))
+    }
+    for id in importantCommands where !want.contains(where: { $0.0 == id }) { env.call("commands", "unregister", ["id": .string(id)]) }
+    importantCommands.removeAll { id in !want.contains { $0.0 == id } }
+    for w in want where !importantCommands.contains(w.0) {
+      let r = env.call("commands", "register", ["id": .string(w.0), "title": .string(w.1), "icon": .string(w.2), "owner": "briefing",
+                                                  "keywords": ["important", "priority", "star", "channel", "repo", "briefing"]])
+      if r.isErr { return }
+      importantCommands.append(w.0)
+    }
+  }
+
+  func command(_ id: String) {
+    if id == "briefing.open" { open(); return }
+    if id == "briefing.important" { env.call("settings", "open", ["section": .string(Self.ns)]); return }
+    if Text.hasPrefix(id, "briefing.mark:") { setImportant(Text.dropPrefix(id, "briefing.mark:"), title: "", source: "", on: true); return }
+    if Text.hasPrefix(id, "briefing.unmark:") { setImportant(Text.dropPrefix(id, "briefing.unmark:"), title: "", source: "", on: false) }
   }
 
   func finishCallbacks() {
@@ -267,7 +383,8 @@ final class BriefingCore {
   func compose() {
     refreshing = false
     updatedAt = env.now()
-    let ranked = Self.rank(allItems(), now: env.now(), affinity: affinity)
+    let keys = importantKeys
+    let ranked = Self.rank(allItems(), now: env.now(), affinity: affinity, important: keys)
     let actionable = ranked.filter { $0.b("actionable") }
     pruneTodos()
     let ai = env.call("ai", "availability")
@@ -275,10 +392,10 @@ final class BriefingCore {
       summaryState = "working"
       render()
       let sources: [Value] = connected().compactMap { c in
-        let lines = (items[c.s("id")] ?? []).map { $0.s("summary") }.filter { !$0.isEmpty }
-        return lines.isEmpty ? nil : ["name": .string(c.s("title")), "items": .array(lines.prefix(Self.maxAIItems).map { .string($0) })]
+        let lines = Self.aiLines(items[c.s("id")] ?? [], important: keys, max: Self.maxAIItems)
+        return lines.isEmpty ? nil : ["name": .string(c.s("title")), "items": .array(lines.map { .string($0) })]
       }
-      let todoInput: [Value] = actionable.prefix(12).map { ["id": .string($0.s("id")), "text": .string($0.s("summary"))] }
+      let todoInput: [Value] = Self.keep(actionable, max: 12, important: keys).map { ["id": .string($0.s("id")), "text": .string($0.s("summary"))] }
       let gen = generation
       let briefStep: (@escaping () -> Void) -> Void = { [self] next in
         guard !sources.isEmpty else {
@@ -366,8 +483,9 @@ final class BriefingCore {
 
   /// Kind first (what needs you), then recency (up to +24 within the last day), then affinity
   /// (+3 per earlier open of the same person or place, at most +15).
-  static func score(_ item: Value, now: Int64, affinity: [String: Int64]) -> Int64 {
+  static func score(_ item: Value, now: Int64, affinity: [String: Int64], important: Set<String> = []) -> Int64 {
     var s = base(item.s("kind"))
+    if isImportant(item, important) { s += importantBoost }
     let ts = item.i("ts")
     if ts > 0 { s += max(0, 24 - (now - ts) / 3_600_000) }
     let a = (affinity["actor:" + item.s("actor")] ?? 0) + (affinity["where:" + item.s("where")] ?? 0)
@@ -375,8 +493,28 @@ final class BriefingCore {
     return s
   }
 
-  static func rank(_ items: [Value], now: Int64, affinity: [String: Int64]) -> [Value] {
-    let scored = items.map { ($0, score($0, now: now, affinity: affinity)) }
+  static func isImportant(_ item: Value, _ important: Set<String>) -> Bool {
+    let k = item.s("importantKey")
+    return !k.isEmpty && important.contains(k)
+  }
+
+  /// The first `max` of a ranked list, plus every important item past it (they're never cut).
+  static func keep(_ ranked: [Value], max: Int, important: Set<String>) -> [Value] {
+    var out: [Value] = []
+    for (i, it) in ranked.enumerated() where i < max || isImportant(it, important) { out.append(it) }
+    return out
+  }
+
+  /// One source's lines for the AI brief: every important one first (marked as such), then the
+  /// rest up to `max` in total.
+  static func aiLines(_ items: [Value], important: Set<String>, max: Int) -> [String] {
+    let imp = items.filter { isImportant($0, important) && !$0.s("summary").isEmpty }.map { "Important: " + $0.s("summary") }
+    let rest = items.filter { !isImportant($0, important) && !$0.s("summary").isEmpty }.map { $0.s("summary") }
+    return imp + Array(rest.prefix(Swift.max(0, max - imp.count)))
+  }
+
+  static func rank(_ items: [Value], now: Int64, affinity: [String: Int64], important: Set<String> = []) -> [Value] {
+    let scored = items.map { ($0, score($0, now: now, affinity: affinity, important: important)) }
     let order = Array(0..<scored.count).sorted {
       let a = scored[$0], b = scored[$1]
       if a.1 != b.1 { return a.1 > b.1 }
@@ -386,7 +524,10 @@ final class BriefingCore {
     return order.map { scored[$0].0 }
   }
 
-  func feed() -> [Value] { Array(Self.rank(allItems(), now: env.now(), affinity: affinity).prefix(Self.maxFeed)) }
+  func feed() -> [Value] {
+    let keys = importantKeys
+    return Self.keep(Self.rank(allItems(), now: env.now(), affinity: affinity, important: keys), max: Self.maxFeed, important: keys)
+  }
 
   // MARK: Todos
 
@@ -603,6 +744,11 @@ final class BriefingCore {
     let r = env.call("commands", "register", ["id": "briefing.open", "title": "Daily Briefing", "icon": "sf:sun.max", "shortcut": "⇧⌘B",
                                                "owner": "briefing", "keywords": ["briefing", "todo", "feed", "today", "morning", "summary", "slack", "github"]])
     commandRegistered = !r.isErr
+    if commandRegistered {
+      env.call("commands", "register", ["id": "briefing.important", "title": "Important Channels and Repos…", "icon": "sf:star", "owner": "briefing",
+                                         "keywords": ["important", "priority", "slack", "github", "channel", "repo", "briefing", "settings"]])
+      registerImportantCommands()
+    }
     return commandRegistered
   }
 }

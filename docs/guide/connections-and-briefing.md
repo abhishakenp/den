@@ -27,6 +27,12 @@ What happens:
 
 Connect uses the current space's [profile](spaces-and-themes.md#profiles-separate-logins-per-space), so a Work space can connect your work accounts.
 
+### Or just sign in
+
+You don't have to press Connect. **Sign in to github.com or Slack in den, now or any time later, and the connection turns itself on**, with a toast: **"GitHub connected · Undo"**. If you'd rather not, press **Undo**: den disconnects and stops doing it for that service until you press Connect yourself.
+
+This costs nothing while you browse: den doesn't check on a timer. It notices because signing in changes that site's cookies in den (a cookie-store observer, plus the page load that ends every sign-in), and only then looks at whether you're signed in. It works in your default profile; for another space's profile, use Connect.
+
 If you sign out of the site later, den notices, removes the connection and tells you: "Signed out of GitHub. Connect again to keep it in your briefing". Disconnect any time from Settings or the command bar (**Disconnect Slack**).
 
 ### Several Slack workspaces
@@ -63,6 +69,21 @@ Open it with **⇧⌘B** or **Daily Briefing** in the command bar.
 Settings ▸ Briefing turns the morning briefing off, sets its time (5:00 AM to 12:00 PM), and changes the shortcut.
 
 <p align="center"><img src="../screenshots/settings-briefing-dark.png" alt="Settings, Briefing" width="620"></p>
+
+### Important channels and repos
+
+Mark the Slack channels and GitHub repos that matter most, and they come first:
+
+- Their items rank **above everything else** in **For you**, whatever their kind or age.
+- They're **never left out**: not cut from the 25-item feed, always in the summary's input and in the todo list's candidates.
+
+Where to set them:
+
+- **Settings ▸ Briefing ▸ Important channels and repos**: the ones you marked (**Remove**), then channels and repos from your current feed (**Mark Important**).
+- The command bar: **Mark #design as Important**, **Unmark denhq/den as Important**, for channels and repos in your feed (the 30 most recent), and **Important Channels and Repos…**, which opens that Settings section.
+
+With several Slack workspaces, channels carry the workspace name ("#general · Acme"), and a channel is marked in its own workspace only. DMs aren't channels; they already rank near the top.
+
 
 ## Privacy
 

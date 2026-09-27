@@ -61,7 +61,20 @@ final class GitHubCore {
       if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default") }
     }
     env.on("feed.refresh") { [self] _ in refresh() }
+    // Auto-connect: signing in to github.com in den (now or later) connects GitHub. The host
+    // observes the cookie store and tells us when github.com's cookies change; nothing polls.
+    env.on("session.cookiesChanged") { [self] v in
+      if v.s("domain") == cookieDomain { autoProbe(v.sOpt("profile") ?? "default") }
+    }
     register()
+    env.call("session", "watchCookies", ["plugin": .string(Self.id), "domain": .string(cookieDomain), "profile": "default"])
+    autoProbe("default")
+  }
+
+  /// A probe nobody asked for (launch, a cookie change); skipped after the user undid an auto-connect.
+  func autoProbe(_ profile: String) {
+    if env.call("connections", "get", ["id": .string(Self.id)]).b("declined") { return }
+    probe(profile: profile, auto: true)
   }
 
   /// `connections` is optional and may load later: retried every 500 ms for 30 s.
@@ -82,16 +95,17 @@ final class GitHubCore {
 
   // MARK: Probe
 
-  func probe(profile: String) {
+  /// `auto`: not asked for by the user (launch, or a cookie change) — `connections` decides.
+  func probe(profile: String, auto: Bool = false) {
     requests.call("session", "cookies", ["plugin": .string(Self.id), "domain": .string(cookieDomain), "profile": .string(profile)]) { [self] r in
       let cookies = r.a("cookies")
       let loggedIn = cookies.contains { $0.s("name") == "logged_in" && $0.s("value") == "yes" }
       let user = cookies.first { $0.s("name") == "dotcom_user" }?.s("value") ?? ""
       if loggedIn {
         env.call("connections", "report", ["id": .string(Self.id), "connected": true, "profile": .string(profile),
-                                            "account": .string(user.isEmpty ? "" : "@" + user)])
+                                            "account": .string(user.isEmpty ? "" : "@" + user), "auto": .bool(auto)])
       } else {
-        env.call("connections", "report", ["id": .string(Self.id), "connected": false, "profile": .string(profile)])
+        env.call("connections", "report", ["id": .string(Self.id), "connected": false, "profile": .string(profile), "auto": .bool(auto)])
       }
     }
   }
@@ -179,6 +193,7 @@ final class GitHubCore {
         "source": .string(id), "kind": .string(kind), "title": .string(title.isEmpty ? full + " #" + String(number) : title),
         "detail": .string(detail), "url": .string(url), "ts": .int(Web.isoMs(r.s("created"))), "icon": .string(icon),
         "badge": .string(badge), "actor": .string(author), "where": .string(full), "actionable": true, "summary": .string(summary),
+        "importantKey": .string("github:" + full), "importantTitle": .string(full),
       ])
     }
     return out
