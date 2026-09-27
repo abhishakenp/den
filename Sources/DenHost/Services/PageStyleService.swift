@@ -196,6 +196,7 @@ public final class PageStyleService: HostService {
 
   /// Page tone from the first opaque background under the viewport center (then body, then the
   /// text color / color-scheme). Relative luminance < 0.18 is dark. Runs 3–4 times per page.
+  // thin-host: feature-specific, migrate to plugin (the page-tone heuristic is dark-mode logic; the host should only run a plugin-supplied script)
   static let detector = """
     (()=>{const de=document.documentElement;
     const lum=c=>{const m=c&&c.match(/[\\d.]+/g);if(!m||m.length<3||(m.length>3&&+m[3]<0.5))return -1;

@@ -254,6 +254,32 @@ Built-in providers:
 
 Folders get a card listing their tabs, each with its provider's cached `summary` (never a request). Endpoints can be redirected for tests through storage ns `previews`, key `endpoints` (`githubApi`, `githubWeb`, `gmail`, `slackApi`, `slackOrigin`). The Calendar chip format, Gmail's feed and Slack's web API are undocumented or private surfaces: they are tested against mock pages and payloads, not against signed-in accounts.
 
+## `darkmode` (plugin `darkmode`)
+
+Injects `pagestyle`, `webviews`, `ui`, `storage`; calls `commands`, `content` and `tabs` when they exist. Dark mode for every website, tied to den's appearance. Host side: [pagestyle](host-api.md#pagestyle).
+
+| Method | Args | Returns |
+|---|---|---|
+| `get` | `host?` | `{enabled, mode, sites, dark}` (`dark`: the host is known to be natively dark) |
+| `site` | `host` (or a URL), `mode: auto\|dark\|light\|off` | ok |
+| `settings` | `enabled?` | `{enabled}` |
+
+- **Native first.** Web views follow den's appearance, so `prefers-color-scheme` is den's and sites with a dark mode use it.
+- **`den.dark` sheet** for sites that stay light: `filter: invert(1) hue-rotate(180deg)` on `<html>`, with `img, video, canvas, embed, object, iframe, svg image` and inline `background-image` elements inverted back. It sits in `@media (prefers-color-scheme: dark)` (switching den's appearance applies at once, with no round trip) and on `html:not([data-den-tone=dark])` (a page already dark is never inverted).
+- **Cache.** Hosts measured dark under a dark scheme are remembered (`tones`, 400 at most) and get no sheet at all on the next visit: no flash, no filter cost.
+- **Per site.** `dark`: dark appearance plus `den.dark`. `light`: light appearance plus `den.light` (inverts pages that stay dark in a light scheme). `off`: nothing. Commands: "Dark Mode: Follow den / Always Dark / Always Light / Off for This Site" act on the focused pane's site; "Dark Mode for Websites: On/Off" switches the default.
+- Storage ns `darkmode`: `settings {enabled}`, `sites {host: mode}`, `tones [host]`. TODO(settings): register these in the `settings` host service once it lands.
+- Known gaps: CSS-class background images are inverted with the page; a natively dark site flashes inverted on its very first visit, until the detector runs (then it's cached). Measurements: [research/dark-mode.md](research/dark-mode.md).
+
+## `passwords` (plugin `passwords`)
+
+Injects `vault`, `ui`, `storage`; calls `commands`. Owns the `overlay.passwords` sheet and the save dialog (`passwords.save`). Host side: [vault](host-api.md#vault).
+
+- **Save.** `vault.captured` shows "Save password for <site>?" (or "Update …" when that username is saved) with Never for This Site / Not Now / Save. `never` origins persist (storage ns `passwords`, key `never`).
+- **Autofill.** `vault.focus` on a site with saved logins puts one row per login under the field ("<user> · Touch ID"); picking one calls `vault.fill` (Touch ID, then fill). Sign-up fields also get "Use Strong Password" (`vault.generate`); the generated password is then offered for saving on submit. `vault.blur` hides the list.
+- **Passwords…** (command `passwords.open`): Touch ID (`vault.unlock`), then the list with Copy (Touch ID again) and Delete per login. Closing the sheet locks.
+- TODO(settings): expose the list and `never` in the settings service once it lands.
+
 ## Other plugins
 
 These plugins provide no service; they only use the ones above.

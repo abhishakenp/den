@@ -18,6 +18,10 @@ public enum HostScenarios {
       ConnectionScenarios.apply(name, runtime: rt)
       return rt.window.window
     }
+    if VaultScenarios.names.contains(name) {
+      VaultScenarios.apply(name, runtime: rt)
+      return rt.window.window
+    }
     if let w = PreviewScenarios.apply(name, runtime: rt, appearance: appearance) { return w }
     guard names.contains(name) else { return nil }
     switch name {

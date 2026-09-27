@@ -17,7 +17,7 @@ Researched 2026-09-27. Current shipping OS: macOS 27 + Safari 27 (released 2026-
 | On-device AI | Foundation Models (`SystemLanguageModel`), gated on availability. Design for a small context window | 4,096 tokens on earlier builds; `contextSize` reports it at runtime. |
 | Sync | CloudKit `CKSyncEngine` (macOS 14+) | We don't have to run a server. |
 | Updates | Sparkle 2 (EdDSA-signed appcast) | Standard for non–App Store Mac apps. |
-| Passkeys | WebKit handles WebAuthn in `WKWebView`. Apply for `com.apple.developer.web-browser.public-key-credential` | Without it, passkeys work only for associated domains. |
+| Passkeys | WebKit handles WebAuthn in `WKWebView`. Apply for `com.apple.developer.web-browser.public-key-credential` | Without it, passkeys work only for associated domains. Details and the maintainer steps: [passkeys.md](passkeys.md) |
 
 ---
 
@@ -103,11 +103,12 @@ From [WebKit Features for Safari 27.0](https://webkit.org/blog/18325/webkit-feat
 - There is no public API for a third-party app to read the user's iCloud Keychain / Passwords-app web passwords. Apple's supported path for other browsers is the **Passwords browser extension** for Chrome/Edge/Chromium-family browsers ([Apple Support](https://support.apple.com/guide/passwords/get-extensions-mchlf7ac261e/mac)). Whether that extension could run in den through `WKWebExtension` is **UNVERIFIED** and unlikely: it pairs with a native helper and ships per store.
 - System AutoFill of passwords inside WKWebView forms on macOS, with credentials from Passwords/iCloud Keychain, is **UNVERIFIED**. `WKContentWorldConfiguration` "autofill scripting" (macOS 27) points at WebKit-level autofill hooks, but it isn't system Keychain access.
 - Practical plan: build our own vault (Keychain `kSecClassInternetPassword`, as Chord does). Capture credentials with `willSubmitForm` (27). Consider an `ASCredentialProviderExtension`-based integration later (UNVERIFIED feasibility on macOS).
+- **Done (2026-09-27):** the `vault` host service and the `passwords` plugin ([host-api.md](../host-api.md#vault)). On macOS 26 a listener in an isolated content world captures submits. `willSubmitForm` is a macOS 27 API and isn't in the 26.5 SDK.
 
 ### 1.9 Apple Pay
 - WebKit supports Apple Pay in WKWebView, with a restriction. It "cannot be used alongside script injection APIs such as WKUserScript or evaluateJavaScript". Injecting before the page uses Apple Pay disables it for that page, and the restriction resets on each top-frame navigation ([WebKit bug 197751](https://bugs.webkit.org/show_bug.cgi?id=197751), [Safari 13 features](https://webkit.org/blog/9674/new-webkit-features-in-safari-13/), [forum 696572](https://developer.apple.com/forums/thread/696572)).
 - One claim says iOS 16 relaxed this ([MetaMask PR](https://github.com/MetaMask/metamask-mobile/pull/36393)). The current macOS behavior is **UNVERIFIED**.
-- **Implication:** den injects scripts (ad-block, autofill, AI extraction), so it would need to skip injection on checkout pages to keep Apple Pay working. `WKContentWorld` isolation doesn't lift the rule (UNVERIFIED).
+- **Update (2026-09-27, [dark-mode.md](dark-mode.md#apple-pay)):** WebKit removed this rule in 2022 (commit `aa041a623c`, bug 236254, "Permit simultaneous Apple Pay and script injection"). Current `PaymentSession::canCreateSession` doesn't look at injected scripts or user stylesheets, so den doesn't need to skip checkout pages. There was no end-to-end test: `ApplePaySession` isn't exposed in a plain WKWebView here.
 
 ### 1.10 Handoff
 - `NSUserActivity.webpageURL` (macOS 10.10) lets den advertise the current page for Handoff. Continuing activities from Safari on iPhone into den requires den to be the default browser; the exact behavior is **UNVERIFIED**.

@@ -66,7 +66,10 @@ Each item is covered by `swift test` or a `--scenario` run of the real app.
 - **Command bar:** tabs, archive, spaces, actions, URLs and web search (Cmd-T / Cmd-L)
 - **Peek** for links from pinned tabs, and **Little Arc** windows for links from other apps (Cmd-O moves one into a space)
 - **Theme picker** per space, and the quit dialog
-- **Plugins:** all of the above are six Embedded Swift plugins (`spaces`, `tabs`, `commandbar`, `peek`, `theme`, `quit`) loaded from `den.app/Contents/PlugIns`
+- **Dark mode for every website**, following den's appearance: sites with their own dark theme use it, and the rest are darkened by a WebKit user stylesheet (no script, no white flash). Choose per site with the command bar: follow den, always dark, always light, or off
+- **Passwords:** den offers to save logins to your Keychain, and fills them after Touch ID. It also suggests strong passwords on sign-up forms. "Passwords…" in the command bar lists them
+- **Google sign-in** works: den sends Safari's user agent
+- **Plugins:** the features are Embedded Swift plugins (`spaces`, `tabs`, `commandbar`, `peek`, `theme`, `quit`, `darkmode`, `passwords`, …) loaded from `den.app/Contents/PlugIns`
 
 <p align="center">
   <img src="docs/screenshots/command-bar.png" alt="Command bar" width="410">

@@ -86,6 +86,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     trace("didFinishLaunching")
     runtime = DenRuntime(storageRoot: root, crashMarkerPath: PluginHost.defaultCrashMarkerPath)
     trace("runtime")
+    // Demo runs never touch the real Keychain.
+    if args.contains("--demo") { runtime.vault.store = MemoryVaultStore() }
     runtime.plugins.onEvent = { e in
       switch e {
       case let .log(id, level, message): if level != .debug { print("[\(id)] \(message)") }

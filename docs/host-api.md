@@ -69,6 +69,8 @@ Events:
 - `webviews.evalResult {request, webview, ok, value | error}`
 - One event per link rule, named by the rule's `event` field: `{id, url, source}`.
 
+Every web view sends Safari's user agent for this macOS (`applicationNameForUserAgent` = `Version/<Safari's version> Safari/605.1.15`, read once from Safari's Info.plist). WKWebView's default leaves that suffix out, and Google's sign-in then blocks the browser as an embedded web view.
+
 The link policy is declarative because `WKNavigationDelegate` decisions are synchronous. A matched rule cancels the navigation and emits the rule's event. Only main-frame link clicks are routed, and a plain rule never catches cmd-clicks.
 
 ## content
@@ -334,6 +336,58 @@ Web search autocomplete (Google's public suggest endpoint, `client=firefox`) for
 A pending query is debounced (50 ms) and cancels the one before it, so only the latest query emits; late answers for older queries are still cached. `q` is normalized (trimmed, lowercased, spaces collapsed). The cache is in memory (256 queries). A failed fetch emits `items: []` and isn't cached.
 
 Events: `suggest.results {q, items}`.
+
+## pagestyle
+
+Per-site user stylesheets and appearance for every web view (the `darkmode` plugin's host half). The host applies; the plugin owns the CSS and the choices. Nothing is installed until the first `rules`.
+
+| Method | Args | Returns |
+|---|---|---|
+| `define` | `name`, `css` (≤ 64 KB) | ok. A named user stylesheet: user origin, main frame only. Redefining updates live pages |
+| `rules` | `default: {sheets: [name], appearance?}`, `hosts: {<host>: {sheets, appearance?}}`, `detect?` | ok. `appearance`: `light`, `dark`, or absent (follow den's window). Applied to live pages at once |
+| `get` | `id` | `{host, sheets, appearance, tone, supported}` |
+
+Events: `pagestyle.tone {id, host, tone: dark|light, dark}` (`dark`: the page's `prefers-color-scheme` when it measured).
+
+- Sheets are WebKit user stylesheets (`_WKUserStyleSheet`, WebKit SPI present since macOS 10.12): no script, no `<style>` element. They are added and removed on a live page without a reload.
+- A rule is picked on each main-frame navigation decision, before the new document exists, so a sheet applies from the first paint (no white flash). The lookup tries the host, then each parent domain, then `default`, ignoring `www.`.
+- Web views inherit den's window appearance, so `prefers-color-scheme` matches den unless a rule sets `appearance` for that site.
+- `detect` adds one WKUserScript in the isolated `den-style` world. It sets `data-den-tone` on `<html>` from the first opaque background under the viewport center (then the body, then the text color), at the first frame, DOMContentLoaded, load and 1 s later.
+- Apple Pay: WebKit removed the "no Apple Pay with injected scripts" rule in 2022 (WebKit commit `aa041a623c`, bug 236254), so neither the sheet nor the detector disables it. Details: [research/dark-mode.md](research/dark-mode.md).
+
+## vault
+
+den's password vault. The host keeps every secret (Keychain + Touch ID); plugins see only origins and usernames.
+
+| Method | Args | Returns |
+|---|---|---|
+| `enable` | – | ok. Installs the form listener (isolated `den-vault` world, every frame) in web views created from now on |
+| `status` | – | `{enabled, mode: acl\|app\|memory, unlocked}` |
+| `accounts` | `origin?` | `[{id, origin, username, created}]`. Without `origin`, only while unlocked |
+| `save` / `dismiss` | `capture` | ok. Store (Keychain) or drop a captured login |
+| `fill` | `webview`, `account`, `request?` | `{request}`. Touch ID, then fills the focused form; `vault.result` |
+| `generate` | `webview`, `request?` | `{request}`. A strong password (`abcdef-ghijk2-mNopqr`, ~71 bits, `SecRandomCopyBytes`) into every password field of the focused sign-up form |
+| `unlock` | `reason?`, `request?` | `{request}`. Touch ID; the full list stays readable for 5 min or until `lock` |
+| `lock` | – | ok |
+| `copy` | `account`, `request?` | `{request}`. Touch ID, then the password on the pasteboard (marked concealed, cleared after 60 s) |
+| `delete` | `account` | ok, while unlocked |
+| `suggest` | `webview`, `items: [{id, title, subtitle?, icon?}]` | ok. A small list under the focused field (`[]` hides) |
+
+Events (never with a password): `vault.focus {webview, origin, field, signup, accounts: [{id, username}]}`, `vault.blur {webview}`, `vault.captured {capture, webview, origin, username, exists}`, `vault.suggestion {webview, item}`, `vault.result {request, method, ok, error?}`.
+
+- **Capture.** macOS 26 has no form-submit callback (`willSubmitForm` is macOS 27), so a listener catches form submits, clicks on submit-like buttons and Enter in a field with a filled password. A capture lives in host memory for at most 5 minutes.
+- **Origins** come from `WKFrameInfo.securityOrigin`, never from the page. Only https counts, plus http on loopback for local testing. A frame whose origin differs from its top page's (a cross-origin iframe) is ignored.
+- **Fill** targets the frame that reported the focus, re-checks inside the page that the frame's origin is still the account's, and only then writes the fields.
+- **Storage.** `kSecClassInternetPassword` items marked "den password". den first tries the data protection keychain with a `.userPresence` access control (`mode: acl`, where the Keychain itself demands Touch ID). That needs a real signature with `keychain-access-groups`, so an ad-hoc den gets `errSecMissingEntitlement` and uses the login keychain (`mode: app`), with den asking for Touch ID (`LAContext`, `.deviceOwnerAuthentication`) before every read. `--demo` and the `vault*` scenarios use an in-memory store.
+
+**Thin-host status.** The generic parts are: per-web-view user styles and appearance (`pagestyle`), a Keychain secret store with a user-presence requirement, and form-field observe/fill restricted to matching secure origins. Code marked `// thin-host: feature-specific, migrate to plugin` should move into the plugins:
+- the page-tone heuristic
+- the login and sign-up field heuristics
+- the capture/save flow
+- unlock and pasteboard timings, and the prompt strings
+- the password format
+- the suggestion popup (a generic anchored-popup `ui` node)
+- the `overlay.passwords` slot name
 
 ## Connections, AI and scheduling
 

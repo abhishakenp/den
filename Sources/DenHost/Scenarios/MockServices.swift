@@ -119,6 +119,21 @@ public final class MockServices: @unchecked Sendable {
     return r
   }
 
+  // thin-host: feature-specific, migrate to plugin (mock pages for the passwords plugin)
+  /// A mock sign-in (or sign-up) form for the password vault. Submitting it goes nowhere.
+  static func vaultPage(signup: Bool) -> String {
+    let fields = signup
+      ? "<input id=u type=email placeholder='Email' autocomplete=email><input id=p1 type=password placeholder='Password' autocomplete=new-password><input id=p2 type=password placeholder='Confirm password' autocomplete=new-password>"
+      : "<input id=u placeholder='Email or username' autocomplete=username><input id=p type=password placeholder='Password' autocomplete=current-password>"
+    return """
+      <!doctype html><title>\(signup ? "Create account" : "Sign in") – Mock</title>
+      <style>body{font:15px -apple-system;background:#f4f5f7;margin:0}form{width:340px;margin:90px auto;background:#fff;padding:28px;border-radius:14px;box-shadow:0 2px 12px #0002}
+      h2{margin:0 0 18px}input{display:block;width:100%;box-sizing:border-box;margin:0 0 12px;padding:11px;border:1px solid #ccd;border-radius:8px;font:inherit}
+      button{width:100%;padding:11px;border:0;border-radius:8px;background:#3139fb;color:#fff;font:600 15px -apple-system}</style>
+      <form id=f action="javascript:void 0"><h2>\(signup ? "Create your account" : "Sign in to Mock")</h2>\(fields)<button id=go type=submit>\(signup ? "Create account" : "Sign in")</button></form>
+      """
+  }
+
   func json(_ obj: Any) -> (Int, [(String, String)], Data) {
     (200, [("Content-Type", "application/json; charset=utf-8")], (try? JSONSerialization.data(withJSONObject: obj)) ?? Data())
   }
@@ -133,6 +148,8 @@ public final class MockServices: @unchecked Sendable {
                     ("Set-Cookie", "logged_in=yes; Path=/"), ("Set-Cookie", "dotcom_user=octo-den; Path=/"),
                     ("Set-Cookie", "user_session=mock-user-session; Path=/; HttpOnly")],
               Data("<!doctype html><title>GitHub</title><body style='font:15px -apple-system;padding:40px'><h2>Signed in as octo-den</h2></body>".utf8))
+    case ("GET", "/vault/login"), ("GET", "/vault/signup"):
+      return (200, [("Content-Type", "text/html; charset=utf-8")], Data(Self.vaultPage(signup: r.path.hasSuffix("signup")).utf8))
     case ("GET", "/search"): return githubSearch(r)
     case ("GET", "/redirect-out"): return (302, [("Location", "http://example.invalid/")], Data())
     case ("GET", "/big"): return (200, [("Content-Type", "text/plain")], Data(repeating: 65, count: 300_000))

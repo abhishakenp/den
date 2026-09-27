@@ -158,7 +158,8 @@ public final class CardView: NSView {
     super.layout()
     clip.frame = bounds
     layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-    for v in clip.subviews { v.frame = clip.bounds }
+    // thin-host: feature-specific, migrate to plugin (floating views over a page should be a generic overlay layer)
+    for v in clip.subviews where !(v is VaultSuggestionView) { v.frame = clip.bounds }
     let o = Tokens.splitFocusRingOutset
     ring.frame = bounds.insetBy(dx: -o, dy: -o)
     let cs = controls.size
