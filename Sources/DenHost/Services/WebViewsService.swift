@@ -58,6 +58,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   /// The `extensions` service: attaches its controller to new configurations, supplies extension
   /// pages' configurations, and watches store pages. nil (or nothing installed) costs nothing.
   weak var extensionHooks: ExtensionsService?
+  /// zoom / find / print / inspect / viewSource (PageActions.swift); set by `DenRuntime`.
+  public internal(set) var pageActions: PageActions?
 
   public init(host: ServiceHost) { self.host = host }
 
@@ -89,16 +91,23 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       defaultRules = args.list("rules").compactMap(LinkRule.init)
       return .ok
     }
+    var args = args
+    // Page actions (menu bar): `id` defaults to the page in front (peek, else the focused pane).
+    if args.str("id").isEmpty, PageActions.methods.contains(method) || ["back", "forward", "reload", "stop", "get"].contains(method),
+       let front = pageActions?.frontId {
+      args = args.with("id", .string(front))
+    }
     guard let r = records[args.str("id")] else { return .error("webviews: no webview '\(args.str("id"))'") }
+    if PageActions.methods.contains(method) { return pageActions?.handle(method, r, args) ?? .error("webviews: no page actions") }
     switch method {
     case "navigate":
       guard let url = Self.normalize(args.str("url")) else { return .error("webviews: bad url") }
       r.url = url.absoluteString
       r.interactionState = nil
-      r.webView?.load(URLRequest(url: url))
+      r.webView?.open(url)
     case "back": r.webView?.goBack()
     case "forward": r.webView?.goForward()
-    case "reload": r.webView?.reload()
+    case "reload": if args.flag("fromOrigin") { r.webView?.reloadFromOrigin() } else { r.webView?.reload() }
     case "stop": r.webView?.stopLoading()
     case "close": close(r)
     case "suspend": suspend(r)
@@ -146,7 +155,11 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     config.userContentController.addUserScript(WKUserScript(source: Self.mediaScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
     config.userContentController.add(scriptHandler, name: "denMedia")
     for h in configureHooks { h(r, config) }
-    let w = WKWebView(frame: .zero, configuration: config)
+    config.userContentController.addUserScript(WKUserScript(source: DenWebView.contextScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+    config.userContentController.add(scriptHandler, name: "denContext")
+    let w = DenWebView(frame: .zero, configuration: config)
+    w.service = self
+    w.recordId = r.id
     w.navigationDelegate = self
     w.uiDelegate = self
     w.allowsBackForwardNavigationGestures = true
@@ -162,9 +175,9 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
         w.interactionState = state
         r.interactionState = nil
         // Some states (e.g. loadHTMLString pages) don't restore; fall back to the last URL.
-        if w.backForwardList.currentItem == nil, let url = URL(string: r.url), r.url != "about:blank" { w.load(URLRequest(url: url)) }
+        if w.backForwardList.currentItem == nil, let url = URL(string: r.url), r.url != "about:blank" { w.open(url) }
       } else if let url = URL(string: r.url), r.url != "about:blank" {
-        w.load(URLRequest(url: url))
+        w.open(url)
       }
     }
     // With extensions, the first load waits (briefly) for them, so blockers apply to it too.
@@ -195,6 +208,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       on(\.url) { [weak self] wv in
         guard let u = wv.url?.absoluteString else { return }
         r.url = u
+        self?.pageActions?.urlChanged(r, wv)  // per-site zoom
         self?.host.emit("webviews.url", ["id": .string(id), "url": .string(u)])
         self?.extensionHooks?.pageChanged(wv)
       },
@@ -221,6 +235,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       "loading": .bool(r.loading), "progress": .double(r.progress),
       "canGoBack": .bool(r.webView?.canGoBack ?? false), "canGoForward": .bool(r.webView?.canGoForward ?? false),
       "audio": .bool(r.audio), "suspended": .bool(r.isSuspended), "live": .bool(r.webView != nil), "profile": .string(r.profile),
+      "zoom": .double(Double(r.webView?.pageZoom ?? 1)),
     ]
   }
 
@@ -405,6 +420,12 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       return
     }
     if mainFrame { for h in navigatingHooks { h(r, webView, target) } }
+    // Browser link clicks: ⌘-click and middle-click open a background tab, ⌘⇧-click a selected one.
+    if let bg = LinkPolicy.newTab(isLinkClick: action.navigationType == .linkActivated, target: target, modifiers: mods, buttonNumber: action.buttonNumber) {
+      decisionHandler(.cancel)
+      host.emit("webviews.newWindow", ["id": .string(r.id), "url": .string(target.absoluteString), "background": .bool(bg)])
+      return
+    }
     decisionHandler(.allow)
   }
 
@@ -493,6 +514,11 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   }
 
   func didReceive(_ msg: WKScriptMessage) {
+    if msg.name == "denContext" {
+      guard let w = msg.webView as? DenWebView, let b = msg.body as? [String: Any] else { return }
+      w.context = .init(link: b["link"] as? String ?? "", image: b["image"] as? String ?? "", selection: b["selection"] as? String ?? "")
+      return
+    }
     guard let w = msg.webView, let r = recordFor(w), let playing = msg.body as? Bool, playing != r.audio else { return }
     r.audio = playing
     host.emit("webviews.audio", ["id": .string(r.id), "playing": .bool(playing)])

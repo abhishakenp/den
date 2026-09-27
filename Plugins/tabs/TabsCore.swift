@@ -1288,8 +1288,15 @@ final class TabsCore {
     for e in ["webviews.title", "webviews.url", "webviews.favicon", "webviews.progress", "webviews.state", "webviews.audio"] {
       env.on(e) { [self] v in webEvent(e, v) }
     }
+    // target=_blank and window.open (foreground); ⌘-click / middle-click / "Open Link in New Tab"
+    // come with `background: true` (⌘⇧-click: false).
     env.on("webviews.newWindow") { [self] v in
-      _ = open(v.s("url"), space: spaceOf(v.s("id")) ?? currentSpace, kind: "today", background: false, index: nil)
+      _ = open(v.s("url"), space: spaceOf(v.s("id")) ?? currentSpace, kind: "today", background: v.b("background"), index: nil)
+    }
+    // Links, URLs and files dropped on the sidebar or a page: today tabs, the last one selected.
+    env.on("window.dropURLs") { [self] v in
+      let urls = v.a("urls").compactMap { $0.string }
+      for (k, u) in urls.enumerated() { _ = open(u, space: currentSpace, kind: "today", background: k < urls.count - 1, index: nil) }
     }
     env.on("app.openURL") { [self] v in openExternal(v.a("urls")) }
   }

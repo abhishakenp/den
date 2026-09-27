@@ -225,4 +225,10 @@ public enum Tokens {
   public static let extensionPopupMin = CGSize(width: 25, height: 25)
   public static let extensionPopupMax = CGSize(width: 800, height: 600)
   public static let extensionRowHeight: CGFloat = 58  // estimate: the Extensions page rows
+  // MARK: Page actions (find bar, zoom) — den's own; Arc's find bar was never measured
+  public static let findBarWidth: CGFloat = 320  // den's own
+  public static let findBarHeight: CGFloat = 36  // the URL pill's height (spec §1)
+  public static let findBarInset: CGFloat = 12  // den's own: from the card's top and right edges
+  /// Safari's page zoom steps (⌘+ / ⌘-), 50–300%.
+  public static let zoomSteps: [Double] = [0.5, 0.75, 0.85, 1, 1.15, 1.25, 1.5, 1.75, 2, 2.5, 3]
 }

@@ -54,6 +54,8 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
   public var emit: (String, Value) -> Void = { _, _ in }
   public var onLayout: (() -> Void)?
   public var onCloseRequest: (() -> Bool)?
+  /// The sidebar was shown when full screen began (it comes back on exit).
+  var restoreSidebarAfterFullScreen = false
 
   public override init() {
     window = NSWindow(
@@ -91,6 +93,11 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     edgeZone.onEnter = { [weak self] in self?.setRevealed(true) }
     sidebar.onExit = { [weak self] in self?.scheduleConceal() }
     sidebar.onEnter = { [weak self] in self?.hideRevealWork?.cancel() }
+    // Links and URLs dragged onto the sidebar open as tabs (window.dropURLs; the tabs plugin opens them).
+    sidebar.registerForDraggedTypes([.URL, .fileURL, .string])
+    sidebar.onDropURLs = { [weak self] urls in
+      self?.emit("window.dropURLs", ["urls": .array(urls.map { .string($0) }), "target": "sidebar"])
+    }
   }
 
   // MARK: Layout
@@ -242,8 +249,25 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
   // MARK: NSWindowDelegate
 
   public func windowDidResize(_ notification: Notification) { layoutTrafficLights() }
+  // Full screen hides the sidebar, as in Arc: the page fills the screen, and hovering the left
+  // edge reveals the sidebar as an overlay. Leaving full screen brings it back, unless it was
+  // already hidden before, or shown again (⌘S) while in full screen.
+  public func windowWillEnterFullScreen(_ notification: Notification) { enterFullScreenSidebar() }
   public func windowDidEnterFullScreen(_ notification: Notification) { root.needsLayout = true }
-  public func windowDidExitFullScreen(_ notification: Notification) { root.needsLayout = true }
+  public func windowDidExitFullScreen(_ notification: Notification) {
+    exitFullScreenSidebar()
+    root.needsLayout = true
+  }
+  public func windowDidFailToEnterFullScreen(_ window: NSWindow) { exitFullScreenSidebar() }
+
+  func enterFullScreenSidebar() {
+    restoreSidebarAfterFullScreen = !sidebarHidden
+    setSidebarHidden(true, animated: false)
+  }
+  func exitFullScreenSidebar() {
+    if restoreSidebarAfterFullScreen, sidebarHidden { setSidebarHidden(false, animated: false) }
+    restoreSidebarAfterFullScreen = false
+  }
   public func windowShouldClose(_ sender: NSWindow) -> Bool { onCloseRequest?() ?? true }
 }
 
@@ -328,6 +352,30 @@ public final class SidebarContainerView: FlippedView {
   }
   public override func mouseEntered(with event: NSEvent) { onEnter?() }
   public override func mouseExited(with event: NSEvent) { onExit?() }
+
+  // MARK: Dropping links and files
+
+  var onDropURLs: (([String]) -> Void)?
+  /// Web URLs and files on a pasteboard (a dragged link, a URL string, Finder files).
+  static func droppedURLs(_ pb: NSPasteboard) -> [String] {
+    if let urls = pb.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
+      return urls.filter { ["http", "https", "file"].contains($0.scheme?.lowercased() ?? "") }.map(\.absoluteString)
+    }
+    if let s = pb.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.contains(" "), !s.contains("\n"),
+       let u = WebViewsService.normalize(s), ["http", "https"].contains(u.scheme ?? "") {
+      return [u.absoluteString]
+    }
+    return []
+  }
+  public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    Self.droppedURLs(sender.draggingPasteboard).isEmpty ? [] : .copy
+  }
+  public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    let urls = Self.droppedURLs(sender.draggingPasteboard)
+    guard !urls.isEmpty else { return false }
+    onDropURLs?(urls)
+    return true
+  }
 }
 
 extension DenWindowController {

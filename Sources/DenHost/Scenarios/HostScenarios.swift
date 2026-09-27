@@ -8,7 +8,7 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard", "briefingSheet", "connectionsSheet"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard", "briefingSheet", "connectionsSheet", "findBar"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -74,6 +74,15 @@ public enum HostScenarios {
       showContent(rt)
       rt.call("ui", "set", ["slot": "overlay.library", "tree": ["type": "library", "id": "archive", "items": archiveItems()]])
       if name == "libraryClear" { rt.call("ui", "set", ["slot": "dialog", "tree": dialogs["dialogClearArchive"]!]) }
+    case "findBar":
+      // ⌘F on a page: the find bar at the card's top right, second of three matches selected.
+      seedSidebar(rt, appearance: appearance)
+      let id = page(rt, id: "t1", title: "Example Domain", body: "This domain is for use in documentation examples. You may use this domain in examples without asking. Every domain here is local HTML.")
+      rt.call("content", "show", ["panes": [.string(id)]])
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        rt.call("webviews", "find", ["action": "show", "query": "domain"])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { rt.call("webviews", "find", ["action": "next"]) }
+      }
     case "briefingSheet", "connectionsSheet":
       seedSidebar(rt, appearance: appearance)
       showContent(rt)

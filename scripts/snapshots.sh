@@ -47,6 +47,8 @@ host little-arc littleArc light
 host little-arc-dark littleArc dark
 host quit-dialog dialogQuit light
 host quit-dialog-dark dialogQuit dark
+host find-bar findBar light
+host find-bar-dark findBar dark
 # Hover previews and the Library sheet, on the real plugin sidebar (PreviewScenarios.swift).
 for sc in GitHub Calendar Page Folder; do
   n=$(echo $sc | tr A-Z a-z)

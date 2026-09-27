@@ -169,6 +169,17 @@ public enum LinkPolicy {
     }
     return nil
   }
+
+  /// Browser link-click conventions, applied after the link rules: ⌘-click or a middle-click on a
+  /// link opens it in a new background tab; ⌘⇧-click (or ⇧-middle-click) in a new selected tab.
+  /// Returns `background`, or nil to navigate normally. `buttonNumber` is WKNavigationAction's
+  /// (a button mask: 1 left, 2 right, 4 middle).
+  public static func newTab(isLinkClick: Bool, target: URL, modifiers: Set<Chord.Mod>, buttonNumber: Int) -> Bool? {
+    guard isLinkClick, let scheme = target.scheme?.lowercased(), ["http", "https", "file", "data"].contains(scheme) else { return nil }
+    let middle = buttonNumber & 4 != 0
+    guard middle || modifiers.contains(.cmd) else { return nil }
+    return !modifiers.contains(.shift)
+  }
 }
 
 // MARK: - Split layout

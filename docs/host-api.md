@@ -39,6 +39,8 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 - The sidebar resizes by dragging its edge; a double-click on the edge resets the width.
 - Dragging the edge below 120 pt hides the sidebar. While it's hidden, hovering the left window edge reveals it as an overlay.
 - Empty sidebar space drags the window.
+- Full screen (⌃⌘F) hides the sidebar, as in Arc: the page fills the screen and hovering the left edge reveals the sidebar. Leaving full screen shows it again, unless it was hidden before or you already brought it back with ⌘S.
+- Links, URLs and files dropped on the sidebar emit `window.dropURLs {urls, target: "sidebar"}`.
 
 ## webviews
 
@@ -46,7 +48,12 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 |---|---|---|
 | `create` | `id?`, `url?`, `profile?` (`default`, `private`, or any name, which maps to a stable `WKWebsiteDataStore(forIdentifier:)`) | `{id}` (lazy: no `WKWebView` until shown) |
 | `navigate` | `id`, `url` | ok |
-| `back`, `forward`, `reload`, `stop`, `close` | `id` | ok |
+| `back`, `forward`, `reload`, `stop`, `close` | `id` (optional except for `close`), `fromOrigin?` (`reload`: ⇧⌘R, skips the cache) | ok |
+| `zoom` | `id?`, `action: in\|out\|reset` | `{zoom}`. Safari's steps, 50–300% (`Tokens.zoomSteps`). Remembered per site (host without `www.`, storage ns `_zoom`; 100% is not stored) and re-applied whenever a page's host changes. Emits `webviews.zoom {id, zoom}` |
+| `find` | `id?`, `action: show\|next\|previous\|selection\|hide`, `query?` | `{visible, query, index, count}`. The find bar (below). `selection` (⌘E) searches for the page's selected text |
+| `print` | `id?` | ok. The print panel, as a sheet on the window |
+| `inspect` | `id?`, `console?` | ok, or an error if WebKit has no entry point. Opens the Web Inspector (or its console) |
+| `viewSource` | `id?` | `{pending}`. Opens the page's current DOM as a new tab (see below) |
 | `suspend` | `id` | ok. Full discard: saves `interactionState` and a snapshot, then destroys the view. The next show restores it |
 | `snapshot` | `id`, `path`, `width?` (pt; a small copy at 2x, for previews), `format?: png\|jpeg` | `{pending}`, then the event `webviews.snapshot {id, path, ok}`. A view that can't draw (not in the window) writes its last snapshot, if any |
 | `eval` | `id`, `plugin`, `script` (a function body that `return`s JSON data, ≤ 4 KB), `request?`, `timeoutMs?` (5000) | `{request}`, then `webviews.evalResult {request, webview, ok, value \| error}`. Only for a live page (it never loads or wakes one), in an isolated content world, and only when `plugin` has `session:<the page's host>` |
@@ -67,11 +74,28 @@ Events:
 - `webviews.detached {id}`
 - `webviews.closed {id}`
 - `webviews.evalResult {request, webview, ok, value | error}`
+- `webviews.zoom {id, zoom}`, `webviews.find {id, visible, query, index, count}`
 - One event per link rule, named by the rule's `event` field: `{id, url, source}`.
 
 Every web view sends Safari's user agent for this macOS (`applicationNameForUserAgent` = `Version/<Safari's version> Safari/605.1.15`, read once from Safari's Info.plist). WKWebView's default leaves that suffix out, and Google's sign-in then blocks the browser as an embedded web view.
+`webviews.newWindow {id, url, background?}` asks for a new tab: from `target=_blank` / `window.open` (selected), from the browser link clicks below, and from View Source.
 
 The link policy is declarative because `WKNavigationDelegate` decisions are synchronous. A matched rule cancels the navigation and emits the rule's event. Only main-frame link clicks are routed, and a plain rule never catches cmd-clicks.
+
+**Browser link clicks** (after the rules): ⌘-click or a middle-click on a link opens a new background tab, ⌘⇧-click a new selected tab (`webviews.newWindow` with `background`). Shift- and option-click stay with the rules (Peek).
+
+**Page actions.** `zoom`, `find`, `print`, `inspect`, `viewSource` and `back`/`forward`/`reload`/`stop`/`get` default `id` to the page in front: the open peek, else the focused pane. The menu bar calls them. Nothing is built until first use (`PageActions.swift`).
+
+- **Find bar** (den's own design; Arc's was never measured): a 320x36 pill 12 pt from the card's top right (`Tokens.findBar*`), PopoverBackground colors, with a magnifier, the query, "3 of 12", previous / next and close. Return = next, Shift-Return = previous, Esc closes and gives focus back to the page. Matching runs in den's own content world with the CSS Custom Highlight API: every match is tinted yellow and the current one orange, like Safari's find overlay (`WKWebView.find` only selects, which doesn't show while the find field has focus). Case-insensitive, text node by text node (a match can't span elements), hidden elements skipped, at most 1000 matches, wrapping, scrolling the current match into view. Closing clears the highlights and keeps the query for ⌘G. Snapshot: `--scenario findBar` (`docs/screenshots/find-bar*.png`).
+- **Web Inspector.** WebKit has no public call that opens it (`isInspectable` only lets Safari's Develop menu attach), so `inspect` uses WKWebView's private `_inspector` (`show` / `showConsole`), checked with `responds(to:)` first; if a WebKit update removes it, the call returns an error instead of crashing.
+- **View Source.** WKWebView has no `view-source:`. `viewSource` reads `document.documentElement.outerHTML` (the current DOM, not the bytes the server sent), escapes it into a monospaced `data:` page titled "Source of <url>" (capped at 2 MB), and opens it with `webviews.newWindow`.
+
+**Den's web view** (`DenWebView`):
+- **Context menu:** WebKit's items reworded for tabs: "Open Link in New Tab" (background), "Open Link in Peek" (when something listens to `peek.link`), "Save Link As…" and "Save Image As…" (a download into a save panel sheet, with the page's own session), "Open Image in New Tab", and for selected text "Search <engine> for “…”" with the command bar's default engine (`commands.engines`, Google without it). The right-clicked link, image and selection come from a `contextmenu` listener in the page (`denContext` message), which arrives before WebKit asks for the menu.
+- **Mouse buttons 4/5** go back and forward. Two-finger swipes navigate back/forward (`allowsBackForwardNavigationGestures`), and pinch and smart zoom work (`allowsMagnification`).
+- **Dropped files** from Finder open as new tabs instead of replacing the page. File URLs load with read access to their folder.
+
+**Dropping links** on the sidebar (a dragged link, a URL string, files) emits `window.dropURLs {urls, target: sidebar|content}`; the `tabs` plugin opens them as today tabs, the last one selected.
 
 ## content
 

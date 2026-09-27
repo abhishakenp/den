@@ -66,6 +66,14 @@ public final class DenRuntime {
     windowService.ui = ui
     webviews.prompts = WebPrompts(window: window) { [weak ui] in ui?.renderer.palette }
     windowService.attach(webviews: webviews, host: host)
+    // Page actions (zoom, find, print, inspector, view source): state only, UI built on first use.
+    let pa = PageActions(host: host, webviews: webviews, content: content, window: window, storage: storage)
+    pa.palette = { [weak ui] in ui?.renderer.palette }
+    pa.searchEngine = { [weak plugins] in
+      guard let e = plugins?.call("commands", "engines", .null).array?.first, let u = e["url"].string else { return nil }
+      return (e.str("name", "Google"), u)
+    }
+    webviews.pageActions = pa
     for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions, settings] {
       host.provide(s)
       plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
