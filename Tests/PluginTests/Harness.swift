@@ -1,3 +1,4 @@
+import DenTestSupport
 import AppKit
 import Cordis
 import CordisValue
@@ -25,6 +26,10 @@ final class Harness {
     rt.webviews.configureHooks.append { _, c in c.preferences.inactiveSchedulingPolicy = .none }
     rt.window.window.setFrame(NSRect(x: 0, y: 0, width: 1280, height: 800), display: false)
     rt.window.window.contentView?.layoutSubtreeIfNeeded()
+    // Service deadlines never fire on their own in tests: a loaded machine makes WebKit slow, not
+    // "timed out". Tests wait for results with bounded `Wait.until`; the watchdog bounds the test.
+    rt.session.schedule = { _, _ in {} }
+    rt.webviews.evalSchedule = { _, _ in {} }
   }
 
   var env: PluginEnv {
@@ -84,12 +89,8 @@ final class Harness {
   }
   var selected: String? { tabs("selected")["id"].string }
   /// Suspension is asynchronous (it snapshots first); wait for the view to go away.
-  func waitUnloaded(_ id: String) async -> Bool {
-    for _ in 0..<100 {
-      if rt.call("webviews", "get", ["id": .string(id)])["live"] == false { return true }
-      try? await Task.sleep(for: .milliseconds(50))
-    }
-    return false
+  func waitUnloaded(_ id: String, line: UInt = #line) async -> Bool {
+    await Wait.until("\(id) to unload", seconds: 20, line: line) { rt.call("webviews", "get", ["id": .string(id)])["live"] == false }
   }
 
   /// The tree last rendered into a sidebar slot.

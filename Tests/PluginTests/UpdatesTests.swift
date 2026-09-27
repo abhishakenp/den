@@ -1,12 +1,13 @@
 import AppKit
 import CordisValue
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 @testable import PluginCores
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct UpdatesTests {
   /// A fake host `updates` service that records calls.
   final class FakeUpdates {

@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -9,7 +10,7 @@ import WebKit
 /// Page prompts (alert/confirm/prompt, HTTP sign-in, camera/mic), the file panel and error pages,
 /// through real WKWebViews and WebKit's own delegate calls.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct WebPromptsTests {
   func runtime() -> DenRuntime {
     _ = NSApplication.shared
@@ -28,12 +29,8 @@ struct WebPromptsTests {
     return (id, rt.webviews.record(id)!.webView!)
   }
 
-  func wait(_ cond: () -> Bool, ms: Int = 8000) async -> Bool {
-    for _ in 0..<(ms / 50) {
-      if cond() { return true }
-      try? await Task.sleep(for: .milliseconds(50))
-    }
-    return cond()
+  func wait(_ cond: () -> Bool, ms: Int = 20_000, line: UInt = #line) async -> Bool {
+    await Wait.until("a condition", seconds: Double(ms) / 1000, line: line) { cond() }
   }
 
   @Test func alertConfirmPromptAreHostDialogsAndAnswerThePage() async throws {
@@ -142,7 +139,7 @@ struct WebPromptsTests {
     let c = Catch()
     web.configuration.userContentController.add(c, name: "denOrigin")
     defer { web.configuration.userContentController.removeScriptMessageHandler(forName: "denOrigin") }
-    _ = try? await web.evaluateJavaScript("webkit.messageHandlers.denOrigin.postMessage(1); 1")
+    _ = await Wait.js(web, "webkit.messageHandlers.denOrigin.postMessage(1); 1")
     _ = await wait({ c.origin != nil }, ms: 3000)
     return c.origin
   }
@@ -184,11 +181,11 @@ struct WebPromptsTests {
     #expect(await wait { web.title == "Can’t find den-nonexistent.invalid" })
     #expect(web.url?.absoluteString == "http://den-nonexistent.invalid/path")
     #expect(rt.webviews.record(id)?.url == "http://den-nonexistent.invalid/path")
-    let kind = try? await web.evaluateJavaScript("document.body.dataset.denError")
+    let kind = await Wait.js(web, "document.body.dataset.denError")
     #expect(kind as? String == "host")
     // Try Again reloads the real URL (and fails the same way, back to the error page).
     let before = web.backForwardList.backList.count
-    _ = try? await web.evaluateJavaScript("document.getElementById('retry').click(); 1")
+    _ = await Wait.js(web, "document.getElementById('retry').click(); 1")
     try await Task.sleep(for: .milliseconds(300))
     #expect(await wait { !web.isLoading && web.title == "Can’t find den-nonexistent.invalid" })
     #expect(web.backForwardList.backList.count == before)

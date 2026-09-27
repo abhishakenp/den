@@ -2,25 +2,21 @@ import AppKit
 import CordisValue
 import Foundation
 import FoundationModels
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct AIScheduleTests {
   static func runtime() -> DenRuntime {
     _ = NSApplication.shared
     return DenRuntime(storageRoot: FileManager.default.temporaryDirectory.appendingPathComponent("den-ai-\(UUID())"))
   }
 
-  func until(_ seconds: Double = 10, _ cond: () -> Bool) async -> Bool {
-    let end = Date().addingTimeInterval(seconds)
-    while Date() < end {
-      if cond() { return true }
-      try? await Task.sleep(for: .milliseconds(30))
-    }
-    return cond()
+  func until(_ seconds: Double = 10, line: UInt = #line, _ cond: () -> Bool) async -> Bool {
+    await Wait.until("a condition", seconds: seconds, line: line) { cond() }
   }
 
   /// Echoes sizes, and overflows above `limit` characters like the real model's context.

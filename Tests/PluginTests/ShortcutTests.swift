@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
@@ -10,7 +11,7 @@ import Testing
 /// the main menu's key-equivalent path (NSMenu.performKeyEquivalent, what AppKit does when no view
 /// claims the key) and lands on the right command.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct ShortcutTests {
   enum Want { case event(String), host(String), command(String), sel(String) }
 

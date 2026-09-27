@@ -1,8 +1,10 @@
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
+@Suite(.watchdog)
 struct ExtensionPackageTests {
   static func tempDir() -> URL {
     let d = FileManager.default.temporaryDirectory.appendingPathComponent("den-ext-\(UUID())")

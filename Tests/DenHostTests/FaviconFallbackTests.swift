@@ -1,12 +1,13 @@
 import AppKit
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
 /// Favicons that would render blurry fall back to a sharp vector icon.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct FaviconFallbackTests {
   static func bitmap(_ px: Int) -> NSImage {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,

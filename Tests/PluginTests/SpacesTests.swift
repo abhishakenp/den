@@ -1,12 +1,13 @@
 import AppKit
 import CordisValue
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 @testable import PluginCores
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct SpacesTests {
   @Test func firstRunSeedsThreeThemedSpacesAndPersists() {
     let h = Harness()
@@ -93,7 +94,7 @@ struct SpacesTests {
 }
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct SpaceMenuTests {
   func menuIds(_ tree: Value) -> [String] { (tree["menu"].array ?? []).map { $0.s("id") } }
 

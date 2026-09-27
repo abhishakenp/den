@@ -26,8 +26,10 @@ public final class SessionService: NSObject, HostService, WKNavigationDelegate {
   let permissions: Permissions
   private var nextId = 1
   /// Hidden views in flight, by request id.
-  private var pending: [String: (view: WKWebView, script: String, timer: DispatchWorkItem)] = [:]
+  private var pending: [String: (view: WKWebView, script: String, cancelTimeout: () -> Void)] = [:]
   public var maxScriptBytes = 4096
+  /// Deadline timer for `eval` (tests swap in a manual clock).
+  public var schedule: HostSchedule = HostTimers.main
 
   public init(host: ServiceHost, webviews: WebViewsService, permissions: Permissions) {
     self.host = host
@@ -91,9 +93,8 @@ public final class SessionService: NSObject, HostService, WKNavigationDelegate {
     config.websiteDataStore = webviews.store(for: profile)
     let w = WKWebView(frame: NSRect(x: 0, y: 0, width: 10, height: 10), configuration: config)
     w.navigationDelegate = self
-    let timer = DispatchWorkItem { [weak self] in self?.finish(id, .error("session: timed out")) }
-    pending[id] = (w, script, timer)
-    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(max(500, min(timeoutMs, 30_000))), execute: timer)
+    let cancel = schedule(max(500, min(timeoutMs, 30_000))) { [weak self] in self?.finish(id, .error("session: timed out")) }
+    pending[id] = (w, script, cancel)
     // An empty local document with the site's origin: WebKit gives it that origin's storage.
     var base = URLComponents()
     base.scheme = origin.scheme
@@ -106,7 +107,7 @@ public final class SessionService: NSObject, HostService, WKNavigationDelegate {
   func finish(_ id: String, _ result: Value) {
     guard let p = pending.removeValue(forKey: id) else { return }
     started.remove(ObjectIdentifier(p.view))
-    p.timer.cancel()
+    p.cancelTimeout()
     p.view.navigationDelegate = nil
     p.view.stopLoading()
     var payload: Value = ["id": .string(id)]

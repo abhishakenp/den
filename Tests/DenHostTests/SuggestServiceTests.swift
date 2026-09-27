@@ -1,11 +1,12 @@
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct SuggestServiceTests {
   final class Fake {
     var started: [String] = []
@@ -13,11 +14,12 @@ struct SuggestServiceTests {
     var pending: [(String, @Sendable ([String]?) -> Void)] = []
   }
 
-  static func make(debounce: TimeInterval = 0) -> (SuggestService, ServiceHost, Fake, () -> [Value]) {
+  static func make(debounce: TimeInterval = 0, clock: ManualClock = ManualClock()) -> (SuggestService, ServiceHost, Fake, () -> [Value]) {
     let host = ServiceHost()
     let s = SuggestService(host: host)
     let fake = Fake()
     s.debounce = debounce
+    s.debounceTimer = clock.schedule
     s.fetch = { q, done in
       MainActor.assumeIsolated {
         fake.started.append(q)
@@ -30,7 +32,8 @@ struct SuggestServiceTests {
     return (s, host, fake, { events })
   }
 
-  static func settle() async { try? await Task.sleep(nanoseconds: 40_000_000) }
+  /// Answers are delivered with `DispatchQueue.main.async`: one main-queue turn delivers them.
+  static func settle() async { await Wait.mainQueueTurn() }
 
   @Test func parsesGoogleSuggestJSON() {
     let body = #"["icon",["icon","icons","iconic meaning"],[],{"google:suggestsubtypes":[[512]]}]"#
@@ -66,10 +69,14 @@ struct SuggestServiceTests {
   }
 
   @Test func debouncesKeystrokesAndCancels() async {
-    let (s, _, fake, events) = Self.make(debounce: 0.03)
+    let clock = ManualClock()
+    let (s, _, fake, events) = Self.make(debounce: 0.03, clock: clock)
     for q in ["g", "gi", "git"] { _ = s.handle(method: "query", args: ["q": .string(q)]) }
     #expect(fake.started.isEmpty)
-    await Self.settle()
+    clock.advance(ms: 29)
+    #expect(fake.started.isEmpty)  // still inside the debounce window
+    clock.advance(ms: 1)
+    #expect(clock.pending == 0)
     #expect(fake.started == ["git"])  // only the last keystroke hits the network
     _ = s.handle(method: "cancel", args: .null)
     fake.pending[0].1(["github"])

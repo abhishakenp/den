@@ -2,6 +2,7 @@ import AppKit
 import CordisValue
 import Foundation
 import LocalAuthentication
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -11,7 +12,7 @@ import WebKit
 /// The password vault: the host `vault` service with an in-memory store and a scripted Touch ID,
 /// the `passwords` plugin, and real WebKit pages (a mock login and sign-up form; no real sites).
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct VaultTests {
   final class FakeAuth: VaultAuth {
     var approve = true
@@ -59,22 +60,17 @@ struct VaultTests {
     w.frame = NSRect(x: 0, y: 0, width: 700, height: 500)
     h.rt.window.window.contentView?.addSubview(w)
     w.loadHTMLString(html, baseURL: URL(string: base))
-    try await Task.sleep(for: .milliseconds(100))
-    for _ in 0..<100 where w.isLoading { try await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("\(base) to load") { !w.isLoading && w.url?.absoluteString == base }
     return w
   }
 
   @discardableResult
-  func js(_ w: WKWebView, _ s: String) async -> String {
-    (try? await w.callAsyncJavaScript(s, contentWorld: .page)).map { "\($0)" } ?? "error"
+  func js(_ w: WKWebView, _ s: String, line: UInt = #line) async -> String {
+    await Wait.asyncJS(w, s, line: line).map { "\($0)" } ?? "error"
   }
 
-  func wait(_ cond: () -> Bool) async throws -> Bool {
-    for _ in 0..<200 {  // up to 10 s on a loaded machine
-      if cond() { return true }
-      try await Task.sleep(for: .milliseconds(50))
-    }
-    return cond()
+  func wait(line: UInt = #line, _ cond: () -> Bool) async throws -> Bool {
+    await Wait.until("a condition", seconds: 20, line: line) { cond() }
   }
 
   func type(_ w: WKWebView, _ fields: [String: String]) async {

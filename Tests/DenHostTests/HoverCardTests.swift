@@ -1,13 +1,14 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
 /// Hover intent timing and the `hoverCard` slot.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct HoverCardTests {
   /// Manual clock: timers fire only when `advance` passes their deadline.
   final class Clock {
@@ -151,8 +152,7 @@ struct HoverCardTests {
     rt.ui.hoverCard.entered(try #require(Self.node("newtab", rt)))
     #expect(rt.ui.hoverCard.intent.pendingId == nil)
     rt.ui.hoverCard.entered(try #require(Self.node("t2", rt)))
-    try await Task.sleep(for: .milliseconds(80))
-    #expect(actions.contains { $0.str("id") == "t2" && $0.str("action") == "hover" })
+    #expect(await Wait.until("the hover intent for t2") { actions.contains { $0.str("id") == "t2" && $0.str("action") == "hover" } })
     // A card for another row is dropped; the hovered row's card shows.
     _ = rt.call("ui", "set", ["slot": "hoverCard", "tree": Self.card("t1")])
     #expect(!rt.ui.hoverCard.visible)
@@ -179,7 +179,7 @@ struct HoverCardTests {
     Self.seed(rt)
     rt.ui.hoverCard.intent.delayMs = 5
     rt.ui.hoverCard.entered(try #require(Self.node("t1", rt)))
-    try await Task.sleep(for: .milliseconds(50))
+    #expect(await Wait.until("the hover intent for t1") { rt.ui.hoverCard.intent.pendingId == nil && rt.ui.hoverCard.intent.anchor == "t1" })
     _ = rt.call("ui", "set", ["slot": "hoverCard", "tree": Self.card("t1")])
     #expect(rt.ui.hoverCard.intent.anchor == "t1")
     _ = rt.call("ui", "set", ["slot": "overlay.library", "tree": ["type": "library", "id": "archive", "items": []]])
@@ -187,7 +187,7 @@ struct HoverCardTests {
     _ = rt.call("ui", "set", ["slot": "overlay.library", "tree": nil])
     rt.ui.hoverCard.exited(try #require(Self.node("t1", rt)))
     rt.ui.hoverCard.entered(try #require(Self.node("t1", rt)))
-    try await Task.sleep(for: .milliseconds(50))
+    #expect(await Wait.until("the hover intent for t1 again") { rt.ui.hoverCard.intent.pendingId == nil && rt.ui.hoverCard.intent.anchor == "t1" })
     _ = rt.call("ui", "set", ["slot": "hoverCard", "tree": Self.card("t1")])
     #expect(rt.ui.hoverCard.intent.anchor == "t1")
     _ = rt.call("ui", "set", ["slot": "hoverCard", "tree": nil])

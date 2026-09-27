@@ -504,7 +504,13 @@ public final class ExtensionsService: NSObject, HostService {
 
   func waitReady() async {
     if ready { return }
-    await withCheckedContinuation { cont in waiters.append { cont.resume() } }
+    // Bounded: a stuck extension load must not hold an install forever.
+    await withCheckedContinuation { cont in
+      var done = false
+      let once = { if !done { done = true; cont.resume() } }
+      waiters.append(once)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 10) { once() }
+    }
   }
 
   func unsupportedPermissions(_ ext: WKWebExtension) -> [String] {

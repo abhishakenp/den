@@ -1,5 +1,6 @@
 import AppKit
 import CordisValue
+import DenTestSupport
 import Testing
 
 @testable import DenHost
@@ -8,7 +9,7 @@ import Testing
 /// How the tabs plugin opens links the host hands it: ⌘-/middle-click (background), ⌘⇧-click and
 /// target=_blank (selected), and links or files dropped on the sidebar or a page.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct LinkTabsTests {
   @Test func newWindowHonoursBackground() {
     let h = Harness()

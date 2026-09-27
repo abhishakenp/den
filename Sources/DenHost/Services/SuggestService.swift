@@ -28,7 +28,9 @@ public final class SuggestService: HostService {
   private var cacheOrder: [String] = []
   private var latest = ""
   private var generation = 0
-  private var timer: DispatchWorkItem?
+  private var timer: (() -> Void)?
+  /// Debounce timer (tests swap in a manual clock).
+  public var debounceTimer: HostSchedule = HostTimers.main
   private var cancelInFlight: (() -> Void)?
 
   public init(host: ServiceHost) { self.host = host }
@@ -65,7 +67,7 @@ public final class SuggestService: HostService {
 
   private func stop() {
     generation += 1
-    timer?.cancel()
+    timer?()
     timer = nil
     cancelInFlight?()
     cancelInFlight = nil
@@ -75,9 +77,8 @@ public final class SuggestService: HostService {
     stop()
     latest = q
     let gen = generation
-    let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.start(q, gen) } }
-    timer = work
-    if debounce <= 0 { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + debounce, execute: work) }
+    if debounce <= 0 { start(q, gen); return }
+    timer = debounceTimer(Int((debounce * 1000).rounded())) { [weak self] in self?.start(q, gen) }
   }
 
   private func start(_ q: String, _ gen: Int) {

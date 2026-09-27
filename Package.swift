@@ -36,14 +36,16 @@ let package = Package(
       sources: ["Shared/Env.swift", "spaces/SpacesCore.swift", "tabs/TabsCore.swift", "commandbar/CommandBarCore.swift", "commandbar/CommandIndex.swift", "commandbar/CommandLauncher.swift", "peek/PeekCore.swift", "theme/ThemeRules.swift", "theme/ThemeCore.swift", "quit/QuitCore.swift", "updates/UpdatesCore.swift", "Shared/Web.swift", "connections/ConnectionsCore.swift", "slack/SlackCore.swift", "github/GitHubCore.swift", "briefing/BriefingCore.swift", "previews/PreviewsCore.swift", "previews/Cards.swift", "previews/Providers.swift", "darkmode/DarkModeCore.swift", "passwords/PasswordsCore.swift", "extensions/ExtensionsCore.swift", "pagetools/PageToolsCore.swift"],
       swiftSettings: [.swiftLanguageMode(.v5)]
     ),
+    // Test-only: the per-test watchdog trait and bounded waits shared by both test targets.
+    .target(name: "DenTestSupport", dependencies: ["DenHost"], path: "Tests/DenTestSupport"),
     .testTarget(
       name: "PluginTests",
-      dependencies: ["DenHost", "PluginCores", .product(name: "CordisValue", package: "cordis-swift"), .product(name: "Cordis", package: "cordis-swift")],
+      dependencies: ["DenHost", "PluginCores", "DenTestSupport", .product(name: "CordisValue", package: "cordis-swift"), .product(name: "Cordis", package: "cordis-swift")],
       swiftSettings: [.swiftLanguageMode(.v5)]
     ),
     .testTarget(
       name: "DenHostTests",
-      dependencies: ["DenHost", .product(name: "CordisValue", package: "cordis-swift")]
+      dependencies: ["DenHost", "DenTestSupport", .product(name: "CordisValue", package: "cordis-swift")]
     ),
   ]
 )

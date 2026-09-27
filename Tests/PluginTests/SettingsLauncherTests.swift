@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
@@ -9,7 +10,7 @@ import Testing
 /// The command bar launcher searches den's real Settings (`settings.list` with each section's
 /// schema) and flips a toggle through `settings.set` with a dotted key.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct SettingsLauncherTests {
   @Test func listCarriesSchemaAndDottedKeysSetValues() {
     let h = Harness()

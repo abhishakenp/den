@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
@@ -8,7 +9,7 @@ import Testing
 /// The theme-token layer: derived from the space theme, contrast-enforced, cached, and used by
 /// every surface (dialogs, command bar, toasts, hover cards, popovers, Settings).
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct ThemeTokenTests {
   /// The themes the user asked about, plus extremes: sandy/grainy, deep purple, near-black, pastel.
   static let themes: [(String, Theme)] = [

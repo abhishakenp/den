@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -11,7 +12,7 @@ import WebKit
 /// cookies and localStorage in a WebKit data store, `session` reads them, `net` calls the fake
 /// APIs with those cookies, and the briefing turns the result into todos and a feed.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct ConnectionsTests {
   static let profile = "private"
 
@@ -22,13 +23,8 @@ struct ConnectionsTests {
     return m
   }
 
-  func until(_ seconds: Double = 15, _ cond: () -> Bool) async -> Bool {
-    let end = Date().addingTimeInterval(seconds)
-    while Date() < end {
-      if cond() { return true }
-      try? await Task.sleep(for: .milliseconds(40))
-    }
-    return cond()
+  func until(_ seconds: Double = 30, line: UInt = #line, _ cond: () -> Bool) async -> Bool {
+    await Wait.until("a condition", seconds: seconds, line: line) { cond() }
   }
 
   /// Loads `url` in a web view of the test profile, like the user signing in inside den.
@@ -399,7 +395,10 @@ struct ConnectionsTests {
     #expect(await until { b!.connected().count == 1 })
     // The user signs out of github.com in den: its cookies go away.
     let store = h.rt.webviews.store(for: Self.profile)
-    for c in await store.httpCookieStore.allCookies() where c.name == "user_session" { await store.httpCookieStore.deleteCookie(c) }
+    let cookies: [HTTPCookie]? = await Wait.callback("cookies") { done in store.httpCookieStore.getAllCookies { done($0) } }
+    for c in cookies ?? [] where c.name == "user_session" {
+      _ = await Wait.callback("delete cookie") { (done: @escaping @Sendable (Bool) -> Void) in store.httpCookieStore.delete(c) { done(true) } }
+    }
     h.rt.call("briefing", "refresh")
     #expect(await until(20) { !h.rt.call("connections", "get", ["id": "github"]).b("connected") })
     #expect(tabs.toasts.last?.hasPrefix("Signed out of GitHub") == true)

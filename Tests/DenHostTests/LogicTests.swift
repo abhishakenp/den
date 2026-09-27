@@ -1,10 +1,12 @@
 import CordisValue
 import CoreGraphics
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
+@Suite(.watchdog)
 struct LogicTests {
   @Test func themeParsesAndClamps() {
     let t = Theme(["colors": ["#ff0000", "0f0", "#0000ff", "#ffffff"], "intensity": 2.0, "grain": -1, "appearance": "dark"])

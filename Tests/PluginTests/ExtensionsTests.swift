@@ -1,5 +1,6 @@
 import AppKit
 import CordisValue
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -10,7 +11,7 @@ import WebKit
 /// (content script, declarativeNetRequest rule, popup, background worker) and pages served by
 /// `MockServices` on 127.0.0.1, plus the `extensions` plugin's page and commands.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct ExtensionsTests {
   static func fixture() throws -> URL {
     let d = FileManager.default.temporaryDirectory.appendingPathComponent("den-ext-fixture-\(UUID())", isDirectory: true)
@@ -43,16 +44,11 @@ struct ExtensionsTests {
     return d
   }
 
-  func wait(_ seconds: Double = 45, _ cond: () -> Bool) async -> Bool {  // generous: full parallel runs on a loaded machine
-    let end = Date().addingTimeInterval(seconds)
-    while Date() < end {
-      if cond() { return true }
-      try? await Task.sleep(for: .milliseconds(50))
-    }
-    return cond()
+  func wait(_ seconds: Double = 45, file: StaticString = #fileID, line: UInt = #line, _ cond: () -> Bool) async -> Bool {  // generous: loaded machine
+    await Wait.until("a condition", seconds: seconds, file: file, line: line) { cond() }
   }
 
-  func js(_ w: WKWebView, _ s: String) async -> Any? { try? await w.evaluateJavaScript(s) }
+  func js(_ w: WKWebView, _ s: String, line: UInt = #line) async -> Any? { await Wait.js(w, s, line: line) }
 
   @Test func nothingInstalledCostsNothing() async {
     let h = Harness()

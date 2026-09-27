@@ -284,7 +284,19 @@ final class SidebarResizeHandle: NSView {
   override func mouseDown(with event: NSEvent) {
     if event.clickCount == 2 { onDoubleClick?(); return }
     guard let window else { return }
-    while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+    track(next: { window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp], until: $0, inMode: .eventTracking, dequeue: true) },
+          buttonDown: { NSEvent.pressedMouseButtons & 1 != 0 })
+  }
+
+  /// The drag loop. Bounded: it polls for events with a deadline, and ends the drag when the left
+  /// button is no longer down. A mouse-down with no real button behind it (a synthesized click, or
+  /// the up delivered elsewhere) used to wait here forever for a mouse-up that never came.
+  func track(next: (Date) -> NSEvent?, buttonDown: () -> Bool) {
+    while true {
+      guard let e = next(Date(timeIntervalSinceNow: 0.25)) else {
+        if !buttonDown() { onDragEnd?(); return }
+        continue
+      }
       if e.type == .leftMouseUp { onDragEnd?(); return }
       let p = superview!.convert(e.locationInWindow, from: nil)
       onDrag?(p.x)

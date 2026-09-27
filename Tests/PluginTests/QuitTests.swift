@@ -1,12 +1,13 @@
 import AppKit
 import CordisValue
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 @testable import PluginCores
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct QuitTests {
   /// Starts the quit core with `app.quit` captured instead of forwarded: the real one would
   /// terminate the test process.

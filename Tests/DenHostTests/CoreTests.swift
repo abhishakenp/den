@@ -1,10 +1,12 @@
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
 @MainActor
+@Suite(.watchdog)
 struct CoreTests {
   final class Echo: HostService {
     let name = "echo"

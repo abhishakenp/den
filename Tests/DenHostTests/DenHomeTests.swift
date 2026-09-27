@@ -2,12 +2,13 @@ import Cordis
 import CryptoKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct DenHomeTests {
   func tempHome() -> DenHome {
     DenHome(root: FileManager.default.temporaryDirectory.appendingPathComponent("den-home-\(UUID().uuidString)/.den", isDirectory: true))

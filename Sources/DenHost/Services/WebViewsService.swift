@@ -592,6 +592,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   public var allowScript: ((_ plugin: String, _ host: String) -> Bool)?
   public var maxScriptBytes = 4096
   private var nextEval = 1
+  /// Deadline timer for `eval` (tests swap in a manual clock).
+  public var evalSchedule: HostSchedule = HostTimers.main
 
   /// Runs `script` (a function body that `return`s JSON-compatible data) in the live page, in an
   /// isolated content world the page's own scripts can't see. Only live views: reading a page never
@@ -612,11 +614,10 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       finished = true
       self?.host.emit("webviews.evalResult", payload.with("request", .string(request)).with("webview", .string(id)))
     }
-    let timeout = DispatchWorkItem { MainActor.assumeIsolated { finish(["ok": false, "error": "webviews: script timed out"]) } }
-    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(max(200, min(Int(args.num("timeoutMs", 5000)), 20_000))), execute: timeout)
+    let cancelTimeout = evalSchedule(max(200, min(Int(args.num("timeoutMs", 5000)), 20_000))) { finish(["ok": false, "error": "webviews: script timed out"]) }
     w.callAsyncJavaScript(script, arguments: [:], in: nil, in: .world(name: "den-plugins")) { result in
       MainActor.assumeIsolated {
-        timeout.cancel()
+        cancelTimeout()
         switch result {
         case let .success(v): finish(["ok": true, "value": Self.jsValue(v)])
         case let .failure(e): finish(["ok": false, "error": .string("webviews: script failed: \(e.localizedDescription)")])

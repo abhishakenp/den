@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
@@ -8,7 +9,7 @@ import Testing
 /// Hover has one source of truth (HoverTracker): at most one row is hovered, the one under the
 /// pointer, however the list re-renders or scrolls. The pointer is faked; the real one never moves.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct HoverTrackerTests {
   static func rows(_ n: Int, loading: Int = -1, tick: Int = 0) -> Value {
     var kids: [Value] = []
@@ -77,7 +78,10 @@ struct HoverTrackerTests {
     let page = try #require(rt.ui.sidebarView.pager.pages.first)
     page.contentView.scroll(to: NSPoint(x: 0, y: Tokens.tabRowHeight * 3))
     page.reflectScrolledClipView(page.contentView)
-    try await Task.sleep(for: .milliseconds(30))  // the coalesced refresh runs on the next turn
+    // The coalesced refresh runs on a later turn: wait for the highlight to leave t2.
+    _ = await Wait.until("the hover highlight to follow the scroll") {
+      HoverTracker.hovered(in: w).count == 1 && (HoverTracker.hovered(in: w).first as? TabRowNode)?.nodeId != "t2"
+    }
     let hot = HoverTracker.hovered(in: w)
     let under = rowViews(rt).first { $0.convert($0.bounds, to: nil).contains(still) }
     #expect(hot.count == 1)

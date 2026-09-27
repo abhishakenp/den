@@ -1,5 +1,6 @@
 import AppKit
 import CordisValue
+import DenTestSupport
 import Testing
 
 @testable import DenHost
@@ -70,13 +71,13 @@ extension Harness {
   func answerSuggestions(_ items: [String]) async {
     guard let (_, done) = suggestRequests.popLast() else { return }
     done(items)
-    try? await Task.sleep(nanoseconds: 30_000_000)
+    await Wait.mainQueueTurn()  // the answer is delivered with DispatchQueue.main.async
   }
   func allTabIds() -> [String] { spaceIds.flatMap { ids("pinned", $0) + ids("today", $0) } + ids("favorites") }
 }
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct CommandBarTests {
   @Test func shortcutsOpenAndCloseTheBar() {
     let h = Harness()
@@ -526,8 +527,7 @@ struct CommandBarTests {
     h.action("commandBar", "banner", ["button": "set"])
     #expect(h.browsers.sets.map { $0.1 } == ["http", "https"])
     #expect(h.browsers.sets.allSatisfy { $0.0 == Bundle.main.bundleURL })
-    try? await Task.sleep(nanoseconds: 30_000_000)
-    #expect(h.rt.call("app", "defaultBrowser")["isDefault"] == true)
+    #expect(await Wait.until("den to be the default browser") { h.rt.call("app", "defaultBrowser")["isDefault"] == true })
     #expect(h.bar["banner"].isNull)
   }
 
@@ -539,7 +539,7 @@ struct CommandBarTests {
     h.action("commandBar", "banner", ["button": "try"])
     #expect(h.storage("commandbar", "browserTrial").s("previous") == "com.apple.Safari")
     #expect(h.browsers.current == Bundle.main.bundleURL)
-    try? await Task.sleep(nanoseconds: 30_000_000)
+    await Wait.mainQueueTurn()
     h.fireTimers()  // day 0: nothing to ask yet
     #expect(!h.rt.ui.dialogOpen)
     h.clock += 7 * CommandBarCore.dayMs

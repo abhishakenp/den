@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
@@ -89,7 +90,7 @@ extension Harness {
 @MainActor var h_destinationCalls: [String] = []
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct LauncherTests {
   @Test func destinationsRankAboveGoogleAndHideWithoutTheirService() {
     let h = Harness()

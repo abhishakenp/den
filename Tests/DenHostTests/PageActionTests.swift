@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -10,7 +11,7 @@ import WebKit
 /// find in page, view source, link-click conventions, the context menu, mouse back/forward,
 /// dropped links and files, and full screen hiding the sidebar. Real WKWebViews, local HTML.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct PageActionTests {
   /// A runtime with one shown page loaded from `html` at `base`.
   static func page(_ html: String, base: String = "https://www.zoom.test/") async throws -> (DenRuntime, String, WKWebView) {
@@ -25,12 +26,8 @@ struct PageActionTests {
 
   /// Polls (50 ms) until `cond` holds, failing after `seconds` instead of hanging. Generous,
   /// because WebContent launches slowly on a loaded machine (seen: load average 577).
-  static func until(_ seconds: Double = 60, line: Int = #line, _ cond: () -> Bool) async throws {
-    let end = Date().addingTimeInterval(seconds)
-    while !cond() {
-      if Date() > end { Issue.record("timed out waiting at line \(line)"); return }
-      try await Task.sleep(for: .milliseconds(50))
-    }
+  static func until(_ seconds: Double = 60, line: UInt = #line, _ cond: () -> Bool) async throws {
+    if await !Wait.until("a condition", seconds: seconds, line: line, { cond() }) { Issue.record("timed out waiting at line \(line)") }
   }
 
   @Test func zoomStepsLikeSafariAndIsRememberedPerSite() async throws {
@@ -82,7 +79,7 @@ struct PageActionTests {
     #expect(bar.count.stringValue == "1 of 3")
     // Every match is highlighted, the current one separately.
     let w = try #require(rt.webviews.record(id)?.webView)
-    let sizes = try await w.callAsyncJavaScript("return [CSS.highlights.get('den-find').size, CSS.highlights.get('den-find-current').size]", contentWorld: .defaultClient) as? [Int]
+    let sizes = await Wait.asyncJS(w, "return [CSS.highlights.get('den-find').size, CSS.highlights.get('den-find-current').size]", world: .defaultClient) as? [Int]
     #expect(sizes == [3, 1])
     _ = rt.call("webviews", "find", ["action": "next"])
     try await Self.until { pa.matchIndex == 2 }
@@ -95,13 +92,13 @@ struct PageActionTests {
     _ = rt.call("webviews", "find", ["action": "hide"])
     #expect(!pa.findBarVisible)
     try await Self.until { pa.matchCount == 0 }
-    let cleared = try await w.callAsyncJavaScript("return CSS.highlights.has('den-find')", contentWorld: .defaultClient) as? Bool
+    let cleared = await Wait.asyncJS(w, "return CSS.highlights.has('den-find')", world: .defaultClient) as? Bool
     #expect(cleared == false)
   }
 
   @Test func findUsesTheSelection() async throws {
     let (rt, _, w) = try await Self.page("<p id=p>banana split and banana bread</p>")
-    _ = try await w.evaluateJavaScript("var r=document.createRange();var t=document.getElementById('p').firstChild;r.setStart(t,0);r.setEnd(t,6);getSelection().removeAllRanges();getSelection().addRange(r);1")
+    _ = try #require(await Wait.js(w, "var r=document.createRange();var t=document.getElementById('p').firstChild;r.setStart(t,0);r.setEnd(t,6);getSelection().removeAllRanges();getSelection().addRange(r);1"))
     _ = rt.call("webviews", "find", ["action": "selection"])
     let pa = try #require(rt.webviews.pageActions)
     try await Self.until { pa.query == "banana" && pa.matchCount == 2 }
@@ -163,11 +160,10 @@ struct PageActionTests {
     rt.window.window.orderFrontRegardless()
     defer { rt.window.window.orderOut(nil) }
     // The link must be laid out in WebContent before a click can hit it.
-    var laidOut = false
-    for _ in 0..<600 where !laidOut {
-      laidOut = ((try? await w.evaluateJavaScript("document.querySelector('a').getBoundingClientRect().height")) as? NSNumber)?.doubleValue ?? 0 > 0
-      if !laidOut { try await Task.sleep(for: .milliseconds(50)) }
+    let laidOut = await Wait.until("the link laid out in WebContent", seconds: 30, every: .milliseconds(50)) {
+      (await Wait.js(w, "document.querySelector('a').getBoundingClientRect().height", seconds: 5) as? NSNumber)?.doubleValue ?? 0 > 0
     }
+    try #require(laidOut, "the link never laid out")
     let win = try #require(w.window)
     let p = w.convert(NSPoint(x: w.bounds.midX, y: w.bounds.midY), to: nil)
     // Deliver to WebKit's own view under the point (never a sidebar or overlay view, whose
@@ -183,8 +179,7 @@ struct PageActionTests {
         if type == .leftMouseDown { target.mouseDown(with: e) } else { target.mouseUp(with: e) }
         try await Task.sleep(for: .milliseconds(50))
       }
-      let end = Date().addingTimeInterval(10)
-      while opened.isNull, Date() < end { try await Task.sleep(for: .milliseconds(50)) }
+      _ = await Wait.until("webviews.newWindow after a ⌘-click", seconds: 10) { !opened.isNull }
     }
     #expect(opened["url"] == "https://www.zoom.test/next" && opened["background"] == true && opened["id"].string == id)
     #expect(w.url?.absoluteString == "https://www.zoom.test/")  // the page itself stayed
@@ -220,7 +215,7 @@ struct PageActionTests {
     let html = "<a id=a href='https://a.test/l'><img id=i src='data:image/gif;base64,R0lGODlhAQABAAAAACw=' width=50 height=50></a>"
     let (_, _, w) = try await Self.page(html)
     let dw = try #require(w as? DenWebView)
-    _ = try await w.evaluateJavaScript("document.getElementById('i').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true})); 1")
+    _ = try #require(await Wait.js(w, "document.getElementById('i').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true})); 1"))
     try await Self.until { dw.context.link == "https://a.test/l" }
     #expect(dw.context.image.hasPrefix("data:image/gif"))
   }

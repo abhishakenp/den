@@ -1,12 +1,13 @@
 import AppKit
 import CordisValue
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 @testable import PluginCores
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct TabsTests {
   @Test func firstRunSeedRendersEverySection() {
     let h = Harness()
@@ -168,10 +169,8 @@ struct TabsTests {
     let pageTitle = h.tabs("list")["today"][0]["title"].string!
     func row() -> TabRowNode? { HostScenarios.find(t, in: h.rt.ui.sidebarView) as? TabRowNode }
     func editor() async throws -> InlineTitleEditor {
-      for _ in 0..<20 {
-        if let e = row()?.rename.editor, e.currentEditor() != nil { return e }
-        try await Task.sleep(for: .milliseconds(20))
-      }
+      _ = await Wait.until("the inline title editor") { row()?.rename.editor?.currentEditor() != nil }
+      if let e = row()?.rename.editor, e.currentEditor() != nil { return e }
       throw CancellationError()
     }
     func type(_ text: String, _ command: Selector) async throws {
@@ -212,7 +211,7 @@ struct TabsTests {
     h.action(folder, "menu", "renameFolder")
     #expect(h.tree("sidebar.pinned", 0)["children"].array!.first { $0["id"].string == folder }?["editing"] == true)
     let header = try #require((HostScenarios.find(folder, in: h.rt.ui.sidebarView) as? FolderNode)?.header)
-    for _ in 0..<20 where header.rename.editor?.currentEditor() == nil { try await Task.sleep(for: .milliseconds(20)) }
+    _ = await Wait.until("header.rename.editor?.currentEditor() == nil") { !(header.rename.editor?.currentEditor() == nil) }
     let fe = try #require(header.rename.editor?.currentEditor() as? NSTextView)
     fe.selectAll(nil)
     fe.insertText("Docs", replacementRange: fe.selectedRange())

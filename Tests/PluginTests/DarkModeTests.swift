@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -10,7 +11,7 @@ import WebKit
 /// The `darkmode` plugin on the real `pagestyle` host service: rules, per-site modes, and real
 /// WebKit pages (user stylesheet applied or not, tone detection, the natively-dark cache).
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct DarkModeTests {
   func start(_ h: Harness) -> DarkModeCore {
     let core = DarkModeCore(env: h.env)
@@ -26,21 +27,18 @@ struct DarkModeTests {
     w.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
     if w.superview == nil { h.rt.window.window.contentView?.addSubview(w) }
     w.loadHTMLString(html, baseURL: URL(string: base))
-    try await Task.sleep(for: .milliseconds(100))
-    for _ in 0..<100 where w.isLoading { try await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("\(base) to load") { !w.isLoading && w.url?.absoluteString == base }
     return w
   }
 
-  func js(_ w: WKWebView, _ s: String) async -> String {
-    (try? await w.evaluateJavaScript(s)).map { "\($0)" } ?? "error"
+  func js(_ w: WKWebView, _ s: String, line: UInt = #line) async -> String {
+    await Wait.js(w, s, line: line).map { "\($0)" } ?? "error"
   }
 
-  func waitTone(_ w: WKWebView, _ tone: String) async throws -> Bool {
-    for _ in 0..<200 {  // up to 10 s on a loaded machine
-      if await js(w, "document.documentElement.getAttribute('data-den-tone')") == tone { return true }
-      try await Task.sleep(for: .milliseconds(50))
+  func waitTone(_ w: WKWebView, _ tone: String, line: UInt = #line) async throws -> Bool {
+    await Wait.until("tone \(tone)", seconds: 20, every: .milliseconds(50), line: line) {
+      await js(w, "document.documentElement.getAttribute('data-den-tone')") == tone
     }
-    return false
   }
 
   static let white = "<html><body style='margin:0'><p>white page</p><img src='data:image/gif;base64,R0lGODlhAQABAAAAACw='></body></html>"
@@ -123,8 +121,7 @@ struct DarkModeTests {
     #expect(h.rt.call("pagestyle", "get", ["id": "p2"])["sheets"] == [])
     // Light den: the same white page is left alone (the sheet is inside a dark media query).
     h.rt.window.window.appearance = NSAppearance(named: .aqua)
-    try await Task.sleep(for: .milliseconds(100))
-    #expect(await js(w, Self.filter) == "none")
+    #expect(await Wait.until("the page to leave dark mode") { await js(w, Self.filter) == "none" })
   }
 
   @Test func alwaysLightInvertsADarkOnlySite() async throws {

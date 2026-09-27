@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -9,7 +10,7 @@ import WebKit
 /// Exercises the host services through their `(method, args) -> Value` handlers, exactly as a
 /// plugin would through the C ABI.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct ServiceTests {
   static func runtime() -> DenRuntime {
     _ = NSApplication.shared
@@ -21,6 +22,27 @@ struct ServiceTests {
     rt.window.window.setFrame(NSRect(x: 0, y: 0, width: 1280, height: 800), display: false)
     rt.window.window.contentView?.layoutSubtreeIfNeeded()
     return rt
+  }
+
+  /// The sidebar resize handle's drag loop ends when the button is up, even when no mouse-up
+  /// event ever arrives (a synthesized click): this was a whole-suite hang. The loop is driven
+  /// with fake events: calling AppKit's `nextEvent` in the test process stops its run loop.
+  @Test func resizeHandleDoesNotWaitForeverForAMouseUp() throws {
+    let rt = Self.runtime()
+    let handle = rt.window.resizeHandle
+    var drags: [CGFloat] = [], ended = 0
+    handle.onDrag = { drags.append($0) }
+    handle.onDragEnd = { ended += 1 }
+    let drag = try #require(NSEvent.mouseEvent(with: .leftMouseDragged, location: NSPoint(x: 300, y: 300), modifierFlags: [], timestamp: 0,
+                                               windowNumber: rt.window.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+    // One drag event, then silence with the button up: the drag ends at once.
+    var queue: [NSEvent] = [drag]
+    handle.track(next: { _ in queue.isEmpty ? nil : queue.removeFirst() }, buttonDown: { false })
+    #expect(drags.count == 1 && ended == 1)
+    // Silence while the button is held keeps tracking; releasing it ends the drag.
+    var held = 3
+    handle.track(next: { _ in nil }, buttonDown: { held -= 1; return held > 0 })
+    #expect(ended == 2 && held == 0)
   }
 
   @Test func webviewsAreLazyUntilShown() {
@@ -200,12 +222,13 @@ struct ServiceTests {
     let web = try #require(rt.webviews.record(id)?.webView)
     let html = "<a id=x href='https://other.test/page'>x</a><a id=y href='https://docs.a.test/same'>y</a><script>document.getElementById('x').click()</script>"
     web.loadHTMLString(html, baseURL: URL(string: "https://www.a.test/"))
-    for _ in 0..<100 where routed.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("routed.isEmpty") { !(routed.isEmpty) }
     #expect(routed.first?["url"] == "https://other.test/page")
     #expect(routed.first?["id"] == "pinned")
     // Same-site click is allowed to navigate (not routed).
-    _ = try? await web.evaluateJavaScript("document.getElementById('y').click()")
-    try await Task.sleep(for: .milliseconds(300))
+    _ = await Wait.js(web, "document.getElementById('y').click()")
+    // Not routed: WebKit starts navigating in place (the host doesn't resolve, so don't require it).
+    _ = await Wait.until("the same-site click to start navigating", seconds: 2) { web.url?.host == "docs.a.test" }
     #expect(routed.count == 1)
   }
 
@@ -216,12 +239,12 @@ struct ServiceTests {
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     let web = try #require(rt.webviews.record(id)?.webView)
     web.loadHTMLString("<title>Local</title><body style='background:#fdd'><h1>Hello</h1></body>", baseURL: URL(string: "https://local.test/page"))
-    for _ in 0..<100 where web.isLoading || web.title?.isEmpty != false { try await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("the page to load") { !web.isLoading && web.title?.isEmpty == false }
     // On screen: an idle discard is refused; an explicit one isn't needed here.
     #expect(rt.call("webviews", "suspend", ["id": .string(id)]) == ["suspended": false, "reason": "visible"])
     // Leaving the screen saves a small snapshot to disk.
     _ = rt.call("content", "show", ["panes": [.string(other)]])
-    for _ in 0..<60 where rt.webviews.record(id)?.snapshotPath == nil { try await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("the snapshot") { rt.webviews.record(id)?.snapshotPath != nil }
     let path = try #require(rt.webviews.record(id)?.snapshotPath)
     #expect(path.hasSuffix(".jpg") && FileManager.default.fileExists(atPath: path))
     #expect(web.superview == nil)
@@ -236,7 +259,7 @@ struct ServiceTests {
     let again = try #require(rt.webviews.record(id)?.webView)
     #expect(again !== web)
     #expect(rt.content.isCovered(id))
-    for _ in 0..<100 where rt.content.isCovered(id) { try await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("the snapshot cover to lift") { !rt.content.isCovered(id) }
     #expect(!rt.content.isCovered(id))
     // Closing forgets the snapshot file.
     _ = rt.call("webviews", "close", ["id": .string(id)])

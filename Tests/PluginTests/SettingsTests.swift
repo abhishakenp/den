@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
@@ -8,7 +9,7 @@ import Testing
 
 /// The `settings` host service and the sections the plugins contribute to the Settings window.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct SettingsTests {
   @Test func registerGetSetPersistAndEmit() {
     let h = Harness()

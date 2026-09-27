@@ -1,11 +1,12 @@
 import AppKit
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
 /// Dark-mode favicons: dark monochrome icons on transparency (GitHub) are drawn inverted.
 @MainActor
-@Suite struct IconTests {
+@Suite(.watchdog) struct IconTests {
   static func image(_ draw: @escaping (NSRect) -> Void) -> NSImage {
     NSImage(size: NSSize(width: 32, height: 32), flipped: false) { r in draw(r); return true }
   }

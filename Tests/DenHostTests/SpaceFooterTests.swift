@@ -1,13 +1,14 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
 /// The footer's space icons: live drag-reorder, the space title's inline rename, the icon picker.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct SpaceFooterTests {
   static func footer(_ n: Int) -> Value {
     var kids: [Value] = [["type": "button", "id": "lib", "icon": "sf:tray.full", "size": 32], ["type": "spacer"]]
@@ -75,7 +76,7 @@ struct SpaceFooterTests {
     _ = rt.call("ui", "set", ["slot": "sidebar.spaceHeader", "tree": ["type": "spaceTitle", "id": "t", "title": "Home", "editing": true]])
     rt.window.window.contentView?.layoutSubtreeIfNeeded()
     let node = try #require(rt.ui.sidebarView.slot("sidebar.spaceHeader", page: 0)?.root as? SpaceTitleNode)
-    try await Task.sleep(for: .milliseconds(50))
+    _ = await Wait.until("the rename editor with the title") { node.rename.editor?.stringValue == "Home" }
     let editor = try #require(node.rename.editor)
     #expect(editor.stringValue == "Home" && node.label.isHidden)
     editor.stringValue = "Reading"

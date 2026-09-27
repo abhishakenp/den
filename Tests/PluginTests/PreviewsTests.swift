@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
@@ -9,7 +10,7 @@ import Testing
 /// The `previews` plugin: provider matching, caching, providers against mocked sites, and the
 /// `tabs` side (hover → previews.show, the Library sheet).
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct PreviewsTests {
   /// Stands in for `net`, `session`, `webviews.eval/snapshot`, `tabs.open` and records the cards.
   final class Mock {
@@ -254,12 +255,12 @@ struct PreviewsTests {
       """
     h.rt.call("webviews", "create", ["id": "cal"])
     h.rt.webviews.materialize("cal")?.loadHTMLString(html, baseURL: URL(string: "https://calendar.google.com/"))
-    for _ in 0..<60 where h.rt.call("webviews", "get", ["id": "cal"])["loading"] != false { try await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("h.rt.call(\"webviews\", \"get\", [\"id\": \"cal\"])[\"loading\"] != false") { !(h.rt.call("webviews", "get", ["id": "cal"])["loading"] != false) }
     try await Task.sleep(for: .milliseconds(200))
     // Another plugin (no session:calendar.google.com) may not read the page.
     #expect(h.rt.call("webviews", "eval", ["id": "cal", "plugin": "tabs", "script": "return 1"]).isErr)
     show(h, "https://calendar.google.com/calendar/u/0/r", webview: "cal")
-    for _ in 0..<60 where m.card["sections"].isNull && m.card["empty"].isNull { try await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("m.card[\"sections\"].isNull && m.card[\"empty\"].isNull") { !(m.card["sections"].isNull && m.card["empty"].isNull) }
     let rows = m.card.a("sections").first?.a("rows") ?? []
     #expect(rows.map { $0.s("title") } == ["Company offsite", "Late sync", "Last call"])
     #expect(rows.count == 3 && rows[1].s("subtitle") == "11:50pm to 11:58pm" && rows[1].s("url") == "https://meet.google.com/abc-defg-hij")
@@ -273,7 +274,7 @@ struct PreviewsTests {
     h.rt.webviews.allowScript = { _, _ in true }
     h.rt.call("webviews", "create", ["id": "js"])
     h.rt.webviews.materialize("js")?.loadHTMLString("<html></html>", baseURL: URL(string: "https://js.example/"))
-    for _ in 0..<60 where h.rt.call("webviews", "get", ["id": "js"])["loading"] != false { try await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("h.rt.call(\"webviews\", \"get\", [\"id\": \"js\"])[\"loading\"] != false") { !(h.rt.call("webviews", "get", ["id": "js"])["loading"] != false) }
     var captured = ""
     let m = Mock()
     let core = start(h, m)
@@ -298,7 +299,7 @@ struct PreviewsTests {
       #expect(!r.isErr)
       var result: Value = .null
       let token = h.rt.plugins.on("webviews.evalResult") { v in if v.s("request") == "syntax" { result = v } }
-      for _ in 0..<40 where result.isNull { try await Task.sleep(for: .milliseconds(25)) }
+      _ = await Wait.until("result.isNull") { !(result.isNull) }
       _ = token
       #expect(result["value"] == "ok", "\(result)")
     }

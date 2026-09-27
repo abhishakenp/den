@@ -1,13 +1,14 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 
 /// Host components added for the theme, commandbar, peek, quit and tabs plugins.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct ComponentTests {
   static func runtime() -> DenRuntime { ServiceTests.runtime() }
 
@@ -306,7 +307,7 @@ extension ComponentTests {
       #expect(got.last?["action"] == .string(action) && got.last?["webview"] == id)
     }
     _ = rt.call("content", "peek", [:])
-    for _ in 0..<40 where !p.isHidden { try await Task.sleep(for: .milliseconds(25)) }
+    _ = await Wait.until("!p.isHidden") { !(!p.isHidden) }
     #expect(p.isHidden && rt.call("content", "get")["peek"] == .null)
   }
 }

@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -27,7 +28,7 @@ extension Harness {
 }
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct PeekTests {
   static let cross = LinkRule(when: .crossSite, event: PeekCore.linkEvent)
 
@@ -68,7 +69,7 @@ struct PeekTests {
     let web = try #require(h.rt.webviews.record(pin)?.webView)
     let html = "<a id=x href='https://other.test/page'>x</a><a id=y href='https://docs.a.test/same'>y</a><script>document.getElementById('x').click()</script>"
     web.loadHTMLString(html, baseURL: URL(string: "https://www.a.test/"))
-    for _ in 0..<100 where h.peekShown == nil { try await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("h.peekShown == nil") { !(h.peekShown == nil) }
     let pid = try #require(h.peekShown)
     #expect(h.peek("get")["sourceId"].string == pin)
     #expect(h.rt.webviews.record(pid)?.url == "https://other.test/page")
@@ -76,8 +77,9 @@ struct PeekTests {
     #expect(h.panes == [pin])
     // A same-site click navigates in place.
     h.peek("close")
-    _ = try? await web.evaluateJavaScript("document.getElementById('y').click()")
-    try await Task.sleep(for: .milliseconds(400))
+    _ = await Wait.js(web, "document.getElementById('y').click()")
+    // Not routed: WebKit starts navigating in place (the host doesn't resolve, so don't require it).
+    _ = await Wait.until("the same-site click to start navigating", seconds: 2) { web.url?.host == "docs.a.test" }
     #expect(h.peekShown == nil)
     #expect(h.events.count == 1)
   }
@@ -113,7 +115,7 @@ struct PeekTests {
     let ready = try await Self.wait(seconds: 30) {
       h.rt.window.window.contentView?.layoutSubtreeIfNeeded()
       guard !web.isLoading, web.url?.host == "www.a.test", web.window != nil, web.bounds.width > 100, web.bounds.height > 100 else { return false }
-      return (try? await web.evaluateJavaScript("document.readyState")) as? String == "complete"
+      return await Wait.js(web, "document.readyState", seconds: 5) as? String == "complete"
     }
     try #require(ready, "the page never finished loading in a laid-out web view")
     let win = try #require(web.window)
@@ -130,7 +132,7 @@ struct PeekTests {
     target.mouseDown(with: down)
     target.mouseUp(with: up)
     let opened = try await Self.wait(seconds: 30) { h.peekShown != nil }
-    let log = (try? await web.evaluateJavaScript("log.join(' ')")) as? String ?? "?"
+    let log = await Wait.js(web, "log.join(' ')") as? String ?? "?"
     try #require(opened, "no peek; the page saw: \(log)")
     let pid = try #require(h.peekShown)
     #expect(h.rt.webviews.record(pid)?.url == "https://www.a.test/next")
@@ -139,13 +141,8 @@ struct PeekTests {
 
   /// Polls `done` until it holds or `seconds` of wall time pass (not a count of iterations: the
   /// main actor can be starved for seconds while other suites run).
-  static func wait(seconds: Double, until done: () async -> Bool) async throws -> Bool {
-    let end = Date().addingTimeInterval(seconds)
-    while Date() < end {
-      if await done() { return true }
-      try await Task.sleep(for: .milliseconds(50))
-    }
-    return await done()
+  static func wait(seconds: Double, line: UInt = #line, until done: () async -> Bool) async throws -> Bool {
+    await Wait.until("a condition", seconds: seconds, every: .milliseconds(50), line: line) { await done() }
   }
 
   @Test func closeReopenAndEscape() {

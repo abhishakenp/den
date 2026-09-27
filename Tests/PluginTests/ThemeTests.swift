@@ -1,12 +1,13 @@
 import AppKit
 import CordisValue
+import DenTestSupport
 import Testing
 
 @testable import DenHost
 @testable import PluginCores
 
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct ThemeTests {
   @discardableResult
   func start(_ h: Harness) -> ThemeCore {
