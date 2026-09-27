@@ -42,7 +42,7 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 |---|---|---|
 | `list` | `spaceId?` (default: current) | `{favorites: [item], pinned: [item], today: [item]}`. An item is a tab, a folder `{id, folder: true, title, open, children: [item]}` (pinned only) or a split `{id, split: true, layout, children: [tab]}` |
 | `selected` | – | `{id}` or `null` |
-| `open` | `url`, `spaceId?`, `kind?` (default `today`), `background?`, `index?` | `{id}` |
+| `open` | `url`, `spaceId?`, `kind?` (default `today`), `background?`, `index?`, `webview?` | `{id}`. `webview` adopts an existing web view (a peek or Little Arc page, which keeps its history and state); its id becomes the tab id |
 | `select` | `id` | ok |
 | `close` | `id` | ok. Closing a today tab archives it; closing a pinned tab only unloads it |
 | `pin`, `unpin`, `favorite` | `id` | ok |
@@ -115,7 +115,7 @@ Injects: `tabs`, `spaces`, `webviews`, `content`, `ui`, `keys`, `window`, `stora
 |---|---|---|
 | `open` | `url`, `sourceId?` (the tab it came from; the peek uses its profile) | `{id}` of the peek webview (`peek-<n>`). Replaces an open peek |
 | `close` | – | ok |
-| `expand` | – | `{id}`. Opens the peek's current URL as a today tab in the current space (selected) and closes the peek |
+| `expand` | – | `{id}`. The peek's web view becomes a today tab in the current space (`tabs.open {webview}`), selected |
 | `split` | `ids`, `layout: horizontal\|vertical\|grid`, `focus?` | `{id}`. Forwards to `tabs.split` |
 | `unsplit` | `id` | ok. Forwards to `tabs.unsplit` |
 | `reopen` | `after?` (ms timestamp) | `{id}`, or an error if no peek was closed at or after `after` |
@@ -129,11 +129,13 @@ Events: `peek.opened {id, url}`, `peek.closed {id}`. `peek.link {id, url, source
 
 **Peek actions** (Arc §6): expand with the button or Cmd-O; Split button (the page joins the current tab in a split, focused); close with a click outside, the X, Cmd-W (through `tabs`) or Esc. Esc is bound only while a peek is open. Cmd-Z reopens a just-closed peek for 15 s (den's choice; it is bound in the Edit menu only for that time, so Edit > Undo keeps working otherwise), and Cmd-Shift-T reopens it through `tabs` as long as no tab was archived since.
 
-**Split view shortcuts** (Arc §7): Ctrl-Shift-= adds a pane (a new tab next to the selected one, then `commands.open {mode: edit}` to pick its page; at most 4); Ctrl-Shift-- takes the focused pane out (a today tab is archived, a pinned one is only separated); Ctrl-Shift-1…4 focus a pane.
+**Split view shortcuts** (Arc §7): Ctrl-Shift-= adds a pane (a new tab next to the selected one, then `commands.open {mode: edit}` to pick its page; at most 4); Ctrl-Shift-- takes the focused pane out (a today tab is archived, a pinned one is only separated); Ctrl-Shift-1…4 focus a pane. The pane's hover pill (`content.paneAction`) does the same close, or `separate`s the pane into its own selected tab.
+
+**Little Arc** (Arc §8) uses the host's `window.openMini`. Links from other apps reach it through `tabs` (`peek.openExternal`). Each URL gets a `mini-<n>` web view in its own Little Arc window; the same URL again brings its window back (closed and reopened in front) instead of a second one. The bar's "Open in <space>" (`window.miniAction open`) and Cmd-O (on the key Little Arc window, from `window.listMini`'s `key`) move the web view into a today tab of the current space. The copy button copies the page URL. Closing the window closes the page. A window unused for `littleArcArchiveMs` (6 h) is closed, like Arc's auto-archive; it is not added to the tabs archive. Settings > "Links from other apps open in Little Arc" is `settings.littleArc`.
 
 Storage (ns `peek`): `settings`.
 
-Owns: the `overlay.peek` slot (through `content.peek`), the link policy, Cmd-O, Esc while peeking, Ctrl-Shift-=, Ctrl-Shift--, Ctrl-Shift-1…4.
+Owns: the `overlay.peek` slot (through `content.peek`), the link policy, the Little Arc windows, Cmd-O, Esc while peeking, Ctrl-Shift-=, Ctrl-Shift--, Ctrl-Shift-1…4.
 
 ## Other plugins
 

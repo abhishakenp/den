@@ -69,9 +69,15 @@ final class PeekCore {
     policyIds = []
   }
 
-  func newId(_ prefix: String) -> String {
-    defer { nextId += 1 }
-    return prefix + String(nextId)
+  /// Creates a web view with a fresh id. Ids of adopted peeks live on as tab ids across
+  /// launches, so taken ones are skipped.
+  func newWebview(_ prefix: String, url: String, profile: String) -> String? {
+    for _ in 0..<1000 {
+      let id = prefix + String(nextId)
+      nextId += 1
+      if !env.call("webviews", "create", ["id": .string(id), "url": .string(url), "profile": .string(profile)]).isErr { return id }
+    }
+    return nil
   }
 
   // MARK: - Service
@@ -165,9 +171,7 @@ final class PeekCore {
   func open(_ url: String, source: String?) -> Value {
     if peek != nil { hide(record: false) }
     let profile = source.map { env.call("webviews", "get", ["id": .string($0)]).sOpt("profile") ?? "default" } ?? "default"
-    let id = newId("peek-")
-    let r = env.call("webviews", "create", ["id": .string(id), "url": .string(url), "profile": .string(profile)])
-    if r.isErr { return r }
+    guard let id = newWebview("peek-", url: url, profile: profile) else { return .err("peek: cannot create a web view") }
     peek = id
     peekSource = source
     env.call("content", "peek", ["webview": .string(id), "title": .string(URLs.display(url))])
@@ -187,12 +191,13 @@ final class PeekCore {
     return u.isEmpty || u == "about:blank" ? nil : u
   }
 
-  func hide(record: Bool) {
+  /// Hides the peek. Its web view is closed unless `keepWebview` (it became a tab).
+  func hide(record: Bool, keepWebview: Bool = false) {
     guard let id = peek else { return }
     let url = peekURL()
     peek = nil
     env.call("content", "peek", [:])
-    env.call("webviews", "close", ["id": .string(id)])
+    if !keepWebview { env.call("webviews", "close", ["id": .string(id)]) }
     if escBound {
       env.call("keys", "unbind", ["chord": "esc"])
       escBound = false
@@ -205,21 +210,24 @@ final class PeekCore {
     env.emit("peek.closed", ["id": .string(id)])
   }
 
-  /// Turns the peek into a normal today tab in the current space, selected.
-  func expand() -> String? {
-    guard peek != nil else { return nil }
-    let url = peekURL() ?? ""
-    hide(record: false)
-    guard !url.isEmpty else { return nil }
-    return env.call("tabs", "open", ["url": .string(url)])["id"].string
+  /// Moves the peek's web view (history, scroll, form state) into a new today tab.
+  func adoptPeek(background: Bool) -> String? {
+    guard let web = peek else { return nil }
+    let url = peekURL() ?? env.call("webviews", "get", ["id": .string(web)]).s("url")
+    hide(record: false, keepWebview: true)
+    let r = env.call("tabs", "open", ["url": .string(url), "webview": .string(web), "background": .bool(background)])
+    if let id = r["id"].string { return id }
+    env.call("webviews", "close", ["id": .string(web)])
+    return nil
   }
+
+  /// Turns the peek into a normal today tab in the current space, selected.
+  func expand() -> String? { adoptPeek(background: false) }
 
   /// The peek's Split button: the page joins the current tab in a split view.
   func splitFromPeek() {
-    guard let url = peekURL() else { return hide(record: false) }
     let sel = env.call("tabs", "selected")["id"].string
-    hide(record: false)
-    guard let id = env.call("tabs", "open", ["url": .string(url), "background": true])["id"].string else { return }
+    guard let id = adoptPeek(background: true) else { return }
     guard let s = sel else { return _ = env.call("tabs", "select", ["id": .string(id)]) }
     let r = env.call("tabs", "split", ["ids": [.string(s), .string(id)], "layout": .string(layoutOf(s) ?? "horizontal"), "focus": .string(id)])
     if r.isErr { env.call("tabs", "select", ["id": .string(id)]) }
@@ -282,8 +290,8 @@ final class PeekCore {
 
   /// Ctrl-Shift--: the focused pane leaves the split. A today tab is archived, a pinned one is
   /// only taken out of the split.
-  func closePane() {
-    let focus = env.call("content", "get")["focus"].string ?? env.call("tabs", "selected")["id"].string
+  func closePane(_ pane: String? = nil) {
+    let focus = pane ?? env.call("content", "get")["focus"].string ?? env.call("tabs", "selected")["id"].string
     guard let id = focus, splitContaining(id) != nil else { return }
     let kind = env.call("tabs", "list")["today"].array.map { list in
       list.contains { item in item["id"].string == id || item.a("children").contains { $0["id"].string == id } }
@@ -300,22 +308,27 @@ final class PeekCore {
 
   // MARK: - Little Arc
 
-  /// Opens each URL in a Little Arc window. Returns false when Little Arc is off or the host has
-  /// no mini windows, so the caller (tabs) opens them as tabs instead.
+  /// Opens each URL in a Little Arc window (host `window.openMini`). Returns false when Little
+  /// Arc is off or the host has no mini windows, so the caller (tabs) opens tabs instead.
   func openExternal(_ urls: [String]) -> Bool {
     guard littleArcEnabled, !urls.isEmpty else { return false }
     var claimed = false
     for url in urls {
       // "Opening the same link again brings back the existing window."
-      if let la = littleArcs.first(where: { URLs.normalize($0.url) == URLs.normalize(url) }) {
-        env.call("window", "focusMini", ["id": .string(la.window)])
-        claimed = true
+      if let i = littleArcs.firstIndex(where: { URLs.normalize($0.url) == URLs.normalize(url) }) {
+        // Forget it before closeMini, whose miniClosed event would close the page.
+        let la = littleArcs.remove(at: i)
+        env.call("window", "closeMini", ["id": .string(la.window)])
+        if let win = env.call("window", "openMini", ["webview": .string(la.webview), "space": .string(spaceName())])["id"].string {
+          littleArcs.append(LittleArc(window: win, webview: la.webview, url: la.url, lastActive: env.now()))
+          claimed = true
+        } else {
+          env.call("webviews", "close", ["id": .string(la.webview)])
+        }
         continue
       }
-      let web = newId("mini-")
-      if env.call("webviews", "create", ["id": .string(web), "url": .string(url)]).isErr { continue }
-      let r = env.call("window", "openMini", ["webview": .string(web), "title": .string(URLs.display(url)), "space": .string(spaceName())])
-      guard let win = r["id"].string else {
+      guard let web = newWebview("mini-", url: url, profile: "default") else { continue }
+      guard let win = env.call("window", "openMini", ["webview": .string(web), "space": .string(spaceName())])["id"].string else {
         env.call("webviews", "close", ["id": .string(web)])
         return claimed
       }
@@ -330,18 +343,21 @@ final class PeekCore {
     return (env.call("spaces", "list").array ?? []).first { $0.s("id") == cur }?.s("name") ?? "Space"
   }
 
-  /// "Open in Space" (Cmd-O or the button): the page becomes a today tab in the current space.
+  /// "Open in <space>" (Cmd-O or the button): the web view moves into a today tab in the current
+  /// space, keeping its page state.
   func littleArcToSpace(_ window: String) {
     guard let i = littleArcs.firstIndex(where: { $0.window == window }) else { return }
     let la = littleArcs.remove(at: i)
     var url = env.call("webviews", "get", ["id": .string(la.webview)]).s("url")
     if url.isEmpty || url == "about:blank" { url = la.url }
     env.call("window", "closeMini", ["id": .string(la.window)])
-    env.call("webviews", "close", ["id": .string(la.webview)])
-    env.call("tabs", "open", ["url": .string(url)])
-    env.call("window", "focusMain")
+    if env.call("tabs", "open", ["url": .string(url), "webview": .string(la.webview)]).isErr {
+      env.call("webviews", "close", ["id": .string(la.webview)])
+      env.call("tabs", "open", ["url": .string(url)])
+    }
   }
 
+  /// The user closed the window: the page goes with it.
   func littleArcClosed(_ window: String) {
     guard let i = littleArcs.firstIndex(where: { $0.window == window }) else { return }
     env.call("webviews", "close", ["id": .string(littleArcs[i].webview)])
@@ -353,9 +369,14 @@ final class PeekCore {
     guard littleArcArchiveMs > 0 else { return }
     let now = env.now()
     for la in littleArcs where now - la.lastActive > littleArcArchiveMs {
+      if let i = littleArcs.firstIndex(where: { $0.window == la.window }) { littleArcs.remove(at: i) }
       env.call("window", "closeMini", ["id": .string(la.window)])
-      littleArcClosed(la.window)
+      env.call("webviews", "close", ["id": .string(la.webview)])
     }
+  }
+
+  func touchLittleArc(webview: String) {
+    if let i = littleArcs.firstIndex(where: { $0.webview == webview }) { littleArcs[i].lastActive = env.now() }
   }
 
   // MARK: - Input
@@ -397,16 +418,37 @@ final class PeekCore {
     }
     env.on("peek.key.expand") { [self] _ in
       if peek != nil { _ = expand(); return }
-      if let w = env.call("window", "keyMini")["id"].string { littleArcToSpace(w) }
+      // The key Little Arc window, if one is in front.
+      let key = (env.call("window", "listMini").array ?? []).first { $0["key"] == true }
+      if let w = key?["id"].string { littleArcToSpace(w) }
     }
     env.on("peek.key.addSplit") { [self] _ in addSplit() }
     env.on("peek.key.closePane") { [self] _ in closePane() }
+    // The pane's hover pill (host split chrome): close, or separate into its own tab.
+    env.on("content.paneAction") { [self] v in
+      let id = v.s("id")
+      guard splitContaining(id) != nil else { return }
+      if v.s("action") == "close" { closePane(id) }
+      if v.s("action") == "separate" {
+        env.call("tabs", "unsplit", ["id": .string(id)])
+        env.call("tabs", "select", ["id": .string(id)])
+      }
+    }
     env.on("peek.key.focusPane") { [self] v in focusPane(Int(v["payload"].int ?? 1)) }
     env.on("window.miniAction") { [self] v in
       let w = v.s("id")
-      if let i = littleArcs.firstIndex(where: { $0.window == w }) { littleArcs[i].lastActive = env.now() }
-      if v.s("action") == "openInSpace" { littleArcToSpace(w) }
+      touchLittleArc(webview: v.s("webview"))
+      switch v.s("action") {
+      case "open": littleArcToSpace(w)
+      case "copy":
+        if let la = littleArcs.first(where: { $0.window == w }) {
+          let u = env.call("webviews", "get", ["id": .string(la.webview)]).s("url")
+          env.call("app", "copy", ["text": .string(u.isEmpty ? la.url : u)])
+        }
+      default: break
+      }
     }
     env.on("window.miniClosed") { [self] v in littleArcClosed(v.s("id")) }
+    env.on("webviews.url") { [self] v in touchLittleArc(webview: v.s("id")) }
   }
 }

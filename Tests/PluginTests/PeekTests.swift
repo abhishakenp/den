@@ -152,11 +152,14 @@ struct PeekTests {
     h.startPeek()
     h.peek("open", ["url": "https://swift.org/blog/"])
     let pid = h.peekShown!
+    let web = h.rt.webviews.record(pid)?.webView
     h.key("cmd+o")
     #expect(h.peekShown == nil)
-    #expect(h.rt.webviews.record(pid) == nil)
     let first = h.tabs("list")["today"][0]
     #expect(first["url"] == "https://swift.org/blog/")
+    // The peek's own web view (history, scroll) became the tab.
+    #expect(first["id"].string == pid)
+    #expect(web != nil && h.rt.webviews.record(pid)?.webView === web)
     #expect(h.selected == first["id"].string)
     #expect(h.panes == [first["id"].string!])
     // The expand button, and the service call.
@@ -262,6 +265,15 @@ struct PeekTests {
     let items = h.todayItems
     #expect(items[0]["split"] == true && items[0]["children"].array?.count == 2)
     #expect(items[1]["id"].string == t[2])
+    // The pane pill's separate and close (content.paneAction).
+    h.peek("split", ["ids": [.string(t[0]), .string(t[2])], "layout": "horizontal"])
+    #expect(h.panes.count == 3)
+    h.rt.plugins.emit("content.paneAction", ["id": .string(t[2]), "action": "separate"])
+    #expect(h.panes == [t[2]] && h.selected == t[2])
+    #expect(h.todayItems[0]["children"].array?.count == 2)
+    h.rt.plugins.emit("content.paneAction", ["id": .string(t[3]), "action": "close"])
+    #expect(h.todayItems.allSatisfy { $0["split"] != true })
+    #expect(h.tabs("archive")[0]["id"].string == t[3])
   }
 
   @Test func pinnedSplitKeepsPeekPolicy() {
@@ -278,5 +290,56 @@ struct PeekTests {
     h.key("ctrl+shift+-")
     #expect(h.ids("pinned").contains(p[1]))
     #expect(h.tabs("archive").array?.isEmpty == true)
+  }
+
+  @Test func littleArcTakesLinksFromOtherApps() {
+    let h = Harness()
+    h.startPeek()
+    let today = h.ids("today")
+    h.rt.app.open([URL(string: "https://www.swift.org/blog/")!])
+    let minis = h.rt.call("window", "listMini").array ?? []
+    #expect(minis.count == 1)
+    #expect(h.ids("today") == today)  // no tab: it went to Little Arc
+    let win = minis[0]["id"].string!, web = minis[0]["webview"].string!
+    #expect(h.rt.webviews.record(web)?.url == "https://www.swift.org/blog/")
+    #expect(h.peek("get")["littleArcs"][0]["window"].string == win)
+    // The same link again brings back that page instead of a second one.
+    h.rt.app.open([URL(string: "https://swift.org/blog")!])
+    #expect(h.rt.call("window", "listMini").array?.count == 1)
+    #expect(h.rt.call("window", "listMini")[0]["webview"].string == web)
+    // "Open in <space>": the same web view becomes a today tab, selected.
+    let win2 = h.rt.call("window", "listMini")[0]["id"].string!
+    h.rt.plugins.emit("window.miniAction", ["id": .string(win2), "webview": .string(web), "action": "open"])
+    #expect(h.rt.call("window", "listMini").array?.isEmpty == true)
+    #expect(h.ids("today").first == web)
+    #expect(h.selected == web)
+    #expect(h.rt.webviews.record(web) != nil)
+    #expect(h.panes == [web])
+  }
+
+  @Test func littleArcCloseArchiveAndSetting() {
+    let h = Harness()
+    h.startPeek()
+    h.rt.app.open([URL(string: "https://webkit.org/")!])
+    var web = h.rt.call("window", "listMini")[0]["webview"].string!
+    // Closing the window (it emits window.miniClosed) drops its page.
+    h.rt.call("window", "closeMini", ["id": h.rt.call("window", "listMini")[0]["id"]])
+    #expect(h.rt.webviews.record(web) == nil)
+    #expect(h.peek("get")["littleArcs"].array?.isEmpty == true)
+    // Auto-archive after 6 h unused.
+    h.rt.app.open([URL(string: "https://webkit.org/blog/")!])
+    web = h.rt.call("window", "listMini")[0]["webview"].string!
+    h.clock += PeekCore.defaultLittleArcArchiveMs - 1000
+    h.fireTimers()
+    #expect(h.rt.call("window", "listMini").array?.count == 1)
+    h.clock += 2000
+    h.fireTimers()
+    #expect(h.rt.call("window", "listMini").array?.isEmpty == true)
+    #expect(h.rt.webviews.record(web) == nil)
+    // With Little Arc off, links from other apps open as today tabs.
+    h.peek("settings", ["littleArc": false])
+    h.rt.app.open([URL(string: "https://www.swift.org/")!])
+    #expect(h.rt.call("window", "listMini").array?.isEmpty == true)
+    #expect(h.tabs("list")["today"][0]["url"] == "https://www.swift.org/")
   }
 }

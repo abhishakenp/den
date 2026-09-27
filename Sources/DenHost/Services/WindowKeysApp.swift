@@ -8,7 +8,7 @@ import CordisValue
 ///   setSidebar {width?, hidden?, animated?}     toggleSidebar {animated?}
 ///   setTitle {title}                            get -> {width, hidden, page, fullScreen, dark}
 ///   openMini {webview, space?, width?, height?} -> {id}   Little Arc window (spec §8) hosting one web view
-///   updateMini {id, space?}                     closeMini {id}                listMini -> [{id, webview}]
+///   updateMini {id, space?}                     closeMini {id}                listMini -> [{id, webview, key}]
 /// Events: window.sidebarResized {width}, window.sidebarVisibility {hidden}, window.sidebarReveal {revealed},
 ///   window.miniAction {id, webview, action: open|copy}, window.miniClosed {id, webview}
 @MainActor
@@ -46,7 +46,9 @@ public final class WindowService: HostService {
     case "updateMini": return mini.update(args)
     case "closeMini": return mini.close(args)
     case "listMini":
-      return .array(mini.windows.values.sorted { $0.id < $1.id }.map { ["id": .string($0.id), "webview": .string($0.webview)] })
+      return .array(mini.windows.values.sorted { $0.id < $1.id }.map {
+        ["id": .string($0.id), "webview": .string($0.webview), "key": .bool($0.panel.isKeyWindow)]
+      })
     case "setTitle":
       wc.window.title = args.str("title", "den")
     case "get":

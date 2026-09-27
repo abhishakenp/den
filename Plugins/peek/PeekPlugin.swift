@@ -4,7 +4,7 @@ nonisolated(unsafe) var peekCore: PeekCore?
 
 struct Plugin: CordisPlugin {
   static let manifest = Manifest(
-    name: "Peek", version: "0.1.0", inject: ["tabs", "spaces", "webviews", "content", "ui", "keys", "window", "storage"], provides: ["peek"])
+    name: "Peek", version: "0.1.0", inject: ["tabs", "spaces", "webviews", "content", "ui", "keys", "window", "storage", "app"], provides: ["peek"])
 
   static func apply(_ ctx: Context) throws(PluginError) {
     let core = PeekCore(env: PluginEnv(ctx))

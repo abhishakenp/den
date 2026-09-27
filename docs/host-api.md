@@ -28,7 +28,7 @@ The code lives in `Sources/DenHost/Services/`. `DenRuntime` registers every serv
 | `openMini` | `webview`, `space?` (name on the "Open in" button), `width?`, `height?` | `{id}`. Opens a Little Arc window hosting that web view |
 | `updateMini` | `id`, `space?` | ok |
 | `closeMini` | `id` | ok. The web view is detached, not closed |
-| `listMini` | – | `[{id, webview}]` |
+| `listMini` | – | `[{id, webview, key}]`. `key` is true for the key window (the peek plugin's ⌘O acts on it) |
 
 Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `window.sidebarReveal {revealed}`, `window.miniAction {id, webview, action: open|copy}`, `window.miniClosed {id, webview}`.
 

@@ -156,7 +156,7 @@ extension ComponentTests {
     #expect(web.window === m.panel)
     m.root.layoutSubtreeIfNeeded()
     #expect(m.content.frame.minY == 47 && m.bar.open.name.stringValue == "Work")
-    #expect(rt.call("window", "listMini") == [["id": .string(id), "webview": wid]])
+    #expect(rt.call("window", "listMini") == [["id": .string(id), "webview": wid, "key": false]])
     m.bar.open.onClick?()
     #expect(got.last?.0 == "window.miniAction" && got.last?.1["action"] == "open" && got.last?.1["webview"] == wid)
     _ = rt.call("window", "updateMini", ["id": .string(id), "space": "Home"])

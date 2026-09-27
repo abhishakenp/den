@@ -400,7 +400,12 @@ final class TabsCore {
       let kind = args.sOpt("kind") ?? "today"
       guard kind == "today" || kind == "pinned" || kind == "favorite" else { return .err("tabs: bad kind " + kind) }
       if kind == "favorite" && favorites.count >= Self.maxFavorites { return .err("tabs: favorites are full") }
-      let id = open(url, space: args.sOpt("spaceId") ?? currentSpace, kind: kind, background: args.b("background"), index: args["index"].int.map { Int($0) })
+      // `webview`: adopt an existing web view (a peek or Little Arc page) so it keeps its state.
+      if let w = args.sOpt("webview") {
+        guard tabs[w] == nil, !env.call("webviews", "get", ["id": .string(w)]).isErr else { return .err("tabs: cannot adopt webview '" + w + "'") }
+      }
+      let id = open(url, space: args.sOpt("spaceId") ?? currentSpace, kind: kind, background: args.b("background"), index: args["index"].int.map { Int($0) },
+                    adopt: args.sOpt("webview"))
       return ["id": .string(id)]
     case "select":
       guard tabs[args.s("id")] != nil else { return .err("tabs: no tab '" + args.s("id") + "'") }
@@ -632,8 +637,8 @@ final class TabsCore {
     }
   }
 
-  func open(_ url: String, space sid: String, kind: String, background: Bool, index: Int?) -> String {
-    let id = newId("tab-")
+  func open(_ url: String, space sid: String, kind: String, background: Bool, index: Int?, adopt: String? = nil) -> String {
+    let id = adopt ?? newId("tab-")
     let t = Tab(id: id, title: URLs.display(url), url: url, pinnedUrl: kind == "today" ? nil : url, lastActive: env.now())
     tabs[id] = t
     let box: Box = kind == "favorite" ? .favorites : kind == "pinned" ? .pinned(sid) : .today(sid)

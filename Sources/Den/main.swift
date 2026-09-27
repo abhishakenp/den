@@ -8,8 +8,9 @@ import os
 //   --demo                         use a fresh temporary storage root, so the plugins' first-run seed shows
 //   --appearance light|dark|auto   set every space's appearance through the spaces plugin
 //   --scenario <name>              state before snapshot: main, hidden, reveal, space2, toast, swipe, swipeCommit,
-//                                  load10, load10discard, split, command, commandEdit, commandActions, dialog, peek
-//                                  (split, command*, dialog and peek need those plugins)
+//                                  load10, load10discard, split, split3, command, commandEdit, commandActions, dialog, peek,
+//                                  littleArcLink
+//                                  (split*, command*, dialog, peek and littleArcLink need those plugins)
 //   --dev-plugins <dir>            also load <dir>/*.dylib and hot-reload them when rebuilt
 //   --snapshot <path.png>          render the window to PNG after load, then quit
 //   --snapshot-delay <seconds>     wait before snapshot (default 4)
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var loader: PluginLoader!
   var pendingURLs: [URL] = []
   var visibleObserver: NSObjectProtocol?
+  var snapMini = false
 
   func arg(_ name: String) -> String? {
     guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
@@ -138,6 +140,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let delay = Double(arg("--snapshot-delay") ?? "4") ?? 4
       DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
         Task { @MainActor in
+          // Scenarios that open a Little Arc snapshot that panel instead of the main window.
+          if self.snapMini, let p = NSApp.windows.first(where: { $0 is NSPanel && $0.isVisible }) { snapWindow = p }
           let ok = await Snapshotter.write(snapWindow, to: path)
           print(ok ? "snapshot: \(path)" : "snapshot: FAILED")
           exit(ok ? 0 : 1)
@@ -168,6 +172,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case "split":
       let today = rt.call("tabs", "list").list("today").map { $0["id"] }
       if today.count > 1 { rt.call("peek", "split", ["ids": .array(Array(today.prefix(2))), "layout": "horizontal"]) }
+    case "split3":
+      let today = rt.call("tabs", "list").list("today").map { $0["id"] }
+      if today.count > 2 { rt.call("peek", "split", ["ids": .array(Array(today.prefix(3))), "layout": "grid"]) }
+    case "littleArcLink":
+      // A link from another app, as macOS delivers it: the peek plugin opens it in Little Arc.
+      snapMini = true
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { rt.app.open([URL(string: "https://www.swift.org/blog/")!]) }
     case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
     case "commandEdit": rt.plugins.emit("commands.key.edit")  // Cmd-L
     case "commandActions":
