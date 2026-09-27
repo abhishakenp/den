@@ -121,7 +121,7 @@ Recent changes: Safari 26.0 added `dom.openOrClosedShadowRoot()`, DNR fixes (pri
 
 **Bottom line.** AMO: low risk — a user-initiated download from a public API of licensed files. CWS: technically at odds with ToS §1.2 ("for use in connection with Google Chrome") and §3.3 (access "only through the interface … provided by Google"); that is the same position Brave, Vivaldi, Edge and Orion are in, and no enforcement was found. The practical risk is contractual or technical (the endpoint changes or gets blocked), not copyright; each extension's own licence governs its code. Injecting a button into Google's page arguably touches the ban on altering Google's branding; den's button doesn't remove store branding, but it does hide the store's (non-working) install button.
 
-**What den does** (implemented in `ExtensionsService`, docs/host-api.md#extensions):
+**What den does** (implemented in `ExtensionsService`, docs/host-api.md#webext):
 1. Downloads only when the user clicks, one item at a time, and only after the permission dialog. No crawling, no mirroring, no `/search`.
 2. Update checks once a day (plus one catch-up a minute after launch when the last check is over a day old), batched into one Omaha request for all CWS items, with an honest `User-Agent: den/<version> (Macintosh; +https://github.com/abhishakenp/den)`.
 3. "Add to den" on store pages has an off-switch (Extensions page → Settings). Orion makes store installs opt-in; den keeps them on by default — revisit before a release.
@@ -135,7 +135,7 @@ Recent changes: Safari 26.0 added `dom.openOrClosedShadowRoot()`, DNR fixes (pri
 
 | Extension | Source | Result |
 |---|---|---|
-| uBlock Origin Lite 2026.926.2202 (MV3, DNR, 6 default rulesets, 18,664 rules with `requestDomains` lists up to 50,775 domains) | Chrome Web Store | A 127.0.0.1 test page loading `pagead2.googlesyndication.com/…/adsbygoogle.js`, `securepubads.g.doubleclick.net/tag/js/gpt.js` and `www.google-analytics.com/analytics.js`: all three **loaded** before install, all three **blocked** after. Blocking started **21 s** after the install (WebKit converts the rulesets to content rule lists in the background; the controller in these runs is non-persistent, so it recompiles every launch). `offscreen` and `userScripts` are unsupported by WebKit |
+| uBlock Origin Lite 2026.926.2202 (MV3, DNR, 6 default rulesets, 18,664 rules with `requestDomains` lists up to 50,775 domains) | Chrome Web Store | A 127.0.0.1 test page loading `pagead2.googlesyndication.com/…/adsbygoogle.js`, `securepubads.g.doubleclick.net/tag/js/gpt.js` and `www.google-analytics.com/analytics.js`: all three **loaded** before install, all three **blocked** after. Blocking started **21–31 s** after the install (four runs) (WebKit converts the rulesets to content rule lists in the background; the controller in these runs is non-persistent, so it recompiles every launch). `offscreen` and `userScripts` are unsupported by WebKit |
 | ColorPick Eyedropper 0.0.3.3 (MV3, popup) | Chrome Web Store | Popup renders in den's popover (sized 158x330 from its page). WebKit reports "Invalid `web_accessible_resources` manifest entry" and "The background content failed to load", so its picker features don't work |
 | Dark Reader 4.9.133 (MV2, persistent background) | Firefox Add-ons (XPI, SHA-256 checked) | Content script runs: the test page's body turns `rgb(24, 26, 27)`. `theme` permission unsupported |
 

@@ -16,7 +16,6 @@ final class ExtensionsCore {
   static let chromeStore = "https://chromewebstore.google.com/category/extensions"
   static let firefoxStore = "https://addons.mozilla.org/firefox/extensions/"
   static let commandList: [(String, String, String, [String])] = [
-    ("extensions.open", "Extensions", "sf:puzzlepiece.extension", ["extensions", "add-ons", "addons", "manage", "plugins"]),
     ("extensions.installFile", "Install Extension from File…", "sf:square.and.arrow.down", ["extension", "crx", "xpi", "unpacked", "load", "install"]),
     ("extensions.get", "Get Extensions", "sf:plus.circle", ["chrome web store", "firefox add-ons", "store", "extensions", "browse"]),
   ]
@@ -31,10 +30,24 @@ final class ExtensionsCore {
 
   init(env: PluginEnv) { self.env = env }
 
+  /// The `extensions` service. The command bar's built-in "Extensions" destination calls `open`.
+  func handle(_ method: String, _ args: Value) -> Value {
+    switch method {
+    case "open":
+      show(args.sOpt("id"))
+      return .okay
+    case "close":
+      if open { close() }
+      return .okay
+    case "state": return ["open": .bool(open), "selected": .str(selected)]
+    default: return .err("extensions: unknown method " + method)
+    }
+  }
+
   func start() {
-    env.on("extensions.changed") { [self] _ in if open { render() } }
-    env.on("extensions.openPage") { [self] v in show(v.sOpt("id")) }
-    env.on("extensions.updates") { [self] v in updatesDone(v) }
+    env.on("webext.changed") { [self] _ in if open { render() } }
+    env.on("webext.openPage") { [self] v in show(v.sOpt("id")) }
+    env.on("webext.updates") { [self] v in updatesDone(v) }
     env.on("commands.run") { [self] v in run(v.s("id")) }
     env.on("ui.action") { [self] v in action(v.s("id"), v.s("action"), v["value"]) }
     registerCommands()
@@ -50,7 +63,7 @@ final class ExtensionsCore {
   func run(_ id: String) {
     switch id {
     case "extensions.open": show(nil)
-    case "extensions.installFile": env.call("extensions", "pickFile")
+    case "extensions.installFile": env.call("webext", "pickFile")
     case "extensions.get": openURL(Self.chromeStore)
     default: break
     }
@@ -99,7 +112,7 @@ final class ExtensionsCore {
     env.call("ui", "set", ["slot": .string(Self.slot), "tree": nil])
   }
 
-  func list() -> [Value] { env.call("extensions", "list").array ?? [] }
+  func list() -> [Value] { env.call("webext", "list").array ?? [] }
 
   func render() {
     let all = list()
@@ -136,14 +149,14 @@ final class ExtensionsCore {
         if let v = e.sOpt("updateAvailable") { row.put("note", .string("Update " + v)) }
         rows.append(row)
       }
-      children.append(["type": "section", "id": "extensions.installed", "title": "Installed", "accessory": .string(String(all.count)), "children": .array(rows)])
+      children.append(["type": "section", "id": "webext.installed", "title": "Installed", "accessory": .string(String(all.count)), "children": .array(rows)])
     }
     children.append(["type": "section", "id": "extensions.more", "title": "Get more", "children": [
       ["type": "feedRow", "id": "extensions.get.chrome", "title": "Chrome Web Store", "subtitle": "chromewebstore.google.com · open an extension and click “Add to den”", "icon": "sf:globe"],
       ["type": "feedRow", "id": "extensions.get.firefox", "title": "Firefox Add-ons", "subtitle": "addons.mozilla.org · add-ons that don’t need Firefox-only APIs", "icon": "sf:globe"],
       ["type": "feedRow", "id": "extensions.get.file", "title": "Install from a file…", "subtitle": "An unpacked folder, or a .crx, .xpi or .zip", "icon": "sf:square.and.arrow.down"],
     ]])
-    let storeButtons = env.call("extensions", "settings")["storeButtons"].bool ?? true
+    let storeButtons = env.call("webext", "settings")["storeButtons"].bool ?? true
     children.append(["type": "section", "id": "extensions.settings", "title": "Settings", "children": [
       ["type": "toggleRow", "id": "extensions.storeButtons", "title": "“Add to den” on store pages", "subtitle": "Shows an install button on Chrome Web Store and Firefox Add-ons pages", "on": .bool(storeButtons)],
     ]])
@@ -230,37 +243,37 @@ final class ExtensionsCore {
     switch (id, act) {
     case (Self.sheetId, "dismiss"): close()
     case ("extensions.back", _): show(nil)
-    case ("extensions.addFile", _), ("extensions.get.file", _): env.call("extensions", "pickFile")
+    case ("extensions.addFile", _), ("extensions.get.file", _): env.call("webext", "pickFile")
     case ("extensions.update", _):
       announceUpdates = true
-      env.call("extensions", "checkUpdates", ["force": true])
+      env.call("webext", "checkUpdates", ["force": true])
       toast("Checking for updates…", "sf:arrow.triangle.2.circlepath")
     case ("extensions.get.chrome", _): openURL(Self.chromeStore)
     case ("extensions.get.firefox", _): openURL(Self.firefoxStore)
     case ("extensions.storeButtons", "toggle"):
-      env.call("extensions", "settings", ["storeButtons": .bool(value.b("on"))])
+      env.call("webext", "settings", ["storeButtons": .bool(value.b("on"))])
       render()
-    case ("extensions.access", "select"): env.call("extensions", "setSiteAccess", ["id": .string(sel), "mode": .string(value.s("option"))])
+    case ("extensions.access", "select"): env.call("webext", "setSiteAccess", ["id": .string(sel), "mode": .string(value.s("option"))])
     case ("extensions.allowCurrent", _):
-      if let h = currentHost() { env.call("extensions", "allowSite", ["id": .string(sel), "site": .string(h), "allowed": true]) }
-    case ("extensions.pin", "toggle"): env.call("extensions", "setPinned", ["id": .string(sel), "pinned": .bool(value.b("on"))])
-    case ("extensions.enabled", "toggle"): env.call("extensions", "setEnabled", ["id": .string(sel), "enabled": .bool(value.b("on"))])
+      if let h = currentHost() { env.call("webext", "allowSite", ["id": .string(sel), "site": .string(h), "allowed": true]) }
+    case ("extensions.pin", "toggle"): env.call("webext", "setPinned", ["id": .string(sel), "pinned": .bool(value.b("on"))])
+    case ("extensions.enabled", "toggle"): env.call("webext", "setEnabled", ["id": .string(sel), "enabled": .bool(value.b("on"))])
     case ("extensions.options", _):
-      env.call("extensions", "openOptions", ["id": .string(sel)])
+      env.call("webext", "openOptions", ["id": .string(sel)])
       close()
     case ("extensions.store", _):
       if let e = list().first(where: { $0.s("id") == sel }), let u = e.sOpt("storeURL") { openURL(u) }
     case ("extensions.applyUpdate", _):
       if let e = list().first(where: { $0.s("id") == sel }) {
-        env.call("extensions", "installFromStore", ["source": .string(e.s("source")), "id": .string(e.s("storeId"))])
+        env.call("webext", "installFromStore", ["source": .string(e.s("source")), "id": .string(e.s("storeId"))])
       }
     case ("extensions.remove", _): confirmRemove(sel)
     default:
       if Text.hasPrefix(id, "extensions.row:") {
         let ext = Text.dropPrefix(id, "extensions.row:")
-        if act == "toggle" { env.call("extensions", "setEnabled", ["id": .string(ext), "enabled": .bool(value.b("on"))]) } else if act == "open" { show(ext) }
+        if act == "toggle" { env.call("webext", "setEnabled", ["id": .string(ext), "enabled": .bool(value.b("on"))]) } else if act == "open" { show(ext) }
       } else if Text.hasPrefix(id, "extensions.site:"), act == "toggle" {
-        env.call("extensions", "allowSite", ["id": .string(sel), "site": .string(Text.dropPrefix(id, "extensions.site:")), "allowed": .bool(value.b("on"))])
+        env.call("webext", "allowSite", ["id": .string(sel), "site": .string(Text.dropPrefix(id, "extensions.site:")), "allowed": .bool(value.b("on"))])
       }
     }
   }
@@ -280,7 +293,7 @@ final class ExtensionsCore {
     guard let id = removing else { return }
     removing = nil
     guard button == "remove" else { return }
-    env.call("extensions", "uninstall", ["id": .string(id)])
+    env.call("webext", "uninstall", ["id": .string(id)])
     if selected == id { selected = nil }
     if open { render() }
   }

@@ -78,7 +78,7 @@ intensity = 0.6
 
 Each folder in `~/.den/extensions` that holds a `manifest.json` is an unpacked Chrome or Firefox extension. den loads it in place, the first time a web view is created, with the permissions it asks for (you put it there, so there's no prompt). It shows on the Extensions page as "~/.den/extensions"; turning it off there keeps it off, and to uninstall it you delete the folder (Remove never deletes your files). Edit the files and turn it off and on to reload it. The folder is read at launch; it isn't watched.
 
-Extensions installed from the Chrome Web Store, Firefox Add-ons or a file live in `~/Library/Application Support/den/Extensions`, not here ([host-api.md](host-api.md#extensions)).
+Extensions installed from the Chrome Web Store, Firefox Add-ons or a file live in `~/Library/Application Support/den/Extensions`, not here ([host-api.md](host-api.md#webext)).
 
 ## config.toml
 

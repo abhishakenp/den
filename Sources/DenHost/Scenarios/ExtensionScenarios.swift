@@ -165,13 +165,13 @@ public enum ExtensionScenarios {
     okAll = okAll && cp
     _ = await navigate(rt, mock.base + "/plain")
     if cp {
-      rt.call("extensions", "action", ["id": .string(colorPick)])
+      rt.call("webext", "action", ["id": .string(colorPick)])
       let shown = await wait(15) { rt.extensions.ui.popupFor == colorPick }
       try? await Task.sleep(for: .seconds(2))
       let title = await eval(rt.extensions.ui.popupWebForTesting, "document.title") as? String ?? "?"
       log("popup shown=\(shown) size=\(rt.extensions.ui.popupSizeForTesting) title=\(title)")
       await snap(rt, "extensions-popup.png")
-      rt.call("extensions", "closePopup")
+      rt.call("webext", "closePopup")
       okAll = okAll && shown
     }
 
@@ -194,20 +194,20 @@ public enum ExtensionScenarios {
       pill.forceAccessories = true
       pill.layoutSubtreeIfNeeded()
     }
-    rt.call("extensions", "menu", ["open": true])
+    rt.call("webext", "menu", ["open": true])
     try? await Task.sleep(for: .milliseconds(600))
     log("menu open=\(rt.extensions.ui.menuOpen) items=\(rt.extensions.ui.items.map(\.title))")
     await snap(rt, "extensions-menu.png")
-    rt.call("extensions", "menu", ["open": false])
+    rt.call("webext", "menu", ["open": false])
     find(rt.ui.sidebarView)?.forceAccessories = false
-    rt.plugins.emit("extensions.openPage")
+    rt.call("extensions", "open")
     _ = await wait(5) { rt.ui.sheets["overlay.extensions"] != nil }
     await snap(rt, "extensions-page.png")
     rt.plugins.emit("ui.action", ["id": .string("extensions.row:" + ublock), "action": "open"])
     await snap(rt, "extensions-details.png")
     rt.plugins.emit("ui.action", ["id": "extensions", "action": "dismiss"])
 
-    let list = rt.call("extensions", "list").array ?? []
+    let list = rt.call("webext", "list").array ?? []
     for e in list {
       log("list \(e.str("name")) v\(e.str("version")) source=\(e.str("source")) mv=\(e["manifestVersion"].int ?? 0) background=\(e.str("background")) loaded=\(e.flag("loaded")) popup=\(e.flag("hasPopup")) unsupported=\(e.list("unsupported").compactMap(\.string)) errors=\(e.list("errors").compactMap(\.string))")
     }

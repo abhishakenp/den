@@ -68,7 +68,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 
 Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 
-- [x] Chrome and Firefox extensions via Apple's `WKWebExtension` API (Manifest v2 and v3, `chrome.*` and `browser.*`): popups, pinning in the URL pill, the Extensions page, per-site access ([host API](docs/host-api.md#extensions))
+- [x] Chrome and Firefox extensions via Apple's `WKWebExtension` API (Manifest v2 and v3, `chrome.*` and `browser.*`): popups, pinning in the URL pill, the Extensions page, per-site access ([host API](docs/host-api.md#webext))
 - [x] One-click install from Chrome Web Store / addons.mozilla.org ("Add to den"), with daily update checks. Terms researched (CWS ToS says "for use in connection with Google Chrome"); get counsel before a commercial release
 - [ ] Fill in APIs Apple leaves out where feasible: `bookmarks`, `sidePanel`, `downloads`, `history`, `identity`
 - [ ] Native messaging bridge (password managers)

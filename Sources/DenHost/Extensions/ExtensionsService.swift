@@ -12,13 +12,13 @@ import os
 /// service workers are started and stopped by WebKit on demand (den never calls `loadBackgroundContent`).
 @MainActor
 public final class ExtensionsService: NSObject, HostService {
-  public let name = "extensions"
+  public let name = "webext"
   let host: ServiceHost
   let webviews: WebViewsService
   let window: DenWindowController
   var content: ContentService?
   /// Calls any service, plugins included (`tabs`), and subscribes to plugin events. Set by `DenRuntime`.
-  public var call: (String, String, Value) -> Value = { _, _, _ in .error("extensions: not wired") }
+  public var call: (String, String, Value) -> Value = { _, _, _ in .error("webext: not wired") }
   public var subscribe: (String, @escaping (Value) -> Void) -> Void = { _, _ in }
   public let root: URL
   /// `~/.den/extensions`: unpacked folders loaded as development extensions. nil = none.
@@ -75,11 +75,11 @@ public final class ExtensionsService: NSObject, HostService {
     switch method {
     case "list": return .array(registry.items.map(describe))
     case "get":
-      guard let e = registry.item(args.str("id")) else { return .error("extensions: no extension '\(args.str("id"))'") }
+      guard let e = registry.item(args.str("id")) else { return .error("webext: no extension '\(args.str("id"))'") }
       return describe(e)
     case "install":
       let path = (args.str("path") as NSString).expandingTildeInPath
-      guard !path.isEmpty, FileManager.default.fileExists(atPath: path) else { return .error("extensions: no file at '\(path)'") }
+      guard !path.isEmpty, FileManager.default.fileExists(atPath: path) else { return .error("webext: no file at '\(path)'") }
       let req = request(args)
       Task { await self.installFile(URL(fileURLWithPath: path), request: req) }
       return ["request": .string(req), "pending": true]
@@ -88,7 +88,7 @@ public final class ExtensionsService: NSObject, HostService {
       if let u = URL(string: args.str("url")), args["id"].isNull { ref = ExtensionPackage.storeRef(for: u) } else {
         ref = StoreRef(source: ExtensionSource(rawValue: args.str("source", "chrome")) ?? .chrome, id: args.str("id"))
       }
-      guard let ref, !ref.id.isEmpty else { return .error("extensions: not a Chrome Web Store or Firefox Add-ons item") }
+      guard let ref, !ref.id.isEmpty else { return .error("webext: not a Chrome Web Store or Firefox Add-ons item") }
       let req = request(args)
       Task { await self.installFromStore(ref, request: req) }
       return ["request": .string(req), "pending": true]
@@ -107,7 +107,7 @@ public final class ExtensionsService: NSObject, HostService {
       return .ok
     case "closePopup": ui.close(); return .ok
     case "openOptions":
-      guard let ctx = contexts[args.str("id")], let u = ctx.optionsPageURL else { return .error("extensions: no options page") }
+      guard let ctx = contexts[args.str("id")], let u = ctx.optionsPageURL else { return .error("webext: no options page") }
       return openTab(u, active: true, pinned: false).1.map { .error($0.localizedDescription) } ?? .ok
     case "settings":
       if let b = args["storeButtons"].bool { setStoreButtons(b) }
@@ -115,7 +115,7 @@ public final class ExtensionsService: NSObject, HostService {
     case "state":
       return ["controller": .bool(controller != nil), "ready": .bool(ready), "loaded": .array(contexts.keys.sorted().map { .string($0) }),
               "popup": ui.popupFor.map { .string($0) } ?? .null, "menu": .bool(ui.menuOpen), "prompts": .int(Int64(prompts.count))]
-    default: return .error("extensions: unknown method '\(method)'")
+    default: return .error("webext: unknown method '\(method)'")
     }
   }
 
@@ -167,7 +167,7 @@ public final class ExtensionsService: NSObject, HostService {
   }
 
   func changed() {
-    host.emit("extensions.changed", ["extensions": .array(registry.items.map(describe))])
+    host.emit("webext.changed", ["extensions": .array(registry.items.map(describe))])
     ui.refresh()
   }
 
@@ -397,7 +397,7 @@ public final class ExtensionsService: NSObject, HostService {
   var staging: URL { root.appendingPathComponent(".staging", isDirectory: true) }
 
   func installFile(_ file: URL, request: String) async {
-    host.emit("extensions.installing", ["request": .string(request), "name": .string(file.lastPathComponent)])
+    host.emit("webext.installing", ["request": .string(request), "name": .string(file.lastPathComponent)])
     do {
       let dir = staging.appendingPathComponent(UUID().uuidString, isDirectory: true)
       var isDir: ObjCBool = false
@@ -416,7 +416,7 @@ public final class ExtensionsService: NSObject, HostService {
 
   // thin-host: feature-specific, migrate to plugin
   func installFromStore(_ ref: StoreRef, request: String) async {
-    host.emit("extensions.installing", ["request": .string(request), "source": .string(ref.source.rawValue), "storeId": .string(ref.id)])
+    host.emit("webext.installing", ["request": .string(request), "source": .string(ref.source.rawValue), "storeId": .string(ref.id)])
     ui.storeState(pending: ref.id)
     do {
       let (data, storeId) = try await download(ref)
@@ -433,7 +433,7 @@ public final class ExtensionsService: NSObject, HostService {
   func failed(_ request: String, _ error: Error) {
     let msg = (error as? ExtensionPackageError)?.description ?? error.localizedDescription
     Self.log.error("install failed: \(msg, privacy: .public)")
-    host.emit("extensions.failed", ["request": .string(request), "error": .string(msg)])
+    host.emit("webext.failed", ["request": .string(request), "error": .string(msg)])
     if msg != "cancelled" { toast("Couldn’t add extension: \(msg)", icon: "sf:exclamationmark.triangle.fill") }
   }
 
@@ -496,7 +496,7 @@ public final class ExtensionsService: NSObject, HostService {
     }
     if e.enabled { await load(e) }
     Self.log.info("installed \(id, privacy: .public) \(e.version, privacy: .public)")
-    host.emit("extensions.installed", ["request": .string(request), "id": .string(id), "name": .string(name), "update": .bool(existing != nil)])
+    host.emit("webext.installed", ["request": .string(request), "id": .string(id), "name": .string(name), "update": .bool(existing != nil)])
     if !approved { toast(existing == nil ? "Added \(name)" : "Updated \(name)") }
     changed()
     ui.storeState(pending: nil)
@@ -585,7 +585,7 @@ public final class ExtensionsService: NSObject, HostService {
   // thin-host: feature-specific, migrate to plugin
   // MARK: Updates
 
-  static let updateScheduleId = "extensions.updates"
+  static let updateScheduleId = "webext.updateCheck"
   /// Once a day, as the store terms research suggests (docs/research/extensions-on-webkit.md).
   static let updateIntervalMs: Int64 = 86_400_000
   var updating = false
@@ -605,7 +605,7 @@ public final class ExtensionsService: NSObject, HostService {
     guard !updating else { return }
     let now = Date().timeIntervalSince1970 * 1000
     let due = registry.items.filter { ($0.sourceKind == .chrome || $0.sourceKind == .firefox) && (force || now - ($0.checkedAt ?? 0) > Double(Self.updateIntervalMs) - 60_000) }
-    guard !due.isEmpty else { return host.emit("extensions.updates", ["checked": 0, "updated": [], "available": []]) }
+    guard !due.isEmpty else { return host.emit("webext.updates", ["checked": 0, "updated": [], "available": []]) }
     updating = true
     Task {
       var updated: [Value] = [], available: [Value] = []
@@ -641,7 +641,7 @@ public final class ExtensionsService: NSObject, HostService {
       for e in due { registry.update(e.id) { $0.checkedAt = now } }
       registry.save()
       updating = false
-      host.emit("extensions.updates", ["checked": .int(Int64(due.count)), "updated": .array(updated), "available": .array(available)])
+      host.emit("webext.updates", ["checked": .int(Int64(due.count)), "updated": .array(updated), "available": .array(available)])
       changed()
     }
   }
@@ -649,7 +649,7 @@ public final class ExtensionsService: NSObject, HostService {
   // MARK: Manage
 
   func uninstall(_ id: String) -> Value {
-    guard let e = registry.item(id) else { return .error("extensions: no extension '\(id)'") }
+    guard let e = registry.item(id) else { return .error("webext: no extension '\(id)'") }
     if ui.popupFor == id { ui.close() }
     if let ctx = contexts.removeValue(forKey: id), let c = controller {
       try? c.unload(ctx)
@@ -661,13 +661,13 @@ public final class ExtensionsService: NSObject, HostService {
     try? FileManager.default.removeItem(atPath: registry.iconPath(id))
     registry.remove(id)
     registry.save()
-    host.emit("extensions.uninstalled", ["id": .string(id), "name": .string(e.name)])
+    host.emit("webext.uninstalled", ["id": .string(id), "name": .string(e.name)])
     changed()
     return .ok
   }
 
   func setEnabled(_ id: String, _ on: Bool) -> Value {
-    guard let e = registry.item(id) else { return .error("extensions: no extension '\(id)'") }
+    guard let e = registry.item(id) else { return .error("webext: no extension '\(id)'") }
     registry.update(id) { $0.enabled = on }
     registry.save()
     if on {
@@ -682,7 +682,7 @@ public final class ExtensionsService: NSObject, HostService {
   }
 
   func setPinned(_ id: String, _ on: Bool) -> Value {
-    guard registry.item(id) != nil else { return .error("extensions: no extension '\(id)'") }
+    guard registry.item(id) != nil else { return .error("webext: no extension '\(id)'") }
     registry.update(id) { $0.pinned = on }
     registry.save()
     changed()
@@ -690,8 +690,8 @@ public final class ExtensionsService: NSObject, HostService {
   }
 
   func setSiteAccess(_ id: String, mode: String, sites: [String]?) -> Value {
-    guard ["all", "click", "sites"].contains(mode) else { return .error("extensions: mode must be all, click or sites") }
-    guard registry.item(id) != nil else { return .error("extensions: no extension '\(id)'") }
+    guard ["all", "click", "sites"].contains(mode) else { return .error("webext: mode must be all, click or sites") }
+    guard registry.item(id) != nil else { return .error("webext: no extension '\(id)'") }
     registry.update(id) {
       $0.siteAccess = mode
       if let sites { $0.sites = sites.map { $0.lowercased() } }
@@ -703,9 +703,9 @@ public final class ExtensionsService: NSObject, HostService {
   }
 
   func allowSite(_ id: String, site: String, allowed: Bool) -> Value {
-    guard let e = registry.item(id) else { return .error("extensions: no extension '\(id)'") }
+    guard let e = registry.item(id) else { return .error("webext: no extension '\(id)'") }
     let host = Self.siteHost(site)
-    guard !host.isEmpty else { return .error("extensions: no site") }
+    guard !host.isEmpty else { return .error("webext: no site") }
     var sites = e.sites.filter { $0 != host }
     if allowed { sites.append(host) }
     return setSiteAccess(id, mode: e.siteAccess == "all" && allowed ? "all" : (sites.isEmpty && e.siteAccess != "sites" ? e.siteAccess : "sites"), sites: sites)
@@ -714,7 +714,7 @@ public final class ExtensionsService: NSObject, HostService {
   // MARK: Actions and popups
 
   func performAction(_ id: String, anchor: NSRect?) -> Value {
-    guard let ctx = contexts[id] else { return .error("extensions: '\(id)' is not loaded") }
+    guard let ctx = contexts[id] else { return .error("webext: '\(id)' is not loaded") }
     let t = selectedTabId().map { tab($0) }
     ui.pendingAnchor = anchor
     ui.pendingPopup = id

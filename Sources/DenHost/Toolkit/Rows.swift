@@ -156,14 +156,23 @@ final class URLPillNode: HoverNode {
     addSubview(label)
     addSubview(copy)
     copy.isHidden = true
-    extensionsObserver = NotificationCenter.default.addObserver(forName: ExtensionsUI.changedNotification, object: nil, queue: .main) { [weak self] _ in
-      MainActor.assumeIsolated { self?.syncExtensions() }
+    extensionsObserver = NotificationCenter.default.addObserver(forName: ExtensionsUI.changedNotification, object: nil, queue: .main) { [weak self] note in
+      let sender = note.object.map { ObjectIdentifier($0 as AnyObject) }
+      MainActor.assumeIsolated {
+        // Only this window's extensions (tests and future multi-window runs have several).
+        guard let self, let ext = ExtensionsUI.of(self.window), sender == ObjectIdentifier(ext) else { return }
+        self.syncExtensions()
+      }
     }
     syncExtensions()
   }
   required init?(coder: NSCoder) { fatalError() }
   isolated deinit { if let o = extensionsObserver { NotificationCenter.default.removeObserver(o) } }
   var showsAccessories: Bool { hovering || forceAccessories }
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if window != nil { syncExtensions() }
+  }
   override func hoverChanged() {
     copy.isHidden = !showsAccessories || node.str("text").isEmpty
     extensionButtons.forEach { $0.isHidden = !showsAccessories }
@@ -173,7 +182,7 @@ final class URLPillNode: HoverNode {
   // thin-host: feature-specific, migrate to plugin
   /// Pinned extensions, then the extensions menu button. Nothing while none is installed.
   func syncExtensions() {
-    guard let ext = ExtensionsUI.current, ext.hasExtensions else {
+    guard let ext = ExtensionsUI.of(window), ext.hasExtensions else {
       extensionButtons.forEach { $0.removeFromSuperview() }
       extensionButtons = []
       return

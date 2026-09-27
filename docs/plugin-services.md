@@ -282,13 +282,13 @@ Injects `vault`, `ui`, `storage`; calls `commands`. Owns the `overlay.passwords`
 
 ## `extensions` plugin (`extensions`)
 
-Injects `extensions`, `ui`; calls `commands` and `tabs` when they exist. Provides no service. The host `extensions` service does the WebKit work ([host-api.md](host-api.md#extensions)); this plugin is the Extensions page and the commands.
+Injects `webext`, `ui`; calls `commands` and `tabs` when they exist. The host `webext` service does the WebKit work ([host-api.md](host-api.md#webext)); this plugin is the Extensions page and the commands, and provides `extensions`: `open {id?}` (the page, or one extension's details), `close`, `state`. The command bar's built-in "Extensions" destination calls `extensions.open`.
 
-- **Commands** (owner `extensions`): "Extensions" (`extensions.open`), "Install Extension from File…" (`extensions.installFile`, the host's open panel), "Get Extensions" (`extensions.get`, the Chrome Web Store in a new tab). Registered with the same 500 ms / 30 s retry as `quit` and `theme`.
-- **Page** (`overlay.extensions`, sheet id `extensions`, style `page`): opened by the command and by `extensions.openPage` (the URL pill menu's "Manage Extensions").
+- **Commands** (owner `extensions`): "Install Extension from File…" (`extensions.installFile`, the host's open panel), "Get Extensions" (`extensions.get`, the Chrome Web Store in a new tab). Registered with the same 500 ms / 30 s retry as `quit` and `theme`.
+- **Page** (`overlay.extensions`, sheet id `extensions`, style `page`): opened by `extensions.open` and by `webext.openPage` (the URL pill menu's "Manage Extensions").
   - List: an `extensionRow` per extension (`extensions.row:<id>`: the switch turns it on or off, the row opens its details), "Get more" rows for the Chrome Web Store, Firefox Add-ons and a file (`extensions.get.chrome|firefox|file`), a Settings toggle for the store buttons (`extensions.storeButtons`), and a note on what WebKit can't run. Header buttons: Check for Updates (`extensions.update`, toasts the result) and Install from File (`extensions.addFile`).
   - Details: description; **Access** (`extensions.access`: On all sites / When you click it / On specific sites, one toggle per allowed site `extensions.site:<host>`, and "Allow on <current site>"); **Permissions** (plain-language lines, and what WebKit doesn't support); **Details** (pin to the URL bar, on/off, manifest version, background kind, source, id, load errors); buttons Options, Update to … (when an update needs approval), View in Store, Remove (confirms with dialog `extensions.remove.dialog`). Back: `extensions.back`.
-- Re-renders on `extensions.changed` while open; Esc, the close button or `extensions` `dismiss` closes it.
+- Re-renders on `webext.changed` while open; Esc, the close button or `extensions` `dismiss` closes it.
 
 ## Other plugins
 

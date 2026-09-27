@@ -19,8 +19,9 @@ final class ExtensionsUI {
     var loaded: Bool
   }
 
-  /// The UI of the latest runtime, for the URL pill (rendered by the shared toolkit).
-  static weak var current: ExtensionsUI?
+  /// Each window's extensions UI, for its URL pill (rendered by the shared toolkit). Weak both ways.
+  private static let byWindow = NSMapTable<NSWindow, ExtensionsUI>.weakToWeakObjects()
+  static func of(_ window: NSWindow?) -> ExtensionsUI? { window.flatMap { byWindow.object(forKey: $0) } }
 
   weak var svc: ExtensionsService?
   let wc: DenWindowController
@@ -47,7 +48,7 @@ final class ExtensionsUI {
 
   init(window: DenWindowController) {
     wc = window
-    Self.current = self
+    Self.byWindow.setObject(self, forKey: window.window)
   }
 
   var palette: Palette { Palette(theme: wc.currentTheme, dark: wc.isDark) }
@@ -58,7 +59,7 @@ final class ExtensionsUI {
   func refresh() {
     guard let svc else { return }
     items = svc.menuItems()
-    NotificationCenter.default.post(name: Self.changedNotification, object: nil)
+    NotificationCenter.default.post(name: Self.changedNotification, object: self)
     if menuOpen { menuView?.update(items, palette: palette); layout() }
   }
   static let changedNotification = Notification.Name("den.extensionsChanged")
@@ -112,7 +113,7 @@ final class ExtensionsUI {
       guard let self, let svc = self.svc else { return }
       self.close()
       if which == "manage" {
-        svc.host.emit("extensions.openPage", .null)
+        svc.host.emit("webext.openPage", .null)
       } else {
         _ = svc.openTab(URL(string: "https://chromewebstore.google.com/category/extensions"), active: true, pinned: false)
       }

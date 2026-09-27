@@ -390,9 +390,9 @@ Events (never with a password): `vault.focus {webview, origin, field, signup, ac
 - the suggestion popup (a generic anchored-popup `ui` node)
 - the `overlay.passwords` slot name
 
-## extensions
+## webext
 
-Chrome and Firefox extensions on Apple's `WKWebExtension` engine (the one Safari uses): Manifest V2 and V3, `chrome.*` and `browser.*`. Background and limits: [research notes](research/extensions-on-webkit.md). The `extensions` plugin draws the Extensions page on top of this ([plugin-services.md](plugin-services.md#extensions-plugin-extensions)).
+The `webext` service: Chrome and Firefox extensions on Apple's `WKWebExtension` engine (the one Safari uses): Manifest V2 and V3, `chrome.*` and `browser.*`. Background and limits: [research notes](research/extensions-on-webkit.md). It is the platform bridge; the `extensions` plugin draws the Extensions page on top of this ([plugin-services.md](plugin-services.md#extensions-plugin-extensions)).
 
 | Method | Args | Returns |
 |---|---|---|
@@ -406,7 +406,7 @@ Chrome and Firefox extensions on Apple's `WKWebExtension` engine (the one Safari
 | `setPinned` | `id`, `pinned` | ok. Pinned ones show in the URL pill on hover |
 | `setSiteAccess` | `id`, `mode: all\|click\|sites`, `sites?` | ok. `all` grants every host it asked for, `click` only the tab you click it on (`activeTab`), `sites` the listed hosts |
 | `allowSite` | `id`, `site`, `allowed` | ok. Adds or removes one host (switches `click` to `sites`) |
-| `checkUpdates` | `force?` (true) | `{pending}`, then `extensions.updates` |
+| `checkUpdates` | `force?` (true) | `{pending}`, then `webext.updates` |
 | `action` | `id` | ok. Runs its toolbar action on the selected tab (a popup, or `action.onClicked`) |
 | `menu` | `open?` (true) | ok. The extensions menu under the URL pill |
 | `closePopup` | – | ok |
@@ -416,9 +416,9 @@ Chrome and Firefox extensions on Apple's `WKWebExtension` engine (the one Safari
 
 `ext`: `{id, name, version, description, source: chrome|firefox|local|home, storeId?, storeURL?, enabled, pinned, icon (PNG path), siteAccess, sites, permissions: [line], unsupported: [permission], loaded, hasAction, hasPopup, hasOptions, badge, manifestVersion, background: none|on demand|persistent, errors, updateAvailable?}`. `permissions` are plain-language lines worded like Chrome's install warnings ("Read and change all your data on all websites", "Block content on any page"). `unsupported` lists manifest permissions WebKit doesn't know (e.g. `userScripts`, `offscreen`).
 
-Events: `extensions.changed {extensions}`, `extensions.installing {request, …}`, `extensions.installed {request, id, name, update}`, `extensions.failed {request, error}` (`error: "cancelled"` when the user said no), `extensions.uninstalled {id, name}`, `extensions.updates {checked, updated: [id], available: [id]}`, `extensions.openPage` (the menu's "Manage Extensions").
+Events: `webext.changed {extensions}` (the list), `webext.installing {request, …}`, `webext.installed {request, id, name, update}`, `webext.failed {request, error}` (`error: "cancelled"` when the user said no), `webext.uninstalled {id, name}`, `webext.updates {checked, updated: [id], available: [id]}`, `webext.openPage` (the menu's "Manage Extensions").
 
-**Cost.** Nothing exists while nothing is installed: the registry file is read once, at the first web view (one failed file read), and no `WKWebExtensionController` is made. The first install creates it, rebuilds the live web views with it (they keep their back/forward state), and every later configuration gets it. At launch with extensions installed, a web view's first load waits (at most 2 s) until they are loaded, so blockers and document-start scripts apply to the first page. Service workers and non-persistent background pages are started and stopped by WebKit; den never calls `loadBackgroundContent`. Measured with uBlock Origin Lite: den's process grows from 29–30 MB to 105–107 MB, no extra WebContent process at rest, and ad blocking starts about 21 s after loading while WebKit compiles its rulesets ([research notes](research/extensions-on-webkit.md#dens-implementation-measured-2026-09-27-macos-265-builddenapp)).
+**Cost.** Nothing exists while nothing is installed: the registry file is read once, at the first web view (one failed file read), and no `WKWebExtensionController` is made. The first install creates it, rebuilds the live web views with it (they keep their back/forward state), and every later configuration gets it. At launch with extensions installed, a web view's first load waits (at most 2 s) until they are loaded, so blockers and document-start scripts apply to the first page. Service workers and non-persistent background pages are started and stopped by WebKit; den never calls `loadBackgroundContent`. Measured with uBlock Origin Lite: den's process grows from 29–30 MB to 105–107 MB, no extra WebContent process at rest, and ad blocking starts 21–31 s after loading (four runs) while WebKit compiles its rulesets ([research notes](research/extensions-on-webkit.md#dens-implementation-measured-2026-09-27-macos-265-builddenapp)).
 
 **Storage.** `~/Library/Application Support/den/Extensions/` (next to `storage/`): `extensions.json` (the registry: id, version, source, store id, enabled, pinned, site access, granted permissions and patterns), `<id>/` (the unpacked extension) and `icons/<id>.png`. Grants are re-applied on every load. The controller is persistent (`WKWebExtensionController.Configuration(identifier:)`), and each context's base URL is `webkit-extension://<id>/`, so the extension's own storage survives relaunches. Any other `--storage` root uses `<root>/extensions` and a non-persistent controller. Unpacked folders in `~/.den/extensions/` load in place as development extensions ([den-home.md](den-home.md)).
 
@@ -428,11 +428,11 @@ Events: `extensions.changed {extensions}`, `extensions.installing {request, …}
 
 **Store pages.** On `chromewebstore.google.com` and `addons.mozilla.org` item pages, a small script in an isolated content world (`den-store`, invisible to the store's scripts) hides the store's own install button and puts an Arc-style "＋ Add to den" pill in its place ("✓ Added to den" once installed). A click posts `{source, id}`; den re-derives both from the page URL before downloading. Other pages cost one host-name comparison per load. The button can be turned off (`settings {storeButtons: false}`).
 
-**Updates.** Only with a store extension installed: a daily `schedule.interval` (`extensions.updates`), plus one check a minute after launch if the last is older than a day. Chrome items are checked in one Omaha request (`response=updatecheck`, `x=id=<id>&v=<version>` each); AMO items through the API. An update that asks for nothing new installs silently; one that asks for more waits for approval (`updateAvailable`, "Update to …" on its details).
+**Updates.** Only with a store extension installed: a daily `schedule.interval` (`webext.updateCheck`), plus one check a minute after launch if the last is older than a day. Chrome items are checked in one Omaha request (`response=updatecheck`, `x=id=<id>&v=<version>` each); AMO items through the API. An update that asks for nothing new installs silently; one that asks for more waits for approval (`updateAvailable`, "Update to …" on its details).
 
 **UI** (host-drawn; Arc's extension UI was never measured, so sizes are `Tokens.extension*` estimates):
 - **URL pill.** While anything is installed, hovering the pill shows the pinned extensions' toolbar icons (with badges) and a puzzle button, left of the copy button. Clicking an icon runs its action; the puzzle opens the menu.
-- **Menu.** 300 wide, PopoverBackground, below the pill: every enabled extension (click runs it, the pin toggles it in the pill), then "Manage Extensions" (`extensions.openPage`) and "Get Extensions" (Chrome Web Store in a tab).
+- **Menu.** 300 wide, PopoverBackground, below the pill: every enabled extension (click runs it, the pin toggles it in the pill), then "Manage Extensions" (`webext.openPage`) and "Get Extensions" (Chrome Web Store in a tab).
 - **Popups** render the extension's popup web view in the same popover, sized like Chrome: its fit-content width and scroll height, between 25x25 and 800x600, re-measured while open. A click outside or Esc closes it.
 
 What WebKit leaves out (no blocking `webRequest`, `identity`, `downloads`, `history`, `bookmarks`, side panels…) stays out: `unsupported` and the dialog say so. Keyboard `commands` and extension context-menu items aren't wired into den's menus yet.

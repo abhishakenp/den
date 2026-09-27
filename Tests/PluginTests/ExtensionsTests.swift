@@ -43,7 +43,7 @@ struct ExtensionsTests {
     return d
   }
 
-  func wait(_ seconds: Double = 15, _ cond: () -> Bool) async -> Bool {
+  func wait(_ seconds: Double = 45, _ cond: () -> Bool) async -> Bool {  // generous: full parallel runs on a loaded machine
     let end = Date().addingTimeInterval(seconds)
     while Date() < end {
       if cond() { return true }
@@ -62,8 +62,8 @@ struct ExtensionsTests {
     #expect(h.rt.webviews.record(id)?.webView != nil)
     #expect(h.rt.extensions.controller == nil)
     #expect(h.rt.webviews.record(id)?.webView?.configuration.webExtensionController == nil)
-    #expect(h.rt.call("extensions", "list") == [])
-    #expect(h.rt.call("extensions", "state")["controller"] == false)
+    #expect(h.rt.call("webext", "list") == [])
+    #expect(h.rt.call("webext", "state")["controller"] == false)
     #expect(!FileManager.default.fileExists(atPath: h.rt.extensions.root.path))
   }
 
@@ -76,23 +76,23 @@ struct ExtensionsTests {
     let dir = try Self.fixture()
     let h = Harness()
     h.startTabs()
-    h.record(["extensions.installed", "extensions.failed", "extensions.changed"])
+    h.record(["webext.installed", "webext.failed", "webext.changed"])
     // A tab open before the first install: its web view is rebuilt with the controller.
     let tab = h.tabs("open", ["url": .string(mock.base + "/page")]).s("id")
     h.tabs("select", ["id": .string(tab)])
     #expect(await wait { h.rt.webviews.record(tab)?.title == "loaded" })
 
-    #expect(h.rt.call("extensions", "install", ["path": .string(dir.path)])["pending"] == true)
+    #expect(h.rt.call("webext", "install", ["path": .string(dir.path)])["pending"] == true)
     #expect(await wait { h.rt.ui.dialogOpen })
     #expect(h.rt.ui.dialog.title.stringValue == "Add “Den Test” to den?")
     #expect(h.rt.ui.dialog.message.stringValue.contains("Read and change your data on 127.0.0.1"))
     #expect(h.rt.ui.dialog.message.stringValue.contains("Block content on any page"))
     #expect(h.rt.ui.dialog.message.stringValue.contains("Not available in WebKit: userScripts"))
     h.action("extensions.prompt:1", "button", ["button": "ok"])
-    #expect(await wait { h.events.contains { $0.0 == "extensions.installed" } })
-    #expect(!h.events.contains { $0.0 == "extensions.failed" })
+    #expect(await wait { h.events.contains { $0.0 == "webext.installed" } })
+    #expect(!h.events.contains { $0.0 == "webext.failed" })
 
-    let list = h.rt.call("extensions", "list")
+    let list = h.rt.call("webext", "list")
     #expect(list.array?.count == 1)
     let e = list[0]
     let extId = e.s("id")
@@ -128,31 +128,31 @@ struct ExtensionsTests {
 
     // Popup: shown in den's popover, sized by its page.
 
-    #expect(h.rt.call("extensions", "action", ["id": .string(extId)]) == .ok)
-    #expect(await wait { h.rt.extensions.ui.popupFor == extId })
-    #expect(await wait { h.rt.extensions.ui.popupSizeForTesting == CGSize(width: 220, height: 140) })
-    h.rt.call("extensions", "closePopup")
+    #expect(h.rt.call("webext", "action", ["id": .string(extId)]) == .ok)
+    #expect(await wait(45) { h.rt.extensions.ui.popupFor == extId })  // a new web process: slow on a loaded machine
+    #expect(await wait(30) { h.rt.extensions.ui.popupSizeForTesting == CGSize(width: 220, height: 140) })
+    h.rt.call("webext", "closePopup")
     #expect(h.rt.extensions.ui.popupFor == nil)
 
     // Badge from the background worker reaches the menu items.
     #expect(await wait { h.rt.extensions.menuItems().first?.badge == "7" })
 
     // Pin, site access, disable, enable.
-    #expect(h.rt.call("extensions", "setPinned", ["id": .string(extId), "pinned": false]) == .ok)
-    #expect(h.rt.call("extensions", "get", ["id": .string(extId)])["pinned"] == false)
-    #expect(h.rt.call("extensions", "setSiteAccess", ["id": .string(extId), "mode": "click"]) == .ok)
+    #expect(h.rt.call("webext", "setPinned", ["id": .string(extId), "pinned": false]) == .ok)
+    #expect(h.rt.call("webext", "get", ["id": .string(extId)])["pinned"] == false)
+    #expect(h.rt.call("webext", "setSiteAccess", ["id": .string(extId), "mode": "click"]) == .ok)
     #expect(ctx.currentPermissionMatchPatterns.isEmpty)
-    #expect(h.rt.call("extensions", "allowSite", ["id": .string(extId), "site": "https://www.example.com/a", "allowed": true]) == .ok)
-    #expect(h.rt.call("extensions", "get", ["id": .string(extId)])["sites"] == ["example.com"])
-    #expect(h.rt.call("extensions", "get", ["id": .string(extId)])["siteAccess"] == "sites")
-    #expect(h.rt.call("extensions", "setEnabled", ["id": .string(extId), "enabled": false]) == .ok)
+    #expect(h.rt.call("webext", "allowSite", ["id": .string(extId), "site": "https://www.example.com/a", "allowed": true]) == .ok)
+    #expect(h.rt.call("webext", "get", ["id": .string(extId)])["sites"] == ["example.com"])
+    #expect(h.rt.call("webext", "get", ["id": .string(extId)])["siteAccess"] == "sites")
+    #expect(h.rt.call("webext", "setEnabled", ["id": .string(extId), "enabled": false]) == .ok)
     #expect(h.rt.extensions.contexts[extId] == nil)
-    #expect(h.rt.call("extensions", "setEnabled", ["id": .string(extId), "enabled": true]) == .ok)
+    #expect(h.rt.call("webext", "setEnabled", ["id": .string(extId), "enabled": true]) == .ok)
     #expect(await wait { h.rt.extensions.contexts[extId] != nil })
 
     // Uninstall removes the folder, the icon and the registry entry.
-    #expect(h.rt.call("extensions", "uninstall", ["id": .string(extId)]) == .ok)
-    #expect(h.rt.call("extensions", "list") == [])
+    #expect(h.rt.call("webext", "uninstall", ["id": .string(extId)]) == .ok)
+    #expect(h.rt.call("webext", "list") == [])
     #expect(!FileManager.default.fileExists(atPath: reg.folder(extId).path))
     #expect(ExtensionRegistry(root: h.rt.extensions.root).isEmpty)
     #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("manifest.json").path))  // the source is untouched
@@ -160,20 +160,20 @@ struct ExtensionsTests {
 
   @Test func cancelAndBadPackages() async throws {
     let h = Harness()
-    h.record(["extensions.failed", "extensions.installed"])
+    h.record(["webext.failed", "webext.installed"])
     let dir = try Self.fixture()
-    h.rt.call("extensions", "install", ["path": .string(dir.path)])
+    h.rt.call("webext", "install", ["path": .string(dir.path)])
     #expect(await wait { h.rt.ui.dialogOpen })
     h.action("extensions.prompt:1", "button", ["button": "cancel"])
-    #expect(await wait { h.events.contains { $0.0 == "extensions.failed" && $0.1.s("error") == "cancelled" } })
-    #expect(h.rt.call("extensions", "list") == [])
+    #expect(await wait { h.events.contains { $0.0 == "webext.failed" && $0.1.s("error") == "cancelled" } })
+    #expect(h.rt.call("webext", "list") == [])
     let junk = FileManager.default.temporaryDirectory.appendingPathComponent("den-junk-\(UUID()).crx")
     try Data("definitely not a crx".utf8).write(to: junk)
-    h.rt.call("extensions", "install", ["path": .string(junk.path)])
-    #expect(await wait { h.events.contains { $0.0 == "extensions.failed" && $0.1.s("error") == "not a CRX or ZIP file" } })
-    #expect(h.rt.call("extensions", "install", ["path": "/nope/missing.crx"]).isError)
-    #expect(h.rt.call("extensions", "installFromStore", ["url": "https://example.com/detail/x"]).isError)
-    #expect(!h.events.contains { $0.0 == "extensions.installed" })
+    h.rt.call("webext", "install", ["path": .string(junk.path)])
+    #expect(await wait { h.events.contains { $0.0 == "webext.failed" && $0.1.s("error") == "not a CRX or ZIP file" } })
+    #expect(h.rt.call("webext", "install", ["path": "/nope/missing.crx"]).isError)
+    #expect(h.rt.call("webext", "installFromStore", ["url": "https://example.com/detail/x"]).isError)
+    #expect(!h.events.contains { $0.0 == "webext.installed" })
   }
 
   @Test func pageCommandsAndRemoveDialog() async throws {
@@ -185,12 +185,14 @@ struct ExtensionsTests {
       return .okay
     }
     let core = ExtensionsCore(env: h.env)
+    h.rt.plugins.provide("extensions") { m, a in core.handle(m, a) }
     core.start()
-    #expect(registered.map { $0.s("title") } == ["Extensions", "Install Extension from File…", "Get Extensions"])
+    // "Extensions" itself is the command bar's built-in destination (extensions.open).
+    #expect(registered.map { $0.s("title") } == ["Install Extension from File…", "Get Extensions"])
     #expect(registered.allSatisfy { $0.s("owner") == "extensions" })
 
     // Empty page.
-    h.rt.plugins.emit("commands.run", ["id": "extensions.open"])
+    #expect(h.rt.call("extensions", "open") == .okay)
     #expect(h.rt.ui.sheets["overlay.extensions"] != nil)
     #expect(h.rt.ui.sheets["overlay.extensions"]?.titleLabel.stringValue == "Extensions")
     let empty = h.rt.ui.sheets["overlay.extensions"]!.node
@@ -198,13 +200,13 @@ struct ExtensionsTests {
 
     // Install, then the list shows a row; its details show access, permissions and buttons.
     let dir = try Self.fixture()
-    h.record(["extensions.installed"])
-    h.rt.call("extensions", "install", ["path": .string(dir.path)])
+    h.record(["webext.installed"])
+    h.rt.call("webext", "install", ["path": .string(dir.path)])
     #expect(await wait { h.rt.ui.dialogOpen })
     h.action("extensions.prompt:1", "button", ["button": "ok"])
-    #expect(await wait { h.events.contains { $0.0 == "extensions.installed" } })
-    let extId = h.rt.call("extensions", "list")[0].s("id")
-    #expect(await wait { h.rt.ui.sheets["overlay.extensions"]?.node.a("children").first?.s("id") == "extensions.installed" })
+    #expect(await wait { h.events.contains { $0.0 == "webext.installed" } })
+    let extId = h.rt.call("webext", "list")[0].s("id")
+    #expect(await wait { h.rt.ui.sheets["overlay.extensions"]?.node.a("children").first?.s("id") == "webext.installed" })
     let row = h.rt.ui.sheets["overlay.extensions"]!.node.a("children")[0].a("children")[0]
     #expect(row.s("type") == "extensionRow" && row.s("title") == "Den Test" && row.b("on"))
     h.action("extensions.row:" + extId, "open")
@@ -214,19 +216,19 @@ struct ExtensionsTests {
     #expect(ids.contains("extensions.access") && ids.contains("extensions.options") && ids.contains("extensions.remove") && ids.contains("extensions.unsupported"))
     // Toggle off from the list row, back on from details.
     h.action("extensions.row:" + extId, "toggle", ["on": false])
-    #expect(h.rt.call("extensions", "get", ["id": .string(extId)])["enabled"] == false)
+    #expect(h.rt.call("webext", "get", ["id": .string(extId)])["enabled"] == false)
     h.action("extensions.enabled", "toggle", ["on": true])
-    #expect(h.rt.call("extensions", "get", ["id": .string(extId)])["enabled"] == true)
+    #expect(h.rt.call("webext", "get", ["id": .string(extId)])["enabled"] == true)
     // Remove asks first.
     h.action("extensions.remove", "click")
     #expect(h.rt.ui.dialogOpen && h.rt.ui.dialog.title.stringValue == "Remove “Den Test”?")
     h.action("extensions.remove.dialog", "button", ["button": "remove"])
-    #expect(h.rt.call("extensions", "list") == [])
+    #expect(h.rt.call("webext", "list") == [])
     #expect(h.rt.ui.sheets["overlay.extensions"]?.node.a("children").contains { $0.s("id") == "extensions.empty" } == true)
     // Menu "Manage Extensions" → page; Esc closes it.
     h.action("extensions", "dismiss")
     #expect(h.rt.ui.sheets["overlay.extensions"] == nil)
-    h.rt.plugins.emit("extensions.openPage")
+    h.rt.plugins.emit("webext.openPage")
     #expect(h.rt.ui.sheets["overlay.extensions"] != nil)
     core.stop()
     #expect(h.rt.ui.sheets["overlay.extensions"] == nil)

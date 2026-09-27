@@ -442,7 +442,7 @@ Updates ([updates.md](../updates.md)) follow the rule from the start:
 
 ## Appendix: extensions as landed
 
-Host code the rule applies to is marked `// thin-host: feature-specific, migrate to plugin`.
+The host service landed as `webext` (the name in §3) and the page as the `extensions` plugin, which provides `extensions.open`. Host code the rule still applies to is marked `// thin-host: feature-specific, migrate to plugin`.
 
 Stays in the host (platform-bound, generic): the `WKWebExtensionController` bridge — install/load/unload primitives, CRX/ZIP unpacking and manifest checks (`ExtensionPackage`), the registry, `WKWebExtensionTab` / `WKWebExtensionWindow` adapters (`ExtensionBridge`), permission grants, the web view hooks, and hosting an extension's popup web view in a popover.
 
