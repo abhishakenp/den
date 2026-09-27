@@ -35,7 +35,8 @@ public enum ConnectionScenarios {
       case "briefingEmpty":
         rt.call("briefing", "open")
       case "connectToast":
-        rt.call("connections", "connect", ["id": "slack"])
+        // Explicit URL: the plugin may have registered its sign-in page before the mock existed.
+        rt.call("connections", "connect", ["id": "slack", "url": .string(m.base + "/slack/signin")])
       case "connectionsSettings":
         connectBoth(rt, m) {
           rt.call("connections", "open")
