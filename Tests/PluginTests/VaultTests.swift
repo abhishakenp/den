@@ -81,8 +81,16 @@ struct VaultTests {
     for (id, v) in fields { await js(w, "document.getElementById('\(id)').value = '\(v)'") }
   }
 
+
+  /// Closes every web view the test made, so their WebContent processes don't outlive it and
+  /// slow down other suites' real-event tests.
+  func closeAll(_ h: Harness) {
+    for id in h.rt.call("webviews", "list").array ?? [] { h.rt.call("webviews", "close", ["id": id]) }
+  }
+
   @Test func submitOffersToSaveAndSaves() async throws {
     let e = start()
+    defer { closeAll(e.h) }
     let w = try await page(e.h, "t1", Self.login, "https://login.test/signin")
     await type(w, ["u": "ada@example.com", "p": "hunter2-correct"])
     await js(w, "document.getElementById('go').click()")
@@ -102,6 +110,7 @@ struct VaultTests {
 
   @Test func neverForThisSite() async throws {
     let e = start()
+    defer { closeAll(e.h) }
     let w = try await page(e.h, "t2", Self.login, "https://never.test/")
     await type(w, ["u": "bob", "p": "pw-one"])
     await js(w, "document.getElementById('f').requestSubmit()")
@@ -116,6 +125,7 @@ struct VaultTests {
 
   @Test func plainHTTPIsIgnored() async throws {
     let e = start()
+    defer { closeAll(e.h) }
     let w = try await page(e.h, "t3", Self.login, "http://insecure.test/")
     await type(w, ["u": "bob", "p": "pw"])
     await js(w, "document.getElementById('p').focus(); document.getElementById('f').requestSubmit()")
@@ -129,6 +139,7 @@ struct VaultTests {
 
   @Test func focusSuggestsThenTouchIDFills() async throws {
     let e = start()
+    defer { closeAll(e.h) }
     _ = e.store.save(origin: "https://login.test", username: "ada", password: Data("s3cret-pw".utf8))
     _ = e.store.save(origin: "https://other.test", username: "eve", password: Data("nope".utf8))
     let w = try await page(e.h, "t4", Self.login, "https://login.test/")
@@ -161,6 +172,7 @@ struct VaultTests {
 
   @Test func signupGetsAStrongPasswordThenSaves() async throws {
     let e = start()
+    defer { closeAll(e.h) }
     let w = try await page(e.h, "t5", Self.signup, "https://new.test/join")
     await js(w, "document.getElementById('p1').focus()")
     #expect(try await wait { e.events.contains { $0.0 == "vault.focus" && $0.1.b("signup") } })

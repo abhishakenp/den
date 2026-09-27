@@ -106,7 +106,8 @@ struct PeekTests {
       if type == .leftMouseDown { target.mouseDown(with: e) } else { target.mouseUp(with: e) }
       try await Task.sleep(for: .milliseconds(50))
     }
-    for _ in 0..<100 where h.peekShown == nil { try await Task.sleep(for: .milliseconds(50)) }
+    // Up to 10 s: WebKit routes the click through the WebContent process, slow on a loaded machine.
+    for _ in 0..<200 where h.peekShown == nil { try await Task.sleep(for: .milliseconds(50)) }
     let pid = try #require(h.peekShown)
     #expect(h.rt.webviews.record(pid)?.url == "https://www.a.test/next")
     #expect(web.url?.absoluteString == "https://www.a.test/")

@@ -47,6 +47,13 @@ struct DarkModeTests {
   static let dark = "<html><body style='background:#111;color:#eee'><p>dark page</p></body></html>"
   static let filter = "getComputedStyle(document.documentElement).filter"
 
+
+  /// Closes every web view the test made, so their WebContent processes don't outlive it and
+  /// slow down other suites' real-event tests.
+  func closeAll(_ h: Harness) {
+    for id in h.rt.call("webviews", "list").array ?? [] { h.rt.call("webviews", "close", ["id": id]) }
+  }
+
   @Test func rulesFollowSettingsAndSites() {
     let h = Harness()
     let core = start(h)
@@ -93,6 +100,7 @@ struct DarkModeTests {
 
   @Test func darkDenInvertsLightPagesOnly() async throws {
     let h = Harness()
+    defer { closeAll(h) }
     h.rt.window.window.appearance = NSAppearance(named: .darkAqua)
     _ = start(h)
     var tones: [Value] = []
@@ -121,6 +129,7 @@ struct DarkModeTests {
 
   @Test func alwaysLightInvertsADarkOnlySite() async throws {
     let h = Harness()
+    defer { closeAll(h) }
     h.rt.window.window.appearance = NSAppearance(named: .darkAqua)
     _ = start(h)
     h.rt.call("darkmode", "site", ["host": "dark.test", "mode": "light"])
@@ -139,6 +148,7 @@ struct DarkModeTests {
   /// sends exactly Safari's.
   @Test func userAgentIsSafaris() async throws {
     let h = Harness()
+    defer { closeAll(h) }
     let w = try await page(h, "ua", "<html></html>", "https://ua.test/")
     let ua = await js(w, "navigator.userAgent")
     let safari = (NSDictionary(contentsOfFile: "/Applications/Safari.app/Contents/Info.plist")?["CFBundleShortVersionString"] as? String) ?? "?"
