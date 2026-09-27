@@ -16,6 +16,12 @@ public enum Tokens {
   public static let cardShadowOffsetY: CGFloat = -1  // estimate (AppKit y-up)
   public static let cardBorderOpacity: CGFloat = 0.06  // estimate: hairline around the card
   public static let splitGap: CGFloat = 8  // estimate
+  public static let splitFocusRingWidth: CGFloat = 2  // estimate (Arc's split chrome is UNVERIFIED, spec §12)
+  public static let splitFocusRingOutset: CGFloat = 2  // estimate: ring drawn in the gap, outside the card
+  public static let splitControlsHeight: CGFloat = 30  // estimate
+  public static let splitControlsTop: CGFloat = 8  // estimate
+  public static let dropZoneFillAlpha: CGFloat = 0.18  // estimate: theme-tinted drop indicator over the content
+  public static let dropZoneBorderWidth: CGFloat = 2  // estimate
 
   // MARK: Sidebar
   public static let sidebarDefaultWidth: CGFloat = 228  // spec §1

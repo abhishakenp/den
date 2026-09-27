@@ -279,6 +279,11 @@ final class DragController {
   weak var root: NSView?  // sidebar view
   var contentFrame: () -> NSRect = { .zero }  // in root's window coordinates
   var accent: () -> NSColor = { .controlAccentColor }
+  /// Where the content drop indicator is drawn (the window's overlay layer).
+  var overlay: () -> NSView? = { nil }
+  /// Theme-tinted zone shown while a tab is dragged over the web content (left / center / right).
+  let dropZone = NSView()
+  private(set) var dropSide: String?
   let emit: (String, String, Value) -> Void
   private var source: HoverNode?
   private var ghost: NSImageView?
@@ -290,6 +295,43 @@ final class DragController {
     self.emit = emit
     indicator.wantsLayer = true
     indicator.layer?.cornerRadius = 1
+    dropZone.wantsLayer = true
+    dropZone.layer?.cornerRadius = Tokens.cardCornerRadius
+    dropZone.layer?.cornerCurve = .continuous
+    dropZone.layer?.borderWidth = Tokens.dropZoneBorderWidth
+  }
+
+  static func side(at pWin: NSPoint, in cf: NSRect) -> String {
+    let rx = (pWin.x - cf.minX) / cf.width
+    return rx < 0.33 ? "left" : (rx > 0.66 ? "right" : "center")
+  }
+
+  /// Shows (or hides, with nil) the content drop zone for a window point.
+  func updateDropZone(_ pWin: NSPoint?) {
+    guard let pWin, let ov = overlay() else {
+      dropZone.removeFromSuperview()
+      dropSide = nil
+      return
+    }
+    let cf = contentFrame()
+    let side = Self.side(at: pWin, in: cf)
+    let area = ov.convert(cf, from: nil)
+    let g = Tokens.splitGap / 2
+    let f: NSRect
+    switch side {
+    case "left": f = NSRect(x: area.minX, y: area.minY, width: area.width / 2 - g, height: area.height)
+    case "right": f = NSRect(x: area.midX + g, y: area.minY, width: area.width / 2 - g, height: area.height)
+    default: f = area
+    }
+    let c = accent()
+    dropZone.layer?.backgroundColor = c.withAlphaComponent(Tokens.dropZoneFillAlpha).cgColor
+    dropZone.layer?.borderColor = c.withAlphaComponent(0.9).cgColor
+    if dropZone.superview !== ov { ov.addSubview(dropZone) }
+    if dropSide != side {
+      if dropSide != nil { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
+      dropSide = side
+    }
+    dropZone.frame = f.integral
   }
 
   func begin(_ v: HoverNode, event: NSEvent) {
@@ -332,6 +374,7 @@ final class DragController {
     let isTile = source is FavoriteTileNode
     if p.x > root.bounds.maxX + 6 {
       indicator.isHidden = true
+      updateDropZone(contentFrame().contains(event.locationInWindow) ? event.locationInWindow : nil)
     } else if let hit = candidates(in: root).first(where: { root.convert($0.bounds, from: $0).contains(p) && ($0 is FavoriteTileNode) == isTile }) {
       let f = root.convert(hit.bounds, from: hit)
       let pos: String
@@ -346,6 +389,7 @@ final class DragController {
       newTarget = (hit.nodeId, pos)
       indicator.isHidden = false
     }
+    if p.x <= root.bounds.maxX + 6 { updateDropZone(nil) }
     if newTarget?.0 != target?.0 || newTarget?.1 != target?.1 {
       target = newTarget
       if newTarget != nil { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
@@ -358,8 +402,7 @@ final class DragController {
     let cf = contentFrame()
     let p = root.convert(pWin, from: nil)
     if p.x > root.bounds.maxX + 6, cf.contains(pWin) {
-      let rx = (pWin.x - cf.minX) / cf.width
-      let side = rx < 0.33 ? "left" : (rx > 0.66 ? "right" : "center")
+      let side = Self.side(at: pWin, in: cf)
       emit(source.nodeId, "dropOnContent", ["source": .string(source.nodeId), "side": .string(side)])
     } else if let (t, pos) = target {
       emit(source.nodeId, "reorder", ["source": .string(source.nodeId), "target": .string(t), "position": .string(pos)])
@@ -368,6 +411,7 @@ final class DragController {
     source.alphaValue = 1
     ghost?.removeFromSuperview()
     indicator.removeFromSuperview()
+    updateDropZone(nil)
     ghost = nil
     self.source = nil
     target = nil

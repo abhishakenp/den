@@ -77,7 +77,13 @@ The link policy is declarative because `WKNavigationDelegate` decisions are sync
 | `peek` | `webview` to show, or `{}` to hide | ok |
 | `get` | – | `{panes, orientation, focus, peek}` |
 
-Events: `content.focus {id}` and `content.peekAction {action: close|expand|split, webview}`.
+Events: `content.focus {id}`, `content.peekAction {action: close|expand|split, webview}` and `content.paneAction {id, action: close|separate}`.
+
+**Split view chrome** (Arc's split geometry is UNVERIFIED, spec §12, so these are estimates):
+- Panes sit 8 pt apart, each in its own 6 pt-radius card.
+- The focused pane gets a 2 pt ring in the space accent, drawn in the gap just outside the card.
+- Hovering a pane shows a small dark pill at its top center with **close** and **separate** buttons. They emit `content.paneAction`; the owning plugin closes the pane or moves the page back into its own tab.
+- Dragging a tab (`tabRow`/`favoriteTile`) over the content shows a theme-tinted drop zone: the left or right half, or the whole card for the middle third. Dropping emits `dropOnContent {source, side}`, and a haptic tick marks each side change.
 
 Web views that aren't shown are detached from the window, which lets WebKit suspend them.
 

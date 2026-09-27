@@ -48,6 +48,8 @@ public final class UIService: HostService {
     drag.root = sidebarView
     drag.contentFrame = { [weak wc] in wc.map { $0.contentArea.convert($0.contentArea.bounds, to: nil) } ?? .zero }
     drag.accent = { [weak self] in self?.renderer.palette.accentStrong ?? .controlAccentColor }
+    drag.overlay = { [weak wc] in wc?.overlays }
+    content?.accent = renderer.palette.accentStrong
 
     wc.sidebar.body.addSubview(sidebarView)
     sidebarView.frame = wc.sidebar.body.bounds
@@ -124,6 +126,7 @@ public final class UIService: HostService {
 
   public func refreshPalette() {
     renderer.palette = Palette(theme: wc.currentTheme, dark: wc.isDark)
+    content?.accent = renderer.palette.accentStrong
     sidebarView.applyPaletteRecursively(renderer.palette)
     wc.overlays.applyPaletteRecursively(renderer.palette)
   }

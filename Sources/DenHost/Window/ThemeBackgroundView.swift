@@ -86,8 +86,15 @@ public final class ThemeBackgroundView: NSView {
 public final class CardView: NSView {
   public let clip = NSView()
   public var cornerRadius: CGFloat = Tokens.cardCornerRadius { didSet { applyStyle() } }
-  /// Focused pane in a split: a slightly stronger outline.
+  /// Focused pane in a split: a slightly stronger outline plus a theme-tinted ring.
   public var focused = false { didSet { if focused != oldValue { updateColors() } } }
+  /// Ring color for the focused split pane (the space accent); nil = no ring.
+  public var focusColor: NSColor? { didSet { updateColors() } }
+  /// Split panes show close/separate controls on hover.
+  public var showsPaneControls = false { didSet { if !showsPaneControls { controls.isHidden = true } } }
+  public var onPaneAction: ((String) -> Void)?
+  let ring = NSView()
+  let controls = PaneControlsView()
 
   public override var isFlipped: Bool { true }
 
@@ -96,7 +103,26 @@ public final class CardView: NSView {
     wantsLayer = true
     clip.wantsLayer = true
     addSubview(clip)
+    ring.wantsLayer = true
+    ring.isHidden = true
+    addSubview(ring)
+    controls.isHidden = true
+    controls.onAction = { [weak self] a in self?.onPaneAction?(a) }
+    addSubview(controls)
     applyStyle()
+  }
+
+  public override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    trackingAreas.forEach(removeTrackingArea)
+    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+  }
+  public override func mouseEntered(with event: NSEvent) { setControlsVisible(true) }
+  public override func mouseExited(with event: NSEvent) { setControlsVisible(false) }
+
+  /// Shows the hover controls (also used by snapshots and tests).
+  public func setControlsVisible(_ on: Bool) {
+    controls.isHidden = !(on && showsPaneControls)
   }
   required init?(coder: NSCoder) { fatalError() }
 
@@ -121,6 +147,11 @@ public final class CardView: NSView {
     clip.layer?.backgroundColor = (dark ? NSColor(white: 0.13, alpha: 1) : NSColor.white).cgColor
     clip.layer?.borderColor = NSColor(white: dark ? 1 : 0, alpha: Tokens.cardBorderOpacity * (dark ? 1.5 : 1) * (focused ? 4 : 1)).cgColor
     clip.layer?.borderWidth = focused ? 1.5 : 0.5
+    ring.isHidden = !(focused && focusColor != nil)
+    ring.layer?.borderColor = focusColor?.cgColor
+    ring.layer?.borderWidth = Tokens.splitFocusRingWidth
+    ring.layer?.cornerRadius = cornerRadius + Tokens.splitFocusRingOutset
+    ring.layer?.cornerCurve = .continuous
   }
 
   public override func layout() {
@@ -128,5 +159,37 @@ public final class CardView: NSView {
     clip.frame = bounds
     layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
     for v in clip.subviews { v.frame = clip.bounds }
+    let o = Tokens.splitFocusRingOutset
+    ring.frame = bounds.insetBy(dx: -o, dy: -o)
+    let cs = controls.size
+    controls.frame = NSRect(x: ((bounds.width - cs.width) / 2).rounded(), y: Tokens.splitControlsTop, width: cs.width, height: cs.height)
+  }
+}
+
+/// Hover controls at the top of a split pane: close the pane, or separate it into its own tab.
+/// Every value is an estimate (Arc's split chrome is UNVERIFIED, spec §12).
+public final class PaneControlsView: NSView {
+  var onAction: ((String) -> Void)?
+  var buttons: [IconButton] = []
+  public override var isFlipped: Bool { true }
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.72).cgColor  // estimate (same as the peek bar)
+    layer?.cornerRadius = Tokens.splitControlsHeight / 2
+    layer?.cornerCurve = .continuous
+    for (sym, action, tip) in [("xmark", "close", "Close Split Pane"), ("rectangle.portrait.and.arrow.right", "separate", "Separate Page from Split View")] {
+      let b = IconButton(symbol: sym, size: 24) { [weak self] in self?.onAction?(action) }
+      b.fixedTint = .white
+      b.toolTip = tip
+      buttons.append(b)
+      addSubview(b)
+    }
+  }
+  required init?(coder: NSCoder) { fatalError() }
+  var size: CGSize { CGSize(width: CGFloat(buttons.count) * 26 + 6, height: Tokens.splitControlsHeight) }
+  public override func layout() {
+    super.layout()
+    for (i, b) in buttons.enumerated() { b.frame = NSRect(x: 4 + CGFloat(i) * 26, y: (bounds.height - 24) / 2, width: 24, height: 24) }
   }
 }

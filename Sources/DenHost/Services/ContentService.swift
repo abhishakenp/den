@@ -12,6 +12,7 @@ import WebKit
 ///   peek {webview, title?}  / peek {}   -> show / hide the peek overlay card
 ///   get                                 -> {panes, orientation, focus, peek}
 /// Events: content.focus {id}   content.peekAction {action: close|expand|split, webview}
+///         content.paneAction {id, action: close|separate}   (split pane hover controls)
 @MainActor
 public final class ContentService: HostService {
   public let name = "content"
@@ -28,6 +29,8 @@ public final class ContentService: HostService {
   public let peek = PeekOverlayView()
   public private(set) var peekId: String?
   private var clickMonitor: Any?
+  /// Space accent for the focused-pane ring (set by the ui service on palette changes).
+  public var accent: NSColor? { didSet { cards.values.forEach { $0.focusColor = accent } } }
 
   public init(host: ServiceHost, webviews: WebViewsService, window: DenWindowController) {
     self.host = host
@@ -78,7 +81,12 @@ public final class ContentService: HostService {
     }
     for id in ids {
       let card = cards[id] ?? CardView()
+      if cards[id] == nil {
+        card.focusColor = accent
+        card.onPaneAction = { [weak self] a in self?.host.emit("content.paneAction", ["id": .string(id), "action": .string(a)]) }
+      }
       cards[id] = card
+      card.showsPaneControls = ids.count > 1
       if card.superview !== wc.contentArea { wc.contentArea.addSubview(card) }
       if let w = webviews.materialize(id), w.superview !== card.clip {
         card.clip.subviews.forEach { $0.removeFromSuperview() }
@@ -89,6 +97,9 @@ public final class ContentService: HostService {
     layout()
     setFocus(f ?? (ids.contains(focused ?? "") ? focused : ids.first), makeFirstResponder: true)
   }
+
+  /// The card showing a pane (snapshots, tests).
+  public func card(_ id: String) -> CardView? { cards[id] }
 
   func layout() {
     let b = wc.contentArea.bounds

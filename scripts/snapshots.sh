@@ -27,6 +27,8 @@ host() { # name scenario appearance
 host theme-picker themePicker light
 host theme-picker-dark themePicker dark
 host theme-picker-empty-dark themePickerEmpty dark
+host split-view-chrome splitView light
+host drop-indicator-dark dropIndicator dark
 host library library light
 host library-dark library dark
 host library-clear-dark libraryClear dark

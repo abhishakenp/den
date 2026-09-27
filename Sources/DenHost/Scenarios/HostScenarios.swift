@@ -8,7 +8,7 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear", "splitView", "dropIndicator"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -23,6 +23,30 @@ public enum HostScenarios {
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
       rt.call("ui", "set", ["slot": "dialog", "tree": dialogs[name]!])
+    case "splitView":
+      seedSidebar(rt, appearance: appearance)
+      let a = page(rt, id: "t1", title: "Example Domain", body: "Left pane.")
+      let b = page(rt, id: "t2", title: "Release notes", body: "Right pane, focused: the ring follows the space color.", tint: "#fff6f0")
+      rt.call("content", "show", ["panes": [.string(a), .string(b)], "orientation": "horizontal", "focus": .string(b)])
+      rt.window.contentArea.layoutSubtreeIfNeeded()
+      rt.content.card(b)?.setControlsVisible(true)
+    case "dropIndicator":
+      seedSidebar(rt, appearance: appearance)
+      showContent(rt)
+      // Drag "Release notes" from the sidebar over the right third of the content.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        let w = rt.window.window
+        rt.window.root.layoutSubtreeIfNeeded()
+        guard let row = find("t2", in: rt.ui.sidebarView) as? HoverNode else { return }
+        let start = row.convert(NSPoint(x: row.bounds.midX, y: row.bounds.midY), to: nil)
+        let cf = rt.window.contentArea.convert(rt.window.contentArea.bounds, to: nil)
+        let end = NSPoint(x: cf.minX + cf.width * 0.85, y: cf.midY)
+        func ev(_ t: NSEvent.EventType, _ p: NSPoint) -> NSEvent {
+          NSEvent.mouseEvent(with: t, location: p, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        }
+        rt.ui.drag.begin(row, event: ev(.leftMouseDown, start))
+        rt.ui.drag.move(ev(.leftMouseDragged, end))
+      }
     case "library", "libraryClear":
       seedSidebar(rt, appearance: appearance)
       showContent(rt)

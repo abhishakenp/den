@@ -207,3 +207,47 @@ extension ComponentTests {
     #expect(!(rt.call("ui", "get")["overlays"].array ?? []).contains("overlay.library"))
   }
 }
+
+extension ComponentTests {
+  @Test func splitChromeRingControlsAndDropZone() throws {
+    let rt = Self.runtime()
+    rt.window.window.orderFront(nil)
+    var got: [Value] = []
+    rt.host.on("content.paneAction") { got.append($0) }
+    let a = rt.call("webviews", "create")["id"].string!, b = rt.call("webviews", "create")["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(a)]])
+    let ca = try #require(rt.content.card(a))
+    ca.setControlsVisible(true)
+    #expect(ca.controls.isHidden)  // single pane: no split controls
+    _ = rt.call("content", "show", ["panes": [.string(a), .string(b)], "focus": .string(b)])
+    let cb = try #require(rt.content.card(b))
+    #expect(cb.focused && !cb.ring.isHidden && ca.ring.isHidden)
+    #expect(abs(ca.frame.maxX + Tokens.splitGap - cb.frame.minX) < 0.5)
+    cb.setControlsVisible(true)
+    #expect(!cb.controls.isHidden)
+    cb.controls.buttons[1].action()
+    #expect(got.last?["id"] == .string(b) && got.last?["action"] == "separate")
+    cb.controls.buttons[0].action()
+    #expect(got.last?["action"] == "close")
+    // Dragging a tab over the content shows a theme-tinted drop zone on that side.
+    _ = rt.call("content", "show", ["panes": [.string(a)]])
+    _ = rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "children": [["type": "tabRow", "id": "x", "title": "X"]]]])
+    rt.window.root.layoutSubtreeIfNeeded()
+    let row = try #require(rt.ui.sidebarView.slot("sidebar.today", page: 0)?.root as? StackNode).kids[0] as! HoverNode
+    let cf = rt.window.contentArea.convert(rt.window.contentArea.bounds, to: nil)
+    let w = rt.window.window
+    func ev(_ t: NSEvent.EventType, _ p: NSPoint) -> NSEvent {
+      NSEvent.mouseEvent(with: t, location: p, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+    }
+    rt.ui.drag.begin(row, event: ev(.leftMouseDown, row.convert(NSPoint(x: 20, y: 20), to: nil)))
+    rt.ui.drag.move(ev(.leftMouseDragged, NSPoint(x: cf.minX + cf.width * 0.9, y: cf.midY)))
+    #expect(rt.ui.drag.dropSide == "right" && rt.ui.drag.dropZone.superview === rt.window.overlays)
+    let dz = rt.ui.drag.dropZone.frame
+    let area = rt.window.overlays.convert(cf, from: nil)
+    #expect(abs(dz.maxX - area.maxX) <= 1 && dz.minX > area.midX)
+    rt.ui.drag.move(ev(.leftMouseDragged, NSPoint(x: cf.midX, y: cf.midY)))
+    #expect(rt.ui.drag.dropSide == "center")
+    rt.ui.drag.end(ev(.leftMouseUp, NSPoint(x: cf.midX, y: cf.midY)))
+    #expect(rt.ui.drag.dropZone.superview == nil)
+  }
+}
