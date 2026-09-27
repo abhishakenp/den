@@ -69,9 +69,9 @@ struct ComponentTests {
     #expect(picker.colors.count == 2)
     // Escape and outside clicks dismiss; clearing closes.
     picker.cancelOperation(nil)
-    #expect(got.last?["action"] == "dismiss")
+    #expect(got.last?["action"] == "dismiss" && got.last?["value"]["reason"] == "escape")
     rt.ui.popoverBackdrop.onClick?()
-    #expect(got.last?["id"] == "theme" && got.last?["action"] == "dismiss")
+    #expect(got.last?["id"] == "theme" && got.last?["action"] == "dismiss" && got.last?["value"]["reason"].isNull == true)
     _ = rt.call("ui", "set", ["slot": "popover", "tree": nil])
     #expect(rt.call("ui", "get")["overlays"] == [])
   }

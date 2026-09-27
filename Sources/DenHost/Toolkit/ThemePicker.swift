@@ -9,7 +9,7 @@ import CordisValue
 ///   change {colors, positions, intensity, grain, appearance}   live, while dragging or on every click
 ///   commit {same}                                              when a drag ends / after a click
 ///   page {page}                                                preset page changed
-///   dismiss                                                    Esc or a click outside the popover
+///   dismiss {reason?}                                          Esc ({reason: "escape"}) or a click outside (no value)
 final class ThemePickerNode: NodeView {
   // State (kept locally while the user interacts, so re-sent trees don't fight the drag).
   var colors: [RGB] = []
@@ -472,9 +472,10 @@ final class ThemePickerNode: NodeView {
   }
 
   override func keyDown(with event: NSEvent) {
-    if event.keyCode == 53 { emit("dismiss") } else { super.keyDown(with: event) }
+    if event.keyCode == 53 { emit("dismiss", ["reason": "escape"]) } else { super.keyDown(with: event) }
   }
-  override func cancelOperation(_ sender: Any?) { emit("dismiss") }
+  // Esc says so, so the plugin can revert; a click outside (backdrop) sends no reason and saves.
+  override func cancelOperation(_ sender: Any?) { emit("dismiss", ["reason": "escape"]) }
 }
 
 /// Floating popover surface for the `popover` slot: rounded, shadowed, anchored to a node.

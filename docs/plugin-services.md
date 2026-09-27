@@ -125,8 +125,16 @@ Owns: the `overlay.peek` slot (through `content.peek`), the link policy, Cmd-O, 
 
 These plugins provide no service; they only use the ones above.
 
-- **`theme`:** the theme picker (color grid, up to 3 colors, intensity, grain, light/dark/auto). It writes the result through `spaces.update`.
-- **`quit`:** the quit confirmation dialog, through `app.interceptQuit`, with a "don't ask again" setting.
+- **`theme`:** the theme picker (color grid, up to 3 colors, intensity, grain, light/dark/auto).
+  - Opens on `spaces.editTheme {id}` and on the "Theme…" command (`theme.edit`), in the `popover` slot (node id `theme`) anchored to `spaces.title:<id>`.
+  - Every picker `change` is previewed with `window.setTheme` on that space's page. A click outside (or switching space) saves through `spaces.update`; Esc (`dismiss {reason: "escape"}`) reverts.
+  - Harmony rules: an added color becomes the primary's complement (or a free triadic partner), dragging the primary rotates the others by the same hue step, and secondaries keep their saturation and brightness within 0.35 of the primary's.
+  - Appearance is global, as in Arc: a saved appearance is written to every space.
+  - Storage ns `theme`: `recent` (the last 8 saved themes; the newest 3 are offered as "Use Recent Theme" commands, `theme.recent:<n>`) and `presetPage`.
+- **`quit`:** the quit dialog, through `app.interceptQuit`: app icon, "Quit den?", buttons "Always quit" / "Cancel" (esc) / "Quit" (↩); dialog id `quit`.
+  - "Always quit" stores `warn = false` (storage ns `quit`) and turns interception off. The "Ask Before Quitting" command (`quit.warn`) turns it back on.
+  - Closing the window never asks (spec §5).
+- Both call `commands.register` without injecting `commands` (the command bar is optional), retrying every 500 ms for 30 s until it exists.
 
 ## Ownership rules
 

@@ -117,7 +117,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]` | `input {text}`, `select {row}`, `submit {row, query, modifiers}`, `tab {query}`, `dismiss` |
 | `dialog` | `id`, `title`, `message?`, `icon?`, `iconStyle?: accent\|destructive\|plain`, `buttons: [{id, title, style: default\|cancel\|destructive\|secondary, default?, keycap?}]`, `checkbox?` | `button {button, checked}`. Return presses the `default` button (or the one with `default: true`), Esc the `cancel` one |
 | `toast` | `text`, `icon?`, `duration?` (ms) | – |
-| `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss` |
+| `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss {reason?}` |
 
 **Details that apply to several nodes:**
 - **Icons.** A node icon can be `sf:<symbol>`, an http(s) image URL (cached), `app:icon`, or text/emoji.
@@ -142,7 +142,7 @@ ui.set {slot: "popover", tree: {type: "themePicker", id: "theme", anchor: "space
 - **Intensity** is the wavy slider; **grain** is the dial of dots. The three buttons at the top pick automatic, light or dark appearance.
 - **Live preview.** Every drag step emits `change`, whose value has the same shape as `window.setTheme` args, so the plugin can pass it straight through. `commit` follows when a drag ends or after a click.
 - **Haptics.** A tick when a dot is grabbed, when it crosses each 4-dot cell, at each 10% of intensity and at each grain step.
-- **Dismiss.** Esc or a click outside emits `dismiss`; the plugin clears the slot (`tree: null`).
+- **Dismiss.** Esc emits `dismiss {reason: "escape"}` (the `theme` plugin reverts); a click outside emits `dismiss` with no value (it saves). The plugin clears the slot (`tree: null`).
 
 ### Dialogs
 
