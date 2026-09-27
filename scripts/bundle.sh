@@ -11,7 +11,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Den"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
-cp Resources/den.icns "$APP/Contents/Resources/den.icns"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 # Every Plugins/<id>/ becomes Contents/PlugIns/<id>.dylib (Embedded Swift, via cordis-build).
 # Plugins/Shared/ is compiled into each plugin. Builds run in parallel.
 CORDIS_BUILD=.build/checkouts/cordis-swift/Scripts/cordis-build
