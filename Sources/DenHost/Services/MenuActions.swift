@@ -5,6 +5,7 @@ import WebKit
 
 /// What den's menu bar host items do (`MainMenu.handler`). Page actions act on the focused pane's
 /// web view and go through the `webviews` service, so plugins and the menu share one path.
+// thin-host: feature-specific, migrate to plugin (help links, the page-action mapping)
 @MainActor
 enum MenuActions {
   static let repo = "https://github.com/abhishakenp/den"

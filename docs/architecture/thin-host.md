@@ -457,3 +457,52 @@ To migrate to the `extensions` plugin (marked in the code):
 | URL pill extension buttons (`Rows.swift`, `PillExtensionButton`) | The pill knows about extensions | Generic pill `accessories: [{id, icon, badge}]` node field filled by the plugin through the tabs header |
 
 Already in the plugin: the Extensions page, its strings and layout, the commands ("Extensions", "Install Extension from File…", "Get Extensions"), removal confirmation, update toasts.
+
+---
+
+## Addendum: the Settings window, menu bar, theme tokens and web page prompts
+
+These landed after the survey above, with the marker `// thin-host: feature-specific, migrate to plugin` on each feature-specific piece in code. Status: **marked** (marker in code) or **listed**.
+
+### Generic building blocks (keep in the host)
+
+
+| Piece | Why it's generic |
+|---|---|
+| `settings` service + Settings window | Renders schema-driven controls (toggle, choice, text, shortcut, number, list, button, info). Plugins own every section and all copy |
+| Theme tokens (`ThemeTokens`, `Palette`, `SurfaceGrain`) | Colors derived from any theme; no feature knowledge |
+| `HoverTracker` | Pointer-derived hover for any hoverable view |
+| `keys` service, `MainMenu.install` mechanics, `menuEquivalent` | Binding chords to events through AppKit's key path |
+| `ui` slots, `Renderer`, generic nodes (`list`, `row`, `text`, `button`, `dialog`, `toast`, `sheet`, `section`, `toggleRow`, `choiceRow`, `actionButton`) | Composition primitives |
+| `webviews`, `content`, `window`, `storage`, `net`, `session`, `schedule`, `app`, `config` | Platform services |
+| `webviews` page operations: `zoom`, `find`, `print`, `inspect`, `viewSource`, `reload {fromOrigin}` | Operations on a web view; the find bar UI is the exception below |
+
+### Feature-specific, in the host (migrate)
+
+| Piece | File | What's feature-specific | Where it should go |
+|---|---|---|---|
+| General section | `Services/GeneralSettings.swift` (marked) | Default-browser copy, `~/.den` rows, accent choice | A `general` plugin registering the section; the accent choice can stay a host setting that plugins read |
+| Menu bar layout | `Services/MainMenu.swift` `layout` (marked) | Plugin event names, command ids and titles hard-coded per menu | Plugins place their own items: `keys.bind {menu, order}` for chords and `commands.register {menu, order}` for commands; the host keeps the menus and the standard AppKit items (Edit, Window, app) |
+| Menu host actions | `Services/MenuActions.swift` (marked) | Help links, the page-action mapping | Help links in a plugin; page actions become commands a plugin registers |
+| Icon picker | `Toolkit/IconPicker.swift` (marked) | The curated symbols and emoji, "Space Icon" copy | A generic grid-picker node; `spaces` sends the items and title |
+| Web page prompts | `Services/WebPrompts.swift` (marked) | Dialog copy, permission and sign-in wording, per-site memory | A prompts plugin answering `webviews.prompt` events; the host keeps the WKUIDelegate plumbing |
+| Error pages | `Services/WebErrorPage.swift` (marked) | Error copy and HTML | A plugin answering a `webviews.loadFailed` event with the page to show |
+| Page actions policy | `Services/PageActions.swift` (marked) | Per-site zoom memory, context-menu items and their wording, link-modifier policy | Plugins (zoom memory in `tabs` or a `zoom` plugin; context menu items registered by plugins) |
+| Find bar | `Toolkit/FindBar.swift` (marked) | A dedicated view | A generic floating-bar node composed by a `find` plugin |
+| Space footer reorder | `Toolkit/Rows.swift` `SpaceIconReorder` | Tied to the `spaceIcon` node | A generic `reorderable` behavior for any node in a `row` |
+| Theme picker | `Toolkit/ThemePicker.swift` (listed) | Arc's picker as one node | Generic pad/slider/dial nodes composed by `theme` |
+| Command bar view | `Toolkit/CommandBarView.swift` (listed) | Banner copy, row semantics | Already driven by the `commandbar` plugin's tree; the banner node could be a generic `banner` |
+| Library sheet | `Toolkit/Library.swift` (listed) | "Clear Archive", day grouping | A generic `sheet` + `list` composed by `tabs` |
+| Hover card | `Toolkit/HoverCard.swift` (listed) | Card layout specific to previews | Generic card node; `previews` composes it |
+| Briefing and connection rows | `Toolkit/SheetNodes.swift` `todoRow`, `feedRow`, `connectionRow` (listed) | Feature rows | Compose from generic row parts |
+| Little Arc chrome | `Window/MiniWindow.swift` (listed) | "Open in <space>" button | A generic mini-window with a toolbar tree from `peek` |
+| Search suggestions | `Services/SuggestService.swift` (listed) | Google's endpoint | A plugin fetching through `net` |
+| AI prompts | `Services/AIService.swift` (listed) | Summary and todo instructions | Plugins pass their own instructions (they mostly do) |
+| `[shortcuts]` and `[search.keywords]` | `DenHome/ConfigService.swift` (listed) | Applies keywords to the command bar | The `commandbar` plugin reads `config` itself |
+| Dev scenarios | `Scenarios/*` | Demo states | Fine: dev tooling, not shipped behavior |
+
+### How to migrate one piece
+
+1. Add the generic primitive the feature needs to the host (a node type, an event, a service method), with no feature strings.
+2. Move the copy, policy and composition into the owning plugin (`Plugins/<id>/`), tested with `Harness`.
+3. Delete the host code and its marker; update this table.

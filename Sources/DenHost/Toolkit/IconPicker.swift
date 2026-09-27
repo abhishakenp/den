@@ -11,6 +11,8 @@ import CordisValue
 /// Arc's icon editor was never measured (spec §12 lists it nowhere), so this is den's own layout:
 /// a 300 pt panel with the theme picker's 20 pt continuous radius, a field that takes any emoji
 /// (typed, pasted or from the Character Viewer), then a grid of symbols and a grid of emoji.
+// thin-host: feature-specific, migrate to plugin: the curated symbols and emoji and the
+// "Space Icon" copy should arrive in the node from the spaces plugin (a generic grid-picker node).
 final class IconPickerNode: NodeView, NSTextFieldDelegate {
   static let symbols = [
     "house.fill", "briefcase.fill", "hammer.fill", "book.fill", "graduationcap.fill", "heart.fill", "star.fill", "bolt.fill",

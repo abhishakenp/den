@@ -4,6 +4,8 @@ import CordisValue
 /// The host's own Settings section, "General": the default browser and where `~/.den` and
 /// `config.toml` live. Built when the pane is shown (it asks macOS for the default browser then,
 /// never at launch). Plugins join it with `settings.register {section: "general"}` (e.g. `quit`).
+// thin-host: feature-specific, migrate to plugin (the General section: default browser, ~/.den, accent;
+// its copy and policy belong to a `general` plugin; docs/architecture/thin-host.md)
 @MainActor
 enum GeneralSettings {
   static func install(_ rt: DenRuntime) {

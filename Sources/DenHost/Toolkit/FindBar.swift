@@ -1,5 +1,6 @@
 import AppKit
 
+// thin-host: feature-specific, migrate to plugin (a generic "floating bar" node would do)
 /// Find-in-page bar: a small floating pill at the top right of the content card (den's own design;
 /// Arc's find bar was never measured). Magnifier, query field, "3 of 12", previous / next, close.
 /// Return = next, Shift-Return = previous, Esc = close. Built on first use only.

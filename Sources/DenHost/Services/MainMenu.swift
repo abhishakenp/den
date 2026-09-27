@@ -36,6 +36,9 @@ public enum MainMenu {
   static let target = MenuTarget()
 
   /// The menus, in order. Titles are den's own; Arc's structure and keys (spec §9).
+  // thin-host: feature-specific, migrate to plugin: the feature items (plugin events,
+  // command ids, titles) should come from plugins registering commands with a menu and order;
+  // the host keeps only the menus and standard AppKit items (docs/architecture/thin-host.md).
   public static let layout: [(String, [Entry])] = [
     ("den", [
       Entry("app.about", "About den", "", .host("app.about")), .sep,

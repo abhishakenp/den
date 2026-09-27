@@ -2,6 +2,9 @@ import AppKit
 import CordisValue
 import WebKit
 
+// thin-host: feature-specific, migrate to plugin: the dialog copy ("<host> says", permission and
+// sign-in wording) and the remember-per-site policy belong to a prompts plugin; the host keeps the
+// WKUIDelegate plumbing and the generic dialog node.
 /// Dialogs a web page asks for, drawn by the host in den's dialog style (spec §5: 450 wide, keycaps,
 /// #3139FB default button) over the window that shows the page: JavaScript alert / confirm /
 /// prompt, HTTP sign-in, and camera / microphone permission. Plugins are not involved.

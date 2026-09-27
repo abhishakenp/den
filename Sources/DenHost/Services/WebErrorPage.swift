@@ -1,6 +1,8 @@
 import AppKit
 import WebKit
 
+// thin-host: feature-specific, migrate to plugin: the error copy and page HTML belong to a plugin;
+// the host keeps "a navigation failed" as an event and a way to show a page for it.
 /// den's page for a load that failed before anything arrived (offline, unknown host, bad
 /// certificate, timeout), instead of WebKit's blank view. It is loaded with
 /// `loadSimulatedRequest` for the failed URL, so the tab keeps that URL: Reload, the "Try Again"

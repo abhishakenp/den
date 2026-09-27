@@ -2,6 +2,9 @@ import AppKit
 import CordisValue
 import WebKit
 
+// thin-host: feature-specific, migrate to plugin: per-site zoom policy, the context-menu items and
+// their wording ("Search <engine> for …"), and the link-modifier policy belong to plugins; the
+// host keeps zoom/find/print/inspect as generic web view operations.
 /// Page actions behind the `webviews` service's `zoom`, `find`, `print`, `inspect` and `viewSource`
 /// methods (the View / Edit menu items and their shortcuts). Every method's `id` defaults to the
 /// page in front: the peek if one is open, else the focused pane.
