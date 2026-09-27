@@ -13,10 +13,15 @@ on:
         description: Also render the UI snapshot scenarios (scripts/snapshots.sh) and upload the PNGs
         type: boolean
         default: false
+      snapshot_appearance:
+        description: Snapshot appearance (dark renders every scenario as <name>-dark.png)
+        type: choice
+        options: [dark, all]
+        default: dark
       test_parallelism:
         description: Maximum tests running at once (Swift Testing parallelization width)
         type: string
-        default: "3"
+        default: "1"
 
 permissions:
   contents: read
@@ -66,11 +71,10 @@ jobs:
 
       - name: Test (scripts/test.sh, UI suites included)
         env:
-          # The suites' wall-clock timeouts were set on an 8-core M3; a 3-core runner running every
-          # suite at once misses them. Cap how many tests run at once (Swift Testing).
-          SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH: ${{ inputs.test_parallelism || '3' }}
-          # A crash prints a symbolicated Swift backtrace into the log (runners keep no .ips).
-          SWIFT_BACKTRACE: enable=yes,interactive=no,preset=full,threads=all,limit=128,top=48,images=none,registers=none,sanitize=no
+          # The suites' wall-clock timeouts were set on an 8-core M3. On the 3-core runner, running
+          # suites side by side missed them and was slower overall (measured: width 1 = 324 s,
+          # unlimited = 380-410 s). Swift Testing's parallelization width; the input overrides it.
+          SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH: ${{ inputs.test_parallelism || '1' }}
         run: scripts/ci/run-tests.sh
 
       - name: Perf (report only)
@@ -91,9 +95,11 @@ jobs:
         run: |
           mkdir -p build/ci-logs/crashes
           sleep 10 # ReportCrash writes .ips files asynchronously
-          find "$HOME/Library/Logs/DiagnosticReports" -newer Package.swift \( -name '*.ips' -o -name '*.crash' \) \
-            -exec cp {} build/ci-logs/crashes/ \; 2>/dev/null || true
-          ls build/ci-logs/crashes
+          for d in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
+            find "$d" -newer Package.swift \( -name '*.ips' -o -name '*.crash' \) \
+              -exec cp {} build/ci-logs/crashes/ \; 2>/dev/null || true
+          done
+          ls -l build/ci-logs/crashes
 
       - name: Upload test logs
         if: always()
@@ -132,7 +138,7 @@ jobs:
     name: UI snapshots (macOS 26, arm64)
     if: github.event_name == 'workflow_dispatch' && inputs.snapshots
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
         with:
@@ -145,13 +151,24 @@ jobs:
         run: scripts/bundle.sh
 
       - name: Render snapshot scenarios (scripts/snapshots.sh)
+        env:
+          SNAPSHOT_APPEARANCE: ${{ inputs.snapshot_appearance == 'all' && '' || 'dark' }}
         run: |
-          mkdir -p build/ci-logs
-          scripts/snapshots.sh 2>&1 | tee build/ci-logs/snapshots.log
-          n=$(git status --porcelain -- docs/screenshots | wc -l | tr -d ' ')
-          count=$(find docs/screenshots -name '*.png' -newer Package.swift | wc -l | tr -d ' ')
-          echo "### Snapshots: $count PNGs rendered, $n differ from the committed ones" >> "$GITHUB_STEP_SUMMARY"
-          git status --porcelain -- docs/screenshots | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p build/ci-logs build/snapshots
+          touch build/snapshots/.start
+          # To a file, not a pipe: a den left running by a --stay capture would hold a pipe open.
+          rc=0
+          scripts/snapshots.sh > build/ci-logs/snapshots.log 2>&1 || rc=$?
+          pkill -x den || true
+          cat build/ci-logs/snapshots.log
+          find docs/screenshots -name '*.png' -newer build/snapshots/.start -exec cp {} build/snapshots/ \;
+          count=$(find build/snapshots -name '*.png' | wc -l | tr -d ' ')
+          {
+            echo "### Snapshots (${SNAPSHOT_APPEARANCE:-light and dark}): $count PNGs, exit $rc"
+            echo "Artifact \`snapshots\`; commit them into docs/screenshots/."
+            find build/snapshots -name '*.png' -exec basename {} \; | sort | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
 
       - name: Upload snapshots
         if: always()
@@ -159,7 +176,7 @@ jobs:
         with:
           name: snapshots
           path: |
-            docs/screenshots
+            build/snapshots/*.png
             build/ci-logs
           if-no-files-found: ignore
           retention-days: 14
