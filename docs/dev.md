@@ -28,10 +28,16 @@ the `macos-26` arm64 runner (a 3-core M1 VM with a logged-in GUI session):
 - `swift build`, `scripts/bundle.sh` (ad hoc signature: `DEN_SIGN_IDENTITY=-`),
   `scripts/test.sh` through `scripts/ci/run-tests.sh` (the full suite, UI tests included; if a
   runner ever lacks a GUI session the window suites are skipped by name, with a warning).
+  Tests run one at a time (Swift Testing parallelization width 1, dispatch input
+  `test_parallelism`): on the 3-core runner that was faster than running suites side by side
+  (324 s against 380-410 s) and kept the wall-clock timeouts, set on an M3, from tripping.
 - `scripts/perf.sh --report-only`: budgets were calibrated on an M3, so a runner's numbers are
   reported in the job summary and the `perf` artifact but never fail the build.
-- With `--snapshots` (dispatch input `snapshots`): `scripts/snapshots.sh` on a second runner, the
-  PNGs uploaded as the `snapshots` artifact.
+- With `--snapshots` (dispatch input `snapshots`): `scripts/snapshots.sh` on a second runner with
+  `SNAPSHOT_APPEARANCE=dark`, so every scenario renders as `<name>-dark.png`; `--light` renders
+  the script's own light and dark set. The PNGs are the `snapshots` artifact, ready to commit.
+- Dispatch input `lldb`: runs the test bundle under lldb (`scripts/ci/lldb-tests.sh`) and prints
+  every thread's native backtrace if the process crashes. Runners keep no crash reports.
 
 ### Runner limits
 
