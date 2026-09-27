@@ -42,6 +42,25 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     let dark: Bool
     let text: NSColor, secondary: NSColor, hover: NSColor, accessory: NSColor, divider: NSColor, placeholder: NSColor
     let selection: NSColor, selectionKeycap: NSColor, tint: NSColor
+    /// Arc's measured selection (65,72,216) and its relative luminance.
+    static let arcSelection = NSColor(srgbRed: 65 / 255, green: 72 / 255, blue: 216 / 255, alpha: 1)
+    static func luminance(_ c: NSColor) -> CGFloat {
+      let s = c.usingColorSpace(.sRGB) ?? c
+      func lin(_ v: CGFloat) -> CGFloat { v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+      return 0.2126 * lin(s.redComponent) + 0.7152 * lin(s.greenComponent) + 0.0722 * lin(s.blueComponent)
+    }
+    /// The theme's hue at Arc's selection luminance (bisecting brightness); Arc's color without a theme.
+    static func selectionFill(_ accent: NSColor?) -> NSColor {
+      guard let a = accent?.usingColorSpace(.sRGB) else { return arcSelection }
+      let target = luminance(arcSelection)
+      let sat = max(a.saturationComponent, 0.62)  // Arc's (65,72,216) has saturation 0.70
+      var lo: CGFloat = 0, hi: CGFloat = 1
+      for _ in 0..<24 {
+        let mid = (lo + hi) / 2
+        if luminance(NSColor(hue: a.hueComponent, saturation: sat, brightness: mid, alpha: 1)) < target { lo = mid } else { hi = mid }
+      }
+      return NSColor(hue: a.hueComponent, saturation: sat, brightness: (lo + hi) / 2, alpha: 1)
+    }
     init(_ p: Palette) {
       dark = p.dark
       let ink = NSColor(white: p.dark ? 1 : 0, alpha: 1)
@@ -51,12 +70,12 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       accessory = ink.withAlphaComponent(0.05)  // AccessoryBackground
       divider = ink.withAlphaComponent(0.10)  // HairlineDivider
       placeholder = ink.withAlphaComponent(0.30)  // PlaceholderPlaceholderText (spec §3)
-      // Spec §2: the selected row is tinted by the theme ((65,72,216) in Arc's default theme). den keeps
-      // the theme hue but lays it over the panel as a soft wash (estimate: α0.30 dark, 0.16 light),
-      // so the text keeps TextPrimary instead of turning into a white-on-color slab.
-      tint = p.accentStrong
-      selection = p.accentStrong.withAlphaComponent(p.dark ? 0.30 : 0.16)
-      selectionKeycap = p.accentStrong.withAlphaComponent(p.dark ? 0.45 : 0.22)  // estimate
+      // Spec §2: the selected row is a solid theme-colored fill, (65,72,216) in Arc's default theme,
+      // with white text and the icon on a white tile. den takes the space's hue and matches
+      // that color's luminance, so every theme reads like Arc's (saturated, not neon).
+      tint = Colors.selectionFill(p.theme.accent == nil ? nil : p.accentStrong)
+      selection = tint
+      selectionKeycap = NSColor(white: 1, alpha: 0.2)  // estimate
     }
   }
 
@@ -87,6 +106,10 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       (selected ? fill : hoverFill).setFill()
       let r = Tokens.commandBarHighlightRadius
       NSBezierPath(roundedRect: highlight, xRadius: r, yRadius: r).fill()
+      guard selected else { return }
+      // Arc: the selected row's icon sits on a white rounded tile (about 24 pt; radius estimate).
+      NSColor.white.setFill()
+      NSBezierPath(roundedRect: NSRect(x: icon.frame.midX - 12, y: icon.frame.midY - 12, width: 24, height: 24), xRadius: 6, yRadius: 6).fill()
     }
     override func layout() {
       let h = bounds.height
@@ -386,12 +409,13 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       r.selected = r.rowId == selected
       r.fill = c.selection
       r.hoverFill = c.hover
-      r.title.textColor = c.text
-      r.subtitle.textColor = c.secondary
-      r.accessory.textColor = c.secondary
-      r.icon.tint = r.selected ? c.tint.blended(withFraction: p.dark ? 0.35 : 0, of: .white) ?? c.tint : c.text
+      // Selected: white text, secondary text white at reduced alpha (estimates 0.6 / 0.75).
+      r.title.textColor = r.selected ? .white : c.text
+      r.subtitle.textColor = r.selected ? NSColor(white: 1, alpha: 0.6) : c.secondary
+      r.accessory.textColor = r.selected ? NSColor(white: 1, alpha: 0.75) : c.secondary
+      r.icon.tint = r.selected ? c.tint : c.text  // symbols on the white tile take the fill color
       r.keycap.fill = r.selected ? c.selectionKeycap : c.accessory
-      r.keycap.fg = r.selected ? c.text : c.secondary
+      r.keycap.fg = r.selected ? .white : c.secondary
       r.keycap.border = nil
       r.keycap.needsDisplay = true
     }

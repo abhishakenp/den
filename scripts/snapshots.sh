@@ -44,6 +44,14 @@ for v in DeleteSpace DeleteFolder ClearArchive; do
   host dialog-$n dialog$v light
   host dialog-$n-dark dialog$v dark
 done
+# Connections + briefing: real plugins against the local fake Slack/GitHub (MockServices), private profile.
+# The briefing waits for Foundation Models (plain lists when Apple Intelligence is unavailable).
+if [[ -f build/den.app/Contents/PlugIns/briefing.dylib ]]; then
+  host briefing-empty briefingEmpty light
+  shot connect-toast connectToast light 1.5
+  shot connections-settings connectionsSettings light 6
+  shot briefing briefing light 30; shot briefing-dark briefing dark 30; shot briefing-feed briefingFeed light 32
+fi
 # Native menus are separate windows: open one and capture it through its own window id.
 menu() { # name appearance
   build/den.app/Contents/MacOS/den --no-den-home --storage "$store" --appearance "$2" --scenario contextMenu --stay &

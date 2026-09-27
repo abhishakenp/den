@@ -21,6 +21,8 @@ pids=()
 for dir in Plugins/*/; do
   id="$(basename "$dir")"
   [[ "$id" == Shared ]] && continue
+  # Declared permissions (session:<domain>, net:<domain>) ride next to the dylib as <id>.json.
+  [[ -f "${dir}permissions.json" ]] && cp "${dir}permissions.json" "$APP/Contents/PlugIns/$id.json"
   "$CORDIS_BUILD" --id "$id" --out "$APP/Contents/PlugIns/$id.dylib" "$dir"*.swift Plugins/Shared/*.swift &
   pids+=($!)
 done

@@ -80,24 +80,29 @@ Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 
 Details and sources: [Dia notes](docs/research/dia.md).
 
-- [ ] Connection plugins: Slack, GitHub
+How it connects (user decision, see [auth research](docs/research/integrations-auth.md)): no OAuth apps. You sign in to slack.com or github.com inside den like any site, and den reuses that session from its own WebKit data store (`session` + `net` host services, gated per plugin by declared `session:<domain>` permissions). Items marked ✓ are verified end to end against a local fake Slack/GitHub (`MockServices`); a first real sign-in has not been verified.
+
+- [x] Connection plugins: Slack (unread DMs, mentions, threads awaiting your reply; workspace picker) and GitHub (review requests, mentions, assigned issues, failing CI on your PRs)
+- [x] "Connect X": opens the sign-in page in a tab, detects the session, toasts "X connected"; disconnect; sign-out detected
 - [ ] More connections as plugins (Gmail, Calendar, Linear, Notion, Jira, …)
-- [ ] Tokens stored in the macOS Keychain; connections run locally (Dia keeps them on its servers)
-- [ ] Daily briefing from all connections: Slack mentions and unread DMs, PRs waiting for your review, today's calendar, emails awaiting a reply, summarized into a todo list
-- [ ] Briefing todos can be checked off and link back to their source
-- [ ] Personalized feed: one stream across all connections, ranked by what matters to you
-- [ ] Connections load and sync only when used
+- [x] No tokens stored: session tokens are read on demand and kept in memory only; connections run locally
+- [ ] Official OAuth option (Slack PKCE / GitHub device flow) for users who don't want session reuse
+- [x] Daily briefing (Slack + GitHub) summarized with a todo list, prepared at a set time (8:00 by default, catches up after sleep or launch)
+- [ ] Briefing sources beyond Slack and GitHub: today's calendar, emails awaiting a reply
+- [x] Briefing todos can be checked off (persisted) and link back to the exact message, PR or thread
+- [x] Personalized feed: one stream across connections, ranked by kind, recency and what you open
+- [x] Connections load and sync only when used: nothing polls until a connection exists, then a 15-minute refresh and on wake
 
 ## AI
 
 AI in den is Apple's on-device model, used only for the daily briefing and the personalized feed. No chat, no agent, nothing sent to a cloud model. Anything else is left to plugins.
 
-- [ ] Summarize and prioritize connection data with Apple's Foundation Models framework, on device
-- [ ] Fit the model's small context (4,096 tokens on macOS 26): summarize each source separately, then combine the summaries
+- [x] Summarize connection data with Apple's Foundation Models framework, on device (`ai` host service; todos through guided generation, one item per request so a todo can't attach to the wrong source)
+- [x] Fit the model's small context (4,096 tokens on macOS 26, read at runtime): summarize each source separately in chunks, then combine; overflowing chunks are split and retried
 - [ ] Model loads only while generating a briefing or ranking the feed, then is released
-- [ ] Model output is text and todos only: no tools, cannot click, send or open anything
-- [ ] Every summary item links to its source message, PR or event
-- [ ] Works without the model (plain lists) on Macs without Apple Intelligence
+- [x] Model output is text and todos only: no tools, cannot click, send or open anything
+- [x] Every todo and feed item links to its source message, PR or thread (the summary paragraph itself has no links)
+- [x] Works without the model (plain counts and lists) on Macs without Apple Intelligence
 - [ ] Plugin API is rich enough for someone else to build a chat/AI plugin, gated by user-granted permissions
 
 ## Apple integration

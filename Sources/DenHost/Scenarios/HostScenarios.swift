@@ -8,11 +8,15 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard", "briefingSheet", "connectionsSheet"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
     if let w = commandBar(name, runtime: rt) { return w }
+    if ConnectionScenarios.names.contains(name) {
+      ConnectionScenarios.apply(name, runtime: rt)
+      return rt.window.window
+    }
     guard names.contains(name) else { return nil }
     switch name {
     case "themePicker", "themePickerEmpty":
@@ -58,6 +62,11 @@ public enum HostScenarios {
       showContent(rt)
       rt.call("ui", "set", ["slot": "overlay.library", "tree": ["type": "library", "id": "archive", "items": archiveItems()]])
       if name == "libraryClear" { rt.call("ui", "set", ["slot": "dialog", "tree": dialogs["dialogClearArchive"]!]) }
+    case "briefingSheet", "connectionsSheet":
+      seedSidebar(rt, appearance: appearance)
+      showContent(rt)
+      rt.call("ui", "set", ["slot": "overlay.briefing", "tree": briefingTree()])
+      if name == "connectionsSheet" { rt.call("ui", "set", ["slot": "overlay.connections", "tree": connectionsTree]) }
     case "littleArc":
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
@@ -136,6 +145,65 @@ public enum HostScenarios {
       ["id": .string("arch-\(i)"), "title": .string(e.0), "url": .string(e.1), "icon": .string(e.2), "closedAt": .double(t - e.3 * h)]
     })
   }
+
+  static let slackIcon = "sf:number", githubIcon = "sf:chevron.left.forwardslash.chevron.right"
+
+  /// A sample briefing page, the shape the `briefing` plugin sends (static text, no network).
+  static func briefingTree(now: Date = Date()) -> Value {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = "EEEE, MMMM d"
+    let ai = NSImage(systemSymbolName: "apple.intelligence", accessibilityDescription: nil) != nil ? "sf:apple.intelligence" : "sf:sparkles"
+    let todo: (String, String, String, String, Bool) -> Value = { id, title, sub, icon, done in
+      ["type": "todoRow", "id": .string(id), "title": .string(title), "subtitle": .string(sub), "icon": .string(icon), "done": .bool(done)]
+    }
+    let feed: (String, String, String, String, String, String, Bool) -> Value = { id, title, sub, icon, time, badge, unread in
+      ["type": "feedRow", "id": .string(id), "title": .string(title), "subtitle": .string(sub), "icon": .string(icon),
+       "time": .string(time), "badge": .string(badge), "unread": .bool(unread)]
+    }
+    return ["type": "sheet", "id": "briefing", "style": "page", "title": "Briefing", "icon": "sf:sun.horizon",
+      "headerButtons": [["id": "briefing.refresh", "icon": "sf:arrow.clockwise", "tooltip": "Refresh"],
+                        ["id": "briefing.settings", "icon": "sf:gearshape", "tooltip": "Connections"]],
+      "children": [
+        ["type": "heading", "id": "hello", "text": "Good morning", "subtitle": .string(f.string(from: now))],
+        ["type": "paragraph", "id": "summary", "icon": .string(ai),
+         "text": "Two pull requests are waiting on your review, and CI is red on “Fix login redirect”. In Slack, Maya asked about the launch checklist in a DM and Jon mentioned you in #design about the new icons."],
+        ["type": "section", "id": "todos", "title": "To do", "accessory": "3 open", "children": [
+          todo("td1", "Review “Add offline cache” (#482)", "acme/web · requested by maya", githubIcon, false),
+          todo("td2", "Reply to Maya about the launch checklist", "Slack · DM · 9:12", slackIcon, false),
+          todo("td3", "Fix failing CI on “Fix login redirect”", "acme/api #311 · 2 checks failed", githubIcon, false),
+          todo("td4", "Answer Jon in #design", "Slack · Acme Inc", slackIcon, true),
+        ]],
+        ["type": "section", "id": "feed", "title": "Feed", "accessory": "Slack · GitHub", "children": [
+          feed("f1", "Maya Chen", "Can you look at the launch checklist before standup?", slackIcon, "9:12", "DM", true),
+          feed("f2", "Add offline cache", "acme/web #482 · maya", githubIcon, "8:40", "Review", true),
+          feed("f3", "Fix login redirect", "acme/api #311 · 2 checks failed", githubIcon, "8:05", "CI failed", false),
+          feed("f4", "Jon Park in #design", "@you what do you think of the new icon set?", slackIcon, "Yesterday", "Mention", false),
+          feed("f5", "Crash on launch with empty profile", "acme/app #97 · assigned to you", githubIcon, "Mon", "Assigned", false),
+        ]],
+      ]]
+  }
+
+  /// A sample connections sheet, the shape the `connections` plugin sends.
+  static let connectionsTree: Value = ["type": "sheet", "id": "connections", "style": "sheet", "title": "Connections",
+    "subtitle": "Sign in on the site; den reads your session on this Mac.", "icon": "sf:link",
+    "children": [
+      ["type": "section", "id": "accounts", "title": "Accounts", "children": [
+        ["type": "connectionRow", "id": "conn.slack", "title": "Slack", "icon": .string(slackIcon), "connected": true,
+         "status": "Acme Inc · 2 workspaces", "button": ["title": "Disconnect", "style": "secondary"]],
+        ["type": "connectionRow", "id": "conn.github", "title": "GitHub", "icon": .string(githubIcon), "connected": false,
+         "status": "Not connected", "button": ["title": "Connect", "style": "primary"]],
+      ]],
+      ["type": "section", "id": "teams", "title": "Slack workspaces", "children": [
+        ["type": "toggleRow", "id": "team.T1", "title": "Acme Inc", "subtitle": "acme.slack.com", "on": true],
+        ["type": "toggleRow", "id": "team.T2", "title": "Side Project", "subtitle": "sideproject.slack.com", "on": false],
+      ]],
+      ["type": "section", "id": "daily", "title": "Daily briefing", "children": [
+        ["type": "choiceRow", "id": "briefing.time", "title": "Morning briefing at", "selected": "8",
+         "options": .array((6...11).map { ["id": .string("\($0)"), "title": .string("\($0):00")] })],
+        ["type": "toggleRow", "id": "briefing.enabled", "title": "Prepare the briefing every morning", "subtitle": "Uses Apple Intelligence on this Mac when it’s available", "on": true],
+      ]],
+    ]]
 
   static let tabMenu: Value = [
     ["id": "copy", "title": "Copy Link", "icon": "sf:link", "key": "cmd+shift+c"],

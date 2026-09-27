@@ -16,6 +16,15 @@ public final class DenRuntime {
   public let keys: KeysService
   public let storage: StorageService
   public let app: AppService
+  // Connections, briefing and feed (docs/host-api.md: permissions, session, net, ai, schedule).
+  public let permissions = Permissions()
+  public let session: SessionService
+  public let net: NetService
+  public let ai: AIService
+  public let schedule: ScheduleService
+  /// Lets `PluginLoader` (built by the app from `plugins` alone) grant sidecar permissions.
+  static var permissionsByHost: [ObjectIdentifier: Permissions] = [:]
+  static func permissions(for plugins: PluginHost) -> Permissions? { permissionsByHost[ObjectIdentifier(plugins)] }
 
   /// `crashMarkerPath: nil` skips cordis' crash signal handlers (tests); the app passes
   /// `PluginHost.defaultCrashMarkerPath`.
@@ -28,9 +37,14 @@ public final class DenRuntime {
     keys = KeysService(host: host)
     storage = StorageService(root: storageRoot)
     app = AppService(host: host, window: window)
+    session = SessionService(host: host, webviews: webviews, permissions: permissions)
+    net = NetService(host: host, webviews: webviews, permissions: permissions)
+    ai = AIService(host: host)
+    schedule = ScheduleService(host: host, storage: storage)
+    Self.permissionsByHost[ObjectIdentifier(plugins)] = permissions
     windowService.ui = ui
     windowService.attach(webviews: webviews, host: host)
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host)] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule] {
       host.provide(s)
       plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

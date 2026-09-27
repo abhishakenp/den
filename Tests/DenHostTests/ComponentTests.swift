@@ -276,3 +276,98 @@ extension ComponentTests {
     #expect(p.isHidden && rt.call("content", "get")["peek"] == .null)
   }
 }
+
+extension ComponentTests {
+  @Test func briefingAndConnectionsSheetsOpenStackAndEmit() throws {
+    let rt = Self.runtime()
+    var got: [Value] = []
+    rt.host.on("ui.action") { got.append($0) }
+    #expect(rt.call("ui", "set", ["slot": "overlay.briefing", "tree": HostScenarios.briefingTree()]) == .ok)
+    #expect(rt.call("ui", "get")["overlays"] == ["overlay.briefing"])
+    rt.window.window.contentView?.layoutSubtreeIfNeeded()
+    let page = try #require(rt.ui.sheets["overlay.briefing"])
+    // `page` covers the content area.
+    let area = rt.window.overlays.convert(rt.window.contentArea.frame, from: rt.window.contentArea.superview)
+    #expect(page.frame == area && page.isPage)
+    #expect(page.kids.map { $0.node.str("type") } == ["heading", "paragraph", "section", "section"])
+    // Header buttons and close emit.
+    page.headerButtons[0].action()
+    #expect(got.last?["id"] == "briefing.refresh" && got.last?["action"] == "click")
+    page.closeButton.action()
+    #expect(got.last?["id"] == "briefing" && got.last?["action"] == "dismiss")
+    page.cancelOperation(nil)
+    #expect(got.last?["action"] == "dismiss")
+
+    // todoRow: checkbox toggles (locally at once), elsewhere opens.
+    let todos = try #require(page.kids[2] as? SectionNode)
+    let row = try #require(todos.kids[0] as? TodoRowNode)
+    todos.layoutSubtreeIfNeeded()
+    row.clicked(at: NSPoint(x: row.checkRect.midX, y: row.checkRect.midY))
+    #expect(got.last?["id"] == "td1" && got.last?["action"] == "toggle" && got.last?["value"]["done"] == true && row.done)
+    row.clicked(at: NSPoint(x: 300, y: 20))
+    #expect(got.last?["id"] == "td1" && got.last?["action"] == "open")
+    #expect(todos.dividers.count == todos.kids.count - 1)
+
+    // Views are reused across updates.
+    let para = page.kids[1]
+    _ = rt.call("ui", "set", ["slot": "overlay.briefing", "tree": HostScenarios.briefingTree()])
+    #expect(page.kids[1] === para && rt.ui.sheets["overlay.briefing"] === page)
+
+    // Connections stacks above briefing, over a dim that dismisses.
+    _ = rt.call("ui", "set", ["slot": "overlay.connections", "tree": HostScenarios.connectionsTree])
+    #expect(rt.call("ui", "get")["overlays"] == ["overlay.briefing", "overlay.connections"])
+    let sheet = try #require(rt.ui.sheets["overlay.connections"])
+    let subs = rt.window.overlays.subviews
+    #expect(subs.firstIndex(of: sheet)! > subs.firstIndex(of: page)!)
+    #expect(sheet.frame.width == 560 && abs(sheet.frame.midX - area.midX) <= 1)
+    rt.ui.sheetBackdrops["overlay.connections"]?.onClick?()
+    #expect(got.last?["id"] == "connections" && got.last?["action"] == "dismiss")
+    let accounts = try #require(sheet.kids[0] as? SectionNode)
+    let conn = try #require(accounts.kids[0] as? ConnectionRowNode)
+    conn.buttons.last?.action()
+    #expect(got.last?["id"] == "conn.slack" && got.last?["action"] == "click")
+    let toggle = try #require((sheet.kids[1] as? SectionNode)?.kids[1] as? ToggleRowNode)
+    #expect(toggle.toggle.state == .off)
+    toggle.toggle.state = .on
+    toggle.flipped()
+    #expect(got.last?["id"] == "team.T2" && got.last?["value"]["on"] == true)
+    let choice = try #require((sheet.kids[2] as? SectionNode)?.kids[0] as? ChoiceRowNode)
+    #expect(choice.popup.titleOfSelectedItem == "8:00")
+    choice.popup.selectItem(at: 3)
+    choice.chose()
+    #expect(got.last?["id"] == "briefing.time" && got.last?["value"]["option"] == "9")
+
+    // A dialog opened later sits above both.
+    _ = rt.call("ui", "set", ["slot": "dialog", "tree": HostScenarios.dialogs["dialogQuit"]!])
+    let s2 = rt.window.overlays.subviews
+    #expect(s2.firstIndex(of: rt.ui.dialog)! > s2.firstIndex(of: sheet)!)
+    _ = rt.call("ui", "set", ["slot": "overlay.connections", "tree": nil])
+    _ = rt.call("ui", "set", ["slot": "overlay.briefing", "tree": nil])
+    #expect(rt.call("ui", "get")["overlays"] == ["dialog"])
+    #expect(sheet.superview == nil && page.superview == nil)
+  }
+
+  @Test func paragraphHeightGrowsWithTextAndButtonsEmit() throws {
+    let rt = Self.runtime()
+    var got: [Value] = []
+    rt.host.on("ui.action") { got.append($0) }
+    let short = rt.ui.renderer.make(["type": "paragraph", "id": "p", "text": "One line."])
+    let long = rt.ui.renderer.make(["type": "paragraph", "id": "p2", "text": .string(String(repeating: "A longer summary sentence that wraps. ", count: 12))])
+    #expect(short.height(for: 400) > 10)
+    #expect(long.height(for: 400) > short.height(for: 400) * 3)
+    #expect(long.height(for: 200) > long.height(for: 400))
+    let row = rt.ui.renderer.make(["type": "buttonRow", "id": "br", "children": [
+      ["type": "actionButton", "id": "a", "title": "Connect Slack", "style": "primary"],
+      ["type": "actionButton", "id": "b", "title": "Connect GitHub", "style": "secondary"],
+    ]])
+    row.frame = NSRect(x: 0, y: 0, width: 500, height: 32)
+    row.layoutSubtreeIfNeeded()
+    let kids = (row as! ButtonRowNode).kids
+    #expect(kids[1].frame.minX == kids[0].frame.maxX + 8 && kids[0].frame.width > 80)
+    (kids[1] as! ActionButtonNode).pill?.action()
+    #expect(got.last?["id"] == "b" && got.last?["action"] == "click")
+    let feed = rt.ui.renderer.make(["type": "feedRow", "id": "f", "title": "T", "badge": "Review", "time": "9:12"]) as! FeedRowNode
+    feed.clicked(at: .zero)
+    #expect(got.last?["id"] == "f" && got.last?["action"] == "open" && feed.badge.text == "Review")
+  }
+}

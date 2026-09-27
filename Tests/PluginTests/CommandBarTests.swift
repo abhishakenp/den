@@ -558,4 +558,17 @@ struct CommandBarTests {
     #expect(h.browsers.current == Bundle.main.bundleURL)
     #expect(h.storage("commandbar", "browserTrial").isNull)
   }
+
+  @Test func selectionFillIsTheThemeHueAtArcsLuminance() {
+    typealias C = CommandBarView.Colors
+    let arc = C.selectionFill(nil).usingColorSpace(.sRGB)!
+    #expect(Int((arc.redComponent * 255).rounded()) == 65 && Int((arc.greenComponent * 255).rounded()) == 72 && Int((arc.blueComponent * 255).rounded()) == 216)
+    let target = C.luminance(C.arcSelection)
+    for hex in [(0.72, 0.55, 1.0), (0.2, 0.5, 1.0), (1.0, 0.62, 0.78)] {  // purple, blue, pink themes
+      let accent = NSColor(srgbRed: hex.0, green: hex.1, blue: hex.2, alpha: 1)
+      let f = C.selectionFill(accent)
+      #expect(abs(C.luminance(f) - target) < 0.002)
+      #expect(abs(f.hueComponent - accent.usingColorSpace(.sRGB)!.hueComponent) < 0.01)
+    }
+  }
 }

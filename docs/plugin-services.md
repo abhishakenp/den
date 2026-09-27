@@ -140,6 +140,51 @@ Storage (ns `peek`): `settings`.
 
 Owns: the `overlay.peek` slot (through `content.peek`), the link policy, the Little Arc windows, Cmd-O, Esc while peeking, Ctrl-Shift-=, Ctrl-Shift--, Ctrl-Shift-1…4.
 
+## `connections` (plugin `connections`)
+
+Injects: `ui`, `storage`, `tabs`, `spaces`. Calls `commands` when it exists. Dia-style: you sign in to a site in den, and den reuses that session (no OAuth app). Host side: [session, net](host-api.md#connections-ai-and-scheduling).
+
+| Method | Args | Returns |
+|---|---|---|
+| `register` | `id`, `title`, `icon`, `domain`, `signIn` (URL), `owner` | ok. Called by provider plugins |
+| `list` | – | `[{id, title, icon, domain, connected, pending?, account?, profile?, teams?, since?}]` |
+| `get` | `id` | one entry of `list` |
+| `connect` | `id`, `url?`, `profile?` (default: current space's) | ok. Probes first; if not signed in, opens `signIn` in a tab and probes every 3 s and when that tab finishes loading (15 min limit), then toasts "X connected". Several Slack workspaces open the sheet with the picker |
+| `report` | `id`, `connected`, `profile`, `account?`, `teams?`, `expired?` | ok. A provider's answer to a probe; `expired` from a refresh means the site session ended (toast, account dropped) |
+| `disconnect` | `id` | ok. Forgets the account (you stay signed in to the site) |
+| `setTeam` | `id`, `team`, `enabled` | ok. Workspace picker |
+| `open`, `close` | – | The Connections sheet (`overlay.connections`) |
+
+Events: `connections.probe {id, profile, reason}` (the provider checks the session and calls `report`), `connections.changed {connections}`. Commands: "Connect X" / "Disconnect X" per provider, "Connections…". Storage ns `connections`, key `accounts`: `[{id, account, profile, teams: [{id, name, url, icon, enabled}], since}]`, never tokens.
+
+## `slack` and `github` (plugins `slack`, `github`)
+
+Inject `session`, `net`, `storage`; register with `connections`; provide no service. Permissions: `session:slack.com`, `session:github.com`. They answer `connections.probe`, and `feed.refresh` with `feed.items {source, items, account?, error?}` (only while connected).
+
+**Feed item:** `{id, source, kind: dm|thread|mention|review|ci|assigned, title, detail, url, ts (ms), icon, badge, actor, where, actionable, summary}`. `url` is the exact message, PR or issue; `summary` is a one-line sentence for the model.
+
+- **Slack.** Connected when the profile has the `d` cookie and app.slack.com's `localConfig_v2` lists workspaces; their `xoxc-` tokens are read with `session.eval` and kept in memory only (re-read after launch). Per enabled workspace and refresh: `client.counts`, `conversations.history` for up to 6 unread DMs, `search.messages` for `<@you>` over 2 days, `conversations.replies` for up to 4 mentions in threads (a thread you haven't answered since the mention becomes `thread`), `users.info` for unknown names (cached). 8–10 requests per workspace in the mock run. `invalid_auth`/`not_authed` reports `expired`. `xoxc` tokens are not an official API credential (see the auth research).
+- **GitHub.** Connected when github.com's `logged_in=yes` cookie is present; the account is `dotcom_user`. Data comes from github.com's search page, which returns JSON to `Accept: application/json` (`payload.blackbirdSearchRoute.results`, checked against a real response). Four documented qualifier queries per refresh: `review-requested:@me`, `author:@me status:failure` (failing CI), `assignee:@me` (issues), `mentions:@me`. A PR matching several keeps the most urgent kind. Why not the notifications page: it is HTML only, far more brittle to parse; api.github.com doesn't accept the web session. `logged_in: false` reports `expired`.
+
+Storage overrides (tests, mocks): ns `slack` key `endpoints {api, origin, domain, signIn}`, ns `github` key `base`.
+
+## `briefing` (plugin `briefing`)
+
+Injects `ui`, `storage`, `keys`, `schedule`, `ai`; calls `connections`, `tabs` and `commands` when they exist.
+
+| Method | Args | Returns |
+|---|---|---|
+| `open`, `close` | – | The briefing page (`overlay.briefing`, style `page`); opening refreshes when older than 5 min |
+| `refresh` | `reason?` | ok. `feed.refresh`, waits for every connected source (30 s), ranks, then `ai.brief` + `ai.todos` (or plain lists) |
+| `toggle` | `id`, `done` | ok |
+| `settings` | `hour?`, `minute?`, `enabled?` | `{hour, minute, enabled}` (morning briefing, default 8:00, on) |
+| `state` | – | `{open, refreshing, summary, summaryState: none\|working\|ai\|plain, todos, feed, errors, updatedAt, scheduled}` |
+
+- Lazy: `schedule.daily` (`briefing.morning`) and a 15 min / on-wake `schedule.interval` (`briefing.poll`) exist only while a connection does. The morning run refreshes and toasts "Your morning briefing is ready ⇧⌘B".
+- Ranking: kind (review 50, dm 46, thread 44, ci 40, mention 34, assigned 22) + recency (up to +24 in the last day) + affinity (+3 per earlier open of the same person or place, max +15).
+- Todos persist (ns `briefing`, key `todos`) with done state; checked ones go after a day. Feed items stay in memory. Opening a todo or feed item opens its URL in a tab.
+- ⇧⌘B and the "Daily Briefing" command. UI ids: sheet `briefing`, `briefing.refresh`, `briefing.connections`, `briefing.connect:<id>`, `briefing.todo:<itemId>`, `briefing.feed:<itemId>`, `briefing.enabled`, `briefing.time`.
+
 ## Other plugins
 
 These plugins provide no service; they only use the ones above.

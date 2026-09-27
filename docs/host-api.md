@@ -101,7 +101,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 **Slots:**
 - `sidebar.header`, `sidebar.favorites`, `sidebar.footer`
 - Per space page: `sidebar.spaceHeader`, `sidebar.pinned`, `sidebar.today`
-- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet))
+- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections` (see [Briefing page](#briefing-page-and-connections-sheet))
 
 **Event:** `ui.action {id, action, value}`
 
@@ -170,6 +170,31 @@ ui.set {slot: "popover", tree: {type: "themePicker", id: "theme", anchor: "space
 - **Restore.** Clicking a row, or its hover "Restore" button, emits `restore {item}`.
 - **Clear Archive** emits `clear`. The plugin then confirms with the Clear Archive dialog below, which opens above the sheet.
 - **Dismiss.** Esc, the close button or a click on the dim emits `dismiss`; the plugin clears the slot.
+
+### Briefing page and connections sheet
+
+`ui.set {slot: "overlay.briefing" | "overlay.connections", tree}` renders a `sheet` tree (null clears). Both show in `ui.get` overlays. This is den's own UI, not Arc's, so every size is an estimate in `Tokens`. Snapshots: `--scenario briefingSheet|connectionsSheet` (`docs/screenshots/briefing-sheet*.png`, `connections-sheet*.png`).
+
+- **Root:** `{type: "sheet", id, style: page|sheet, title, subtitle?, icon?, headerButtons?: [{id, icon, tooltip?}], children}`.
+  - `page` covers the content area like a new-tab page: card radius, no dim, and a centered column at most 680 wide with 40 pt top padding.
+  - `sheet` is a 560-wide centered panel (20 pt radius) over a black α0.35 dim. It is as tall as its content, up to the content area minus 2×40.
+- **Header:** icon, title and subtitle on the left; `headerButtons` then a close button on the right.
+- **Children** stack 14 pt apart in a scroll view. Views are reused by type + id, so re-sending the tree keeps the scroll position.
+- **Stacking:** connections sits above briefing, and a dialog sits above both.
+- **Actions:** `{id: <sheet id>, action: dismiss}` from the close button, Esc or a click on the dim. `{id: <header button id>, action: click}`.
+
+| Node | Fields | Actions |
+|---|---|---|
+| `heading` | `text`, `subtitle?` (shown above, 13 pt secondary) | – |
+| `paragraph` | `text`, `style?: body\|secondary\|caption`, `icon?` (accent-tinted) | – |
+| `section` | `id?`, `title`, `accessory?`, `children` | – (caption header over a rounded card, hairlines between rows) |
+| `todoRow` | `id`, `title`, `subtitle?`, `icon`, `done`, `url?` | `toggle {done}` (checkbox; flips locally at once), `open` |
+| `feedRow` | `id`, `title`, `subtitle?`, `icon`, `time?`, `badge?`, `unread?` | `open` |
+| `actionButton` | `id`, `title`, `style: primary\|secondary\|destructive` | `click` |
+| `buttonRow` | `children` (actionButtons), `align?: leading\|center` | – |
+| `connectionRow` | `id`, `title`, `icon`, `status`, `connected`, `button: {title, style}`, `secondaryButton?: {id, title, style}` | `click`, `secondary` |
+| `toggleRow` | `id`, `title`, `subtitle?`, `icon?`, `on` | `toggle {on}` |
+| `choiceRow` | `id`, `title`, `subtitle?`, `options: [{id, title}]`, `selected` | `select {option}` |
 
 ### Dialogs
 
@@ -261,3 +286,68 @@ Web search autocomplete (Google's public suggest endpoint, `client=firefox`) for
 A pending query is debounced (50 ms) and cancels the one before it, so only the latest query emits; late answers for older queries are still cached. `q` is normalized (trimmed, lowercased, spaces collapsed). The cache is in memory (256 queries). A failed fetch emits `items: []` and isn't cached.
 
 Events: `suggest.results {q, items}`.
+
+## Connections, AI and scheduling
+
+Host services behind the `connections`, `slack`, `github` and `briefing` plugins. Plugins have no Foundation, sockets or ML, so the host does the I/O. Asynchronous results arrive as `<service>.result {id, ...}`; every async method takes an optional `id` and returns `{id}`.
+
+### Permissions
+
+A plugin declares what it may reach in `Plugins/<id>/permissions.json`, e.g. `{"permissions": ["session:slack.com"]}`. `bundle.sh` copies it to `Contents/PlugIns/<id>.json`, and `PluginLoader` grants it when the plugin loads (user and dev plugins use the same sidecar next to their dylib). Anything undeclared is denied.
+
+- `session:<domain>`: cookies and site storage of `<domain>` and its subdomains, and `net.fetch` there with cookies.
+- `net:<domain>`: `net.fetch` there without cookies.
+
+cordis doesn't tell a host service who called it, so `session` and `net` calls pass `plugin: "<own id>"` (as `commands.register` passes `owner`). Plugins are native code in den's process: this keeps each plugin to the sites it declared; it is not a sandbox.
+
+### session
+
+Reads what a signed-in site exposes, from den's own `WKWebsiteDataStore` for a profile. Nothing leaves the process or is persisted; plugins keep what they read in memory.
+
+| Method | Args | Result |
+|---|---|---|
+| `cookies` | `plugin`, `domain`, `profile?` | `session.result {id, ok, cookies: [{name, value, domain, path, secure, httpOnly, expires?}]}` (HttpOnly included) |
+| `eval` | `plugin`, `origin`, `script` (≤ 4 KB function body that `return`s JSON), `profile?`, `timeoutMs?` (10 s) | `session.result {id, ok, value}` or `{id, ok: false, error}` |
+
+`eval` runs in a hidden, never-shown `WKWebView` in that profile's data store, on an empty local document whose origin is `origin` (loaded with `loadHTMLString(baseURL:)`, so no request is made), in an isolated content world. That document sees the origin's localStorage (verified in `ConnectionsTests`). Any navigation is refused; the view is destroyed after the result.
+
+### net
+
+| Method | Args | Result |
+|---|---|---|
+| `fetch` | `plugin`, `url`, `method?` (GET), `headers?`, `body?` (string), `as?: json\|text`, `session?` (false), `profile?`, `timeoutMs?` (20 s, max 60), `maxBytes?` (5 MB, max 20) | `net.result {id, ok, status, headers, json\|text, error?}` |
+| `cancel` | `id` | ok |
+
+- `session: true` copies the profile's cookies for that URL (domain, path, secure, expiry rules) into the request. A `Cookie` header from the plugin is ignored.
+- Ephemeral `URLSession`: no cookie jar, no disk cache; responses never write cookies back. `set-cookie` is dropped from `headers` (names lowercased).
+- Redirects are followed only to hosts the plugin may fetch, with the cookie header dropped; otherwise the 3xx comes back.
+- `ok` is true for any HTTP response (check `status`). Over `maxBytes`: `error: "too large"`.
+
+### ai
+
+Apple's on-device Foundation Models, for summaries and todos only. The context window is read at runtime (4,096 tokens here); inputs are chunked at 3 characters per token with 1,200 tokens kept free, summarized per chunk (map) and merged (reduce). A chunk that still overflows is split in half and retried. Requests run one at a time.
+
+| Method | Args | Result (`ai.result`) |
+|---|---|---|
+| `availability` | – | returns `{available, reason?, contextSize}` directly. `reason`: `deviceNotEligible`, `appleIntelligenceNotEnabled`, `modelNotReady` |
+| `summarize` | `items: [string]`, `instructions?` | `{id, ok, text, ms}` |
+| `brief` | `sources: [{name, items: [string]}]`, `instructions?` | `{id, ok, text, sources: [{name, text}], ms}`: one summary per source, then one combined brief |
+| `todos` | `items: [{id, text}]`, `max?` (8), `instructions?` | `{id, ok, todos: [{item, title}], ms}`: guided generation (`@Generable {actionable, title}`), one request per item so a todo can't be attached to another item; non-actionable items are dropped |
+
+When the model can't run: `{id, ok: false, error: "unavailable", reason}`; callers fall back to plain lists.
+
+### schedule
+
+| Method | Args | Returns |
+|---|---|---|
+| `daily` | `id`, `hour`, `minute` | ok. Fires `schedule.fire {id, reason: "time"}` daily. If den wasn't running or the Mac slept through that time, fires once with `reason: "catchup"` at registration or wake. The last fire time persists (storage ns `_schedule`); a first-ever registration doesn't catch up |
+| `interval` | `id`, `ms` (min 60 s), `wake?` | ok. `{id, reason: "interval"}`, and `{id, reason: "wake"}` after wake when `wake` |
+| `cancel` | `id` | ok |
+| `list` | – | `[{id, kind, hour?, minute?, ms?, next}]` |
+| `clock` | `ms?` | `{ms, hour, minute, weekday, date ("Sunday, September 27"), time ("8:02 AM"), offsetMinutes}`: local time for plugins |
+
+Registrations live in memory (plugins re-register at launch). The clock is checked every 30 s and on wake.
+
+### Development mock
+
+`MockServices` (`Sources/DenHost/Scenarios/`) is a local fake Slack + GitHub on 127.0.0.1: a sign-in page that sets Slack's HttpOnly `d` cookie and `localConfig_v2` (two workspaces with `xoxc-` tokens), github.com's signed-in cookies, the Slack Web API methods den uses (token + cookie required, else `invalid_auth`), and github.com search JSON shaped like a real response. Tests and the `briefing*`, `connectToast` and `connectionsSettings` scenarios point the plugins at it (storage `slack.endpoints`, `github.base`) and use the in-memory `private` profile.

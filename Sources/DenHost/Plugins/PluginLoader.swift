@@ -19,6 +19,7 @@ public final class PluginLoader {
     public var loaded: [String] = []  // plugin ids
     public var failed: [String: String] = [:]  // path -> reason
     public var crashed: [String] = []  // plugin ids disabled because their build crashed den
+    public var permissions: [String: [String]] = [:]  // plugin id -> granted sidecar permissions
   }
 
   let plugins: PluginHost
@@ -59,11 +60,14 @@ public final class PluginLoader {
           if crash?.pluginID == info.id { outcome.crashed.append(info.id) } else { outcome.failed[url.path] = reason }
         } else {
           outcome.loaded.append(info.id)
+          grantPermissions(info.id, url)
         }
         continue
       }
       do {
-        outcome.loaded.append(try plugins.load(url.path).id)
+        let id = try plugins.load(url.path).id
+        outcome.loaded.append(id)
+        grantPermissions(id, url)
       } catch let PluginHostError.crashedBuild(id, _) {
         outcome.crashed.append(id)
       } catch {
@@ -71,6 +75,14 @@ public final class PluginLoader {
       }
     }
     return outcome
+  }
+
+  /// Grants what the plugin's `<id>.json` sidecar declares (see `Permissions`).
+  func grantPermissions(_ id: String, _ dylib: URL) {
+    guard let p = DenRuntime.permissions(for: plugins) else { return }
+    p.revoke(id)
+    let granted = p.loadSidecar(plugin: id, dylib: dylib)
+    if !granted.isEmpty { outcome.permissions[id] = granted }
   }
 
   /// Toast text naming the plugins that were turned off because they crashed den.

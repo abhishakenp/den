@@ -117,6 +117,27 @@ public enum Tokens {
   public static let libraryRowRadius: CGFloat = 10  // estimate
   public static let libraryBackdropAlpha: CGFloat = 0.35  // estimate (dialogs use the measured 0.55)
 
+  // MARK: Briefing page / connections sheet (den's own UI, not in Arc: all estimates)
+  public static let sheetWidth: CGFloat = 560  // estimate: the `sheet` style (connections settings)
+  public static let sheetInset: CGFloat = 40  // estimate: from the content area's edges
+  public static let sheetCornerRadius: CGFloat = 20  // estimate: same as the library sheet
+  public static let sheetPadding: CGFloat = 24  // estimate
+  public static let pageColumnMaxWidth: CGFloat = 680  // estimate: the `page` style's centered column
+  public static let pageTopPadding: CGFloat = 40  // estimate
+  public static let pageSideMargin: CGFloat = 40  // estimate
+  public static let sheetHeaderHeight: CGFloat = 44  // estimate: icon + title (+ subtitle) row
+  public static let sheetStackSpacing: CGFloat = 14  // estimate
+  public static let sectionHeaderHeight: CGFloat = 26  // estimate
+  public static let sectionCardRadius: CGFloat = 10  // estimate (Dia's card radius is 10, spec §13)
+  public static let sectionDividerInset: CGFloat = 44  // estimate
+  public static let todoRowHeight: CGFloat = 48  // estimate
+  public static let todoCheckboxSize: CGFloat = 18  // estimate
+  public static let feedRowHeight: CGFloat = 52  // estimate
+  public static let connectionRowHeight: CGFloat = 56  // estimate
+  public static let settingRowHeight: CGFloat = 44  // estimate: toggleRow / choiceRow
+  public static let sheetButtonHeight: CGFloat = 32  // estimate: actionButton
+  public static let sheetRowRadius: CGFloat = 8  // estimate: row hover fill
+
   // MARK: Little Arc (spec §8; PX = measured on the spec's arc_littlearc_page.png)
   public static let miniDefaultSize = CGSize(width: 1185, height: 832)  // spec §8 (after a URL loads)
   public static let miniMinSize = CGSize(width: 490, height: 329)  // spec §8: the command-bar-only state

@@ -34,6 +34,10 @@ public final class UIService: HostService {
   var popoverOpen = false
   var commandBarOpen = false
   var dialogOpen = false
+  /// `overlay.briefing` and `overlay.connections`: one `SheetView` each (connections above briefing).
+  static let sheetSlots = ["overlay.briefing", "overlay.connections"]
+  var sheets: [String: SheetView] = [:]
+  var sheetBackdrops: [String: BackdropView] = [:]
 
   public init(host: ServiceHost, window: DenWindowController, content: ContentService?) {
     self.host = host
@@ -98,6 +102,7 @@ public final class UIService: HostService {
       if dialogOpen { overlays.append("dialog") }
       if popoverOpen { overlays.append("popover") }
       if libraryOpen { overlays.append("overlay.library") }
+      for s in Self.sheetSlots where sheets[s] != nil { overlays.append(.string(s)) }
       return ["page": .int(Int64(sidebarView.pager.current)), "pages": .int(Int64(sidebarView.pager.pages.count)), "overlays": .array(overlays)]
     default:
       return .error("ui: unknown method '\(method)'")
@@ -112,6 +117,7 @@ public final class UIService: HostService {
     case "toast": if !tree.isNull { showToast(tree) }
     case "popover": setPopover(tree)
     case "overlay.library": setLibrary(tree)
+    case _ where Self.sheetSlots.contains(slot): setSheet(slot, tree)
     case "overlay.peek":
       _ = content?.handle(method: "peek", args: tree.isNull ? .null : ["webview": tree["webview"], "title": tree["title"]])
     default:
@@ -232,6 +238,64 @@ public final class UIService: HostService {
     layoutOverlays()
   }
 
+  /// `overlay.briefing` / `overlay.connections`: a `sheet` tree (see Sheet.swift). The `page` style
+  /// covers the content area with no dim; the `sheet` style is a centered panel over a dim whose
+  /// click emits `dismiss`. Connections stacks above briefing; dialogs stay above both.
+  func setSheet(_ slot: String, _ tree: Value) {
+    if tree.isNull {
+      guard let v = sheets.removeValue(forKey: slot) else { return }
+      v.removeFromSuperview()
+      sheetBackdrops.removeValue(forKey: slot)?.removeFromSuperview()
+      return
+    }
+    let isNew = sheets[slot] == nil
+    let v = sheets[slot] ?? SheetView(renderer: renderer, emit: { [weak self] in self?.emit($0, $1, $2) })
+    sheets[slot] = v
+    v.update(tree, palette: renderer.palette)
+    let wantsDim = tree.str("style", "sheet") == "sheet"
+    if wantsDim, sheetBackdrops[slot] == nil {
+      let b = BackdropView()
+      b.wantsLayer = true
+      b.layer?.backgroundColor = NSColor(white: 0, alpha: Tokens.libraryBackdropAlpha).cgColor
+      sheetBackdrops[slot] = b
+    } else if !wantsDim {
+      sheetBackdrops.removeValue(forKey: slot)?.removeFromSuperview()
+    }
+    sheetBackdrops[slot]?.onClick = { [weak v] in v?.send("dismiss") }
+    // Order: briefing, then connections, all below a dialog.
+    var views: [NSView] = []
+    for s in Self.sheetSlots {
+      if let b = sheetBackdrops[s] { views.append(b) }
+      if let sv = sheets[s] { views.append(sv) }
+    }
+    for x in views {
+      if dialogOpen {
+        wc.overlays.addSubview(x, positioned: .below, relativeTo: dialogBackdrop)
+      } else {
+        wc.overlays.addSubview(x)
+      }
+    }
+    layoutOverlays()
+    if isNew { wc.window.makeFirstResponder(v) }
+  }
+
+  func layoutSheets(in b: NSRect) {
+    guard !sheets.isEmpty else { return }
+    let area = wc.overlays.convert(wc.contentArea.frame, from: wc.contentArea.superview)
+    for (slot, v) in sheets {
+      sheetBackdrops[slot]?.frame = b
+      if v.isPage {
+        v.frame = area
+      } else {
+        let w = min(Tokens.sheetWidth, area.width - 2 * Tokens.sheetInset)
+        let maxH = max(160, area.height - 2 * Tokens.sheetInset)
+        let h = min(maxH, v.contentHeight(width: w))
+        v.frame = NSRect(x: (area.midX - w / 2).rounded(), y: (area.minY + Tokens.sheetInset + max(0, (maxH - h) * 0.35)).rounded(), width: w, height: h)
+      }
+      v.needsLayout = true
+    }
+  }
+
   /// `popover` slot: {type, id, anchor?, ...}. The popover opens just right of the sidebar, next to
   /// the node whose id is `anchor` (spec §4). A click outside emits `dismiss` for the content id.
   func setPopover(_ tree: Value) {
@@ -283,6 +347,7 @@ public final class UIService: HostService {
     popoverBackdrop.frame = b
     layoutPopover(in: b)
     libraryBackdrop.frame = b
+    layoutSheets(in: b)
     if libraryOpen {
       let area = wc.overlays.convert(wc.contentArea.frame, from: wc.contentArea.superview)
       let w = min(Tokens.libraryWidth, area.width - 2 * Tokens.libraryInset)
