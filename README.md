@@ -9,14 +9,15 @@ A fast, native macOS browser built on WebKit, where everything is a plugin.
 </p>
 
 <p>
-  <a href="#principles">Principles</a> ·
+  <a href="docs/guide/">User guide</a> ·
+  <a href="docs/guide/tips.md">Tips & hidden gems</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="docs/">Design docs</a> ·
   <a href="#contributing">Contributing</a>
 </p>
 
 > [!IMPORTANT]
-> den is in early development. It browses the web with an Arc-style sidebar, spaces, split view and a command bar, but there are no profiles, downloads or sync yet.
+> den is in early development. It browses the web with an Arc-style sidebar, spaces, split view and a command bar, but there are no downloads, import or sync yet. The first pre-release, [0.1.0-alpha.1](https://github.com/abhishakenp/den/releases/tag/v0.1.0-alpha.1), is out; see [Getting started](docs/guide/getting-started.md).
 
 <p align="center"><img src="docs/screenshots/main-light.png" alt="den main window with demo data" width="820"></p>
 
@@ -41,6 +42,8 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 - Chrome and Firefox extension support
 - Native macOS integration: passkeys, Keychain, Shortcuts, iCloud sync
 
+Much of this already works (below). What's still in progress is in [Coming soon](docs/guide/coming-soon.md).
+
 ## Roadmap and status
 
 | # | Step | Status |
@@ -48,32 +51,31 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 | 1 | Research Arc, Dia, Zen, WebKit, extension support, plugin design | ✅ |
 | 2 | Feature and architecture design | 🟡 In progress |
 | 3 | Plugin host and app skeleton | ✅ |
-| 4 | Core browsing: tabs, sidebar, spaces, profiles | 🟡 Tabs, sidebar and spaces done; profiles next |
+| 4 | Core browsing: tabs, sidebar, spaces, profiles | 🟡 Tabs, sidebar, spaces, split view, Peek done; per-space profiles work, no profile UI yet; no downloads |
 | 5 | Extensions and content blocking | 🟡 Chrome/Firefox extensions and store installs done; built-in blocker next |
-| 6 | Connections, daily briefing, personalized feed | ❌ |
-| 7 | First public release | ❌ |
+| 6 | Connections, daily briefing, personalized feed | 🟡 Slack and GitHub, briefing and feed done (verified against local fakes); more connections next |
+| 7 | First public release | 🟡 Pre-release 0.1.0-alpha.1 (ad-hoc signed, not notarized) |
 
-The full checklist is in [ROADMAP.md](ROADMAP.md).
+The full checklist is in [ROADMAP.md](ROADMAP.md). What's being built now is in [Coming soon](docs/guide/coming-soon.md).
 
 ## What works today
 
-Each item is covered by `swift test` or a `--scenario` run of the real app.
+Each item is covered by `swift test` or a `--scenario` run of the real app. The [user guide](docs/guide/) has the details, and [Tips & hidden gems](docs/guide/tips.md) has everything you won't find by looking.
 
-- **Sidebar:** favorites, pinned tabs and folders, today tabs; drag to reorder; double-click or right-click to rename in place
-- **Spaces:** each with its own theme; switch by swiping or with the footer icons; drop a tab on a space's icon to move it there
-- **Tabs:** archive on close, with auto-archive after 12 h, idle tabs suspended after 30 min, Ctrl-Z undo, and an archive searchable from the command bar
-- **Split view:** 2–4 panes, created by dragging a tab onto the page; shown as one sidebar row
-- **Command bar:** tabs, archive, spaces, actions, URLs and web search (Cmd-T / Cmd-L)
-- **Peek** for links from pinned tabs, and **Little Arc** windows for links from other apps (Cmd-O moves one into a space)
-- **Theme picker** per space, and the quit dialog
-- **Dark mode for every website**, following den's appearance: sites with their own dark theme use it, and the rest are darkened by a WebKit user stylesheet (no script, no white flash). Choose per site with the command bar: follow den, always dark, always light, or off
-- **Passwords:** den offers to save logins to your Keychain, and fills them after Touch ID. It also suggests strong passwords on sign-up forms. "Passwords…" in the command bar lists them
-- **Google sign-in** works: den sends Safari's user agent
-- **Extensions:** Chrome and Firefox extensions on WebKit's engine. "Add to den" on Chrome Web Store and Firefox Add-ons pages, popups, pinned extensions in the URL pill, and an Extensions page. Verified with uBlock Origin Lite (blocks ads), ColorPick Eyedropper and Dark Reader
-- **Space menu** (right-click a space icon or title: rename, icon, theme, profile, duplicate, move, delete) and drag-to-reorder spaces in the footer
-- **Settings** (⌘,) with sections contributed by plugins, and a full menu bar where every shortcut lives ([docs/shortcuts.md](docs/shortcuts.md)); every default and why is in [docs/defaults.md](docs/defaults.md)
-- **Theming:** every dialog, bar, card and toast follows the space's colors with legible contrast
-- **Plugins:** the features are Embedded Swift plugins (`spaces`, `tabs`, `commandbar`, `peek`, `theme`, `quit`, `darkmode`, `passwords`, `extensions`, …) loaded from `den.app/Contents/PlugIns`
+- **[Sidebar & tabs](docs/guide/sidebar-and-tabs.md):** favorites, pinned tabs that remember their page, nested folders, Today tabs that archive after 24 h, a searchable Library, ⌃Z undo, drag and drop (onto folders, spaces and the page), idle tabs unloaded after 30 min
+- **[Spaces & themes](docs/guide/spaces-and-themes.md):** a theme per space, two-finger swipe, the space menu, footer drag-reorder, a separate profile (logins, cookies) per space
+- **[Command bar](docs/guide/command-bar.md):** tabs in every space, the archive, URLs, web search, site keywords, every command, and settings you can flip right from the bar (⌘T / ⌘L)
+- **[Peek, split view & Little Arc](docs/guide/peek-split-little-arc.md):** ⇧-click any link to Peek, 2–4 panes by dragging a tab onto the page, an opt-in mini window for links from other apps
+- **[Hover previews](docs/guide/hover-previews.md):** rest on a tab for its PR checks and reviews, next meeting, unread mail, or a snapshot
+- **[Connections & briefing](docs/guide/connections-and-briefing.md):** Slack and GitHub through your own session in den, a morning briefing with todos, on-device summaries
+- **[Extensions](docs/guide/extensions.md):** Chrome Web Store and Firefox Add-ons ("Add to den"), popups, per-site access; uBlock Origin Lite, Dark Reader verified
+- **[Privacy & passwords](docs/guide/privacy-and-passwords.md):** dark mode for every website, Google sign-in, a Touch ID password vault in your Keychain
+- **[Page tools](docs/guide/page-tools.md):** find, per-site zoom, print, save, copy as Markdown, readable error pages
+- **[Keyboard shortcuts](docs/guide/shortcuts.md):** Arc's, all in the menu bar, all remappable
+- **Settings** (⌘,) with sections contributed by plugins; every default and why is in [docs/defaults.md](docs/defaults.md). Every dialog, bar, card and toast follows the space's colors with legible contrast
+- **Plugins:** the features are Embedded Swift plugins (`spaces`, `tabs`, `commandbar`, `peek`, `previews`, `theme`, `quit`, `darkmode`, `passwords`, `extensions`, `connections`, `slack`, `github`, `briefing`, `updates`) loaded from `den.app/Contents/PlugIns`
+- **[`~/.den`](docs/guide/den-home.md):** your plugins (even plain `.swift` files), themes and `config.toml`, applied live
+- **[Updates](docs/guide/updates.md)** that hot-swap plugins, and **[performance](docs/guide/performance.md)** measured, not claimed: 20 MB idle, about 210 ms to first window (on a loaded machine)
 
 <p align="center">
   <img src="docs/screenshots/command-bar.png" alt="Command bar" width="410">
@@ -81,12 +83,12 @@ Each item is covered by `swift test` or a `--scenario` run of the real app.
 </p>
 <p align="center">
   <img src="docs/screenshots/theme-picker-live.png" alt="Theme picker" width="410">
-  <img src="docs/screenshots/quit-dialog.png" alt="Quit dialog" width="410">
+  <img src="docs/screenshots/preview-github.png" alt="Hover card for a GitHub pull request" width="410">
 </p>
 
 ## Build and run
 
-Requires macOS 26 and Xcode 26 (Swift 6.2+). den depends on the `cordis-swift` package at `../cordis-swift`, so clone both side by side.
+Requires macOS 26, Xcode 26 (Swift 6.2+), and a Swift toolchain with the Embedded Swift stdlib for the plugins (from swift.org or `swiftly`). SwiftPM fetches the `cordis-swift` package. Step by step: [Getting started](docs/guide/getting-started.md).
 
 ```sh
 scripts/run.sh --demo        # build build/den.app, then launch it with demo spaces and tabs

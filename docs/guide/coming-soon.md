@@ -1,0 +1,69 @@
+# Coming soon
+
+What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the current work plan. **No promises and no dates.** Plans change, and anything here may ship differently or not at all. None of it is in den today; everything in the rest of this guide is.
+
+## Link previews
+
+- **⇧-hover any link on any page** for a preview card: the page's image, title, description and site, fetched from just the target's `<head>` and cached, costing nothing until you deliberately hover. Rich cards (GitHub PRs, YouTube, …) reuse the providers behind the sidebar's [hover cards](hover-previews.md). Actions: Open in Peek, Open in Split, Copy Link. Stays out of the way on sites with their own previews (like Wikipedia). Plain hover as an optional setting.
+- An inline **Connect GitHub** button on cards that need a connection (private repos), filling in live once you're signed in.
+
+## Tabs
+
+- **⌘-click grouping** like Dia: a ⌘-clicked link opens under its source tab and the two are grouped, later ⌘-clicks from either join the group, and ⌥⌘T opens a new tab in it.
+- Folder shortcuts: a folder from the selection, drag a tab onto a folder to file it, rename on create.
+- A collapsed folder showing its active tab; hovering it lists its tabs.
+- **Live folders** fed by GitHub or RSS.
+- Unloaded tabs that cost close to nothing (today about 80 KB each; the goal is 8 KB), recently used tabs kept loaded, and idle time counted only while den is in front.
+- No white flash on tab switch or load; faster tab close.
+- Tab menus that show shortcuts and ⌥ alternates.
+- Auto tab grouping and tidying with Apple's on-device model.
+- Copy a clean URL with tracking parameters stripped.
+
+## Media
+
+- **Mute a tab** by clicking its speaker icon, a mute badge on favorites, and **Mute Tab** in the tab menu.
+- **den's own mini player**: a small always-on-top window with seek, volume, ±10 s, speed and "back to tab", resizable and snapping to corners, with native picture in picture as the fallback.
+- **Automatic picture in picture** when you leave a tab playing video.
+- Hover play/pause/skip for any tab playing audio.
+
+## Page tools
+
+Reader mode with read aloud, on-device translation, page capture, zapping elements, and copying a link to a highlight.
+
+## Connections & briefing
+
+- **Auto-connect** like Dia: if you're already signed in to GitHub or Slack in den, or sign in later, it connects without a click, with a "GitHub connected · Undo" toast.
+- **Important** Slack channels and GitHub repos, ranked higher and never dropped from the summary.
+- More connections as plugins: Gmail and Google Calendar first; Notion, Linear, Jira and others later.
+- A meeting reminder card with a Join button and countdown.
+- An official OAuth option for people who'd rather not reuse their session.
+- The model loaded only while writing a briefing, then released.
+
+## Browsing
+
+- Downloads, in the sidebar and the Library.
+- Profile management, and private windows.
+- A built-in ad and tracker blocker.
+- Link routing rules (URL → space), like Arc's Air Traffic Control.
+- Boosts: per-site colors, fonts and CSS.
+- Session restore and crash recovery; a "Page crashed · Reload" view and protection against endless alerts.
+- Web apps (PWA).
+- Non-US keyboard layouts for shortcuts, and CJK input in the command bar.
+- Resizing split panes by dragging.
+
+## Import, sync, passwords
+
+- Import from Arc (spaces, pinned tabs), then Chrome, Safari, Firefox, Zen and Dia. Offered as a quiet card, never a gate.
+- Passkeys on every site, once Apple grants den the browser passkey entitlement.
+- A native-messaging bridge for password manager extensions.
+- Sync of spaces and tabs through iCloud, with no den server.
+
+## Getting around
+
+- A short, skippable **tour** and one-time **tips** that teach den's hidden gestures when they're relevant ([spec](_in-app-tips.md)).
+- Shortcuts shown next to every action in every menu, card and tooltip.
+
+## Release
+
+- A signed and notarized `.dmg` on GitHub Releases, with automatic updates through the `stable` channel.
+- Energy budgets and benchmarks against Safari, Arc, Dia and Zen on a quiet machine.
