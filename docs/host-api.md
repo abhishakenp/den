@@ -120,7 +120,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `folder` | `id`, `title`, `icon?`, `open`, `children` | `toggle`, `reorder` (as target: `position: "into"`) |
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
 | `newTabRow` | `id`, `title?` | `click` |
-| `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]` | `input {text}`, `select {row}`, `submit {row, query, modifiers}`, `tab {query}`, `dismiss` |
+| `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]` | `input {text}`, `select {row}` (arrow keys, or hovering a row after the mouse moves), `submit {row, query, modifiers}`, `tab {query}`, `dismiss` |
 | `dialog` | `id`, `title`, `message?`, `icon?`, `iconStyle?: accent\|destructive\|plain`, `buttons: [{id, title, style: default\|cancel\|destructive\|secondary, default?, keycap?}]`, `checkbox?` | `button {button, checked}`. Return presses the `default` button (or the one with `default: true`), Esc the `cancel` one |
 | `toast` | `text`, `icon?`, `duration?` (ms) | – |
 | `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss {reason?}` |
@@ -189,6 +189,15 @@ Chords are bound as main-menu items. That way they work while a web page has foc
 
 - Each namespace (plugin id) is one `Codec`-encoded file at `~/Library/Application Support/den/storage/<ns>.cvalue`.
 - Writes are atomic.
+
+## plugins
+
+Lets a plugin hide features whose provider isn't loaded.
+
+| Method | Args | Returns |
+|---|---|---|
+| `get` | – | `{services: [name], plugins: [{id, active}]}` |
+| `listening` | `event` | `{listening}`: true when the host or any plugin listens to `event` |
 
 ## app
 

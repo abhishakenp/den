@@ -34,10 +34,28 @@ public final class DenRuntime {
       host.provide(s)
       plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }
+    plugins.provide("plugins") { [weak plugins] method, args in
+      guard let plugins else { return ["error": "plugins: host is gone"] }
+      return Self.pluginsService(plugins, method, args)
+    }
     host.forward = { [weak plugins] e, v in plugins?.emit(e, v) }
     host.externalListeners = { [weak plugins] e in plugins?.hasListeners(e) ?? false }
     window.emit = { [weak host] e, v in host?.emit(e, v) }
     window.onCloseRequest = { [weak app] in app?.shouldClose() ?? true }
+  }
+
+  /// The `plugins` service: lets a plugin see which services, plugins and listeners exist, so it
+  /// can hide features whose provider isn't loaded (see docs/host-api.md).
+  static func pluginsService(_ plugins: PluginHost, _ method: String, _ args: Value) -> Value {
+    switch method {
+    case "get":
+      let list = plugins.plugins.map { p -> Value in ["id": .string(p.id), "active": .bool(p.state == .active)] }
+      return ["services": .array(plugins.serviceNames.map { .string($0) }), "plugins": .array(list)]
+    case "listening":
+      return ["listening": .bool(plugins.hasListeners(args.str("event")))]
+    default:
+      return ["error": .string("plugins: unknown method \(method)")]
+    }
   }
 
   /// Calls a host or plugin service.

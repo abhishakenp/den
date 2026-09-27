@@ -18,7 +18,7 @@ shot toast toast light 4.5
 shot space-swipe swipe light
 # These need the commandbar, quit and peek plugins; the PNGs in docs/screenshots predate them.
 if [[ -f build/den.app/Contents/PlugIns/peek.dylib ]]; then shot split-view split light; shot peek peek light; fi
-if [[ -f build/den.app/Contents/PlugIns/commandbar.dylib ]]; then shot command-bar command light; shot command-bar-dark command dark; fi
+if [[ -f build/den.app/Contents/PlugIns/commandbar.dylib ]]; then shot command-bar command light; shot command-bar-dark command dark; shot command-bar-edit commandEdit light; shot command-bar-actions commandActions light; shot command-bar-actions-dark commandActions dark; fi
 if [[ -f build/den.app/Contents/PlugIns/quit.dylib ]]; then shot quit-dialog dialog light; shot quit-dialog-dark dialog dark; fi
 # Host components (self-contained scenarios, no --demo): see DenHost/Scenarios/HostScenarios.swift.
 host() { # name scenario appearance

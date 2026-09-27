@@ -8,7 +8,8 @@ import os
 //   --demo                         use a fresh temporary storage root, so the plugins' first-run seed shows
 //   --appearance light|dark|auto   set every space's appearance through the spaces plugin
 //   --scenario <name>              state before snapshot: main, hidden, reveal, space2, toast, swipe, swipeCommit,
-//                                  load10, load10discard, split, command, dialog, peek (the last four need those plugins)
+//                                  load10, load10discard, split, command, commandEdit, commandActions, dialog, peek
+//                                  (split, command*, dialog and peek need those plugins)
 //   --dev-plugins <dir>            also load <dir>/*.dylib and hot-reload them when rebuilt
 //   --snapshot <path.png>          render the window to PNG after load, then quit
 //   --snapshot-delay <seconds>     wait before snapshot (default 4)
@@ -168,6 +169,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let today = rt.call("tabs", "list").list("today").map { $0["id"] }
       if today.count > 1 { rt.call("peek", "split", ["ids": .array(Array(today.prefix(2))), "layout": "horizontal"]) }
     case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
+    case "commandEdit": rt.plugins.emit("commands.key.edit")  // Cmd-L
+    case "commandActions":
+      rt.call("commands", "open", ["mode": "new"])
+      rt.plugins.emit("ui.action", ["id": "commandBar", "action": "tab", "value": ["query": ""]])
     case "dialog": rt.plugins.emit("app.quitRequested")
     case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { rt.call("tabs", "clearToday") }
     case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.call("peek", "open", ["url": "https://www.swift.org"]) }

@@ -54,7 +54,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - [x] Spaces with their own colors/themes, swipe to switch
 - [ ] A profile per space (Zen's most-requested missing feature)
 - [ ] Split view, including drag-to-split
-- [ ] Command bar
+- [x] Command bar (`commandbar` plugin: tabs, archive/history, spaces, actions, URLs, web and site search, frecency; [contract](docs/plugin-services.md#commands-plugin-commandbar))
 - [ ] Peek / link preview
 - [ ] Little Arc-style quick window
 - [ ] Link routing rules (Arc's Air Traffic Control)

@@ -79,19 +79,33 @@ Owns:
 
 ## `commands` (plugin `commandbar`)
 
-Injects: `tabs`, `spaces`, `ui`, `keys`, `content`.
+Injects: `tabs`, `spaces`, `ui`, `keys`, `content`, `storage`. It also calls `peek`, `window`, `webviews`, `app` and the host `plugins` service when they exist.
 
 | Method | Args | Returns |
 |---|---|---|
-| `register` | `id`, `title`, `icon?`, `keywords?`, `shortcut?` | ok. The command belongs to the calling plugin and is removed when that plugin unloads |
+| `register` | `id`, `title`, `icon?`, `keywords?`, `shortcut?` (display text, e.g. `⌘⌥N`), `owner?` (the calling plugin's id) | ok. With `owner`, the command is dropped once that plugin is no longer active (cordis doesn't tell a service who called it, so plugins pass their own id) |
+| `unregister` | `id` | ok |
+| `list` | – | `[{id, title, icon, shortcut, owner}]`: the commands that can run right now |
 | `run` | `id` | ok |
-| `open` | `mode: new\|edit` (Cmd-T / Cmd-L), `query?` | ok |
+| `open` | `mode: new\|edit` (Cmd-T / Cmd-L), `query?` | ok. `edit` defaults the query to the selected tab's URL, text selected |
 | `close` | – | ok |
+| `engines` | `engines?: [{keyword, name, url}]` (`url` holds `%s`) | the engine list. The first engine is the default web search. Stored in storage |
+| `state` | – | `{open, mode, scope, query, selected, rows}` (for tests and scenarios) |
 
 Events:
 - `commands.run {id}` fires when a command is picked. Each owning plugin subscribes and acts on its own ids.
 
-Owns: the `overlay.commandBar` slot, and Cmd-T and Cmd-L.
+Owns: the `overlay.commandBar` slot, and Cmd-T and Cmd-L (pressing the same one again closes the bar; Esc and a click outside close it too).
+
+**One input** (ids `commandBar` for the node and its actions):
+- The first rows: `Reload` (Cmd-L with the URL unchanged), `<url> — Open URL` when the text looks like a URL, `<query> — Search Google` (the default engine), and `Search <site> — Press Tab` when the text is a site-search keyword.
+- Then sections ordered by their best match: **Tabs** (open tabs in every space, "Switch to Tab"; picking one selects it, never duplicates), **Actions**, **Spaces**, **History** (pages opened from the bar, then archived tabs).
+- **Tab** scopes to a site-search keyword (`g`, `yt`, `gh`, `w`, `maps`, `x` by default), otherwise toggles actions-only mode.
+- **Enter** runs the selected row. **Shift-Enter** opens URLs, searches and history in Peek (`peek.open`) when the peek plugin is loaded. Arrow keys and hover move the selection.
+- With Cmd-L, a picked URL or search navigates the current tab instead of opening a new one.
+- **Ranking:** a match score (title prefix > word prefix > keyword > host > substring; every word must match) plus frecency (uses weighted 100/80/60/40/20/10 by age < 1/4/14/31/90 days/older). Storage ns `commandbar`, keys `usage` and `engines`.
+
+**Built-in commands** (ids `den.*`), hidden when what they need isn't there: New Space, Rename Tab (edits the title in the bar), Pin/Unpin Tab, Duplicate Tab, Copy URL, Copy URL as Markdown, Clear Today Tabs, View Archive (lists the archive in the bar; picking restores), Toggle Sidebar, Edit Theme (emits `spaces.editTheme`; shown only while something listens), Reload Page, Split Right (needs `peek`; pick the tab or URL for the right pane) and Quit den (`app.quit`).
 
 ## `peek` (plugin `peek`)
 

@@ -49,6 +49,7 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     var accent: NSColor = .controlAccentColor
     var hoverFill: NSColor = .clear
     var onClick: (() -> Void)?
+    var onHover: (() -> Void)?
     override init(frame: NSRect) {
       super.init(frame: frame)
       [icon, title, subtitle, accessory, keycap].forEach { addSubview($0) }
@@ -81,10 +82,17 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       trackingAreas.forEach(removeTrackingArea)
       addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseEntered(with event: NSEvent) {
+      hovering = true
+      onHover?()
+    }
     override func mouseExited(with event: NSEvent) { hovering = false }
     override func mouseUp(with event: NSEvent) { onClick?() }
   }
+
+  /// Where the mouse was when hover last moved the selection. Rows are rebuilt on every
+  /// keystroke; a row appearing under a still mouse must not steal the selection.
+  var lastHoverPoint: NSPoint?
 
   let input = NSTextField()
   let searchIcon = IconView()
@@ -119,6 +127,7 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
   func update(_ v: Value, palette p: Palette) {
     node = v
     palette = p
+    if lastHoverPoint == nil { lastHoverPoint = NSEvent.mouseLocation }
     let q = v.str("query")
     // Don't fight the user's typing: only replace text the plugin changed on purpose.
     if input.currentEditor() == nil || v.flag("replaceQuery") || input.stringValue.isEmpty { input.stringValue = q }
@@ -147,6 +156,7 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
         r.accessory.stringValue = rv.str("accessory")
         r.keycap.text = rv.str("keycap")
         r.onClick = { [weak self, rid = r.rowId] in self?.submit(rid, modifiers: []) }
+        r.onHover = { [weak self, rid = r.rowId] in self?.hover(rid, at: NSEvent.mouseLocation) }
         r.toolTip = rv.str("subtitle")
         rows.append(r)
         rowIds.append(r.rowId)
@@ -220,6 +230,15 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     selected = rowIds[((i + d) % rowIds.count + rowIds.count) % rowIds.count]
     if let p = palette { apply(p) }
     emit(barId, "select", ["row": .string(selected)])
+  }
+
+  /// Arc: hovering a row selects it (emits `select`), as the arrow keys do.
+  func hover(_ row: String, at point: NSPoint) {
+    defer { lastHoverPoint = point }
+    guard let last = lastHoverPoint, last != point, row != selected else { return }
+    selected = row
+    if let p = palette { apply(p) }
+    emit(barId, "select", ["row": .string(row)])
   }
 
   func submit(_ row: String, modifiers: [Value]) {

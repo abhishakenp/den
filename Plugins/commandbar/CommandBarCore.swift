@@ -1,0 +1,887 @@
+// The `commands` service and Arc's Command Bar (Cmd-T / Cmd-L): one input that searches open tabs
+// in every space, the archive and history, spaces and commands, goes to URLs and searches the web.
+// See docs/plugin-services.md and docs/research/arc.md §9.
+
+#if !hasFeature(Embedded)
+  import CordisValue
+#endif
+
+final class CommandBarCore {
+  /// A search engine. `keyword` + Tab scopes the bar to it; `url` holds `%s` for the query.
+  struct Engine: Equatable {
+    var keyword: String
+    var name: String
+    var url: String
+
+    var value: Value { ["keyword": .string(keyword), "name": .string(name), "url": .string(url)] }
+    init(_ keyword: String, _ name: String, _ url: String) {
+      self.keyword = keyword
+      self.name = name
+      self.url = url
+    }
+    init?(_ v: Value) {
+      guard let k = v["keyword"].string, !k.isEmpty, let u = v["url"].string, !u.isEmpty else { return nil }
+      self.init(Text.lower(k), v.sOpt("name") ?? k, u)
+    }
+  }
+
+  struct Command {
+    var id: String
+    var title: String
+    var icon: String
+    var keywords: [String]
+    var shortcut: String
+    var owner: String?  // plugin id; the command goes away when that plugin is no longer active
+  }
+
+  /// What picking a row does.
+  enum Act: Equatable {
+    case url(String)  // go to a URL (typed, history)
+    case search(String)  // a search URL
+    case reload
+    case tab(String)
+    case space(String)
+    case command(String)
+    case archived(String, String)  // archive id, url
+    case scope(Int)  // enter an engine's site search
+    case rename(String)  // tab id; the query is the new title
+  }
+
+  struct Row {
+    var id: String
+    var icon: String
+    var title: String
+    var subtitle = ""
+    var accessory = ""
+    var keycap = ""
+    var act: Act
+    var key = ""  // usage key for ranking
+    var score = 0
+  }
+
+  enum Scope: Equatable {
+    case main
+    case actions  // Tab: only commands
+    case engine(Int)  // site search
+    case rename(String)  // tab id
+    case archive
+    case split  // pick what opens on the right
+  }
+
+  struct Usage {
+    var n: Int64
+    var t: Int64
+    var title: String
+    var url: String
+  }
+
+  static let ns = "commandbar"
+  static let slot = "overlay.commandBar"
+  static let barId = "commandBar"  // also the id the host uses for a click outside the bar
+  static let defaultEngines: [Engine] = [
+    Engine("g", "Google", "https://www.google.com/search?q=%s"),
+    Engine("yt", "YouTube", "https://www.youtube.com/results?search_query=%s"),
+    Engine("gh", "GitHub", "https://github.com/search?q=%s"),
+    Engine("w", "Wikipedia", "https://en.wikipedia.org/w/index.php?search=%s"),
+    Engine("maps", "Google Maps", "https://www.google.com/maps/search/%s"),
+    Engine("x", "X", "https://x.com/search?q=%s"),
+  ]
+  static let maxUsage = 400
+  static let dayMs: Int64 = 86_400_000
+
+  let env: PluginEnv
+  var engines: [Engine] = CommandBarCore.defaultEngines
+  var usage: [String: Usage] = [:]
+  var registered: [String: Command] = [:]
+  var registeredOrder: [String] = []
+
+  // Bar state
+  var isOpen = false
+  var mode = "new"  // new | edit (Cmd-T / Cmd-L)
+  var scope = Scope.main
+  var query = ""
+  var editURL = ""
+  var selected = ""
+  var rows: [Row] = []
+  var sections: [(String, [Row])] = []
+
+  init(env: PluginEnv) { self.env = env }
+
+  // MARK: - Lifecycle
+
+  func start() {
+    load()
+    env.call("keys", "bind", ["chord": "cmd+t", "event": "commands.key.new", "title": "New Tab…", "menu": "File"])
+    env.call("keys", "bind", ["chord": "cmd+l", "event": "commands.key.edit", "title": "Open Location…", "menu": "File"])
+    env.on("commands.key.new") { [self] _ in toggle("new") }
+    env.on("commands.key.edit") { [self] _ in toggle("edit") }
+    env.on("ui.action") { [self] v in if v.s("id") == Self.barId { action(v.s("action"), v["value"]) } }
+  }
+
+  func stop() {
+    if isOpen { env.call("ui", "set", ["slot": .string(Self.slot), "tree": .null]) }
+  }
+
+  func load() {
+    let e = env.call("storage", "get", ["ns": .string(Self.ns), "key": "engines"])
+    if let list = e.array {
+      let parsed = list.compactMap { Engine($0) }
+      if !parsed.isEmpty { engines = parsed }
+    }
+    if case let .object(pairs) = env.call("storage", "get", ["ns": .string(Self.ns), "key": "usage"]) {
+      for (k, v) in pairs { usage[k] = Usage(n: v.i("n"), t: v.i("t"), title: v.s("title"), url: v.s("url")) }
+    }
+  }
+
+  func saveUsage() {
+    if usage.count > Self.maxUsage {
+      let now = env.now()
+      let keep = usage.keys.sorted { frecency(usage[$0]!, now) > frecency(usage[$1]!, now) }.prefix(Self.maxUsage)
+      var trimmed: [String: Usage] = [:]
+      for k in keep { trimmed[k] = usage[k] }
+      usage = trimmed
+    }
+    var pairs: [(String, Value)] = []
+    for k in usage.keys.sorted() {
+      let u = usage[k]!
+      var v: Value = ["n": .int(u.n), "t": .int(u.t)]
+      if !u.title.isEmpty { v.put("title", .string(u.title)) }
+      if !u.url.isEmpty { v.put("url", .string(u.url)) }
+      pairs.append((k, v))
+    }
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": "usage", "value": .object(pairs)])
+  }
+
+  // MARK: - Service
+
+  func handle(_ method: String, _ args: Value) -> Value {
+    switch method {
+    case "register":
+      let id = args.s("id")
+      guard !id.isEmpty, !args.s("title").isEmpty else { return .err("commands: register needs id and title") }
+      guard builtin(id) == nil else { return .err("commands: '" + id + "' is a built-in command") }
+      if registered[id] == nil { registeredOrder.append(id) }
+      registered[id] = Command(
+        id: id, title: args.s("title"), icon: args.sOpt("icon") ?? "sf:command", keywords: args.a("keywords").compactMap { $0.string },
+        shortcut: args.s("shortcut"), owner: args.sOpt("owner"))
+      if isOpen { render() }
+    case "unregister":
+      registered[args.s("id")] = nil
+      registeredOrder.removeAll { $0 == args.s("id") }
+    case "list":
+      return .array(commands().map { c in
+        ["id": .string(c.id), "title": .string(c.title), "icon": .string(c.icon), "shortcut": .string(c.shortcut), "owner": .str(c.owner)]
+      })
+    case "run":
+      let id = args.s("id")
+      guard commands().contains(where: { $0.id == id }) else { return .err("commands: no command '" + id + "'") }
+      run(id)
+    case "open":
+      let m = args.sOpt("mode") ?? "new"
+      guard m == "new" || m == "edit" else { return .err("commands: bad mode " + m) }
+      open(m, query: args["query"].string)
+    case "close":
+      close()
+    case "engines":
+      if let list = args["engines"].array {
+        let parsed = list.compactMap { Engine($0) }
+        guard !parsed.isEmpty else { return .err("commands: engines needs at least one {keyword, name, url}") }
+        engines = parsed
+        env.call("storage", "set", ["ns": .string(Self.ns), "key": "engines", "value": .array(engines.map { $0.value })])
+      }
+      return .array(engines.map { $0.value })
+    case "state":
+      return ["open": .bool(isOpen), "mode": .string(mode), "scope": .string(scopeName), "query": .string(query), "selected": .string(selected),
+              "rows": .array(rows.map { .string($0.id) })]
+    default:
+      return .err("commands: unknown method " + method)
+    }
+    return .okay
+  }
+
+  var scopeName: String {
+    switch scope {
+    case .main: return "main"
+    case .actions: return "actions"
+    case let .engine(i): return "engine:" + engines[i].keyword
+    case .rename: return "rename"
+    case .archive: return "archive"
+    case .split: return "split"
+    }
+  }
+
+  // MARK: - Open / close
+
+  func toggle(_ m: String) {
+    // Pressing the same shortcut again closes the bar (Arc).
+    if isOpen && mode == m && scope == .main { close() } else { open(m, query: nil) }
+  }
+
+  func open(_ m: String, query q: String?) {
+    let reopen = isOpen
+    mode = m
+    scope = .main
+    editURL = ""
+    if m == "edit" {
+      editURL = q ?? selectedTab().s("url")
+      query = editURL
+    } else {
+      query = q ?? ""
+    }
+    selected = ""
+    isOpen = true
+    // Clearing first makes the host treat it as a fresh open, which selects the text (Cmd-L).
+    if reopen { env.call("ui", "set", ["slot": .string(Self.slot), "tree": .null]) }
+    render(replace: true)
+  }
+
+  func close() {
+    guard isOpen else { return }
+    isOpen = false
+    scope = .main
+    query = ""
+    rows = []
+    sections = []
+    env.call("ui", "set", ["slot": .string(Self.slot), "tree": .null])
+  }
+
+  func setScope(_ s: Scope, query q: String, reopen: Bool = false) {
+    scope = s
+    query = q
+    selected = ""
+    if reopen { env.call("ui", "set", ["slot": .string(Self.slot), "tree": .null]) }
+    render(replace: true)
+  }
+
+  // MARK: - UI actions
+
+  func action(_ a: String, _ value: Value) {
+    guard isOpen else { return }
+    switch a {
+    case "input":
+      query = value.s("text")
+      selected = ""
+      render()
+    case "select":
+      selected = value.s("row")
+      render()
+    case "submit":
+      if let q = value["query"].string, q != query {
+        query = q
+        compute()
+      }
+      let mods = value.a("modifiers").compactMap { $0.string }
+      let row = rows.first { $0.id == value.s("row") } ?? rows.first { $0.id == selected } ?? rows.first
+      if let r = row { pick(r, shift: mods.contains("shift")) }
+    case "tab":
+      if let q = value["query"].string { query = q }
+      tabKey()
+    case "dismiss":
+      close()
+    default:
+      break
+    }
+  }
+
+  /// Tab: a site-search keyword scopes the search to that site; otherwise it switches between
+  /// the full results and actions only.
+  func tabKey() {
+    switch scope {
+    case .main:
+      if let i = engineIndex(Text.lower(trim(query))) { setScope(.engine(i), query: "") } else { setScope(.actions, query: query) }
+    case .actions:
+      setScope(.main, query: query)
+    default:
+      break
+    }
+  }
+
+  func engineIndex(_ keyword: String) -> Int? {
+    keyword.isEmpty ? nil : engines.firstIndex { $0.keyword == keyword }
+  }
+
+  // MARK: - Picking
+
+  func pick(_ r: Row, shift: Bool) {
+    switch r.act {
+    case let .scope(i):
+      setScope(.engine(i), query: "")
+      return
+    case let .command(id) where id == "den.renameTab" || id == "den.viewArchive" || id == "den.splitRight":
+      run(id)  // these continue inside the bar
+      return
+    default:
+      break
+    }
+    let peek = shift && available("peek")
+    let s = scope
+    close()
+    switch r.act {
+    case let .url(u), let .search(u):
+      if case .url = r.act { bump("url:" + URLs.normalize(u), title: r.title, url: u) }
+      if case .search = r.act { bump("q:" + Text.lower(r.title), title: r.title, url: u) }
+      go(u, peek: peek, scope: s)
+    case .reload:
+      if let id = selectedTab().sOpt("id") { env.call("webviews", "reload", ["id": .string(id)]) }
+    case let .tab(id):
+      bump("tab:" + id, title: "", url: "")
+      if s == .split { split(with: id) } else { env.call("tabs", "select", ["id": .string(id)]) }
+    case let .space(id):
+      bump("space:" + id, title: "", url: "")
+      env.call("spaces", "switch", ["id": .string(id)])
+    case let .command(id):
+      run(id)
+    case let .archived(id, u):
+      bump("url:" + URLs.normalize(u), title: r.title, url: u)
+      if peek { env.call("peek", "open", ["url": .string(u)]) } else { env.call("tabs", "restore", ["id": .string(id)]) }
+    case let .rename(id):
+      env.call("tabs", "rename", ["id": .string(id), "title": .string(trim(r.title))])
+    case .scope:
+      break
+    }
+  }
+
+  /// Opens `url`: in Peek (Shift-Enter), next to the selected tab (split), in the current tab
+  /// (Cmd-L), or in a new tab.
+  func go(_ url: String, peek: Bool, scope s: Scope) {
+    if peek {
+      var a: Value = ["url": .string(url)]
+      if let id = selectedTab().sOpt("id") { a.put("sourceId", .string(id)) }
+      env.call("peek", "open", a)
+    } else if s == .split {
+      let r = env.call("tabs", "open", ["url": .string(url), "background": true])
+      if let id = r["id"].string { split(with: id) }
+    } else if mode == "edit", let id = selectedTab().sOpt("id") {
+      env.call("tabs", "navigate", ["id": .string(id), "url": .string(url)])
+    } else {
+      env.call("tabs", "open", ["url": .string(url)])
+    }
+  }
+
+  func split(with id: String) {
+    guard let sel = selectedTab().sOpt("id"), sel != id else {
+      env.call("tabs", "select", ["id": .string(id)])
+      return
+    }
+    env.call("peek", "split", ["ids": [.string(sel), .string(id)], "layout": "horizontal"])
+  }
+
+  // MARK: - Commands
+
+  struct Builtin {
+    var id: String
+    var title: String
+    var icon: String
+    var keywords: [String]
+    var shortcut: String
+    var needsTab: Bool
+    var service: String?  // hidden unless this service exists
+    var listener: String?  // hidden unless someone listens to this event
+  }
+
+  static let builtins: [Builtin] = [
+    Builtin(id: "den.newSpace", title: "New Space", icon: "sf:plus.square.on.square", keywords: ["create", "space"], shortcut: "", needsTab: false, service: "spaces"),
+    Builtin(id: "den.renameTab", title: "Rename Tab", icon: "sf:pencil", keywords: ["title"], shortcut: "", needsTab: true, service: "tabs"),
+    Builtin(id: "den.pinTab", title: "Pin Tab", icon: "sf:pin", keywords: ["unpin", "pinned"], shortcut: "⌘D", needsTab: true, service: "tabs"),
+    Builtin(id: "den.duplicateTab", title: "Duplicate Tab", icon: "sf:plus.rectangle.on.rectangle", keywords: ["copy", "clone"], shortcut: "", needsTab: true, service: "tabs"),
+    Builtin(id: "den.copyURL", title: "Copy URL", icon: "sf:link", keywords: ["link", "share"], shortcut: "⌘⇧C", needsTab: true, service: "app"),
+    Builtin(id: "den.copyMarkdown", title: "Copy URL as Markdown", icon: "sf:text.quote", keywords: ["link", "share", "md"], shortcut: "", needsTab: true, service: "app"),
+    Builtin(id: "den.clearToday", title: "Clear Today Tabs", icon: "sf:arrow.down.to.line", keywords: ["unpinned", "archive", "close"], shortcut: "⌘⇧K", needsTab: false, service: "tabs"),
+    Builtin(id: "den.viewArchive", title: "View Archive", icon: "sf:archivebox", keywords: ["history", "closed", "restore"], shortcut: "", needsTab: false, service: "tabs"),
+    Builtin(id: "den.toggleSidebar", title: "Toggle Sidebar", icon: "sf:sidebar.left", keywords: ["hide", "show"], shortcut: "⌘S", needsTab: false, service: "window"),
+    Builtin(id: "den.theme", title: "Edit Theme", icon: "sf:paintpalette", keywords: ["color", "appearance", "dark", "light"], shortcut: "", needsTab: false, service: nil, listener: "spaces.editTheme"),
+    Builtin(id: "den.reload", title: "Reload Page", icon: "sf:arrow.clockwise", keywords: ["refresh"], shortcut: "⌘R", needsTab: true, service: "webviews"),
+    Builtin(id: "den.splitRight", title: "Split Right", icon: "sf:rectangle.split.2x1", keywords: ["split view", "side by side"], shortcut: "", needsTab: true, service: "peek"),
+    Builtin(id: "den.quit", title: "Quit den", icon: "sf:power", keywords: ["exit", "close"], shortcut: "⌘Q", needsTab: false, service: "app"),
+  ]
+
+  func builtin(_ id: String) -> Builtin? { Self.builtins.first { $0.id == id } }
+
+  /// Every command that can run right now: built-ins whose service (or listener) and tab exist,
+  /// then registered commands whose owning plugin is still active.
+  func commands() -> [Command] {
+    let info = env.call("plugins", "get")
+    let known = !info.isErr && !info.isNull
+    let services = info.a("services").compactMap { $0.string }
+    let active = info.a("plugins").filter { $0.b("active") }.map { $0.s("id") }
+    let tab = selectedTab()
+    var out: [Command] = []
+    for b in Self.builtins {
+      if b.needsTab && tab.isNull { continue }
+      if let s = b.service, known ? !services.contains(s) : !available(s) { continue }
+      if let l = b.listener, !env.call("plugins", "listening", ["event": .string(l)]).b("listening") { continue }
+      var c = Command(id: b.id, title: b.title, icon: b.icon, keywords: b.keywords, shortcut: b.shortcut, owner: nil)
+      if b.id == "den.pinTab", tab.s("kind") != "today" {
+        c.title = "Unpin Tab"
+        c.icon = "sf:pin.slash"
+      }
+      out.append(c)
+    }
+    for id in registeredOrder {
+      guard let c = registered[id] else { continue }
+      if known, let o = c.owner, !active.contains(o) {
+        // Its plugin unloaded: the command goes with it.
+        registered[id] = nil
+        continue
+      }
+      out.append(c)
+    }
+    registeredOrder.removeAll { registered[$0] == nil }
+    return out
+  }
+
+  /// True unless calling the service says it isn't there.
+  func available(_ service: String) -> Bool {
+    let info = env.call("plugins", "get")
+    if !info.isErr && !info.isNull { return info.a("services").contains { $0.string == service } }
+    let r = env.call(service, "")
+    return !(r.isErr && Text.contains(r.s("error"), "not available"))
+  }
+
+  func run(_ id: String) {
+    bump("cmd:" + id, title: "", url: "")
+    if builtin(id) != nil { runBuiltin(id) }
+    env.emit("commands.run", ["id": .string(id)])
+  }
+
+  func runBuiltin(_ id: String) {
+    let tab = selectedTab()
+    let tabId = tab.s("id")
+    switch id {
+    case "den.newSpace":
+      let r = env.call("spaces", "create", ["name": "New Space"])
+      if let sid = r["id"].string { env.call("spaces", "switch", ["id": .string(sid)]) }
+    case "den.renameTab":
+      guard !tabId.isEmpty else { return }
+      if !isOpen {
+        isOpen = true
+        mode = "new"
+      }
+      setScope(.rename(tabId), query: tab.s("title"), reopen: true)
+    case "den.pinTab":
+      env.call("tabs", tab.s("kind") == "today" ? "pin" : "unpin", ["id": .string(tabId)])
+    case "den.duplicateTab":
+      env.call("tabs", "duplicate", ["id": .string(tabId)])
+    case "den.copyURL":
+      env.call("app", "copy", ["text": tab["url"]])
+      toast("Copied Current URL", "sf:link")
+    case "den.copyMarkdown":
+      env.call("app", "copy", ["text": .string("[" + markdownEscape(tab.s("title")) + "](" + tab.s("url") + ")")])
+      toast("Copied URL as Markdown", "sf:link")
+    case "den.clearToday":
+      env.call("tabs", "clearToday")
+    case "den.viewArchive":
+      if !isOpen {
+        isOpen = true
+        mode = "new"
+      }
+      setScope(.archive, query: "")
+    case "den.toggleSidebar":
+      env.call("window", "toggleSidebar")
+    case "den.theme":
+      env.emit("spaces.editTheme", ["id": env.call("spaces", "current")["id"]])
+    case "den.reload":
+      env.call("webviews", "reload", ["id": .string(tabId)])
+    case "den.splitRight":
+      if !isOpen {
+        isOpen = true
+        mode = "new"
+      }
+      setScope(.split, query: "")
+    case "den.quit":
+      env.call("app", "quit", ["confirm": true])
+    default:
+      break
+    }
+  }
+
+  func toast(_ text: String, _ icon: String) {
+    env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(text), "icon": .string(icon)]])
+  }
+
+  func markdownEscape(_ s: String) -> String {
+    var out: [UInt8] = []
+    for c in s.utf8 {
+      if c == 91 || c == 93 { out.append(92) }  // [ ] -> \[ \]
+      out.append(c)
+    }
+    return String(decoding: out, as: UTF8.self)
+  }
+
+  // MARK: - Data
+
+  func selectedTab() -> Value {
+    guard let id = env.call("tabs", "selected")["id"].string else { return .null }
+    for t in allTabs() where t.s("id") == id { return t }
+    return .null
+  }
+
+  /// Open tabs in every space (favorites once), flattening folders and splits.
+  func allTabs() -> [Value] {
+    var out: [Value] = []
+    var seen: [String] = []
+    func add(_ items: [Value]) {
+      for i in items {
+        if let kids = i["children"].array {
+          add(kids)
+        } else if !i.s("id").isEmpty && !seen.contains(i.s("id")) {
+          seen.append(i.s("id"))
+          out.append(i)
+        }
+      }
+    }
+    let spaces = env.call("spaces", "list").array ?? []
+    if spaces.isEmpty {
+      let l = env.call("tabs", "list")
+      add(l.a("favorites"))
+      add(l.a("pinned"))
+      add(l.a("today"))
+    }
+    for (n, sp) in spaces.enumerated() {
+      let l = env.call("tabs", "list", ["spaceId": sp["id"]])
+      if n == 0 { add(l.a("favorites")) }
+      add(l.a("pinned"))
+      add(l.a("today"))
+    }
+    return out
+  }
+
+  // MARK: - Ranking
+
+  /// Frequency weighted by recency (a Firefox-style frecency). One use today is worth 100.
+  func frecency(_ u: Usage, _ now: Int64) -> Int {
+    let age = now - u.t
+    let w: Int64
+    if age < Self.dayMs { w = 100 } else if age < 4 * Self.dayMs { w = 80 } else if age < 14 * Self.dayMs { w = 60 } else if age < 31 * Self.dayMs {
+      w = 40
+    } else if age < 90 * Self.dayMs { w = 20 } else { w = 10 }
+    return Int(u.n * w)
+  }
+
+  func usageScore(_ key: String) -> Int {
+    guard let u = usage[key] else { return 0 }
+    return min(frecency(u, env.now()) / 2, 150)
+  }
+
+  func bump(_ key: String, title: String, url: String) {
+    var u = usage[key] ?? Usage(n: 0, t: 0, title: title, url: url)
+    u.n += 1
+    u.t = env.now()
+    if !title.isEmpty { u.title = title }
+    if !url.isEmpty { u.url = url }
+    usage[key] = u
+    saveUsage()
+  }
+
+  /// How well `query` matches: every word must hit the title, a keyword or the URL. nil = no match.
+  static func match(_ query: String, title: String, url: String = "", keywords: [String] = []) -> Int? {
+    let words = split(Text.lower(query))
+    if words.isEmpty { return 0 }
+    let t = Text.lower(title), u = Text.lower(url)
+    let host = URLs.host(u)
+    var total = 0
+    for w in words {
+      var best = 0
+      if Text.hasPrefix(t, w) { best = 100 } else if wordPrefix(t, w) { best = 70 } else if Text.contains(t, w) { best = 40 }
+      for k in keywords where best < 80 {
+        let kl = Text.lower(k)
+        if Text.hasPrefix(kl, w) || wordPrefix(kl, w) { best = max(best, 60) }
+      }
+      if !u.isEmpty && best < 60 {
+        if Text.hasPrefix(host, w) { best = max(best, 60) } else if Text.contains(u, w) { best = max(best, 20) }
+      }
+      if best == 0 { return nil }
+      total += best
+    }
+    return total / words.count
+  }
+
+  static func wordPrefix(_ s: String, _ w: String) -> Bool {
+    let a = Array(s.utf8), b = Array(w.utf8)
+    guard !b.isEmpty, a.count > b.count else { return false }
+    for start in 1...(a.count - b.count) where !isWordByte(a[start - 1]) && isWordByte(a[start]) {
+      var ok = true
+      for j in 0..<b.count where a[start + j] != b[j] {
+        ok = false
+        break
+      }
+      if ok { return true }
+    }
+    return false
+  }
+
+  static func isWordByte(_ c: UInt8) -> Bool { (c >= 48 && c <= 57) || (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c >= 128 }
+
+  static func split(_ s: String) -> [String] {
+    var out: [String] = []
+    var cur: [UInt8] = []
+    for c in s.utf8 {
+      if c == 32 || c == 9 {
+        if !cur.isEmpty { out.append(String(decoding: cur, as: UTF8.self)) }
+        cur = []
+      } else {
+        cur.append(c)
+      }
+    }
+    if !cur.isEmpty { out.append(String(decoding: cur, as: UTF8.self)) }
+    return out
+  }
+
+  func trim(_ s: String) -> String {
+    let b = Array(s.utf8)
+    var i = 0, j = b.count
+    while i < j, b[i] == 32 || b[i] == 9 || b[i] == 10 { i += 1 }
+    while j > i, b[j - 1] == 32 || b[j - 1] == 9 || b[j - 1] == 10 { j -= 1 }
+    return String(decoding: b[i..<j], as: UTF8.self)
+  }
+
+  // MARK: - URLs and search
+
+  /// A typed string that should be opened as a URL, or nil. Mirrors WebViewsService.normalize.
+  static func url(from input: String) -> String? {
+    let s = input
+    if s.isEmpty || Text.contains(s, " ") { return nil }
+    let l = Text.lower(s)
+    for scheme in ["http://", "https://", "about:", "file://", "data:"] where Text.hasPrefix(l, scheme) { return s }
+    if Text.hasPrefix(l, "localhost") { return "http://" + s }
+    // host[:port][/path] with a dot and a TLD of letters (example.com), or an IPv4 address.
+    var hostEnd = s.utf8.count
+    for (i, c) in s.utf8.enumerated() where c == 47 || c == 58 || c == 63 || c == 35 {
+      hostEnd = i
+      break
+    }
+    let host = Array(l.utf8)[0..<hostEnd]
+    guard let lastDot = host.lastIndex(of: 46), lastDot > host.startIndex else { return nil }
+    let tld = host[(lastDot + 1)...]
+    let allDigits = host.allSatisfy { ($0 >= 48 && $0 <= 57) || $0 == 46 }
+    if allDigits { return "http://" + s }
+    guard tld.count >= 2, tld.allSatisfy({ $0 >= 97 && $0 <= 122 }) else { return nil }
+    guard host.allSatisfy({ ($0 >= 97 && $0 <= 122) || ($0 >= 48 && $0 <= 57) || $0 == 45 || $0 == 46 || $0 >= 128 }) else { return nil }
+    return "https://" + s
+  }
+
+  static func encode(_ s: String) -> String {
+    let hex: [UInt8] = Array("0123456789ABCDEF".utf8)
+    var out: [UInt8] = []
+    for c in s.utf8 {
+      let unreserved = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 45 || c == 46 || c == 95 || c == 126
+      if unreserved {
+        out.append(c)
+      } else if c == 32 {
+        out.append(43)  // +
+      } else {
+        out.append(37)
+        out.append(hex[Int(c >> 4)])
+        out.append(hex[Int(c & 15)])
+      }
+    }
+    return String(decoding: out, as: UTF8.self)
+  }
+
+  static func searchURL(_ engine: Engine, _ q: String) -> String {
+    let parts = Array(engine.url.utf8)
+    guard let i = URLs.find(parts, Array("%s".utf8)) else { return engine.url + encode(q) }
+    return String(decoding: parts[..<i], as: UTF8.self) + encode(q) + String(decoding: parts[(i + 2)...], as: UTF8.self)
+  }
+
+  var defaultEngine: Engine { engines[0] }
+
+  // MARK: - Results
+
+  func compute() {
+    let q = trim(query)
+    var secs: [(String, [Row])] = []
+    switch scope {
+    case .main:
+      secs = mainResults(q)
+    case .actions:
+      secs = [("Actions", commandRows(q, limit: 50))]
+    case let .engine(i):
+      let e = engines[i]
+      if !q.isEmpty {
+        secs = [("", [Row(id: "search", icon: "sf:magnifyingglass", title: q, subtitle: "— Search " + e.name, act: .search(Self.searchURL(e, q)))])]
+      }
+    case let .rename(id):
+      secs = [("", [Row(id: "rename", icon: "sf:pencil", title: q.isEmpty ? "Untitled" : q, subtitle: "— Rename Tab", act: .rename(id))])]
+    case .archive:
+      secs = [("Archive", archiveRows(q, limit: 50, exclude: []))]
+    case .split:
+      var top: [Row] = []
+      if !q.isEmpty { top = goRows(q) }
+      let sel = selectedTab().s("id")
+      secs = [("", top), ("Tabs", tabRows(q, limit: 6).filter { $0.act != .tab(sel) })]
+    }
+    sections = secs.filter { !$0.1.isEmpty }
+    rows = sections.flatMap { $0.1 }
+    if !rows.contains(where: { $0.id == selected }) { selected = rows.first?.id ?? "" }
+  }
+
+  /// The top rows: reload (Cmd-L, unchanged URL), go to URL, web search, site-search hint.
+  func goRows(_ q: String) -> [Row] {
+    var top: [Row] = []
+    let unchanged = mode == "edit" && q == editURL && !q.isEmpty
+    if unchanged {
+      // Cmd-L then Enter reloads (Arc).
+      top.append(Row(id: "reload", icon: "sf:arrow.clockwise", title: URLs.display(q), subtitle: "— Reload", act: .reload))
+    }
+    let u = Self.url(from: q)
+    if let u, !unchanged {
+      top.append(Row(id: "go", icon: "sf:globe", title: q, subtitle: mode == "edit" ? "— Go to URL" : "— Open URL", act: .url(u), key: "url:" + URLs.normalize(u)))
+    }
+    // A full URL with a scheme is never a search.
+    if u == nil || !Text.contains(q, "://") {
+      top.append(Row(id: "search", icon: "sf:magnifyingglass", title: q, subtitle: "— Search " + defaultEngine.name, act: .search(Self.searchURL(defaultEngine, q))))
+    }
+    if let i = engineIndex(Text.lower(q)) {
+      top.append(Row(id: "scope:" + engines[i].keyword, icon: "sf:magnifyingglass.circle", title: "Search " + engines[i].name, subtitle: "— Press Tab", keycap: "⇥", act: .scope(i)))
+    }
+    return top
+  }
+
+  func mainResults(_ q: String) -> [(String, [Row])] {
+    if q.isEmpty {
+      // Nothing typed: the most recent tabs, like Arc's suggestions.
+      let tabs = allTabs().sorted { $0.i("lastActive") > $1.i("lastActive") }
+      let sel = selectedTab().s("id")
+      return [("Tabs", Array(tabs.filter { $0.s("id") != sel }.prefix(5).map { tabRow($0, score: 0) }))]
+    }
+    let tabs = tabRows(q, limit: 5)
+    let openURLs = allTabs().map { URLs.normalize($0.s("url")) }
+    var ranked: [(String, [Row])] = [
+      ("Tabs", tabs),
+      ("Actions", commandRows(q, limit: 4)),
+      ("Spaces", spaceRows(q)),
+      ("History", historyRows(q, exclude: openURLs)),
+    ]
+    ranked = ranked.filter { !$0.1.isEmpty }
+    // Stable: the section with the strongest match comes first.
+    let best = ranked.map { $0.1.map { $0.score }.max() ?? 0 }
+    let order = Array(0..<ranked.count).sorted { best[$0] != best[$1] ? best[$0] > best[$1] : $0 < $1 }
+    return [("", goRows(q))] + order.map { ranked[$0] }
+  }
+
+  func tabRow(_ t: Value, score: Int) -> Row {
+    let current = env.call("spaces", "current").s("id")
+    var sub = URLs.display(t.s("url"))
+    let sid = t.s("spaceId")
+    if !sid.isEmpty && sid != current {
+      for sp in env.call("spaces", "list").array ?? [] where sp.s("id") == sid { sub += " · " + sp.s("name") }
+    }
+    return Row(
+      id: "tab:" + t.s("id"), icon: t.sOpt("favicon") ?? URLs.favicon(t.s("url")), title: t.s("title"), subtitle: sub, accessory: "Switch to Tab",
+      keycap: "→", act: .tab(t.s("id")), key: "tab:" + t.s("id"), score: score)
+  }
+
+  func tabRows(_ q: String, limit: Int) -> [Row] {
+    var out: [Row] = []
+    for t in allTabs() {
+      guard let m = Self.match(q, title: t.s("title"), url: t.s("url")) else { continue }
+      let s = m + 10 + usageScore("tab:" + t.s("id")) + usageScore("url:" + URLs.normalize(t.s("url")))
+      out.append(tabRow(t, score: s))
+    }
+    return Self.top(out, limit)
+  }
+
+  func commandRows(_ q: String, limit: Int) -> [Row] {
+    var out: [Row] = []
+    for (n, c) in commands().enumerated() {
+      guard let m = Self.match(q, title: c.title, keywords: c.keywords) else { continue }
+      // Empty query (actions mode): most used first, then the built-in order.
+      let s = (q.isEmpty ? 0 : m) + usageScore("cmd:" + c.id) - (q.isEmpty ? n : 0)
+      out.append(Row(id: "cmd:" + c.id, icon: c.icon, title: c.title, accessory: c.shortcut, act: .command(c.id), key: "cmd:" + c.id, score: s))
+    }
+    return Self.top(out, limit)
+  }
+
+  func spaceRows(_ q: String) -> [Row] {
+    let current = env.call("spaces", "current").s("id")
+    var out: [Row] = []
+    for sp in env.call("spaces", "list").array ?? [] {
+      let id = sp.s("id")
+      guard id != current, let m = Self.match(q, title: sp.s("name"), keywords: ["space"]) else { continue }
+      out.append(Row(
+        id: "space:" + id, icon: sp.sOpt("icon") ?? "sf:square.stack", title: sp.s("name"), subtitle: "— Switch to Space", act: .space(id),
+        key: "space:" + id, score: m + usageScore("space:" + id)))
+    }
+    return Self.top(out, 3)
+  }
+
+  /// Pages opened from the bar before, and archived tabs, minus what's open.
+  func historyRows(_ q: String, exclude: [String]) -> [Row] {
+    var out: [Row] = []
+    var seen = exclude
+    for k in usage.keys.sorted() where Text.hasPrefix(k, "url:") {
+      let u = usage[k]!
+      let norm = URLs.normalize(u.url)
+      guard !u.url.isEmpty, !seen.contains(norm), let m = Self.match(q, title: u.title, url: u.url) else { continue }
+      seen.append(norm)
+      out.append(Row(id: "hist:" + norm, icon: URLs.favicon(u.url), title: u.title.isEmpty ? URLs.display(u.url) : u.title, subtitle: URLs.display(u.url),
+                     act: .url(u.url), key: k, score: m + usageScore(k)))
+    }
+    out += archiveRows(q, limit: 10, exclude: seen)
+    return Self.top(out, 4)
+  }
+
+  func archiveRows(_ q: String, limit: Int, exclude: [String]) -> [Row] {
+    var out: [Row] = []
+    var seen = exclude
+    for (n, e) in (env.call("tabs", "archive").array ?? []).enumerated() {
+      let u = e.s("url")
+      let norm = URLs.normalize(u)
+      guard !seen.contains(norm), let m = Self.match(q, title: e.s("title"), url: u) else { continue }
+      seen.append(norm)
+      let key = "url:" + norm
+      out.append(Row(id: "arch:" + e.s("id"), icon: e.sOpt("favicon") ?? URLs.favicon(u), title: e.s("title").isEmpty ? URLs.display(u) : e.s("title"),
+                     subtitle: URLs.display(u), accessory: "Archived", act: .archived(e.s("id"), u), key: key,
+                     score: (q.isEmpty ? -n : m - 5) + usageScore(key)))
+    }
+    return Self.top(out, limit)
+  }
+
+  /// The best `limit` rows, keeping the input order among equal scores.
+  static func top(_ rows: [Row], _ limit: Int) -> [Row] {
+    let order = Array(0..<rows.count).sorted { rows[$0].score != rows[$1].score ? rows[$0].score > rows[$1].score : $0 < $1 }
+    return order.prefix(limit).map { rows[$0] }
+  }
+
+  // MARK: - Render
+
+  var placeholder: String {
+    switch scope {
+    case .main: return mode == "edit" ? "Enter URL or search" : "Search or Enter URL…"
+    case .actions: return "Search actions…"
+    case let .engine(i): return "Search " + engines[i].name + "…"
+    case .rename: return "Tab name"
+    case .archive: return "Search archived tabs…"
+    case .split: return "Open on the right…"
+    }
+  }
+
+  func render(replace: Bool = false) {
+    guard isOpen else { return }
+    compute()
+    var secs: [Value] = []
+    for (title, rs) in sections {
+      var list: [Value] = []
+      for r in rs {
+        var v: Value = ["id": .string(r.id), "icon": .string(r.icon), "title": .string(r.title)]
+        if !r.subtitle.isEmpty { v.put("subtitle", .string(r.subtitle)) }
+        if !r.accessory.isEmpty { v.put("accessory", .string(r.accessory)) }
+        // Tab rows always show their arrow keycap; other rows show ↩ when selected.
+        let cap = r.keycap.isEmpty && r.id == selected ? "↩" : r.keycap
+        if !cap.isEmpty { v.put("keycap", .string(cap)) }
+        list.append(v)
+      }
+      var s: Value = ["rows": .array(list)]
+      if !title.isEmpty { s.put("title", .string(title)) }
+      secs.append(s)
+    }
+    env.call("ui", "set", [
+      "slot": .string(Self.slot),
+      "tree": [
+        "type": "commandBar", "id": .string(Self.barId), "query": .string(query), "replaceQuery": .bool(replace), "placeholder": .string(placeholder),
+        "selected": .string(selected), "sections": .array(secs),
+      ],
+    ])
+  }
+}
