@@ -40,7 +40,7 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 
 | Method | Args | Returns |
 |---|---|---|
-| `list` | `spaceId?` (default: current) | `{favorites: [tab], pinned: [tab or folder], today: [tab]}`. Folder: `{id, folder: true, title, open, children: [tab]}` |
+| `list` | `spaceId?` (default: current) | `{favorites: [item], pinned: [item], today: [item]}`. An item is a tab, a folder `{id, folder: true, title, open, children: [item]}` (pinned only) or a split `{id, split: true, layout, children: [tab]}` |
 | `selected` | – | `{id}` or `null` |
 | `open` | `url`, `spaceId?`, `kind?` (default `today`), `background?`, `index?` | `{id}` |
 | `select` | `id` | ok |
@@ -57,9 +57,13 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 | `restore` | `id` | `{id}` |
 | `createFolder` | `spaceId?`, `title?`, `tabIds?` | `{id}` |
 | `deleteFolder` | `id` | ok. Archives the tabs inside it (the menu confirms first) |
+| `split` | `ids` (tab ids), `layout: horizontal\|vertical\|grid` (default horizontal), `focus?` | `{id}` of the split. If one of the tabs is already in a split, the others join it, next to their neighbour in `ids`; otherwise a new split takes the first tab's place. At most 4 tabs. Selects `focus` (default: the last id) |
+| `unsplit` | `id`: a split id ("Separate All Tabs"), or a tab id (only that tab leaves, placed after the split) | ok |
 | `settings` | `archiveAfterMs?` (0 = never, default 12 h), `suspendAfterMs?` (0 = never, default 30 min) | `{archiveAfterMs, suspendAfterMs}` |
 
-`rename` also renames folders. Tab and webview ids are the same (`tab-<n>`); folder ids are `folder-<n>`. Other UI node ids: `tabs.nav`, `tabs.url`, `tabs.divider:<spaceId>`, `tabs.newtab:<spaceId>`, dialog `tabs.deleteFolder:<id>`. The New Tab row and the URL pill call `commands.open` (`new` / `edit`). Dropping a tab on the content calls `peek.split`. Cmd-W first closes an open command bar (`commands.close`) or peek (`peek.close`). State lives in storage ns `tabs`, keys `state` and `settings`. First run seeds sample favorites, pinned tabs, a folder and today tabs.
+`rename` also renames folders. Tab and webview ids are the same (`tab-<n>`); folder ids are `folder-<n>`, split ids `split-<n>`. Other UI node ids: `tabs.nav`, `tabs.url`, `tabs.divider:<spaceId>`, `tabs.newtab:<spaceId>`, `tabs.split:<splitId>`, dialog `tabs.deleteFolder:<id>`.
+
+**Splits** (Arc §7) are sidebar items like tabs: they sit in favorites, pinned, a folder or today, and their tabs take that kind. Selecting any tab of a split shows the whole split (`content.show` with every pane, the split's layout and that tab focused); focusing another pane (click or Ctrl-Shift-N) makes its tab the selected one. The sidebar row is a `row` node of the split's `tabRow`s, whose menu offers the other layouts and "Separate All Tabs". A split left with one tab (archive, close, move) dissolves into that tab. Splits persist in `state.splits`. The New Tab row and the URL pill call `commands.open` (`new` / `edit`). Dropping a tab on the content calls `peek.split`. Cmd-W first closes an open command bar (`commands.close`) or peek (`peek.close`); Cmd-Shift-T first asks `peek.reopen {after}` (with the newest archive entry's `closedAt`) and restores a tab only if that fails. Links from other apps (`app.openURL` and `app.pendingURLs`, read one timer turn after start) go to `peek.openExternal` first, and open as today tabs only when it returns `claimed: false` or fails. State lives in storage ns `tabs`, keys `state` and `settings`. First run seeds sample favorites, pinned tabs, a folder and today tabs.
 
 Events:
 - `tabs.changed {spaceId}` fires on any change to the lists.
@@ -91,19 +95,31 @@ Owns: the `overlay.commandBar` slot, and Cmd-T and Cmd-L.
 
 ## `peek` (plugin `peek`)
 
-Injects: `tabs`, `webviews`, `content`, `ui`.
-
-- Sets the link policy so that cross-site links from pinned and favorite tabs open in Peek.
-- Provides split view: create splits, add panes, separate panes.
-- Provides the Little Arc-style quick window for links from other apps, using `app.pendingURLs` and its events.
+Injects: `tabs`, `spaces`, `webviews`, `content`, `ui`, `keys`, `window`, `storage`.
 
 | Method | Args | Returns |
 |---|---|---|
-| `open` | `url`, `sourceId?` | ok |
+| `open` | `url`, `sourceId?` (the tab it came from; the peek uses its profile) | `{id}` of the peek webview (`peek-<n>`). Replaces an open peek |
 | `close` | – | ok |
-| `expand` | – | `{id}`. Turns the peek into a normal tab |
-| `split` | `ids`, `layout: horizontal\|vertical\|grid` | `{id}` |
-| `unsplit` | `id` | ok |
+| `expand` | – | `{id}`. Opens the peek's current URL as a today tab in the current space (selected) and closes the peek |
+| `split` | `ids`, `layout: horizontal\|vertical\|grid`, `focus?` | `{id}`. Forwards to `tabs.split` |
+| `unsplit` | `id` | ok. Forwards to `tabs.unsplit` |
+| `reopen` | `after?` (ms timestamp) | `{id}`, or an error if no peek was closed at or after `after` |
+| `openExternal` | `urls` | `{claimed}`. Opens each URL in Little Arc; `claimed: false` when Little Arc is off or the host has no mini windows |
+| `settings` | `peekLinks?` (default true), `littleArc?` (default true), `littleArcArchiveMs?` (default 6 h, 0 = never) | the settings |
+| `get` | – | `{peek, sourceId, littleArcs: [{window, webview, url}]}` |
+
+Events: `peek.opened {id, url}`, `peek.closed {id}`. `peek.link {id, url, source}` is the link-rule event the plugin listens on.
+
+**Link policy.** Every pinned and favorite tab's webview gets `[{when: crossSite, event: peek.link}]` plus the modifier rules; the `*` default is the modifier rules only: shift-click and option-click (`when: any`) peek from any tab, cmd-click still opens a background tab. The rules are re-sent on every `tabs.changed` and `spaces.changed` (undo can recreate a webview without them), and cleared from tabs that stop being pinned. Settings > "Open a Peek window when clicking on links to other sites" is `settings.peekLinks`.
+
+**Peek actions** (Arc §6): expand with the button or Cmd-O; Split button (the page joins the current tab in a split, focused); close with a click outside, the X, Cmd-W (through `tabs`) or Esc. Esc is bound only while a peek is open. Cmd-Z reopens a just-closed peek for 15 s (den's choice; it is bound in the Edit menu only for that time, so Edit > Undo keeps working otherwise), and Cmd-Shift-T reopens it through `tabs` as long as no tab was archived since.
+
+**Split view shortcuts** (Arc §7): Ctrl-Shift-= adds a pane (a new tab next to the selected one, then `commands.open {mode: edit}` to pick its page; at most 4); Ctrl-Shift-- takes the focused pane out (a today tab is archived, a pinned one is only separated); Ctrl-Shift-1…4 focus a pane.
+
+Storage (ns `peek`): `settings`.
+
+Owns: the `overlay.peek` slot (through `content.peek`), the link policy, Cmd-O, Esc while peeking, Ctrl-Shift-=, Ctrl-Shift--, Ctrl-Shift-1…4.
 
 ## Other plugins
 

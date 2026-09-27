@@ -30,7 +30,7 @@ let package = Package(
       name: "PluginCores",
       dependencies: [.product(name: "CordisValue", package: "cordis-swift")],
       path: "Plugins",
-      sources: ["Shared/Env.swift", "spaces/SpacesCore.swift", "tabs/TabsCore.swift"],
+      sources: ["Shared/Env.swift", "spaces/SpacesCore.swift", "tabs/TabsCore.swift", "peek/PeekCore.swift"],
       swiftSettings: [.swiftLanguageMode(.v5)]
     ),
     .testTarget(

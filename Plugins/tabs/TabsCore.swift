@@ -57,16 +57,30 @@ final class TabsCore {
     }
   }
 
-  /// Where a tab or folder lives. Favorites are shared by every space.
+  /// A split view: 2–4 tabs shown side by side, kept as one sidebar item (Arc §7). The split
+  /// id sits in a favorites/pinned/folder/today list in place of its tabs.
+  struct Split {
+    var id: String
+    var layout: String  // horizontal | vertical | grid
+    var children: [String]
+
+    var value: Value {
+      ["id": .string(id), "layout": .string(layout), "children": .array(children.map { .string($0) })]
+    }
+  }
+
+  /// Where a tab, folder or split lives. Favorites are shared by every space.
   enum Box: Equatable {
     case favorites
     case pinned(String)  // space id
     case folder(String)  // folder id
     case today(String)  // space id
+    case split(String)  // split id
   }
 
   static let ns = "tabs"
   static let maxFavorites = 12
+  static let maxPanes = 4
   static let defaultArchiveAfterMs: Int64 = 12 * 3_600_000  // Arc's default: 12 hours
   static let defaultSuspendAfterMs: Int64 = 30 * 60_000  // den's choice: 30 minutes
   static let tickMs: UInt64 = 60_000
@@ -76,6 +90,7 @@ final class TabsCore {
   // State (persisted)
   var tabs: [String: Tab] = [:]
   var folders: [String: Folder] = [:]
+  var splits: [String: Split] = [:]
   var favorites: [String] = []
   var pinned: [String: [String]] = [:]
   var today: [String: [String]] = [:]
@@ -109,9 +124,16 @@ final class TabsCore {
     showSelected()
     tick()
     env.timer(Self.tickMs, true) { [self] in tick() }
-    for u in env.call("app", "pendingURLs").array ?? [] {
-      if let s = u.string { _ = open(s, space: currentSpace, kind: "today", background: false, index: nil) }
-    }
+    // Links that launched den: wait one turn so the peek plugin (Little Arc) is loaded too.
+    env.timer(1, false) { [self] in openExternal(env.call("app", "pendingURLs").array ?? []) }
+  }
+
+  /// Links from other apps. The peek plugin claims them for Little Arc when that is on
+  /// (Arc's default); otherwise they open as today tabs in the current space.
+  func openExternal(_ urls: [Value]) {
+    guard !urls.isEmpty else { return }
+    if env.call("peek", "openExternal", ["urls": .array(urls)])["claimed"] == true { return }
+    for u in urls { if let s = u.string { _ = open(s, space: currentSpace, kind: "today", background: false, index: nil) } }
   }
 
   /// Called from the plugin's dispose (hot reload, unload): flush a pending save.
@@ -145,6 +167,7 @@ final class TabsCore {
       "version": 1, "nextId": .int(nextId),
       "tabs": .array(tabs.keys.sorted().map { tabs[$0]!.value }),
       "folders": .array(folders.keys.sorted().map { folders[$0]!.value }),
+      "splits": .array(splits.keys.sorted().map { splits[$0]!.value }),
       "favorites": .array(favorites.map { .string($0) }),
       "spaces": .array(spaceStates),
       "archive": .array(archive),
@@ -155,6 +178,7 @@ final class TabsCore {
   func apply(state v: Value) {
     tabs = [:]
     folders = [:]
+    splits = [:]
     pinned = [:]
     today = [:]
     selected = [:]
@@ -162,6 +186,10 @@ final class TabsCore {
     for f in v.a("folders") {
       guard let id = f["id"].string else { continue }
       folders[id] = Folder(id: id, spaceId: f.s("spaceId"), title: f.s("title"), open: f.b("open", true), children: f.a("children").compactMap { $0.string })
+    }
+    for sp in v.a("splits") {
+      guard let id = sp["id"].string else { continue }
+      splits[id] = Split(id: id, layout: sp.sOpt("layout") ?? "horizontal", children: sp.a("children").compactMap { $0.string })
     }
     favorites = v.a("favorites").compactMap { $0.string }
     for s in v.a("spaces") {
@@ -191,11 +219,13 @@ final class TabsCore {
       if today[sid] == nil { today[sid] = [] }
     }
     // Drop dangling references so a bad state file can never wedge the plugin.
-    favorites = favorites.filter { tabs[$0] != nil }
-    for (k, v) in pinned { pinned[k] = v.filter { tabs[$0] != nil || folders[$0] != nil } }
-    for (k, v) in today { today[k] = v.filter { tabs[$0] != nil } }
-    for (k, f) in folders { folders[k]!.children = f.children.filter { tabs[$0] != nil || folders[$0] != nil } }
+    for (k, sp) in splits { splits[k]!.children = sp.children.filter { tabs[$0] != nil } }
+    favorites = favorites.filter { tabs[$0] != nil || splits[$0] != nil }
+    for (k, v) in pinned { pinned[k] = v.filter { tabs[$0] != nil || folders[$0] != nil || splits[$0] != nil } }
+    for (k, v) in today { today[k] = v.filter { tabs[$0] != nil || splits[$0] != nil } }
+    for (k, f) in folders { folders[k]!.children = f.children.filter { tabs[$0] != nil || folders[$0] != nil || splits[$0] != nil } }
     for (sid, id) in selected where tabs[id] == nil { selected[sid] = nil }
+    tidySplits()
   }
 
   func save() {
@@ -274,6 +304,7 @@ final class TabsCore {
     case let .pinned(s): return pinned[s] ?? []
     case let .folder(f): return folders[f]?.children ?? []
     case let .today(s): return today[s] ?? []
+    case let .split(s): return splits[s]?.children ?? []
     }
   }
 
@@ -283,6 +314,7 @@ final class TabsCore {
     case let .pinned(s): pinned[s] = v
     case let .folder(f): folders[f]?.children = v
     case let .today(s): today[s] = v
+    case let .split(s): splits[s]?.children = v
     }
   }
 
@@ -291,6 +323,7 @@ final class TabsCore {
     for (s, list) in pinned { if let i = list.firstIndex(of: id) { return (.pinned(s), i) } }
     for (s, list) in today { if let i = list.firstIndex(of: id) { return (.today(s), i) } }
     for (f, folder) in folders { if let i = folder.children.firstIndex(of: id) { return (.folder(f), i) } }
+    for (s, split) in splits { if let i = split.children.firstIndex(of: id) { return (.split(s), i) } }
     return nil
   }
 
@@ -299,6 +332,7 @@ final class TabsCore {
     case .favorites: return nil
     case let .pinned(s), let .today(s): return s
     case let .folder(f): return folders[f]?.spaceId
+    case let .split(s): return locate(s).flatMap { space(of: $0.0) }
     }
   }
 
@@ -307,6 +341,7 @@ final class TabsCore {
     case .favorites: return "favorite"
     case .pinned, .folder: return "pinned"
     case .today: return "today"
+    case let .split(s): return locate(s).map { kind(of: $0.0) } ?? "today"
     }
   }
 
@@ -317,25 +352,35 @@ final class TabsCore {
   func tabsIn(folder f: String) -> [String] {
     var out: [String] = []
     for c in folders[f]?.children ?? [] {
-      if folders[c] != nil { out += tabsIn(folder: c) } else { out.append(c) }
+      if folders[c] != nil { out += tabsIn(folder: c) } else if let sp = splits[c] { out += sp.children } else { out.append(c) }
     }
     return out
   }
 
+  /// The split a tab is shown in, if any.
+  func splitOf(_ id: String) -> String? {
+    for (s, sp) in splits where sp.children.contains(id) { return s }
+    return nil
+  }
+
   /// Sidebar order for a space: favorites, pinned (folders expanded when open), today.
   func order(_ sid: String, onlyVisible: Bool) -> [String] {
-    var out = favorites
+    var out: [String] = []
+    // A split counts as one item (its first pane), like one sidebar row.
     func walk(_ list: [String]) {
       for id in list {
         if let f = folders[id] {
           if f.open || !onlyVisible { walk(f.children) }
+        } else if let sp = splits[id] {
+          if onlyVisible { out += sp.children.prefix(1) } else { out += sp.children }
         } else {
           out.append(id)
         }
       }
     }
+    walk(favorites)
     walk(pinned[sid] ?? [])
-    out += today[sid] ?? []
+    walk(today[sid] ?? [])
     return out
   }
 
@@ -401,6 +446,15 @@ final class TabsCore {
     case "deleteFolder":
       guard folders[args.s("id")] != nil else { return .err("tabs: no folder '" + args.s("id") + "'") }
       deleteFolder(args.s("id"))
+    case "split":
+      let ids = args.a("ids").compactMap { $0.string }
+      guard !ids.isEmpty, ids.allSatisfy({ tabs[$0] != nil }) else { return .err("tabs: split needs tab ids") }
+      let layout = args.sOpt("layout") ?? "horizontal"
+      guard layout == "horizontal" || layout == "vertical" || layout == "grid" else { return .err("tabs: bad layout " + layout) }
+      return split(ids, layout: layout, focus: args.sOpt("focus"))
+    case "unsplit":
+      let id = args.s("id")
+      if splits[id] != nil { unsplit(id) } else if tabs[id] != nil, splitOf(id) != nil { separate(id) } else { return .err("tabs: no split '" + id + "'") }
     case "settings":
       if let a = args["archiveAfterMs"].int { archiveAfterMs = max(0, a) }
       if let s = args["suspendAfterMs"].int { suspendAfterMs = max(0, s) }
@@ -431,13 +485,101 @@ final class TabsCore {
       if let f = folders[id] {
         return ["id": .string(id), "folder": true, "title": .string(f.title), "open": .bool(f.open), "children": .array(f.children.map { item($0) })]
       }
+      if let sp = splits[id] {
+        return ["id": .string(id), "split": true, "layout": .string(sp.layout), "children": .array(sp.children.map { tabValue($0) })]
+      }
       return tabValue(id)
     }
     return [
-      "favorites": .array(favorites.map { tabValue($0) }),
+      "favorites": .array(favorites.map { item($0) }),
       "pinned": .array((pinned[sid] ?? []).map { item($0) }),
-      "today": .array((today[sid] ?? []).map { tabValue($0) }),
+      "today": .array((today[sid] ?? []).map { item($0) }),
     ]
+  }
+
+  // MARK: - Split view
+
+  /// Puts `ids` into one split (Arc: up to 4 panes). If the first tab is already in a split, the
+  /// others join it; otherwise a new split takes the first tab's place in the sidebar.
+  func split(_ requested: [String], layout: String, focus: String?) -> Value {
+    var members: [String] = []
+    for id in requested where !members.contains(id) { members.append(id) }
+    // Join the first split one of the tabs is already in; new tabs go next to their neighbours
+    // in `requested` (so a drop left of the shown tab lands before it).
+    let existing = members.lazy.compactMap { self.splitOf($0) }.first
+    var all = existing.map { splits[$0]!.children } ?? []
+    for (k, id) in members.enumerated() where !all.contains(id) {
+      if let next = members[(k + 1)...].first(where: { all.contains($0) }), let j = all.firstIndex(of: next) { all.insert(id, at: j) } else { all.append(id) }
+    }
+    guard all.count >= 2 else { return .err("tabs: a split needs two tabs") }
+    guard all.count <= Self.maxPanes else { return .err("tabs: a split holds at most 4 tabs") }
+    checkpoint()
+    let sid: String
+    if let e = existing {
+      sid = e
+    } else {
+      guard let (b, i) = locate(members[0]) else { return .err("tabs: no tab '" + members[0] + "'") }
+      sid = newId("split-")
+      splits[sid] = Split(id: sid, layout: layout, children: [])
+      var list = ids(b)
+      list[i] = sid
+      setIds(b, list)
+      splits[sid]!.children = [members[0]]
+    }
+    let pinnedKind = kind(of: .split(sid)) != "today"
+    for id in all where !(splits[sid]!.children.contains(id)) {
+      guard let (b, i) = locate(id) else { continue }
+      var list = ids(b)
+      list.remove(at: i)
+      setIds(b, list)
+      // Tabs take on the kind of the place the split lives in.
+      if pinnedKind { if tabs[id]?.pinnedUrl == nil, let u = tabs[id]?.url { tabs[id]?.pinnedUrl = u } } else { tabs[id]?.pinnedUrl = nil }
+    }
+    splits[sid]!.children = all
+    splits[sid]!.layout = layout
+    tidySplits()
+    let target = focus.flatMap { all.contains($0) ? $0 : nil } ?? members[members.count - 1]
+    let space = spaceOf(sid) ?? currentSpace
+    select(target)
+    changed(space)
+    return ["id": .string(sid)]
+  }
+
+  /// "Separate All Tabs": the split's tabs go back into its list, in pane order.
+  func unsplit(_ sid: String) {
+    guard let sp = splits[sid], let (b, i) = locate(sid) else { return }
+    checkpoint()
+    var list = ids(b)
+    list.replaceSubrange(i...i, with: sp.children)
+    setIds(b, list)
+    splits[sid] = nil
+    showSelected()
+    changed(space(of: b) ?? currentSpace)
+  }
+
+  /// Takes one tab out of its split and puts it right after the split.
+  func separate(_ id: String) {
+    guard let sid = splitOf(id), let (b, i) = locate(sid) else { return }
+    checkpoint()
+    splits[sid]!.children.removeAll { $0 == id }
+    var list = ids(b)
+    list.insert(id, at: i + 1)
+    setIds(b, list)
+    tidySplits()
+    showSelected()
+    changed(space(of: b) ?? currentSpace)
+  }
+
+  /// A split with fewer than two tabs dissolves into its remaining tab.
+  func tidySplits() {
+    for (sid, sp) in splits where sp.children.count < 2 {
+      if let (b, i) = locate(sid) {
+        var list = ids(b)
+        list.replaceSubrange(i...i, with: sp.children)
+        setIds(b, list)
+      }
+      splits[sid] = nil
+    }
   }
 
   // MARK: - Undo
@@ -564,6 +706,7 @@ final class TabsCore {
     setIds(b, list)
     tabs[id] = nil
     mru.removeAll { $0 == id }
+    tidySplits()
     env.call("webviews", "suspend", ["id": .string(id)])
     env.emit("tabs.closed", ["id": .string(id)])
   }
@@ -613,6 +756,7 @@ final class TabsCore {
     let at = max(0, min(index ?? dst.count, dst.count))
     dst.insert(id, at: at)
     setIds(box, dst)
+    if case .split = from { tidySplits() }
     let newSpace = space(of: box)
     if var t = tabs[id] {
       switch kind(of: box) {
@@ -808,7 +952,8 @@ final class TabsCore {
       }
     }
     if suspendAfterMs > 0 {
-      for (id, t) in tabs where id != shown && !t.audio && now - t.lastActive > suspendAfterMs {
+      let onScreen = Set(splitOf(shown).flatMap { splits[$0]?.children } ?? [shown])
+      for (id, t) in tabs where !onScreen.contains(id) && !t.audio && now - t.lastActive > suspendAfterMs {
         if env.call("webviews", "get", ["id": .string(id)]).b("live") {
           env.call("webviews", "suspend", ["id": .string(id)])
         }
@@ -840,7 +985,10 @@ final class TabsCore {
     let id = selectedId
     if let p = shown as String?, !p.isEmpty, p != id, tabs[p] != nil { tabs[p]?.lastActive = env.now() }
     shown = id ?? ""
-    if let id {
+    if let id, let sid = splitOf(id), let sp = splits[sid] {
+      env.call("content", "show", ["panes": .array(sp.children.map { .string($0) }), "orientation": .string(sp.layout), "focus": .string(id)])
+      env.call("window", "setTitle", ["title": .string(tabs[id]?.displayTitle ?? "den")])
+    } else if let id {
       env.call("content", "show", ["panes": [.string(id)]])
       env.call("window", "setTitle", ["title": .string(tabs[id]?.displayTitle ?? "den")])
     } else {
@@ -866,7 +1014,9 @@ final class TabsCore {
 
   func renderFavorites() {
     let sel = selectedId
-    env.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "tabs.favorites", "children": .array(favorites.compactMap { id in
+    env.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "tabs.favorites", "children": .array(favorites.compactMap { fid in
+      // A favorited split shows as its first tab's tile.
+      let id = splits[fid]?.children.first ?? fid
       guard let t = tabs[id] else { return nil }
       return ["type": "favoriteTile", "id": .string(id), "icon": .string(t.icon), "title": .string(t.displayTitle), "selected": .bool(id == sel),
               "audio": .bool(t.audio), "menu": .array(menu(for: id, box: .favorites))]
@@ -886,8 +1036,33 @@ final class TabsCore {
               "menu": [["id": "newFolder", "title": "New Folder Inside", "icon": "sf:folder.badge.plus"],
                        ["separator": true], ["id": "deleteFolder", "title": "Delete Folder…", "icon": "sf:trash"]]]
     }
+    if let sp = splits[id] {
+      // One sidebar item: the split's tabs side by side (Arc §7). Clicking a pane's half focuses it.
+      let sel = selected[sid]
+      let on = sp.children.contains(sel ?? "")
+      return ["type": "row", "id": .string("tabs.split:" + id), "height": 36, "spacing": 2, "selected": .bool(on),
+              "menu": .array(splitMenu(id)),
+              "children": .array(sp.children.compactMap { c -> Value? in
+                guard tabs[c] != nil else { return nil }
+                var r = row(c, sid, box: .split(id))
+                r.put("selected", .bool(c == sel))
+                r.put("menu", .array(splitMenu(id)))
+                return r
+              })]
+    }
     guard tabs[id] != nil else { return nil }
     return row(id, sid, box: parent)
+  }
+
+  func splitMenu(_ id: String) -> [Value] {
+    let l = splits[id]?.layout ?? "horizontal"
+    var m: [Value] = []
+    if l != "horizontal" { m.append(["id": .string("layout:" + id + ":horizontal"), "title": "Side by Side", "icon": "sf:rectangle.split.2x1"]) }
+    if l != "vertical" { m.append(["id": .string("layout:" + id + ":vertical"), "title": "Top and Bottom", "icon": "sf:rectangle.split.1x2"]) }
+    if l != "grid" && (splits[id]?.children.count ?? 0) > 2 { m.append(["id": .string("layout:" + id + ":grid"), "title": "Grid", "icon": "sf:rectangle.split.2x2"]) }
+    m.append(["separator": true])
+    m.append(["id": .string("separate:" + id), "title": "Separate All Tabs", "icon": "sf:rectangle.split.3x1.slash"])
+    return m
   }
 
   func renderPage(_ sid: String) {
@@ -900,7 +1075,7 @@ final class TabsCore {
       list.isEmpty ? ["type": "divider", "id": .string("tabs.divider:" + sid)] : ["type": "divider", "id": .string("tabs.divider:" + sid), "action": "Clear"],
       ["type": "newTabRow", "id": .string("tabs.newtab:" + sid), "title": "New Tab"],
     ]
-    kids += list.compactMap { tabs[$0] != nil ? row($0, sid, box: .today(sid)) : nil }
+    kids += list.compactMap { node($0, sid, parent: .today(sid)) }
     env.call("ui", "set", ["slot": "sidebar.today", "page": p, "tree": ["type": "list", "id": .string("tabs.today:" + sid), "children": .array(kids)]])
   }
 
@@ -961,8 +1136,13 @@ final class TabsCore {
       showSelected()
     }
     env.on("spaces.changed") { [self] v in spacesChanged(v.a("spaces")) }
+    env.on("content.focus") { [self] v in splitFocused(v.s("id")) }
     env.on("tabs.key.close") { [self] _ in closeFromKey() }
-    env.on("tabs.key.reopen") { [self] _ in if let e = archive.first { _ = restore(e.s("id")) } }
+    env.on("tabs.key.reopen") { [self] _ in
+      // A peek closed after the last archived tab is reopened first (Arc §6).
+      if env.call("peek", "reopen", ["after": .int(archive.first?.i("closedAt") ?? 0)])["ok"] == true { return }
+      if let e = archive.first { _ = restore(e.s("id")) }
+    }
     env.on("tabs.key.pin") { [self] _ in
       guard let id = selectedId else { return }
       setKind(id, kindOf(id) == "today" ? "pinned" : "today", toast: true)
@@ -992,12 +1172,48 @@ final class TabsCore {
     env.on("webviews.newWindow") { [self] v in
       _ = open(v.s("url"), space: spaceOf(v.s("id")) ?? currentSpace, kind: "today", background: false, index: nil)
     }
-    env.on("app.openURL") { [self] v in
-      for u in v.a("urls") { if let s = u.string { _ = open(s, space: currentSpace, kind: "today", background: false, index: nil) } }
-    }
+    env.on("app.openURL") { [self] v in openExternal(v.a("urls")) }
   }
 
   func shownTab() -> String? { shown.isEmpty ? nil : shown }
+
+  /// A click in (or Ctrl-Shift-N to) another pane of the shown split selects that pane's tab,
+  /// without re-laying out the content.
+  func splitFocused(_ id: String) {
+    guard tabs[id] != nil, let sid = splitOf(id), splitOf(shown) == sid, selectedId != id else { return }
+    let space = spaceOf(id) ?? currentSpace
+    let previous = selected[space]
+    selected[space] = id
+    shown = id
+    tabs[id]?.lastActive = env.now()
+    mru.removeAll { $0 == id }
+    mru.insert(id, at: 0)
+    env.call("window", "setTitle", ["title": .string(tabs[id]?.displayTitle ?? "den")])
+    renderPage(space)
+    renderGlobal()
+    saveSoon()
+    env.emit("tabs.selected", ["id": .string(id), "previous": .str(previous)])
+  }
+
+  func splitMenuPicked(_ item: String) -> Bool {
+    if Text.hasPrefix(item, "separate:") {
+      unsplit(Text.dropPrefix(item, "separate:"))
+      return true
+    }
+    if Text.hasPrefix(item, "layout:") {
+      // layout:<splitId>:<layout>
+      let rest = Array(Text.dropPrefix(item, "layout:").utf8)
+      guard let colon = rest.lastIndex(of: 58) else { return true }
+      let sid = String(decoding: rest[..<colon], as: UTF8.self), layout = String(decoding: rest[(colon + 1)...], as: UTF8.self)
+      guard splits[sid] != nil else { return true }
+      checkpoint()
+      splits[sid]!.layout = layout
+      showSelected()
+      changed(spaceOf(sid) ?? currentSpace)
+      return true
+    }
+    return false
+  }
 
   func web(_ method: String) {
     guard let id = selectedId else { return }
@@ -1152,6 +1368,7 @@ final class TabsCore {
     default:
       if Text.hasPrefix(id, "tabs.divider:"), action == "clear" { clearToday(Text.dropPrefix(id, "tabs.divider:")) }
       if Text.hasPrefix(id, "tabs.newtab:"), action == "click" { openCommandBar("new") }
+      if Text.hasPrefix(id, "tabs.split:"), action == "menu" { _ = splitMenuPicked(value.string ?? "") }
       if Text.hasPrefix(id, "tabs.deleteFolder:"), action == "button" {
         env.call("ui", "set", ["slot": "dialog", "tree": nil])
         let fid = Text.dropPrefix(id, "tabs.deleteFolder:")
@@ -1189,6 +1406,7 @@ final class TabsCore {
     case "newFolder": _ = createFolder(space: spaceOf(id) ?? currentSpace, title: nil, tabIds: [id])
     case "close": close(id)
     default:
+      if splitMenuPicked(item) { return }
       if Text.hasPrefix(item, "move:") {
         let kind = kindOf(id)
         _ = move(["id": .string(id), "spaceId": .string(Text.dropPrefix(item, "move:")), "kind": .string(kind == "favorite" ? "today" : kind)])
