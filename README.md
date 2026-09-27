@@ -93,6 +93,7 @@ Requires macOS 26, Xcode 26 (Swift 6.2+), and a Swift toolchain with the Embedde
 ```sh
 scripts/run.sh --demo        # build build/den.app, then launch it with demo spaces and tabs
 scripts/bundle.sh            # only build and sign build/den.app
+scripts/make-signing-identity.sh  # once: stable local signing identity (Keychain/TCC survive rebuilds)
 swift test                   # host service tests
 scripts/snapshots.sh         # regenerate docs/screenshots
 scripts/measure-memory.sh main   # memory of den + its WebKit processes

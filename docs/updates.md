@@ -110,6 +110,8 @@ Each check:
 
 den is signed ad hoc (`codesign --sign -`). No Developer ID is set up yet, and notarization is postponed.
 
+- **Local builds:** run `scripts/make-signing-identity.sh` once. It creates a self-signed "den Local Signing" code-signing identity in the login keychain, and `scripts/bundle.sh` then signs with it (`DEN_SIGN_IDENTITY` overrides). The designated requirement becomes that certificate plus the bundle id, the same on every rebuild, so Keychain and TCC grants survive rebuilds.
+
 - **Downloading a release:** a zip or DMG downloaded with a browser gets the quarantine attribute. On first launch Gatekeeper refuses an ad-hoc-signed, un-notarized app. Open it with right-click → Open (then confirm in System Settings → Privacy & Security), or run `xattr -dr com.apple.quarantine /Applications/den.app`.
 - **Sparkle updates:** den downloads them itself, and Sparkle verifies the EdDSA signature before installing. The replacement app isn't quarantined, so it launches without a prompt. Each ad-hoc build has a different designated requirement, so macOS privacy permissions (TCC) granted to den may be asked for again after a host update.
 - **Plugin updates:** only EdDSA-verified dylibs are written, and they are loaded with `disable-library-validation`, which den's hardened runtime entitlements already allow.

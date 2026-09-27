@@ -1,7 +1,8 @@
 #!/bin/zsh
-# Builds build/den.app: release build, plugins, Info.plist, entitlements, stable ad-hoc signature.
-# The bundle id (io.github.abhishakenp.den) and the ad-hoc identity never change, so macOS
-# keeps TCC grants and default-browser registration across rebuilds.
+# Builds build/den.app: release build, plugins, Info.plist, entitlements, stable signature.
+# The bundle id (io.github.abhishakenp.den) and the signing identity never change, so macOS
+# keeps TCC grants, Keychain access and default-browser registration across rebuilds
+# (run scripts/make-signing-identity.sh once; without it the signature is ad hoc).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 swift build -c release --product Den
@@ -52,6 +53,17 @@ cp -R "$CORDIS_ROOT/Sources/CordisValue" "$CORDIS_ROOT/Sources/CordisKit" "$RES/
 cp -R "$CORDIS_ROOT/Sources/CCordis/include" "$RES/Sources/CCordis/"
 cp Plugins/Shared/*.swift "$RES/den-shared/"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
-codesign --force --deep --options runtime --entitlements Resources/den.entitlements --sign - "$APP"
+# Signing identity: DEN_SIGN_IDENTITY if set (a name or SHA-1, "-" = ad hoc), else "den Local
+# Signing" from scripts/make-signing-identity.sh when present (designated requirement = that
+# certificate + bundle id, stable across rebuilds, so Keychain/TCC never re-ask), else ad hoc.
+SIGN=${DEN_SIGN_IDENTITY:-$(security find-identity -p codesigning 2>/dev/null |
+  awk 'index($0, "\"den Local Signing\"") { print $2; exit }')}
+SIGN=${SIGN:--}
+echo "signing with ${SIGN/#-/ad hoc}"
+# Plugin dylibs are loose Mach-O files (not bundles), so --deep may skip them: sign explicitly.
+for lib in "$APP"/Contents/PlugIns/*.dylib(N); do
+  codesign --force --options runtime --sign "$SIGN" "$lib"
+done
+codesign --force --deep --options runtime --entitlements Resources/den.entitlements --sign "$SIGN" "$APP"
 codesign --verify --strict "$APP"
 echo "built $APP"
