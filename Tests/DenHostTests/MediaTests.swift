@@ -79,7 +79,9 @@ struct MediaTests {
     let rep = try #require(v.bitmapImageRepForCachingDisplay(in: v.bounds))
     v.cacheDisplay(in: v.bounds, to: rep)
     let top = rep.colorAt(x: 200 * Int(rep.pixelsWide) / 400, y: 2)?.alphaComponent ?? 0
-    let mid = rep.colorAt(x: 150 * Int(rep.pixelsWide) / 400, y: rep.pixelsHigh / 2 - 60)?.alphaComponent ?? 1
+    // Sample in points, not pixels: 82 pt from the top is between the scrims (0–60 pt, 141–225 pt)
+    // at any backing scale (a fixed pixel offset landed inside the top scrim on 1x displays).
+    let mid = rep.colorAt(x: 150 * Int(rep.pixelsWide) / 400, y: 82 * rep.pixelsHigh / 225)?.alphaComponent ?? 1
     let bottom = rep.colorAt(x: 200 * Int(rep.pixelsWide) / 400, y: rep.pixelsHigh - 2)?.alphaComponent ?? 0
     #expect(top > 0.4 && bottom > 0.4 && mid < 0.05, "top \(top) mid \(mid) bottom \(bottom)")
   }

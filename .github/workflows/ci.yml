@@ -61,6 +61,9 @@ jobs:
           key: ${{ steps.setup.outputs.spm-cache-key }}
 
       - name: Test (scripts/test.sh, UI suites included)
+        env:
+          # Mock-server WebKit suites run after the parallel pass (see scripts/ci/run-tests.sh).
+          CI_ISOLATE_SUITES: ConnectionsTests|ExtensionsTests
         run: scripts/ci/run-tests.sh
 
       - name: Perf (report only)
@@ -80,7 +83,8 @@ jobs:
         if: always()
         run: |
           mkdir -p build/ci-logs/crashes
-          find ~/Library/Logs/DiagnosticReports -newer Package.swift \( -name '*.ips' -o -name '*.crash' \) \
+          sleep 10 # ReportCrash writes .ips files asynchronously
+          find "$HOME/Library/Logs/DiagnosticReports" -newer Package.swift \( -name '*.ips' -o -name '*.crash' \) \
             -exec cp {} build/ci-logs/crashes/ \; 2>/dev/null || true
           ls build/ci-logs/crashes
 

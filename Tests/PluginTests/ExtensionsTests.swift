@@ -130,7 +130,10 @@ struct ExtensionsTests {
     h.rt.call("webext", "closePopup")
     #expect(h.rt.extensions.ui.popupFor == nil)
 
-    // Badge from the background worker reaches the menu items.
+    // Badge from the background worker reaches the menu items. When WebKit runs the on-demand
+    // worker is its own scheduling (on a starved CI runner it had not within 45 s), so make sure it
+    // has run: this checks den's badge plumbing, not WebKit's worker timing.
+    do { try await ctx.loadBackgroundContent() } catch { print("loadBackgroundContent:", error) }
     #expect(await wait { h.rt.extensions.menuItems().first?.badge == "7" })
 
     // Pin, site access, disable, enable.

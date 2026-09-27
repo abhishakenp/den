@@ -36,7 +36,17 @@ struct ConnectionsTests {
     h.rt.window.window.orderFrontRegardless()
     h.rt.call("content", "show", ["panes": [.string(id)]])
     // 45 s of wall time: under a loaded full run the mock page can take far longer than alone (3 s).
-    return await until(45) { !w.isLoading && w.url != nil && w.estimatedProgress >= 1 }
+    // A failed load also ends "loaded": den swaps in its error page (WebErrorPage, same URL), which
+    // sets no cookies. Seen on a CI runner under a full parallel run; reload until the real page is in.
+    for attempt in 1...3 {
+      guard await until(45, { !w.isLoading && w.url != nil && w.estimatedProgress >= 1 }) else { return false }
+      let err = (try? await w.evaluateJavaScript("document.body ? (document.body.dataset.denError || '') : ''")) as? String ?? ""
+      if err.isEmpty { return true }
+      print("signIn: attempt \(attempt) loaded den's error page (\(err)) for \(url); reloading")
+      h.rt.call("webviews", "reload", ["id": .string(id)])
+      _ = await until(5) { w.isLoading }
+    }
+    return false
   }
 
   /// Points the plugins at the mock and grants them its host (the real sidecars say slack.com /
@@ -111,7 +121,8 @@ struct ConnectionsTests {
     #expect(teams.first?.s("token") == "xoxc-mock-acme")
     #expect(h.rt.session.inFlight == 0)  // the hidden view is gone
     // Reading needs no request to the site: only the sign-in page hit the server.
-    #expect(m.log.filter { $0 != "GET /favicon.ico" } == ["GET /slack/signin"])
+    // (A set: signIn may have reloaded the sign-in page after a failed load.)
+    #expect(Set(m.log.filter { $0 != "GET /favicon.ico" }) == ["GET /slack/signin"])
   }
 
   @Test func netAttachesSessionCookiesOnlyWhenAsked() async throws {
