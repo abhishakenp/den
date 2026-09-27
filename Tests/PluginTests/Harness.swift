@@ -30,13 +30,15 @@ final class Harness {
       invoke: { s, m, a in MainActor.assumeIsolated { rt.call(s, m, a) } },
       emit: { e, p in MainActor.assumeIsolated { rt.plugins.emit(e, p) } },
       on: { e, h in MainActor.assumeIsolated { _ = rt.plugins.on(e, h) } },
-      timer: { [unowned self] ms, r, h in MainActor.assumeIsolated { self.timers.append((ms, r, h)) } },
-      now: { [unowned self] in MainActor.assumeIsolated { self.clock } },
+      // Weak: a finished test's runtime can still get late WebKit events (title, url) that make
+      // a core save or read the clock after the Harness is gone.
+      timer: { [weak self] ms, r, h in MainActor.assumeIsolated { self?.timers.append((ms, r, h)) } },
+      now: { [weak self] in MainActor.assumeIsolated { self?.clock ?? 0 } },
       log: { print("plugin:", $0) })
   }
 
   func record(_ names: [String]) {
-    for n in names { rt.plugins.on(n) { [unowned self] v in self.events.append((n, v)) } }
+    for n in names { rt.plugins.on(n) { [weak self] v in self?.events.append((n, v)) } }
   }
 
   func fireTimers() { for t in timers { t.2() } }
