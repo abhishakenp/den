@@ -29,6 +29,9 @@ public final class ContentService: HostService {
   public let peek = PeekOverlayView()
   public private(set) var peekId: String?
   private var clickMonitor: Any?
+  /// While true, `show` lays out cards but doesn't create WKWebViews yet. The app holds them
+  /// until the first window frame is on screen (launch time), then calls `releaseWebViews()`.
+  public var holdWebViews = false
   /// Space accent for the focused-pane ring (set by the ui service on palette changes).
   public var accent: NSColor? { didSet { cards.values.forEach { $0.focusColor = accent } } }
 
@@ -88,7 +91,7 @@ public final class ContentService: HostService {
       cards[id] = card
       card.showsPaneControls = ids.count > 1
       if card.superview !== wc.contentArea { wc.contentArea.addSubview(card) }
-      if let w = webviews.materialize(id), w.superview !== card.clip {
+      if !holdWebViews, let w = webviews.materialize(id), w.superview !== card.clip {
         card.clip.subviews.forEach { $0.removeFromSuperview() }
         card.clip.addSubview(w)
       }
@@ -96,6 +99,14 @@ public final class ContentService: HostService {
     emptyCard.isHidden = !ids.isEmpty
     layout()
     setFocus(f ?? (ids.contains(focused ?? "") ? focused : ids.first), makeFirstResponder: true)
+  }
+
+  /// Ends `holdWebViews`: creates and attaches the web views of the panes on screen.
+  public func releaseWebViews() {
+    guard holdWebViews else { return }
+    holdWebViews = false
+    guard !panes.isEmpty else { return }
+    show(panes, orientation: orientation, ratios: ratios, focus: focused)
   }
 
   /// The card showing a pane (snapshots, tests).

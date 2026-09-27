@@ -36,6 +36,20 @@ struct ServiceTests {
     #expect(rt.call("content", "get")["panes"] == [])
   }
 
+  /// Launch: the first frame shows the card; the WKWebView is created right after it.
+  @Test func heldWebViewsMaterializeOnRelease() {
+    let rt = Self.runtime()
+    let id = rt.call("webviews", "create", ["url": "https://example.com"])["id"].string!
+    rt.content.holdWebViews = true
+    #expect(rt.call("content", "show", ["panes": [.string(id)]]) == .ok)
+    #expect(rt.call("content", "get")["panes"] == [.string(id)])
+    #expect(rt.webviews.record(id)?.webView == nil)
+    #expect(rt.content.card(id)?.superview != nil)
+    rt.content.releaseWebViews()
+    #expect(rt.webviews.record(id)?.webView?.superview === rt.content.card(id)?.clip)
+    #expect(rt.window.window.firstResponder === rt.webviews.record(id)?.webView)
+  }
+
   @Test func splitLayoutPlacesCardsInsideContentArea() {
     let rt = Self.runtime()
     let ids = (0..<3).map { _ in rt.call("webviews", "create")["id"] }

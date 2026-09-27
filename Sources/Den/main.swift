@@ -80,6 +80,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       default: break
       }
     }
+    // The selected tab's WKWebView (and its WebContent process) is created after the first
+    // frame is on screen, not before: the window shows its sidebar and an empty card first.
+    runtime.content.holdWebViews = true
     runtime.app.open(pendingURLs)
     pendingURLs = []
     trace("plugins.start")
@@ -108,6 +111,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     w.displayIfNeeded()
     trace("display")
     DispatchQueue.main.async { trace("nextRunloop") }
+    // Never keep pages waiting if the window server is slow to report the window visible.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.runtime.content.releaseWebViews() }
     // The window server reports the window visible -> first frame is on screen.
     if w.occlusionState.contains(.visible) {
       firstFrame()
@@ -127,6 +132,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let ms = Date().timeIntervalSince(processStartDate()) * 1000
     signposter.endInterval("launch", launchInterval)
     runtime.app.launchMs = ms
+    runtime.content.releaseWebViews()
+    trace("webviews")
     if args.contains("--measure-launch") {
       print(String(format: "launch.firstWindowMs %.1f", ms))
       if arg("--snapshot") == nil && !args.contains("--stay") { exit(0) }
