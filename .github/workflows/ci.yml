@@ -18,6 +18,10 @@ on:
         type: choice
         options: [dark, all]
         default: dark
+      lldb:
+        description: Run the test bundle under lldb and print all native backtraces on a crash
+        type: boolean
+        default: false
       test_parallelism:
         description: Maximum tests running at once (Swift Testing parallelization width)
         type: string
@@ -75,6 +79,7 @@ jobs:
           # suites side by side missed them and was slower overall (measured: width 1 = 324 s,
           # unlimited = 380-410 s). Swift Testing's parallelization width; the input overrides it.
           SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH: ${{ inputs.test_parallelism || '1' }}
+          CI_TEST_CMD: ${{ inputs.lldb && 'scripts/ci/lldb-tests.sh' || 'scripts/test.sh' }}
         run: scripts/ci/run-tests.sh
 
       - name: Perf (report only)

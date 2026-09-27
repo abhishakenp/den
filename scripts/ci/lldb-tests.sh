@@ -1,0 +1,16 @@
+#!/bin/zsh
+# Crash hunting (CI_TEST_CMD=scripts/ci/lldb-tests.sh, or the ci.yml `lldb` dispatch input): runs
+# the Swift Testing bundle the way `swift test` does, under lldb, and prints every thread's native
+# backtrace if the process crashes. Arguments are passed to the test runner (--filter/--skip).
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+swift build --build-tests >/dev/null
+bundle=$(swift build --show-bin-path)/denPackageTests.xctest/Contents/MacOS/denPackageTests
+helper=$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/libexec/swift/pm/swiftpm-testing-helper
+[[ -x $helper && -f $bundle ]] || { echo "no $helper or $bundle"; exit 2; }
+lldb --batch \
+  -o 'settings set target.process.stop-on-exec false' \
+  -o 'process handle SIGPIPE -n true -p true -s false' \
+  -o run \
+  -k 'thread backtrace all' -k 'register read' -k 'quit 1' \
+  -- "$helper" --test-bundle-path "$bundle" "$bundle" --testing-library swift-testing "$@"
