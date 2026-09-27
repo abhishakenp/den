@@ -364,14 +364,23 @@ final class PeekCore {
     littleArcs.remove(at: i)
   }
 
-  /// Little Arc windows archive after `littleArcArchiveMs` without use (Arc default 6 h).
+  /// Little Arc windows archive after `littleArcArchiveMs` without use (Arc default 6 h): the
+  /// window closes and its page goes into the tabs archive, where Cmd-Shift-T or the Library
+  /// can bring it back as a tab.
   func tick() {
     guard littleArcArchiveMs > 0 else { return }
     let now = env.now()
     for la in littleArcs where now - la.lastActive > littleArcArchiveMs {
       if let i = littleArcs.firstIndex(where: { $0.window == la.window }) { littleArcs.remove(at: i) }
+      let st = env.call("webviews", "get", ["id": .string(la.webview)])
+      var url = st.s("url")
+      if url.isEmpty || url == "about:blank" { url = la.url }
+      var entry: Value = ["url": .string(url)]
+      if let t = st.sOpt("title") { entry.put("title", .string(t)) }
+      if let f = st.sOpt("favicon") { entry.put("favicon", .string(f)) }
       env.call("window", "closeMini", ["id": .string(la.window)])
       env.call("webviews", "close", ["id": .string(la.webview)])
+      env.call("tabs", "addToArchive", entry)
     }
   }
 

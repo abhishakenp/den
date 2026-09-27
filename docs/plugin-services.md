@@ -55,6 +55,7 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 | `undo` | – | ok. Undoes the last sidebar action |
 | `archive` | – | `[{id, title, url, favicon, closedAt, spaceId}]` |
 | `restore` | `id` | `{id}` |
+| `addToArchive` | `url`, `title?`, `favicon?`, `spaceId?` (default: current) | `{id}` of the new archive entry (for pages that were never tabs, like an auto-closed Little Arc) |
 | `createFolder` | `spaceId?`, `title?`, `tabIds?` | `{id}` |
 | `deleteFolder` | `id` | ok. Archives the tabs inside it (the menu confirms first) |
 | `split` | `ids` (tab ids), `layout: horizontal\|vertical\|grid` (default horizontal), `focus?` | `{id}` of the split. If one of the tabs is already in a split, the others join it, next to their neighbour in `ids`; otherwise a new split takes the first tab's place. At most 4 tabs. Selects `focus` (default: the last id) |
@@ -131,7 +132,7 @@ Events: `peek.opened {id, url}`, `peek.closed {id}`. `peek.link {id, url, source
 
 **Split view shortcuts** (Arc §7): Ctrl-Shift-= adds a pane (a new tab next to the selected one, then `commands.open {mode: edit}` to pick its page; at most 4); Ctrl-Shift-- takes the focused pane out (a today tab is archived, a pinned one is only separated); Ctrl-Shift-1…4 focus a pane. The pane's hover pill (`content.paneAction`) does the same close, or `separate`s the pane into its own selected tab.
 
-**Little Arc** (Arc §8) uses the host's `window.openMini`. Links from other apps reach it through `tabs` (`peek.openExternal`). Each URL gets a `mini-<n>` web view in its own Little Arc window; the same URL again brings its window back (closed and reopened in front) instead of a second one. The bar's "Open in <space>" (`window.miniAction open`) and Cmd-O (on the key Little Arc window, from `window.listMini`'s `key`) move the web view into a today tab of the current space. The copy button copies the page URL. Closing the window closes the page. A window unused for `littleArcArchiveMs` (6 h) is closed, like Arc's auto-archive; it is not added to the tabs archive. Settings > "Links from other apps open in Little Arc" is `settings.littleArc`.
+**Little Arc** (Arc §8) uses the host's `window.openMini`. Links from other apps reach it through `tabs` (`peek.openExternal`). Each URL gets a `mini-<n>` web view in its own Little Arc window; the same URL again brings its window back (closed and reopened in front) instead of a second one. The bar's "Open in <space>" (`window.miniAction open`) and Cmd-O (on the key Little Arc window, from `window.listMini`'s `key`) move the web view into a today tab of the current space. The copy button copies the page URL. Closing the window closes the page. A window unused for `littleArcArchiveMs` (6 h) is closed and its page (current URL, title, favicon) goes into the tabs archive through `tabs.addToArchive`, like Arc's auto-archive; Cmd-Shift-T or the Library restores it as a today tab. Settings > "Links from other apps open in Little Arc" is `settings.littleArc`.
 
 Storage (ns `peek`): `settings`.
 

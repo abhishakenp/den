@@ -443,6 +443,18 @@ final class TabsCore {
       guard undo() else { return .err("tabs: nothing to undo") }
     case "archive":
       return .array(archive)
+    case "addToArchive":
+      // A page that was never a tab (an auto-closed Little Arc window) goes into the archive.
+      let url = args.s("url")
+      guard !url.isEmpty else { return .err("tabs: addToArchive needs a url") }
+      let sid = args.sOpt("spaceId").flatMap { pageIndex($0) != nil ? $0 : nil } ?? currentSpace
+      let id = newId("tab-")
+      archive.insert(["id": .string(id), "title": .string(args.sOpt("title") ?? URLs.display(url)), "url": .string(url),
+                      "favicon": .string(args.sOpt("favicon") ?? URLs.favicon(url)), "closedAt": .int(env.now()), "spaceId": .string(sid)], at: 0)
+      if archive.count > 500 { archive.removeLast() }
+      saveSoon()
+      env.emit("tabs.changed", ["spaceId": .string(sid)])
+      return ["id": .string(id)]
     case "restore":
       guard let id = restore(args.s("id")) else { return .err("tabs: no archived tab '" + args.s("id") + "'") }
       return ["id": .string(id)]

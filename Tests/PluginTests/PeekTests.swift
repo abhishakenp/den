@@ -380,10 +380,18 @@ struct PeekTests {
     h.clock += PeekCore.defaultLittleArcArchiveMs - 1000
     h.fireTimers()
     #expect(h.rt.call("window", "listMini").array?.count == 1)
+    let archived = h.tabs("archive").array?.count ?? 0
     h.clock += 2000
     h.fireTimers()
     #expect(h.rt.call("window", "listMini").array?.isEmpty == true)
     #expect(h.rt.webviews.record(web) == nil)
+    // ...into the archive, newest first, and Cmd-Shift-T brings it back as a tab.
+    #expect(h.tabs("archive").array?.count == archived + 1)
+    #expect(h.tabs("archive")[0]["url"] == "https://webkit.org/blog/")
+    #expect(h.tabs("archive")[0]["spaceId"].string == h.spaceIds[0])
+    h.key("cmd+shift+t")
+    #expect(h.tabs("list")["today"][0]["url"] == "https://webkit.org/blog/")
+    #expect(h.tabs("archive").array?.count == archived)
     // With Little Arc off, links from other apps open as today tabs.
     h.peek("settings", ["littleArc": false])
     h.rt.app.open([URL(string: "https://www.swift.org/")!])
