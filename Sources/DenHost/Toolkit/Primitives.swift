@@ -108,6 +108,69 @@ public final class ImageCache {
   }()
 
   public func cached(_ url: String) -> NSImage? { images[url] }
+  /// Puts an already-decoded image in the cache (tests, preloaded icons).
+  func store(_ url: String, _ img: NSImage) { images[url] = img; darkVariants[url] = nil }
+
+  /// Per URL: the light variant of a dark monochrome icon, or nil (not dark monochrome).
+  private var darkVariants: [String: NSImage?] = [:]
+  /// For dark mode: GitHub's favicon (a black disc with the cat knocked out, or a black glyph)
+  /// all but disappears on a dark sidebar. Such icons are drawn inverted (white disc, dark cat),
+  /// like the site's own dark-mode favicon. Computed on the first dark-mode draw only, then cached.
+  func darkVariant(_ url: String, _ img: NSImage) -> NSImage? {
+    if let v = darkVariants[url] { return v }
+    let v = Self.isDarkGlyph(img) ? Self.inverted(img) : nil
+    darkVariants[url] = v
+    return v
+  }
+
+  static let glyphSample = 32
+
+  static func pixels(_ img: NSImage) -> (CGContext, UnsafeMutablePointer<UInt8>)? {
+    let n = glyphSample
+    guard let ctx = CGContext(data: nil, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4, space: CGColorSpaceCreateDeviceRGB(),
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+          let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil), let data = ctx.data else { return nil }
+    ctx.interpolationQuality = .high
+    ctx.draw(cg, in: CGRect(x: 0, y: 0, width: n, height: n))
+    return (ctx, data.bindMemory(to: UInt8.self, capacity: n * n * 4))
+  }
+
+  /// Samples the image at 32x32. A dark monochrome icon has a transparent background (at least
+  /// 15% of pixels nearly clear), its visible pixels are colorless (90%), and most of them are
+  /// dark (60%). A glyph on an opaque square, or anything colorful, keeps its own colors.
+  static func isDarkGlyph(_ img: NSImage) -> Bool {
+    guard let (ctx, px) = pixels(img) else { return false }
+    defer { withExtendedLifetime(ctx) {} }  // px points into ctx's buffer
+    let n = glyphSample
+    var clear = 0, visible = 0, grey = 0, dark = 0
+    for i in 0..<(n * n) {
+      let a = Double(px[i * 4 + 3]) / 255
+      if a < 0.1 { clear += 1; continue }
+      guard a > 0.5 else { continue }
+      visible += 1
+      let r = Double(px[i * 4]) / 255 / a, g = Double(px[i * 4 + 1]) / 255 / a, b = Double(px[i * 4 + 2]) / 255 / a
+      if max(r, g, b) - min(r, g, b) < 0.15 { grey += 1 }
+      if 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.3 { dark += 1 }
+    }
+    guard visible > 0 else { return false }
+    return Double(clear) >= 0.15 * Double(n * n) && Double(grey) >= 0.9 * Double(visible) && Double(dark) >= 0.6 * Double(visible)
+  }
+
+  /// The image with its colors inverted and its alpha kept.
+  static func inverted(_ img: NSImage) -> NSImage? {
+    guard let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+    let w = cg.width, h = cg.height
+    guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue), let data = ctx.data else { return nil }
+    ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+    let px = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+    for i in 0..<(w * h) {
+      let a = px[i * 4 + 3]
+      for c in 0..<3 { px[i * 4 + c] = a &- min(px[i * 4 + c], a) }  // premultiplied: a - c
+    }
+    guard let out = ctx.makeImage() else { return nil }
+    return NSImage(cgImage: out, size: img.size)
+  }
 
   /// A local image file (extension icons): read once, then cached.
   public func file(_ path: String) -> NSImage? {
@@ -153,6 +216,13 @@ public final class IconView: NSView, Themable {
   private var isSymbol = false
 
   public override var isFlipped: Bool { true }
+
+  public override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    needsDisplay = true
+  }
+
+  var isDark: Bool { effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
 
   func reload() {
     image = nil
@@ -202,7 +272,9 @@ public final class IconView: NSView, Themable {
         let path = NSBezierPath(roundedRect: b, xRadius: b.width * 0.2, yRadius: b.height * 0.2)
         NSGraphicsContext.saveGraphicsState()
         path.addClip()
-        img.draw(in: b, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        // Dark monochrome icons (GitHub) are drawn inverted in dark mode, or they'd disappear.
+        let drawn = isDark ? (ImageCache.shared.darkVariant(spec, img) ?? img) : img
+        drawn.draw(in: b, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         NSGraphicsContext.restoreGraphicsState()
       }
       return
