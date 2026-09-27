@@ -151,7 +151,7 @@ struct PreviewsTests {
     let t = m.card
     #expect(Self.words(t) == ["Example Domain", "example.com"])
     let title = Self.of(t, "label")[0]
-    #expect(title["size"] == 13 && title.s("weight") == "semibold" && title["lines"] == 2)
+    #expect(title["size"].double == 13 && title.s("weight") == "semibold" && title["lines"] == 2)
     // A selected tab gets no snapshot (it's on screen), and "Add Split View".
     #expect(Self.of(t, "image").isEmpty)
     #expect(Self.tips(t) == ["Pin Tab", "Add Split View", "Duplicate Tab", "Copy Link", "Archive Tab"])
@@ -236,7 +236,7 @@ struct PreviewsTests {
     #expect(Self.tips(c).contains("Pin Tab"))
     // Three public API calls, no sign-in: the PR, then its head commit's check runs and statuses.
     #expect(m.fetches.count == 3)
-    #expect(m.fetches.allSatisfy { Text.hasPrefix($0.s("url"), "https://api.github.com/repos/denhq/den/") && $0["session"].isNull })
+    #expect(m.fetches.allSatisfy { Text.hasPrefix($0.s("url"), "https://api.github.com/repos/denhq/den/") && $0["session"] != true })
     h.action("previews.pr:failures", "click")
     #expect(m.calls.contains { $0.0 == "tabs" && $0.1 == "navigate" && $0.2.s("url") == Self.prURL + "/checks" })
   }

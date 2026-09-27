@@ -215,7 +215,7 @@ struct CardTests {
     #expect(card.layer?.animation(forKey: "cardIn") != nil)
     // A 2-line title: 200 wide (clamped), 109 tall; no actions (a New Tab): 65.
     _ = rt.call("ui", "card", ["id": "c", "anchor": "t2", "tree": Self.tabCard("A very long page title that has to wrap onto a second line in the card")])
-    #expect(card.frame.width == 200 && card.frame.height == 109)
+    #expect(card.frame.width == 200 && card.frame.height == 109, "\(card.frame)")
     _ = rt.call("ui", "card", ["id": "c", "anchor": "t2", "tree": Self.tabCard("New Tab", actions: 0)])
     #expect(card.frame.height == 65)
     // Swapping content is a hard cut: no new entrance animation on the same card.

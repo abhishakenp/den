@@ -123,7 +123,7 @@ final class CardStackNode: NodeView {
       for (k, w) in zip(visible, widths(inner.width)) {
         let h = min(inner.height, k.height(for: w))
         let y = align == "start" ? inner.minY : align == "end" ? inner.maxY - h : inner.minY + (inner.height - h) / 2
-        k.frame = NSRect(x: x.rounded(), y: y.rounded(), width: w.rounded(), height: h)
+        k.frame = NSRect(x: x.rounded(), y: y.rounded(), width: w.rounded(.down), height: h)
         k.isHidden = false
         x += w + spacing
       }
@@ -166,6 +166,7 @@ final class LabelNode: NodeView {
     super.update(v)
     label.maximumNumberOfLines = lines
     label.cell?.wraps = lines > 1
+    label.lineBreakMode = lines > 1 ? .byWordWrapping : .byTruncatingTail
     label.alignment = v.str("align") == "center" ? .center : v.str("align") == "right" ? .right : .natural
     apply(r.palette)
     needsLayout = true
@@ -174,7 +175,8 @@ final class LabelNode: NodeView {
   override func apply(_ p: Palette) {
     let base = font
     let para = NSMutableParagraphStyle()
-    para.lineBreakMode = .byTruncatingTail
+    // Wrapped labels word-wrap; `truncatesLastVisibleLine` still ends the last line in "…".
+    para.lineBreakMode = lines > 1 ? .byWordWrapping : .byTruncatingTail
     para.alignment = label.alignment
     let runs = node.list("runs")
     let s = NSMutableAttributedString()
@@ -192,14 +194,20 @@ final class LabelNode: NodeView {
     needsLayout = true
   }
 
-  /// One line's height: `lineHeight` from the tree, else the font's (17 pt at 13 pt, Dia's pitch).
-  var lineHeight: CGFloat { node["lineHeight"].double.map { CGFloat($0) } ?? ceil(font.ascender - font.descender + font.leading) + 1 }
+  /// One line's height: `lineHeight` from the tree, else 1.3 x the font size (17 pt at 13 pt:
+  /// Dia's title pitch, spec §2.3).
+  var lineHeight: CGFloat { node["lineHeight"].double.map { CGFloat($0) } ?? ceil(font.pointSize * 1.3) }
 
   override func height(for w: CGFloat) -> CGFloat {
     if label.attributedStringValue.length == 0 { return 0 }
     if lines == 1 { return lineHeight }
-    let h = ceil(label.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: max(1, w), height: 10_000)).height ?? lineHeight)
-    return min(h, lineHeight * CGFloat(lines))
+    // Lines the text wraps to at this width (measured against one line), at the label's pitch.
+    guard let cell = label.cell else { return lineHeight }
+    let one = cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: 10_000, height: 10_000)).height
+    let all = cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: max(1, w), height: 10_000)).height
+    let n = CGFloat(min(max(1, one > 0 ? Int((all / one).rounded()) : 1), lines))
+    // Wrapped lines sit 1 pt tighter than the first (Dia: 1 line 93 pt, 2 lines 109 pt, §2.3).
+    return lineHeight * n - (n - 1)
   }
   override var fitWidth: CGFloat? { naturalWidth(label) }
   override var preferredWidth: CGFloat? { node["width"].double.map { CGFloat($0) } ?? (node.flag("fit") ? naturalWidth(label) : nil) }

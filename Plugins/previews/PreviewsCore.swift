@@ -220,7 +220,7 @@ final class PreviewsCore {
     req.muted = args.b("muted")
     req.inSplit = args.b("inSplit")
     req.spaces = args.a("spaces")
-    req.place = args.sOpt("place") ?? "trailing"
+    req.place = args.sOpt("place") ?? (req.kind == "favorite" ? "tile" : "trailing")
     if !args["panes"].isNull { req.panes = args.a("panes") }
     if req.profile.isEmpty, !req.webview.isEmpty {
       req.profile = env.call("webviews", "get", ["id": .string(req.webview)]).sOpt("profile") ?? "default"
