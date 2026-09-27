@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+<channel>
+<title>den</title>
+<item>
+  <title>den 0.1.0-alpha.1</title>
+  <pubDate>Sun, 27 Sep 2026 19:41:37 +0000</pubDate>
+  <sparkle:channel>prerelease</sparkle:channel>
+  <sparkle:version>89</sparkle:version>
+  <sparkle:shortVersionString>0.1.0-alpha.1</sparkle:shortVersionString>
+  <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+  <sparkle:releaseNotesLink>https://github.com/abhishakenp/den/releases/tag/v0.1.0-alpha.1</sparkle:releaseNotesLink>
+  <enclosure url="https://github.com/abhishakenp/den/releases/download/v0.1.0-alpha.1/den-0.1.0-alpha.1.zip" length="4659087" type="application/octet-stream" sparkle:edSignature="QO/aLj+lmXlOlzUhXSgkaACsVm/g8xTjWgj0U4luTVp9MQo/jZjQEeSvoIPfezAc2Hs3kzhoiwF2wltpGjROCQ=="/>
+</item>
+</channel>
+</rss>
