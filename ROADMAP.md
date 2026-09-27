@@ -13,21 +13,21 @@ Every item below has to respect these. If a feature can't, it gets redesigned or
 
 ## Core
 
-- [ ] Plugin host modeled on [cordis](https://github.com/cordiverse/cordis): shared context, services with `inject`, automatic cleanup of everything a plugin registers ([notes](docs/research/cordis-and-agent-harness.md))
+- [x] Plugin host modeled on [cordis](https://github.com/cordiverse/cordis): shared context, services with `inject`, automatic cleanup of everything a plugin registers ([notes](docs/research/cordis-and-agent-harness.md)); [cordis-swift](https://github.com/abhishakenp/cordis-swift) with hot reload, `spaces` and `tabs` are plugins
 - [ ] Core features as swappable services: tabs, history, sidebar, connections
 - [x] Typed UI slots plugins can fill: sidebar panels, toolbar items, command bar actions (host `ui` service: sidebar slots, command bar, dialogs, toasts, peek; [API](docs/host-api.md))
 - [ ] Plugin API versioning and permissions
 - [ ] Lazy loading for plugins and services
 - [ ] Settings system, per plugin, editable at runtime
 - [ ] Command registry (every action is a command; shortcuts and command bar call into it)
-- [ ] Event bus between plugins
+- [x] Event bus between plugins
 - [ ] Crash isolation: a plugin failing doesn't take the browser down
 
 ## Web engine (WebKit)
 
 Details and sources: [Apple platform notes](docs/research/apple-platform.md).
 
-- [ ] Tab model on `WKWebView`
+- [x] Tab model on `WKWebView`
 - [ ] Profiles with isolated data stores (`WKWebsiteDataStore(forIdentifier:)`, macOS 14+)
 - [x] Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard (save state + snapshot, destroy the web view, recreate on focus)
 - [ ] Session restore and crash recovery, using WebKit's page state save/restore
@@ -46,12 +46,12 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
 Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/research/zen.md).
 
 - [ ] Vertical sidebar tabs, with a right-side option (Arc never shipped one)
-- [ ] Favorites grid, shared across spaces
-- [ ] Pinned tabs per space, which reset to their original URL
-- [ ] Today tabs with auto-archive (Arc default: 12h; configurable)
+- [x] Favorites grid, shared across spaces
+- [x] Pinned tabs per space, which reset to their original URL
+- [x] Today tabs with auto-archive (Arc default: 12h; configurable)
 - [ ] Archive of closed tabs, searchable
 - [ ] Folders, including live folders fed by GitHub or RSS (from Zen)
-- [ ] Spaces with their own colors/themes, swipe to switch
+- [x] Spaces with their own colors/themes, swipe to switch
 - [ ] A profile per space (Zen's most-requested missing feature)
 - [ ] Split view, including drag-to-split
 - [ ] Command bar

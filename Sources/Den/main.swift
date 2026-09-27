@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       switch e {
       case let .log(id, level, message): if level != .debug { print("[\(id)] \(message)") }
       case let .applyFailed(id, reason): print("plugin \(id) failed to apply: \(reason)")
+      case let .applied(id): trace("applied \(id)")
       case let .reloaded(id, hash): print("plugin \(id) reloaded (build \(hash))")
       case let .reloadFailed(path, reason): print("plugin reload failed \(path): \(reason)")
       default: break
@@ -78,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     runtime.app.open(pendingURLs)
     pendingURLs = []
+    trace("plugins.start")
     loader = PluginLoader(plugins: runtime.plugins)
     let outcome = loader.loadAll(dev: arg("--dev-plugins").map { URL(fileURLWithPath: $0) })
     trace("plugins")
