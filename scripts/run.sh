@@ -3,4 +3,4 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 scripts/bundle.sh
-exec build/den.app/Contents/MacOS/Den "$@"
+exec build/den.app/Contents/MacOS/den "$@"

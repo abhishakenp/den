@@ -5,7 +5,7 @@
   <key>CFBundleIdentifier</key><string>io.github.abhishakenp.den</string>
   <key>CFBundleName</key><string>den</string>
   <key>CFBundleDisplayName</key><string>den</string>
-  <key>CFBundleExecutable</key><string>Den</string>
+  <key>CFBundleExecutable</key><string>den</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>

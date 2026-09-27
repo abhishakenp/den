@@ -11,8 +11,8 @@ The code lives in `Sources/DenHost/Services/`. `DenRuntime` registers every serv
 
 ## Plugins
 
-- Loaded at launch from `den.app/Contents/PlugIns/*.dylib` and `~/Library/Application Support/den/Plugins/*.dylib`. A user plugin replaces a bundled one with the same file name.
-- `--dev-plugins <dir>` also loads `<dir>/*.dylib` (these win over both) and hot-reloads each file when it is rebuilt.
+- Loaded at launch from `den.app/Contents/PlugIns/*.dylib`, `~/Library/Application Support/den/Plugins/*.dylib` and `~/.den/plugins` (`<id>.dylib`, or a `<id>/*.swift` source folder den compiles). A later layer replaces an earlier one with the same file name. `~/.den` is watched, so adding, replacing or removing a plugin there hot-swaps it in the running app ([den-home.md](den-home.md)).
+- `--dev-plugins <dir>` also loads `<dir>/*.dylib` (these win over all others) and hot-reloads each file when it is rebuilt.
 - If a plugin crashed den, the same build is refused on the next launch, and a toast names it. A new build of that plugin loads normally.
 - `scripts/bundle.sh` builds every `Plugins/<id>/` (plus `Plugins/Shared/`) with `cordis-build` into `Contents/PlugIns/<id>.dylib`.
 
@@ -210,6 +210,19 @@ Chords are bound as main-menu items. That way they work while a web page has foc
 
 - Each namespace (plugin id) is one `Codec`-encoded file at `~/Library/Application Support/den/storage/<ns>.cvalue`.
 - Writes are atomic.
+
+## config
+
+`~/.den/config.toml` and `~/.den/themes` ([den-home.md](den-home.md)). Nothing is read until after the first window, so a call during launch gets the empty config, and the real one arrives with the events.
+
+| Method | Args | Returns |
+|---|---|---|
+| `get` | `key?` (dotted, e.g. `plugins.disabled`) | the whole config object, or the value at `key`, or null |
+| `themes` | – | `[{name, colors, intensity?, grain?, appearance?, file}]`, sorted by name |
+| `paths` | – | `{root, plugins, themes, config, logs}` |
+| `errors` | – | `[string]`: problems in config.toml and the theme files, as of the last read |
+
+Events: `config.changed {config}`, `config.themesChanged {themes}`.
 
 ## plugins
 

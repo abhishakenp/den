@@ -5,8 +5,11 @@ import Foundation
 ///
 /// Search order (a later directory wins for the same file name):
 ///   1. `den.app/Contents/PlugIns/*.dylib`       bundled plugins
-///   2. `~/Library/Application Support/den/Plugins/*.dylib`   user plugins
-///   3. `--dev-plugins <dir>`                      dev builds, hot-reloaded on every rebuild
+///   2. `~/Library/Application Support/den/Plugins/*.dylib`   user plugins (legacy, not watched)
+///   3. `home`: `~/.den/plugins/*.dylib` and compiled `~/.den/plugins/<id>/` source plugins
+///      (`LivePlugins.launchFiles`), hot-reloaded by `LivePlugins`
+///   4. `--dev-plugins <dir>`                      dev builds, hot-reloaded on every rebuild
+/// Plugin ids in `disabled` (`[plugins] disabled` in `~/.den/config.toml`) are skipped.
 ///
 /// A plugin whose build crashed den last time is refused by cordis (`crashedBuild`); the loader
 /// records it in `crashed` so the app can tell the user.
@@ -37,10 +40,11 @@ public final class PluginLoader {
 
   /// Loads every plugin. Files in `dev` are watched and hot-reloaded.
   @discardableResult
-  public func loadAll(bundle: URL? = PluginLoader.bundleDirectory, user: URL? = PluginLoader.userDirectory, dev: URL? = nil) -> Outcome {
+  public func loadAll(bundle: URL? = PluginLoader.bundleDirectory, user: URL? = PluginLoader.userDirectory, home: [URL] = [], dev: URL? = nil,
+                      disabled: Set<String> = []) -> Outcome {
     var chosen: [String: (URL, Bool)] = [:]  // file name -> (path, watch)
-    for (dir, watch) in [(bundle, false), (user, false), (dev, true)] {
-      for f in Self.dylibs(in: dir) { chosen[f.lastPathComponent] = (f, watch) }
+    for (files, watch) in [(Self.dylibs(in: bundle), false), (Self.dylibs(in: user), false), (home, false), (Self.dylibs(in: dev), true)] {
+      for f in files where !disabled.contains(f.deletingPathExtension().lastPathComponent) { chosen[f.lastPathComponent] = (f, watch) }
     }
     let crash = plugins.lastCrash
     for name in chosen.keys.sorted() {

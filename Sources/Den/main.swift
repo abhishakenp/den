@@ -16,6 +16,10 @@ import os
 //   --snapshot-delay <seconds>     wait before snapshot (default 4)
 //   --measure-launch               print ms from process start to first window on screen, then quit
 //   --storage <dir>                storage root (default ~/Library/Application Support/den/storage)
+//   --no-den-home                  ignore ~/.den (no user plugins, themes, config; nothing watched)
+//
+// ~/.den (DEN_HOME overrides it): plugins, themes and config.toml, watched and hot-reloaded
+// after the first window (docs/den-home.md). SIGTERM quits cleanly without the quit dialog.
 
 setvbuf(stdout, nil, _IOLBF, 0)
 let traceOn = ProcessInfo.processInfo.environment["DEN_TRACE"] != nil
@@ -43,6 +47,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var pendingURLs: [URL] = []
   var visibleObserver: NSObjectProtocol?
   var snapMini = false
+  let home: DenHome? = CommandLine.arguments.contains("--no-den-home") ? nil : DenHome()
+  var config: ConfigService?
+  var live: LivePlugins?
+  var sigterm: DispatchSourceSignal?
+  lazy var sessionLog: DenLog? = home.map { DenLog(url: $0.logs.appendingPathComponent("den.log")) }
 
   func arg(_ name: String) -> String? {
     guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
@@ -74,9 +83,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       switch e {
       case let .log(id, level, message): if level != .debug { print("[\(id)] \(message)") }
       case let .applyFailed(id, reason): print("plugin \(id) failed to apply: \(reason)")
-      case let .applied(id): trace("applied \(id)")
+      case let .applied(id):
+        trace("applied \(id)")
+        self.config?.pluginApplied()
       case let .reloaded(id, hash): print("plugin \(id) reloaded (build \(hash))")
-      case let .reloadFailed(path, reason): print("plugin reload failed \(path): \(reason)")
+      case let .reloadFailed(path, reason):
+        print("plugin reload failed \(path): \(reason)")
+        self.live?.log.write("reload failed \(path): \(reason)")
       default: break
       }
     }
@@ -87,7 +100,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     pendingURLs = []
     trace("plugins.start")
     loader = PluginLoader(plugins: runtime.plugins)
-    let outcome = loader.loadAll(dev: arg("--dev-plugins").map { URL(fileURLWithPath: $0) })
+    // ~/.den on the launch path: one directory read (which plugins override bundled ones) and,
+    // only if config.toml exists, one small read for [plugins] disabled. Everything else waits
+    // for the first window (startDenHome).
+    if let home {
+      let c = ConfigService(host: runtime.host, home: home) { [unowned runtime] s, m, a in runtime!.call(s, m, a) }
+      runtime.provide(c)
+      config = c
+    }
+    let outcome = loader.loadAll(home: home.map(LivePlugins.launchFiles) ?? [], dev: arg("--dev-plugins").map { URL(fileURLWithPath: $0) },
+                                 disabled: home.map(ConfigService.disabledPlugins) ?? [])
     trace("plugins")
     if traceOn || !outcome.failed.isEmpty { print("plugins loaded=\(outcome.loaded) failed=\(outcome.failed) crashed=\(outcome.crashed)") }
     if let text = PluginLoader.crashToast(outcome.crashed) {
@@ -138,6 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       print(String(format: "launch.firstWindowMs %.1f", ms))
       if arg("--snapshot") == nil && !args.contains("--stay") { exit(0) }
     }
+    DispatchQueue.main.async { [weak self] in self?.startDenHome(firstWindowMs: ms) }
     var snapWindow = runtime.window.window
     if let scenario = arg("--scenario") {
       // Host component scenarios (DenHost/Scenarios) first; the rest need --demo.
@@ -155,6 +178,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
       }
     }
+  }
+
+  /// After the first window: ~/.den layout, config, themes, the watcher, source plugin builds,
+  /// and a clean quit on SIGTERM (scripts/dev-sync.sh and scripts/install.sh relaunch with it).
+  func startDenHome(firstWindowMs: Double) {
+    signal(SIGTERM, SIG_IGN)
+    let src = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+    src.setEventHandler { [weak self] in MainActor.assumeIsolated { _ = self?.runtime.call("app", "quit", ["confirm": true]) } }
+    src.resume()
+    sigterm = src
+    guard let home, let config else { return }
+    let live = LivePlugins(plugins: runtime.plugins, home: home, layers: .init(dev: arg("--dev-plugins").map { URL(fileURLWithPath: $0) }))
+    live.disabled = { [weak config] in config?.disabled ?? [] }
+    live.toast = { [weak self] text in
+      self?.runtime.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(text), "icon": "sf:puzzlepiece.extension", "duration": 6000]])
+    }
+    live.configChanged = { [weak self, weak config] in
+      config?.reloadConfig()
+      if let e = config?.errors.first(where: { $0.hasPrefix("config.toml") }) { self?.live?.toast(e) }
+    }
+    live.themesChanged = { [weak config] in config?.reloadThemes() }
+    self.live = live
+    home.ensureLayout()
+    config.start()
+    live.start()
+    let firstWindowEpochMs = processStartDate().timeIntervalSince1970 * 1000 + firstWindowMs
+    sessionLog?.write(String(format: "launch pid=%d firstWindowEpochMs=%.0f firstWindowMs=%.1f %@", getpid(), firstWindowEpochMs, firstWindowMs, sessionSummary()))
+  }
+
+  /// One line describing the restorable session: spaces, tabs, selection, and a signature of
+  /// every tab's id and URL (equal before a quit and after the relaunch when state survived).
+  func sessionSummary() -> String {
+    let rt = runtime!
+    var ids: [String] = []
+    var sig = ""
+    var stack: [Value] = []
+    let spaces = rt.call("spaces", "list").array ?? []
+    for (j, sp) in spaces.enumerated() {
+      let l = rt.call("tabs", "list", ["spaceId": sp["id"]])
+      stack = (j == 0 ? l.list("favorites") : []) + l.list("pinned") + l.list("today")
+      stack.reverse()
+      while let i = stack.popLast() {
+        if i.flag("folder") || i.flag("split") {
+          stack += i.list("children").reversed()
+        } else {
+          ids.append(i.str("id"))
+          sig += i.str("id") + " " + i.str("url") + "\n"
+        }
+      }
+    }
+    var h: UInt64 = 0xcbf2_9ce4_8422_2325  // FNV-1a
+    for b in sig.utf8 { h = (h ^ UInt64(b)) &* 0x100_0000_01b3 }
+    let selected = rt.call("tabs", "selected")["id"].string ?? "-"
+    let current = rt.call("spaces", "current")["id"].string ?? "-"
+    return "spaces=\(spaces.count) current=\(current) tabs=\(ids.count) selected=\(selected) sig=\(String(h, radix: 16))"
+  }
+
+  func applicationWillTerminate(_ notification: Notification) {
+    guard runtime != nil, let sessionLog else { return }
+    sessionLog.write(String(format: "quit pid=%d epochMs=%.0f %@", getpid(), Date().timeIntervalSince1970 * 1000, sessionSummary()))
+    sessionLog.flush()
   }
 
   func applyScenario(_ s: String) {

@@ -2,12 +2,12 @@
 # Renders den's own UI (demo data) to docs/screenshots/ with --snapshot (no Screen Recording needed).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[[ -x build/den.app/Contents/MacOS/Den ]] || scripts/bundle.sh
+[[ -x build/den.app/Contents/MacOS/den ]] || scripts/bundle.sh
 out=docs/screenshots
 mkdir -p $out
 store=$(mktemp -d)
 shot() { # name scenario appearance — a fresh store each time, so the plugins' first-run seed shows
-  build/den.app/Contents/MacOS/Den --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
+  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
 }
 shot main-light main light
 shot main-dark main dark
@@ -23,7 +23,7 @@ if [[ -f build/den.app/Contents/PlugIns/theme.dylib ]]; then shot theme-picker-l
 if [[ -f build/den.app/Contents/PlugIns/quit.dylib ]]; then shot quit-dialog dialog light; shot quit-dialog-dark dialog dark; fi
 # Host components (self-contained scenarios, no --demo): see DenHost/Scenarios/HostScenarios.swift.
 host() { # name scenario appearance
-  build/den.app/Contents/MacOS/Den --storage "$store" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay 3
+  build/den.app/Contents/MacOS/den --no-den-home --storage "$store" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay 3
 }
 host theme-picker themePicker light
 host theme-picker-dark themePicker dark
@@ -46,7 +46,7 @@ for v in DeleteSpace DeleteFolder ClearArchive; do
 done
 # Native menus are separate windows: open one and capture it through its own window id.
 menu() { # name appearance
-  build/den.app/Contents/MacOS/Den --storage "$store" --appearance "$2" --scenario contextMenu --stay &
+  build/den.app/Contents/MacOS/den --no-den-home --storage "$store" --appearance "$2" --scenario contextMenu --stay &
   local pid=$!; sleep 3.5
   local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; for w in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where w[kCGWindowOwnerPID as String] as? Int32 == p && w[kCGWindowLayer as String] as? Int == 101 { print(w[kCGWindowNumber as String]!) }' $pid | head -1)
   [[ -n $id ]] && screencapture -o -x -l$id "$out/$1.png"

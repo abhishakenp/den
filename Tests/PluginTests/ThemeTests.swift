@@ -184,6 +184,30 @@ struct ThemeTests {
     #expect(core2.recent.count == 1)
   }
 
+  @Test func denHomeThemesBecomeCommandsAndStayLive() {
+    let h = Harness()
+    var registered: [String: Value] = [:]
+    h.rt.plugins.provide("commands") { m, a in
+      if m == "register" { registered[a.s("id")] = a }
+      if m == "unregister" { registered[a.s("id")] = nil }
+      return ["ok": true]
+    }
+    var themes: Value = [["name": "Dusk", "colors": ["#3139fb", "#ff3c19"], "intensity": 0.8, "appearance": "dark", "file": "dusk.json"]]
+    h.rt.plugins.provide("config") { m, _ in m == "themes" ? themes : ["error": "config: unknown"] }
+    start(h)
+    #expect(registered["theme.user:0"]?["title"] == "Theme: Dusk")
+    h.rt.plugins.emit("commands.run", ["id": "theme.user:0"])
+    let s0 = space(h, 0)["theme"]
+    #expect(ThemeRules.colors(s0) == ["#3139fb", "#ff3c19"] && s0["intensity"] == 0.8)
+    #expect((h.rt.call("spaces", "list").array ?? []).allSatisfy { $0["theme"]["appearance"] == "dark" })
+    // A file added or removed in ~/.den/themes: config.themesChanged replaces the commands.
+    themes = [["name": "Aurora", "colors": ["#73e59c"], "file": "a.json"], ["name": "Sand", "colors": ["#e0c080"], "file": "s.toml"]]
+    h.rt.plugins.emit("config.themesChanged", ["themes": themes])
+    #expect(registered["theme.user:0"]?["title"] == "Theme: Aurora" && registered["theme.user:1"]?["title"] == "Theme: Sand")
+    h.rt.plugins.emit("config.themesChanged", ["themes": []])
+    #expect(registered.keys.filter { $0.hasPrefix("theme.user:") }.isEmpty)
+  }
+
   @Test func commandsRegisterWhenTheCommandBarLoadsLater() {
     let h = Harness()
     let core = start(h)

@@ -89,7 +89,14 @@ scripts/snapshots.sh         # regenerate docs/screenshots
 scripts/measure-memory.sh main   # memory of den + its WebKit processes
 ```
 
-Useful flags: `--demo`, `--appearance light|dark`, `--scenario <name>`, `--snapshot out.png`, `--measure-launch`.
+Useful flags: `--demo`, `--appearance light|dark`, `--scenario <name>`, `--snapshot out.png`, `--measure-launch`, `--no-den-home`.
+
+```sh
+scripts/install.sh           # verified build (bundle + swift test) -> /Applications/den.app -> relaunch with your tabs
+scripts/dev-sync.sh          # keep the installed den on the latest code: plugins hot-swap, host changes reinstall
+```
+
+Extend den from `~/.den`: drop in plugins (prebuilt `.dylib` or a folder of `.swift` files den compiles), themes and `config.toml`. Changes apply live. See [docs/den-home.md](docs/den-home.md).
 
 The host API that plugins code against is in [docs/host-api.md](docs/host-api.md).
 

@@ -10,7 +10,7 @@ wait=${2:-15}
 webkit_pids() { pgrep -f 'com.apple.WebKit.(WebContent|Networking|GPU)' | sort -n || true; }
 before=$(webkit_pids)
 store=$(mktemp -d)
-build/den.app/Contents/MacOS/Den --demo --scenario "$scenario" --storage "$store" > "$store/out.txt" 2>&1 &
+build/den.app/Contents/MacOS/den --no-den-home --demo --scenario "$scenario" --storage "$store" > "$store/out.txt" 2>&1 &
 pid=$!
 if [[ $scenario == load10* ]]; then
   for i in {1..120}; do grep -q scenario.ready "$store/out.txt" && break; sleep 1; done
@@ -22,5 +22,5 @@ after=$(webkit_pids)
 new=$(comm -13 <(echo "$before") <(echo "$after") | tr '\n' ' ')
 grep scenario.ready "$store/out.txt" || true
 echo "den pid $pid; new WebKit pids: $new"
-footprint -p $pid $(for p in ${=new}; do echo -p $p; done) 2>/dev/null | grep -E '^\s*(Den|com.apple.WebKit|Summary|TOTAL)|phys_footprint:|Footprint' | head -40
+footprint -p $pid $(for p in ${=new}; do echo -p $p; done) 2>/dev/null | grep -E '^\s*(den|com.apple.WebKit|Summary|TOTAL)|phys_footprint:|Footprint' | head -40
 kill $pid

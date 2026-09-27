@@ -12,11 +12,14 @@
 /// - Appearance is global, as in Arc: a saved appearance is written to every space.
 /// - Saved themes are remembered (storage ns `theme`, key `recent`, newest first, at most 8) and
 ///   offered as "Use Recent Theme" commands.
+/// - Theme presets from `~/.den/themes` (host `config.themes`, live via `config.themesChanged`)
+///   are offered as "Theme: <name>" commands.
 final class ThemeCore {
   static let ns = "theme"
   static let nodeId = "theme"
   static let commandId = "theme.edit"
   static let recentCommandPrefix = "theme.recent:"
+  static let userCommandPrefix = "theme.user:"
   static let maxRecent = 8
   static let recentCommands = 3
 
@@ -33,6 +36,8 @@ final class ThemeCore {
   let env: PluginEnv
   var session: Session?
   var recent: [Value] = []
+  var userThemes: [Value] = []
+  var userCommands = 0  // "theme.user:<j>" ids registered
   var presetPage: Int64 = 0
   var commandsRegistered = false
   var registerAttempts = 0
@@ -44,6 +49,11 @@ final class ThemeCore {
   func start() {
     recent = env.call("storage", "get", ["ns": .string(Self.ns), "key": "recent"]).array ?? []
     presetPage = env.call("storage", "get", ["ns": .string(Self.ns), "key": "presetPage"]).int ?? 0
+    userThemes = env.call("config", "themes").array ?? []  // `config` is optional (not injected)
+    env.on("config.themesChanged") { [self] v in
+      userThemes = v.a("themes")
+      registerUserThemes()
+    }
     env.on("spaces.editTheme") { [self] v in open(v.s("id")) }
     env.on("ui.action") { [self] v in
       guard v.s("id") == Self.nodeId else { return }
@@ -88,6 +98,7 @@ final class ThemeCore {
     guard !r.isErr else { return false }
     commandsRegistered = true
     registerRecentCommands()
+    registerUserThemes()
     return true
   }
 
@@ -103,8 +114,40 @@ final class ThemeCore {
     }
   }
 
+  /// One command per `~/.den/themes` preset. Ids are positional, so the old set is dropped first.
+  func registerUserThemes() {
+    guard commandsRegistered else { return }
+    for j in 0..<userCommands { env.call("commands", "unregister", ["id": .string(Self.userCommandPrefix + String(j))]) }
+    userCommands = userThemes.count
+    for (j, t) in userThemes.enumerated() {
+      env.call("commands", "register", [
+        "id": .string(Self.userCommandPrefix + String(j)), "title": .string("Theme: " + t.s("name")),
+        "icon": "sf:paintpalette.fill", "keywords": ["theme", "color", .string(Text.lower(t.s("name")))],
+      ])
+    }
+  }
+
+  /// Applies a `~/.den/themes` preset to the current space. Its appearance, if it has one, goes to
+  /// every space (appearance is global).
+  func applyUser(_ j: Int) {
+    let id = currentSpace()
+    guard !id.isEmpty, j < userThemes.count else { return }
+    let t = userThemes[j]
+    let clean = ThemeRules.sanitize(t)
+    var patch: Value = ["colors": clean["colors"]]
+    for k in ["intensity", "grain"] where !t[k].isNull { patch.put(k, clean[k]) }
+    env.call("spaces", "update", ["id": .string(id), "theme": patch])
+    if let a = t.sOpt("appearance") {
+      for sp in spaces() where sp["theme"].s("appearance") != a {
+        env.call("spaces", "update", ["id": sp["id"], "theme": ["appearance": .string(a)]])
+      }
+    }
+  }
+
   func run(_ id: String) {
-    if id == Self.commandId {
+    if Text.hasPrefix(id, Self.userCommandPrefix), let j = Text.int(Text.dropPrefix(id, Self.userCommandPrefix)) {
+      applyUser(j)
+    } else if id == Self.commandId {
       open(currentSpace())
     } else if Text.hasPrefix(id, Self.recentCommandPrefix), let j = Text.int(Text.dropPrefix(id, Self.recentCommandPrefix)), j < recent.count {
       applyRecent(j)
