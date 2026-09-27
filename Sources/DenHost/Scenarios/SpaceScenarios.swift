@@ -1,3 +1,5 @@
+// Dev fixture: compiled only with the `Scenarios` package trait (on by default; release bundles leave it out).
+#if Scenarios
 import AppKit
 import CordisValue
 
@@ -96,3 +98,4 @@ public enum SpaceScenarios {
     return w
   }
 }
+#endif

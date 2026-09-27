@@ -1,3 +1,5 @@
+// Dev fixture: compiled only with the `Scenarios` package trait (on by default; release bundles leave it out).
+#if Scenarios
 import AppKit
 import CordisValue
 import WebKit
@@ -69,8 +71,8 @@ public enum ExtensionScenarios {
     let dir = ProcessInfo.processInfo.environment["DEN_SNAPSHOT_DIR"] ?? FileManager.default.currentDirectoryPath
     let path = (dir as NSString).appendingPathComponent(file)
     // A key window draws active controls (switches, traffic lights).
-    NSApp.activate()
-    rt.window.window.makeKeyAndOrderFront(nil)
+    Presentation.activate()
+    Presentation.show(rt.window.window)
     try? await Task.sleep(for: .milliseconds(400))
     let ok = await Snapshotter.write(rt.window.window, to: path)
     log("snapshot \(file) ok=\(ok)")
@@ -222,3 +224,4 @@ public enum ExtensionScenarios {
     return nil
   }
 }
+#endif

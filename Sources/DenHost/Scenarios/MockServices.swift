@@ -1,3 +1,5 @@
+// Dev fixture: compiled only with the `Scenarios` package trait (on by default; release bundles leave it out).
+#if Scenarios
 import Foundation
 import Network
 
@@ -305,3 +307,4 @@ public final class MockServices: @unchecked Sendable {
     return json(["meta": ["title": "Search results"], "payload": ["blackbirdSearchRoute": route]])
   }
 }
+#endif

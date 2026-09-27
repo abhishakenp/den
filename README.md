@@ -102,7 +102,7 @@ scripts/snapshots.sh         # regenerate docs/screenshots
 scripts/measure-memory.sh main   # memory of den + its WebKit processes
 ```
 
-Useful flags: `--demo`, `--appearance light|dark`, `--scenario <name>`, `--snapshot out.png`, `--measure-launch`, `--no-den-home`.
+Useful flags: `--demo`, `--appearance light|dark`, `--scenario <name>`, `--snapshot out.png`, `--measure-launch`, `--no-den-home`, `--background` (automation: no Dock icon, no focus, windows off-display). Scenarios need a build with the `Scenarios` trait (`swift build`, or `DEN_SCENARIOS=1 scripts/bundle.sh`).
 
 ```sh
 scripts/install.sh           # verified build (bundle + swift test) -> /Applications/den.app -> relaunch with your tabs

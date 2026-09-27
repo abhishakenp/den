@@ -3,9 +3,13 @@
 # The bundle id (io.github.abhishakenp.den) and the signing identity never change, so macOS
 # keeps TCC grants, Keychain access and default-browser registration across rebuilds
 # (run scripts/make-signing-identity.sh once; without it the signature is ad hoc).
+# DEN_SCENARIOS=1 keeps the `Scenarios` package trait (--scenario fixtures, MockServices) for
+# scripts/snapshots.sh; by default the release app is built without it (no fixtures, no Network.framework).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-swift build -c release --product Den
+traits=(--disable-default-traits)
+[[ -n ${DEN_SCENARIOS:-} ]] && traits=()
+swift build -c release --product Den $traits
 BIN="$(swift build -c release --show-bin-path)/Den"
 APP=build/den.app
 rm -rf "$APP"
@@ -21,6 +25,7 @@ commit=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 git diff --quiet HEAD -- Sources Plugins Package.swift Package.resolved Resources 2>/dev/null || commit="$commit-dirty"
 plutil -replace DenCommit -string "$commit" "$PL"
 plutil -replace DenHostAPI -integer "$(git rev-list --count HEAD -- Sources Package.swift Package.resolved 2>/dev/null || echo 0)" "$PL"
+plutil -replace DenScenarios -bool "$([[ -n ${DEN_SCENARIOS:-} ]] && echo YES || echo NO)" "$PL"
 plutil -replace DenBuildDate -string "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PL"
 plutil -replace CFBundleVersion -string "${DEN_BUILD:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}" "$PL"
 [[ -n ${DEN_VERSION:-} ]] && plutil -replace CFBundleShortVersionString -string "$DEN_VERSION" "$PL"

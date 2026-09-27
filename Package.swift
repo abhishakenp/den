@@ -1,13 +1,20 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.1
 import PackageDescription
 
 let package = Package(
   name: "den",
-  // `.v26` needs tools 6.2; the string form gives macOS 26 while keeping tools 6.0.
+  // `.v26` needs tools 6.2; the string form gives macOS 26 while keeping tools 6.1 (traits).
   platforms: [.macOS("26.0")],
   products: [
     .executable(name: "Den", targets: ["Den"]),
     .library(name: "DenHost", targets: ["DenHost"]),
+  ],
+  // `Scenarios`: --scenario fixtures and the local fake Slack/GitHub (Sources/DenHost/Scenarios, `#if Scenarios`).
+  // On for swift build/test and snapshot bundles; scripts/bundle.sh builds release without it
+  // (`--disable-default-traits`), so the shipped app carries no fixtures and doesn't link Network.framework.
+  traits: [
+    .trait(name: "Scenarios", description: "Dev fixtures: --scenario states and MockServices"),
+    .default(enabledTraits: ["Scenarios"]),
   ],
   dependencies: [
     .package(url: "https://github.com/abhishakenp/cordis-swift", from: "0.1.2"),
