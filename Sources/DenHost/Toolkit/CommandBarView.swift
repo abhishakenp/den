@@ -90,7 +90,8 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
 
   /// A 50 pt suggestion row (spec §2): favicon 16 at +16, title at +43, subtitle right after it,
   /// trailing accessory label then a 21x21 keycap 17 pt from the right edge.
-  final class Row: FlippedView {
+  final class Row: FlippedView, Hoverable {
+    var hoverGroup: HoverGroup { .row }
     let icon = IconView()
     let title = makeLabel(size: 13.5), subtitle = makeLabel(size: 13.5), accessory = makeLabel(size: 13.5)
     let keycap = Keycap()
@@ -185,10 +186,10 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
     override func mouseEntered(with event: NSEvent) {
-      hovering = true
+      HoverTracker.refresh(window)
       onHover?()
     }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
     override func mouseUp(with event: NSEvent) { onClick?() }
   }
 
@@ -271,7 +272,8 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
   }
 
   /// The banner's 24x24 "×".
-  final class CloseButton: FlippedView {
+  final class CloseButton: FlippedView, Hoverable {
+    var hoverGroup: HoverGroup { .control }
     let glyph = IconView()
     var onClick: (() -> Void)?
     var tint: NSColor = .secondaryLabelColor { didSet { glyph.tint = tint } }
@@ -294,8 +296,8 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       trackingAreas.forEach(removeTrackingArea)
       addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+    override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
   }
 

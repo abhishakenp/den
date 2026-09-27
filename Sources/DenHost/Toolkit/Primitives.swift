@@ -186,6 +186,14 @@ public final class ImageCache {
     failed.remove(key)
   }
 
+  /// A favicon service's generic placeholder (Google s2 returns a 16x16 globe for sites it has no
+  /// icon for, whatever size was asked).
+  static func isServiceFallback(_ url: String, _ img: NSImage) -> Bool {
+    guard url.contains("google.com/s2/favicons"), url.contains("sz=") else { return false }
+    let px = img.representations.map { max($0.pixelsWide, $0.pixelsHigh) }.max() ?? 0
+    return px > 0 && px <= 16
+  }
+
   public func load(_ url: String, _ done: @escaping (NSImage?) -> Void) {
     if let i = images[url] { return done(i) }
     if failed.contains(url) { return done(nil) }
@@ -196,7 +204,11 @@ public final class ImageCache {
       let bytes = data
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
-          let img = bytes.flatMap { NSImage(data: $0) }
+          var img = bytes.flatMap { NSImage(data: $0) }
+          // Google's favicon service answers an unknown site with its own 16 px globe, which
+          // upscales to a blurry, pixelated icon: treat it as no favicon, so the view draws its
+          // vector fallback (a letter tile, or the globe symbol) sharp at any scale.
+          if let i = img, Self.isServiceFallback(url, i) { img = nil }
           if let img { self.images[url] = img } else { self.failed.insert(url) }
           let cbs = self.waiting.removeValue(forKey: url) ?? []
           cbs.forEach { $0(img) }
@@ -281,6 +293,21 @@ public final class IconView: NSView, Themable {
     }
     let remote = spec.hasPrefix("http") || spec.hasPrefix("/") || spec.isEmpty
     let text = remote ? String(fallbackLetter.prefix(1)).uppercased() : spec
+    if text.isEmpty, remote, !spec.isEmpty, let globe = NSImage(systemSymbolName: "globe", accessibilityDescription: nil) {
+      // No favicon and no title to letter: the globe symbol, drawn as a vector at this size.
+      let sym = globe.withSymbolConfiguration(.init(pointSize: b.height * 0.78, weight: .medium)) ?? globe
+      let sz = sym.size
+      let opaque = tint.withAlphaComponent(1)
+      let tinted = NSImage(size: sz, flipped: false) { rect in
+        sym.draw(in: rect)
+        opaque.set()
+        rect.fill(using: .sourceAtop)
+        return true
+      }
+      tinted.draw(in: NSRect(x: b.midX - sz.width / 2, y: b.midY - sz.height / 2, width: sz.width, height: sz.height), from: .zero,
+                  operation: .sourceOver, fraction: tint.alphaComponent, respectFlipped: true, hints: nil)
+      return
+    }
     guard !text.isEmpty else { return }
     if remote {
       tint.withAlphaComponent(0.18).setFill()
@@ -294,13 +321,14 @@ public final class IconView: NSView, Themable {
 }
 
 /// Small borderless symbol button with a hover fill.
-public final class IconButton: NSView, Themable {
+public final class IconButton: NSView, Themable, Hoverable {
+  var hoverGroup: HoverGroup { .control }
   let icon = IconView()
   var action: () -> Void
   var enabled = true { didSet { alphaValue = enabled ? 1 : 0.35 } }
   var tint: NSColor = .labelColor { didSet { icon.tint = tint } }
   var hoverFill: NSColor = NSColor(white: 0, alpha: 0.06)
-  private var hovering = false { didSet { needsDisplay = true } }
+  var hovering = false { didSet { needsDisplay = true } }
   private let size: CGFloat
   public override var tag: Int { get { _tag } set { _tag = newValue } }
   private var _tag = 0
@@ -341,8 +369,8 @@ public final class IconButton: NSView, Themable {
     trackingAreas.forEach(removeTrackingArea)
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
-  public override func mouseEntered(with event: NSEvent) { hovering = true }
-  public override func mouseExited(with event: NSEvent) { hovering = false }
+  public override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  public override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
   public override func mouseDown(with event: NSEvent) {}
   public override func mouseUp(with event: NSEvent) {
     if enabled && bounds.contains(convert(event.locationInWindow, from: nil)) { action() }

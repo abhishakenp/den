@@ -24,7 +24,8 @@ extension NSTextField {
 
 /// Row with a rounded hover fill that emits `open` on click.
 @MainActor
-class SheetRowNode: NodeView {
+class SheetRowNode: NodeView, Hoverable {
+  var hoverGroup: HoverGroup { .row }
   var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
   override func draw(_ dirtyRect: NSRect) {
     guard hovering else { return }
@@ -36,8 +37,8 @@ class SheetRowNode: NodeView {
     trackingAreas.forEach(removeTrackingArea)
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
-  override func mouseEntered(with event: NSEvent) { hovering = true }
-  override func mouseExited(with event: NSEvent) { hovering = false }
+  override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
   override func mouseDown(with event: NSEvent) {}
   override func mouseUp(with event: NSEvent) {
     let p = convert(event.locationInWindow, from: nil)

@@ -11,7 +11,8 @@ import CordisValue
 /// Arc's archive view was not measured (spec §12): every value here is an estimate in Tokens.
 @MainActor
 final class LibraryView: PanelView, NSTextFieldDelegate {
-  final class Row: FlippedView {
+  final class Row: FlippedView, Hoverable {
+    var hoverGroup: HoverGroup { .row }
     let icon = IconView()
     let title = makeLabel(size: 13.5, weight: .medium)
     let subtitle = makeLabel(size: 12)
@@ -47,8 +48,8 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
       trackingAreas.forEach(removeTrackingArea)
       addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true; needsLayout = true }
-    override func mouseExited(with event: NSEvent) { hovering = false; needsLayout = true }
+    override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window); needsLayout = true }
+    override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window); needsLayout = true }
     override func mouseUp(with event: NSEvent) {
       if event.clickCount == 1, bounds.contains(convert(event.locationInWindow, from: nil)) { onRestore?() }
     }
@@ -89,6 +90,7 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
     searchField.addSubview(searchIcon)
     searchField.addSubview(input)
     scroll.drawsBackground = false
+    HoverTracker.watchScrolling(scroll)
     scroll.hasVerticalScroller = true
     scroll.scrollerStyle = .overlay
     scroll.autohidesScrollers = true

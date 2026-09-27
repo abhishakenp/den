@@ -72,6 +72,7 @@ public final class UIService: HostService {
     sidebarView.pager.ensurePages(1)
     sidebarView.pager.onProgress = { [weak wc] a, b, t in wc?.blendTheme(from: a, to: b, progress: t) }
     sidebarView.pager.onCommit = { [weak self] p in
+      HoverTracker.setNeedsRefresh(self?.wc.window)
       self?.wc.showTheme(for: p)
       self?.refreshPalette()
       emitter("sidebar", "page", .int(Int64(p)))
@@ -142,6 +143,8 @@ public final class UIService: HostService {
       s.set(tree, renderer: renderer)
       sidebarView.needsLayout = true
     }
+    // Rows were re-rendered, reused or reordered: hover follows the pointer, not stale flags.
+    HoverTracker.setNeedsRefresh(wc.window)
     return .ok
   }
 

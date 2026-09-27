@@ -2,7 +2,8 @@ import AppKit
 import CordisValue
 
 /// Node with hover tracking, a rounded fill for hover/selected, and click/double-click.
-class HoverNode: NodeView {
+class HoverNode: NodeView, Hoverable {
+  var hoverGroup: HoverGroup { .row }
   var hovering = false {
     didSet { if hovering != oldValue { needsDisplay = true; hoverChanged() } }
   }
@@ -52,11 +53,11 @@ class HoverNode: NodeView {
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
   override func mouseEntered(with event: NSEvent) {
-    hovering = true
+    HoverTracker.refresh(window)
     r.hover?.entered(self)
   }
   override func mouseExited(with event: NSEvent) {
-    hovering = false
+    HoverTracker.refresh(window)
     r.hover?.exited(self)
   }
 

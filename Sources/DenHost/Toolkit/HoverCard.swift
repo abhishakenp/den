@@ -651,7 +651,8 @@ final class SectionBlock {
 
 /// `{id, title, subtitle?, icon?, status?, accessory?, url?}`. Clickable when it has a `url` or `id`.
 @MainActor
-final class CardRow: FlippedView {
+final class CardRow: FlippedView, Hoverable {
+  var hoverGroup: HoverGroup { .row }
   let icon = IconView()
   let title = makeLabel(size: 12.5, weight: .medium)
   let subtitle = makeLabel(size: 11)
@@ -720,8 +721,8 @@ final class CardRow: FlippedView {
     trackingAreas.forEach(removeTrackingArea)
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
-  override func mouseEntered(with event: NSEvent) { hovering = true }
-  override func mouseExited(with event: NSEvent) { hovering = false }
+  override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
   override func mouseDown(with event: NSEvent) {}
   override func mouseUp(with event: NSEvent) {
     if clickable, bounds.contains(convert(event.locationInWindow, from: nil)) { onClick(spec) }
@@ -730,7 +731,8 @@ final class CardRow: FlippedView {
 
 /// Rounded button along the card's bottom edge.
 @MainActor
-final class CardButton: FlippedView {
+final class CardButton: FlippedView, Hoverable {
+  var hoverGroup: HoverGroup { .control }
   static let height: CGFloat = 30
   let icon = IconView()
   let label = makeLabel(size: 12.5, weight: .semibold)
@@ -784,8 +786,8 @@ final class CardButton: FlippedView {
     trackingAreas.forEach(removeTrackingArea)
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
-  override func mouseEntered(with event: NSEvent) { hovering = true }
-  override func mouseExited(with event: NSEvent) { hovering = false }
+  override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
   override func mouseDown(with event: NSEvent) {}
   override func mouseUp(with event: NSEvent) {
     if bounds.contains(convert(event.locationInWindow, from: nil)) { action() }

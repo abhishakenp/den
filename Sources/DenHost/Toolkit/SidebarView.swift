@@ -39,6 +39,7 @@ final class SidebarPage: NSScrollView {
     contentView.drawsBackground = false
     documentView = doc
     [spaceHeader, pinned, today].forEach { doc.addSubview($0) }
+    HoverTracker.watchScrolling(self)  // rows scrolling under a still pointer
   }
   required init?(coder: NSCoder) { fatalError() }
 

@@ -131,12 +131,13 @@ final class IconPickerNode: NodeView, NSTextFieldDelegate {
 
 /// One cell of the icon grid: an SF Symbol or an emoji, with hover and selected fills.
 @MainActor
-final class IconCell: NSView, Themable {
+final class IconCell: NSView, Themable, Hoverable {
+  var hoverGroup: HoverGroup { .row }
   let spec: String
   let icon = IconView()
   let action: () -> Void
   var selected = false { didSet { needsDisplay = true } }
-  private var hovering = false { didSet { needsDisplay = true } }
+  var hovering = false { didSet { needsDisplay = true } }
   private var palette: Palette?
 
   init(spec: String, action: @escaping () -> Void) {
@@ -166,8 +167,8 @@ final class IconCell: NSView, Themable {
     trackingAreas.forEach(removeTrackingArea)
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
-  override func mouseEntered(with event: NSEvent) { hovering = true }
-  override func mouseExited(with event: NSEvent) { hovering = false }
+  override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
   override func mouseDown(with event: NSEvent) {}
   override func mouseUp(with event: NSEvent) {
     if bounds.contains(convert(event.locationInWindow, from: nil)) {
@@ -179,10 +180,11 @@ final class IconCell: NSView, Themable {
 
 /// A small text button ("Remove") with a hover fill.
 @MainActor
-final class PillLink: NSView, Themable {
+final class PillLink: NSView, Themable, Hoverable {
+  var hoverGroup: HoverGroup { .control }
   let label: NSTextField
   let action: () -> Void
-  private var hovering = false { didSet { needsDisplay = true } }
+  var hovering = false { didSet { needsDisplay = true } }
   private var fill = NSColor.clear
   init(title: String, action: @escaping () -> Void) {
     label = makeLabel(title, size: 12, weight: .medium)
@@ -206,8 +208,8 @@ final class PillLink: NSView, Themable {
     trackingAreas.forEach(removeTrackingArea)
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
-  override func mouseEntered(with event: NSEvent) { hovering = true }
-  override func mouseExited(with event: NSEvent) { hovering = false }
+  override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
   override func mouseDown(with event: NSEvent) {}
   override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { action() } }
 }

@@ -184,14 +184,15 @@ final class SettingsSidebar: FlippedView {
 }
 
 @MainActor
-final class SettingsSidebarRow: FlippedView {
+final class SettingsSidebarRow: FlippedView, Hoverable {
+  var hoverGroup: HoverGroup { .row }
   let id: String
   let icon = IconView()
   let label: NSTextField
   var onClick: (() -> Void)?
   var palette = SettingsPalette() { didSet { apply() } }
   var selected = false { didSet { apply() } }
-  private var hovering = false { didSet { needsDisplay = true } }
+  var hovering = false { didSet { needsDisplay = true } }
 
   init(id: String, title: String, icon spec: String) {
     self.id = id
@@ -241,8 +242,8 @@ final class SettingsSidebarRow: FlippedView {
     trackingAreas.forEach(removeTrackingArea)
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
-  override func mouseEntered(with event: NSEvent) { hovering = true }
-  override func mouseExited(with event: NSEvent) { hovering = false }
+  override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
   override func mouseDown(with event: NSEvent) { onClick?() }
 }
 
