@@ -1,6 +1,6 @@
 # Roadmap
 
-Everything we want in den, as checklists. Research behind each section is in [`docs/research/`](docs/research/).
+Everything we want in den, as checklists. Research behind each section is in [`docs/research/`](docs/research/). How to use what has shipped is in the [user guide](docs/guide/); what's in progress, in plain words, is in [Coming soon](docs/guide/coming-soon.md).
 
 ## Principles
 
@@ -11,133 +11,328 @@ Every item below has to respect these. If a feature can't, it gets redesigned or
 - **Lazy by default.** Nothing loads until it's needed: plugins, connections, web content, even tab processes.
 - **Minimal resources.** Idle tabs cost as close to nothing as possible. Memory and energy use are tracked like bugs.
 
+### UX principles
+
+- **Zero-friction start.** den opens instantly into a usable browser. No blocking welcome, sign-up or setup wizard. A tour, import or tip is always optional, small, skippable, shown once, and never modal ([spec](docs/guide/_in-app-tips.md#principles)).
+- **Shortcuts wherever an action appears.** If an action has a shortcut, it's shown next to the action on every surface: menu bar, context menus, command bar rows, tooltips on icon and hover-card buttons, Settings rows ([audit checklist](docs/guide/_in-app-tips.md#2-shortcuts-everywhere-an-action-appears)).
+- **No row tooltips.** Sidebar rows, tiles and list rows don't get tooltips: hover cards already show that information, and a tooltip on top of a card is noise.
+
+## Status
+
+| Mark | Meaning |
+|---|---|
+| ✅ | Shipped: on `main`, covered by `swift test` or a `--scenario` run of the real app |
+| 🟡 | In progress: being built on a branch now, or partly shipped (the sub-items say which part) |
+| ⏳ | Queued: approved, not started |
+
+Only tick an item after checking it against the code and tests on `origin/main`. When an item is partly done, split it into what shipped and what remains.
+
 ## Core
 
-- [x] Plugin host modeled on [cordis](https://github.com/cordiverse/cordis): shared context, services with `inject`, automatic cleanup of everything a plugin registers ([notes](docs/research/cordis-and-agent-harness.md)); [cordis-swift](https://github.com/abhishakenp/cordis-swift) with hot reload, `spaces` and `tabs` are plugins
-- [ ] Core features as swappable services: tabs, history, sidebar, connections
-- [x] Typed UI slots plugins can fill: sidebar panels, toolbar items, command bar actions (host `ui` service: sidebar slots, command bar, dialogs, toasts, peek; [API](docs/host-api.md))
-- [ ] Plugin API versioning and permissions
-- [ ] Lazy loading for plugins and services
-- [ ] Settings system, per plugin, editable at runtime
-- [ ] Command registry (every action is a command; shortcuts and command bar call into it)
-- [x] Event bus between plugins
-- [ ] Crash isolation: a plugin failing doesn't take the browser down
+- ✅ Plugin host modeled on [cordis](https://github.com/cordiverse/cordis): shared context, services with `inject`, automatic cleanup of everything a plugin registers ([notes](docs/research/cordis-and-agent-harness.md)); [cordis-swift](https://github.com/abhishakenp/cordis-swift) with hot reload
+- ✅ Typed UI slots plugins can fill: sidebar panels, toolbar items, command bar actions (host `ui` service: sidebar slots, command bar, dialogs, toasts, peek; [API](docs/host-api.md))
+- ✅ Event bus between plugins
+- 🟡 Core features as swappable services
+  - ✅ tabs, spaces, command bar, peek, previews, theme, connections, briefing, passwords, dark mode, extensions, quit, updates are plugins
+  - ⏳ history, and the sidebar rendering itself (see Thin host)
+- 🟡 Plugin API versioning and permissions
+  - ✅ versioning: cordis ABI check per plugin, `DenHostAPI` generation stamped by `scripts/bundle.sh`; managed plugins load only into a matching host
+  - ✅ declared permissions: `session:<domain>` / `net:<domain>` per plugin (`permissions.json`), anything undeclared is denied
+  - ⏳ user-granted permissions for third-party plugins
+- 🟡 Lazy loading for plugins and services
+  - ✅ optional features do no work until used: Settings, connections, previews, the briefing build nothing at launch; nothing polls until a connection exists
+  - ⏳ load plugin dylibs on first use instead of at launch
+- ✅ Settings system, per plugin, editable at runtime (`settings` service; Settings window ⌘, with plugin-contributed sections; settings also editable from the command bar)
+- ✅ Command registry: every command bar action is a command; `[shortcuts]` in `config.toml` binds any command id or menu item
+- 🟡 Crash isolation
+  - ✅ a plugin that crashed den is refused at the next launch, and a managed update that crashed is rolled back
+  - ⏳ a plugin failing doesn't take the browser down at all
+- ✅ `~/.den`: plugins (prebuilt dylibs, or `.swift` folders den compiles), themes, unpacked extensions and `config.toml`, applied live ([docs](docs/den-home.md))
+- ✅ Menu bar: complete standard macOS menus; every shortcut is a menu item ([docs/shortcuts.md](docs/shortcuts.md))
+
+### Thin host
+
+Moving feature code out of `DenHost` so the host holds only platform capabilities ([plan](docs/architecture/thin-host.md)).
+
+- ✅ Audit: every host file classified, feature-specific code marked `thin-host:` in the source
+- ⏳ 0. Baseline: snapshot goldens, pixel-diff script, launch/memory noise bands, signposts
+- ⏳ 1. Guardrail test against new host strings, overlay slots and host → plugin calls
+- ⏳ 2. Move logic with no UI to plugins (suggestions, config appliers, AI prompts, theme picker math)
+- ⏳ 3. `DenDev` split: scenarios, mock services and the snapshotter out of the release binary
+- ⏳ 4. `ui.layer`, `ui.styles`, `ui.palette` alongside the old slots
+- ⏳ 5. New generic nodes and behaviors, each with a golden test
+- ⏳ 6. Migrate screens one by one (toast → dialogs → library → briefing/connections → hover card → theme picker → sidebar rows → command bar → peek → Little Arc)
+- ⏳ 7. Remove the old slots and nodes
+- ⏳ 8. Land in-flight features on the generic primitives
+- ⏳ 9. Separately loadable native modules
 
 ## Web engine (WebKit)
 
 Details and sources: [Apple platform notes](docs/research/apple-platform.md).
 
-- [x] Tab model on `WKWebView`
-- [ ] Profiles with isolated data stores (`WKWebsiteDataStore(forIdentifier:)`, macOS 14+)
-- [x] Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard (save state + snapshot, destroy the web view, recreate on focus)
-- [ ] Session restore and crash recovery, using WebKit's page state save/restore
-- [ ] Apple Pay exception: skip den's injected scripts on checkout pages, since any injection disables Apple Pay
-- [ ] Web push notifications: not supported in `WKWebView`; decide on a workaround or skip
-- [ ] Downloads
-- [ ] Find in page
-- [ ] Printing and PDF viewing
-- [ ] Permissions: camera, mic, location, notifications
-- [ ] Picture-in-picture and media controls
-- [ ] Web Inspector
-- [ ] Default browser handling
+- ✅ Tab model on `WKWebView`
+- ✅ Profiles with isolated data stores (`WKWebsiteDataStore(forIdentifier:)`), chosen per space
+- ✅ Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard (save state + snapshot, destroy the web view, recreate on focus)
+- 🟡 Session restore and crash recovery
+  - ✅ spaces, tabs and selection come back after quit, relaunch and updates (plugin storage); discarded tabs keep `interactionState`
+  - ⏳ crash recovery; a "Page crashed · Reload" view
+- ⏳ Apple Pay exception: skip den's injected scripts on checkout pages, since any injection disables Apple Pay
+- ⏳ Web push notifications: not supported in `WKWebView`; decide on a workaround or skip
+- ⏳ Downloads: `WKDownload`, Arc-style downloads in the sidebar and Library, auto-archive
+- ✅ Find in page (find bar, ⌘F/⌘G/⇧⌘G/⌘E)
+- 🟡 Printing and PDF viewing
+  - ✅ print (⌘P), save as Web Archive (⇧⌘S)
+  - ⏳ PDF viewing verified
+- 🟡 Permissions
+  - ✅ camera and microphone prompts, HTTP sign-in, file panels, JS alert/confirm/prompt
+  - ⏳ location, notifications
+- 🟡 Picture-in-picture and media controls (see Media)
+- ✅ Web Inspector, inspect element, console, view source
+- ✅ Default browser handling: Settings, menu bar, command bar banner, "Try for a week"
+- ✅ Error pages (offline, host not found, timeout, can't connect, not private) with Try Again
+- ✅ Google sign-in: Safari's user agent
+- ✅ Link clicks: ⌘-click / middle-click background tab, ⌘⇧-click front tab
+- ⏳ No white flash on tab switch or load
+- ⏳ Protection against pages opening endless alerts
 
 ## UI (Arc-style)
 
-Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/research/zen.md).
+Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/research/zen.md), [Dia UI spec](docs/reference/dia-ui-spec.md).
 
-- [ ] Vertical sidebar tabs, with a right-side option (Arc never shipped one)
-- [x] Favorites grid, shared across spaces
-- [x] Pinned tabs per space, which reset to their original URL
-- [x] Today tabs with auto-archive (Arc default: 12h; configurable)
-- [x] Archive of closed tabs, searchable (command bar "View Archive"; Little Arc windows auto-archive into it)
-- [ ] Folders, including live folders fed by GitHub or RSS (from Zen)
-- [x] Spaces with their own colors/themes, swipe to switch
-- [ ] A profile per space (Zen's most-requested missing feature)
-- [x] Split view, including drag-to-split
-- [x] Command bar (`commandbar` plugin: tabs, archive/history, spaces, actions, URLs, web and site search, frecency; [contract](docs/plugin-services.md#commands-plugin-commandbar))
-- [x] Peek / link preview
-- [x] Little Arc-style quick window
-- [ ] Link routing rules (Arc's Air Traffic Control)
-- [ ] Boosts: per-site CSS/JS customization
-- [x] Compact mode / hide sidebar, chrome-less content area
-- [ ] Theme and UI mods (Zen Mods style: CSS plus declared options)
-- [ ] Web apps (PWA) support
-- [ ] Keyboard shortcuts, fully remappable, Arc defaults
+### Sidebar and tabs
+
+- 🟡 Vertical sidebar tabs, with a right-side option (Arc never shipped one)
+  - ✅ vertical sidebar, resizable (double-click the edge resets), hide with ⌘S and reveal from the edge
+  - ⏳ right-side option
+- ✅ Favorites grid, shared across spaces
+- ✅ Pinned tabs per space, which reset to their original URL
+- ✅ Today tabs with auto-archive (24 h by default; configurable, can be turned off)
+- ✅ Archive of closed tabs, searchable (Library ⌘Y / ⇧⌘L; command bar "View Archive"; Little Arc windows auto-archive into it)
+- ✅ Undo sidebar actions (⌃Z), reopen closed tab (⇧⌘T)
+- ✅ Drag and drop: reorder, into folders, onto a space icon, onto the page to split, onto a split row
+- 🟡 Folders, including live folders fed by GitHub or RSS (from Zen)
+  - ✅ nested folders: create, rename, delete (archives the tabs), collapse, hover card listing their tabs
+  - ⏳ live folders: unread pip, done items into an "N ✓" recently-closed popover, PR stacks, reauth cue
+  - ⏳ a collapsed folder keeps its active tab visible; hover flyout with "+ New Tab"
+  - ⏳ folder shortcuts: ⌃⌘N folder from selection, ⌥⌘T new tab in folder, drag onto folder, rename on create, undo
+- ⏳ ⌘-click grouping (Dia): background tab under its source, both grouped in a today-section folder named after the site; later ⌘-clicks from either join; dissolves at one tab
+- 🟡 Icon and title fallbacks: never "data:" or blank
+  - ✅ sharp letter/globe fallback favicons
+  - 🟡 title fallbacks and the rest of the sweep
+- 🟡 Tab mute: click the speaker icon, badge on favorites, "Mute Tab" in the menu
+  - ✅ speaker icon on tabs and favorites playing audio
+  - 🟡 muting
+- ⏳ Faster tab close: show the next tab first
+- ⏳ Tab menu shows shortcuts and ⌥ alternates (Copy as Markdown, Close Tabs Above), Close Other/Below
+- ⏳ Split modifiers: ⇧⌥-click a link → right split; ⌥-click + → new tab in a split
+- ⏳ Resize split panes by dragging
+
+### Spaces and themes
+
+- ✅ Spaces with their own colors/themes, swipe to switch
+- ✅ Space right-click menu (rename, icon, theme, profile, duplicate, move, delete), double-click to rename, emoji icons
+- ✅ Rearrange spaces by dragging in the footer
+- ✅ Theme picker: up to 3 colors, intensity, grain, presets, live preview, Esc reverts; recent themes and `~/.den/themes` presets as commands
+- ✅ Every surface (dialogs, bars, cards, toasts) follows the space's theme with WCAG-legible contrast
+- 🟡 A profile per space (Zen's most-requested missing feature)
+  - ✅ separate data store per profile, chosen in the space menu
+  - ⏳ profile management UI; open tabs switch store when a space's profile changes
+- ⏳ Theme and UI mods (Zen Mods style: CSS plus declared options)
+
+### Command bar, Peek, split, windows
+
+- ✅ Command bar (`commandbar` plugin: tabs, archive/history, spaces, actions, URLs, web and site search, frecency; [contract](docs/plugin-services.md#commands-plugin-commandbar))
+- ✅ Command bar as a launcher: den's commands, destinations and individual settings, ranked above web search
+- ⏳ "new doc / notion / linear…" creation commands in the command bar
+- ⏳ Command bar names the real search engine, and suggests site-search keywords with a toast
+- ✅ Peek / link preview (⇧/⌥-click any link, links from pinned tabs; Open as Tab, Open in Split View; ⌘Z reopen)
+- ⏳ "Open Link in Peek" in the link context menu
+- ✅ Split view, including drag-to-split, 2–4 panes, side by side, top and bottom, grid
+- ✅ Little Arc-style quick window (opt-in for links from other apps; ⌘O into the space)
+- ✅ Compact mode / hide sidebar, chrome-less content area
+- ⏳ Multiple windows (⌘N) and private windows (⇧⌘N)
+- ⏳ Reopen a closed window with all its tabs
+- ⏳ Link routing rules (Arc's Air Traffic Control)
+- ⏳ Boosts: per-site CSS/JS customization
+- ⏳ Web apps (PWA) support, and web apps in the Dock
+- ✅ Keyboard shortcuts, fully remappable, Arc defaults (`[shortcuts]` in `config.toml`)
+- ⏳ Non-US keyboard layouts for shortcuts; Chinese/Japanese/Korean input in the command bar
+
+### Hover previews
+
+- ✅ Hover cards for sidebar tabs, favorites, folders and splits (450 ms, then instant; nothing fetched until hovered)
+- ✅ PR peek: state, checks (failures first), conflicts, reviews, +/− lines, files; public repos with no sign-in, private repos through the github.com session
+- ✅ Cards for GitHub issues, Google Calendar (Join button), Gmail, Slack, and a page snapshot for anything else
+- ⏳ Inline "Connect GitHub" button on cards that need a connection (private repos), filling in live
+- ⏳ ⇧-hover link previews on any page: an OpenGraph card from the target's `<head>`, cached, zero cost until a deliberate hover; rich providers reused; Open in Peek / Split / Copy Link; stays out of the way where a site has its own previews; plain hover as an option
+- ⏳ Hover play/pause/skip for any tab playing audio
+
+### Getting around
+
+- ⏳ Onboarding under the zero-friction principles: an optional tour card (≤ 5 skippable steps), import offered as a quiet card
+- ⏳ One-time discovery tips, one at a time, with a global off switch ([spec](docs/guide/_in-app-tips.md))
+- 🟡 Shortcuts shown on every surface where the action appears
+  - ✅ menu bar, command bar rows
+  - ⏳ tab, space, link and page context menus; icon-button and hover-card tooltips; Settings rows
+- ✅ No row tooltips: tab rows, tiles, split rows and list rows show hover cards instead
+- ✅ User guide ([docs/guide](docs/guide/)), with Tips & hidden gems
+- ⏳ Detail audit: every interaction compared with Arc/Dia (hover states, click targets, tooltips, context menus, animations, empty states, error pages, keyboard coverage) and fixed, plus Dia's micro-interactions
+
+## Media
+
+- 🟡 Mini player: den's own frameless, always-on-top player (seek, volume/mute, ±10 s, speed, back to tab, resize/snap), native PiP as the fallback
+- ⏳ Mini player extras: "Keep on top" toggle, tuck off the screen edge, hostname chip back to the tab, Firefox's PiP keys, subtitles
+- 🟡 AutoPiP like Safari, on by default: leaving a tab that's playing video opens PiP
+- ✅ Tabs playing audio are never archived or unloaded, and updates never relaunch during playback
+- ⏳ Camera, mic and screen-share badges on tabs, click to turn off
+- ⏳ Meeting reminder card with Join, snapping to corners, plus a pinned-calendar countdown
 
 ## Extensions
 
 Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 
-- [x] Chrome and Firefox extensions via Apple's `WKWebExtension` API (Manifest v2 and v3, `chrome.*` and `browser.*`): popups, pinning in the URL pill, the Extensions page, per-site access ([host API](docs/host-api.md#webext))
-- [x] One-click install from Chrome Web Store / addons.mozilla.org ("Add to den"), with daily update checks. Terms researched (CWS ToS says "for use in connection with Google Chrome"); get counsel before a commercial release
-- [ ] Fill in APIs Apple leaves out where feasible: `bookmarks`, `sidePanel`, `downloads`, `history`, `identity`
-- [ ] Native messaging bridge (password managers)
-- [ ] Built-in ad/tracker blocker: filter lists compiled to content rule lists (e.g. `adblock-rust` or AdGuard's `SafariConverterLib`), plus CSS hiding and scriptlets
-- [x] uBlock Origin Lite works (full uBlock Origin can't, since WebKit has no blocking `webRequest`)
-- [x] Minimum macOS: 26 Tahoe. No support for older versions; newer-OS APIs (macOS 27) used when available
+- ✅ Chrome and Firefox extensions via Apple's `WKWebExtension` API (Manifest v2 and v3, `chrome.*` and `browser.*`): popups, pinning in the URL pill, the Extensions page, per-site access ([host API](docs/host-api.md#webext))
+- ✅ One-click install from Chrome Web Store / addons.mozilla.org ("Add to den"), with daily update checks. Terms researched (CWS ToS says "for use in connection with Google Chrome"); get counsel before a commercial release
+- ✅ Unpacked extensions from `~/.den/extensions`, and installs from `.crx` / `.xpi` / `.zip`
+- ⏳ Fill in APIs Apple leaves out where feasible: `bookmarks`, `sidePanel`, `downloads`, `history`, `identity`
+- ⏳ Extension keyboard `commands` and context-menu items in den's menus
+- ⏳ Native messaging bridge (password managers)
+- ⏳ Built-in ad/tracker blocker: filter lists compiled to content rule lists (e.g. `adblock-rust` or AdGuard's `SafariConverterLib`), plus CSS hiding and scriptlets
+- ✅ uBlock Origin Lite works (full uBlock Origin can't, since WebKit has no blocking `webRequest`)
+- ✅ Minimum macOS: 26 Tahoe. No support for older versions; newer-OS APIs (macOS 27) used when available
 
 ## Connections and daily briefing (Dia-style)
 
-Details and sources: [Dia notes](docs/research/dia.md).
+Details and sources: [Dia notes](docs/research/dia.md), [Dia shortlist](docs/research/dia-shortlist.md).
 
-How it connects (user decision, see [auth research](docs/research/integrations-auth.md)): no OAuth apps. You sign in to slack.com or github.com inside den like any site, and den reuses that session from its own WebKit data store (`session` + `net` host services, gated per plugin by declared `session:<domain>` permissions). Items marked ✓ are verified end to end against a local fake Slack/GitHub (`MockServices`); a first real sign-in has not been verified.
+How it connects (user decision, see [auth research](docs/research/integrations-auth.md)): no OAuth apps. You sign in to slack.com or github.com inside den like any site, and den reuses that session from its own WebKit data store (`session` + `net` host services, gated per plugin by declared `session:<domain>` permissions). Shipped items are verified end to end against a local fake Slack/GitHub (`MockServices`); a first real sign-in has not been verified.
 
-- [x] Connection plugins: Slack (unread DMs, mentions, threads awaiting your reply; workspace picker) and GitHub (review requests, mentions, assigned issues, failing CI on your PRs)
-- [x] "Connect X": opens the sign-in page in a tab, detects the session, toasts "X connected"; disconnect; sign-out detected
-- [ ] More connections as plugins (Gmail, Calendar, Linear, Notion, Jira, …)
-- [x] No tokens stored: session tokens are read on demand and kept in memory only; connections run locally
-- [ ] Official OAuth option (Slack PKCE / GitHub device flow) for users who don't want session reuse
-- [x] Daily briefing (Slack + GitHub) summarized with a todo list, prepared at a set time (8:00 by default, catches up after sleep or launch)
-- [ ] Briefing sources beyond Slack and GitHub: today's calendar, emails awaiting a reply
-- [x] Briefing todos can be checked off (persisted) and link back to the exact message, PR or thread
-- [x] Personalized feed: one stream across connections, ranked by kind, recency and what you open
-- [x] Connections load and sync only when used: nothing polls until a connection exists, then a 15-minute refresh and on wake
+- ✅ Connection plugins: Slack (unread DMs, mentions, threads awaiting your reply; workspace picker) and GitHub (review requests, mentions, assigned issues, failing CI on your PRs)
+- ✅ Multiple Slack workspaces at once, each switchable in Settings ▸ Connections
+- ✅ "Connect X": opens the sign-in page in a tab, detects the session, toasts "X connected"; disconnect; sign-out detected
+- ⏳ Auto-connect like Dia: already signed in to github.com/Slack in den, or signing in later, connects automatically (a `WKHTTPCookieStore` observer, event-driven, zero polling) with a "GitHub connected · Undo" toast; the same for every connection plugin
+- ⏳ Important Slack channels (across workspaces) and important GitHub repos: ranked higher in the briefing and feed, never dropped from the summary; picker in Settings and via the command bar
+- ⏳ More connections as plugins, in this order: Gmail (per-account switching) and Google Calendar (choose calendars; from the session, without an iCal paste if feasible), then Notion, then Linear and Jira/Confluence, then Outlook's calendar from a loaded tab. Drive/Docs activity via Gmail. Skipped: Teams, SharePoint, Zoom, Figma, YouTube, LinkedIn, Sheets
+- ✅ No tokens stored: session tokens are read on demand and kept in memory only; connections run locally
+- ⏳ Official OAuth option (Slack PKCE / GitHub device flow) for users who don't want session reuse
+- ✅ Daily briefing (Slack + GitHub) summarized with a todo list, prepared at a set time (8:00 by default, catches up after sleep or launch)
+- ⏳ Briefing sources beyond Slack and GitHub: today's calendar, emails awaiting a reply
+- ✅ Briefing todos can be checked off (persisted) and link back to the exact message, PR or thread
+- ✅ Personalized feed: one stream across connections, ranked by kind, recency and what you open
+- ✅ Connections load and sync only when used: nothing polls until a connection exists, then a 15-minute refresh and on wake
 
 ## AI
 
 AI in den is Apple's on-device model, used only for the daily briefing and the personalized feed. No chat, no agent, nothing sent to a cloud model. Anything else is left to plugins.
 
-- [x] Summarize connection data with Apple's Foundation Models framework, on device (`ai` host service; todos through guided generation, one item per request so a todo can't attach to the wrong source)
-- [x] Fit the model's small context (4,096 tokens on macOS 26, read at runtime): summarize each source separately in chunks, then combine; overflowing chunks are split and retried
-- [ ] Model loads only while generating a briefing or ranking the feed, then is released
-- [x] Model output is text and todos only: no tools, cannot click, send or open anything
-- [x] Every todo and feed item links to its source message, PR or thread (the summary paragraph itself has no links)
-- [x] Works without the model (plain counts and lists) on Macs without Apple Intelligence
-- [ ] Plugin API is rich enough for someone else to build a chat/AI plugin, gated by user-granted permissions
+- ✅ Summarize connection data with Apple's Foundation Models framework, on device (`ai` host service; todos through guided generation, one item per request so a todo can't attach to the wrong source)
+- ✅ Fit the model's small context (4,096 tokens on macOS 26, read at runtime): summarize each source separately in chunks, then combine; overflowing chunks are split and retried
+- ⏳ Model loads only while generating a briefing or ranking the feed, then is released (measure it)
+- ✅ Model output is text and todos only: no tools, cannot click, send or open anything
+- ✅ Every todo and feed item links to its source message, PR or thread (the summary paragraph itself has no links)
+- ✅ Works without the model (plain counts and lists) on Macs without Apple Intelligence
+- ⏳ Auto tab grouping and tidy tabs (on-device, lazy)
+- ⏳ Plugin API is rich enough for someone else to build a chat/AI plugin, gated by user-granted permissions
 
 ## Apple integration
 
-- [ ] Passkeys for all sites: apply early for Apple's browser passkey entitlement (reviewed by Apple)
-- [ ] Passwords: no API reads iCloud Keychain / the Passwords app, so rely on password manager extensions (1Password, Bitwarden) and decide whether den ships its own vault
-- [ ] "Save password?" prompt via the form-submit callback (macOS 27)
-- [ ] Native look: vibrancy, SF Symbols, system accent colors
-- [ ] Shortcuts / App Intents / Spotlight
-- [ ] Handoff
-- [ ] Sync via iCloud / CloudKit (no den server; Talos browser does this)
+- 🟡 Passkeys for all sites
+  - ✅ researched: WebKit does WebAuthn itself, but only with Apple's browser passkey entitlement, which ad-hoc signing can't carry ([notes](docs/research/passkeys.md))
+  - ⏳ apply for the entitlement; sign with a real identity
+- ✅ Passwords: den ships its own vault in the Keychain, filled after Touch ID; save, fill, strong-password suggestions, "Passwords…" list with copy (clipboard cleared after 60 s) and delete. No API reads iCloud Keychain / the Passwords app
+- ✅ "Save password?" prompt on form submit
+- 🟡 Native look: vibrancy, SF Symbols, system accent colors
+  - ✅ SF Symbols throughout; accent from the space or the macOS accent (Settings ▸ General)
+  - ⏳ vibrancy
+- ⏳ Shortcuts / App Intents / Spotlight
+- ⏳ Handoff
+- ⏳ Sync via iCloud / CloudKit (no den server; Talos browser does this)
 
 ## Privacy and security
 
-- [ ] Tracker blocking
-- [ ] Per-site permissions UI
-- [ ] Sandboxed plugins
+- ✅ Dark mode for every website: follows den's appearance, native dark sites left alone, no script, no flash; per-site Follow / Always Dark / Always Light / Off
+- ⏳ Shields: one per-site panel from the URL pill (blocker on/off, permissions, zoom, autoplay, pop-ups, "forget this site")
+- ⏳ Tracker blocking
+- ⏳ Strip tracking parameters on every navigation and on copy (needs a list with a usable licence)
+- ⏳ Skip bounce-tracking redirects
+- ⏳ Auto-handle cookie banners
+- ⏳ HTTPS-first
+- ⏳ Readable international domain names, with lookalike-domain warnings
+- 🟡 Per-site permissions UI
+  - ✅ camera/mic answers remembered per site until quit
+  - ⏳ a UI to review and change them
+- 🟡 Sandboxed plugins
+  - ✅ plugins can reach only the sites they declare (`session:` / `net:`)
+  - ⏳ process-level sandboxing
+
+## Page tools
+
+- ✅ Per-site zoom, remembered
+- ✅ Copy URL (⇧⌘C) and Copy URL as Markdown (⌥⇧⌘C)
+- 🟡 Reader mode, remembered per site, with read-aloud
+- 🟡 On-device page translation
+- 🟡 Capture: region, element, visible or full page, then copy or save
+- 🟡 Zap an element or remove sticky headers, remembered per site
+- 🟡 Copy link to highlight (text fragments)
+
+## Share and clipboard
+
+- ⏳ Native share menu (AirDrop, Messages) and a QR code for the page
+- ⏳ Paste and Go / Paste and Search
+- ⏳ Copy toast says exactly what was copied
+- ✅ Clear a copied password from the clipboard after a short time (60 s)
+- ⏳ Upload picker shows recent downloads, screenshots and the clipboard first
+- ⏳ Error pages link to the Web Archive copy
+
+## Energy
+
+- 🟡 Zero-resource inactive tabs: aggressive discard, snapshot on disk, instant restore; never discard audio/video/PiP tabs
+  - ✅ idle tabs discarded after 30 min (configurable), tabs playing audio and on-screen tabs never discarded
+  - 🟡 near-zero per-tab cost (80 KB measured today against an 8 KB budget), snapshot on disk
+- ⏳ Protect recently used tabs from discard; idle time counts only while den is frontmost
+- ⏳ Battery saver: sooner discards, pause background media and autoplay when unplugged or in Low Power Mode
+- ⏳ Never discard tabs with unsaved input, camera/mic in use, or on an "always keep active" list
+- ⏳ Dimmed icon on discarded tabs
+- ⏳ Unload a whole space or profile, by hand or automatically
+- ⏳ Per-tab memory view
+- ⏳ Never keep the Mac awake while idle
+- ⏳ Blank new tabs close when you switch apps
+- ⏳ Dark mode memory: +136 MB on a 300-image page from the root filter; find a cheaper approach
 
 ## Performance
 
-- [ ] Memory and energy budgets per feature
-- [ ] Benchmarks against Safari, Arc, Dia, Zen (measured, published). WebKit alone isn't proof of efficiency: the one careful independent test found Chrome used less battery than Safari
-- [ ] Startup time budget
+- 🟡 Memory and energy budgets
+  - ✅ den-wide budgets in [`docs/perf/budgets.json`](docs/perf/budgets.json) (launch, idle memory, one page, idle CPU and wakeups, per-discarded-tab), checked by `scripts/perf.sh`
+  - ⏳ per-feature budgets; energy (needs `powermetrics`)
+  - ⏳ enforce the budgets on every change; meet the aspirational ones (idle CPU, 8 KB per discarded tab)
+- 🟡 Benchmarks against Safari, Arc, Dia, Zen (measured, published). WebKit alone isn't proof of efficiency: the one careful independent test found Chrome used less battery than Safari
+  - ✅ launch, memory and idle CPU against Arc and Dia ([baseline](docs/perf/baseline.md)), measured on a loaded machine
+  - ⏳ re-run on a quiet machine; add Safari and Zen
+- ✅ Startup time budget (launch median/p90 in `budgets.json`)
 
 ## Import
 
-- [ ] Import from Arc (spaces, pinned tabs)
-- [ ] Import from Chrome, Safari, Firefox, Zen, Dia
+- ⏳ Import from Arc (spaces, pinned tabs), offered as a quiet one-click card, never a gate
+- ⏳ Import from Chrome, Safari, Firefox, Zen, Dia
 
 ## Release and project
 
-- [x] Public repo, MIT license
-- [x] App skeleton that builds (`scripts/bundle.sh`)
-- [ ] Signed and notarized `.dmg` on GitHub Releases
-- [ ] Auto-update
-- [ ] CI builds on every PR
-- [ ] Contributing guide
-- [ ] Plugin author docs
+- ✅ Public repo, MIT license
+- ✅ App skeleton that builds (`scripts/bundle.sh`)
+- 🟡 Signed and notarized `.dmg` on GitHub Releases
+  - ✅ `scripts/release.sh`: zip + dmg, per-plugin assets, `plugins.json`, EdDSA signatures; pre-release 0.1.0-alpha.1 published
+  - ⏳ Developer ID signing and notarization
+- ✅ Auto-update (OTA): Sparkle for the app, signed hot-swapped plugins, `stable` / `prerelease` / `follow-main` channels, relaunch only when you won't notice ([docs](docs/updates.md))
+- ⏳ Stable signing identity (one self-signed cert in the login keychain) so Keychain/TCC never re-prompt after rebuilds
+- ⏳ CI builds on every PR
+- ⏳ Contributing guide
+- 🟡 Plugin author docs
+  - ✅ [host API](docs/host-api.md), [plugin services](docs/plugin-services.md), [`~/.den` plugins](docs/den-home.md#plugins)
+  - ⏳ a step-by-step guide for plugin authors
+- ✅ Performance tooling: `scripts/perf.sh`, `scripts/perf/compare.sh`, `perfprobe`, `scripts/measure-memory.sh`
+
+### Test reliability
+
+- ✅ Bounded waits in WebKit tests (10 s budgets), web views closed after each test, timing-sensitive tests retried once by the updater and `release.sh`
+- ⏳ Find every remaining hang; bound every wait with a timeout; deterministic under load
+- ⏳ A `--background` test mode: no Dock icon, no activation, auto-quit; test instances never left running

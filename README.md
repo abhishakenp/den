@@ -49,14 +49,14 @@ Much of this already works (below). What's still in progress is in [Coming soon]
 | # | Step | Status |
 |---|------|--------|
 | 1 | Research Arc, Dia, Zen, WebKit, extension support, plugin design | ✅ |
-| 2 | Feature and architecture design | 🟡 In progress |
+| 2 | Feature and architecture design | 🟡 Thin-host migration planned, not started |
 | 3 | Plugin host and app skeleton | ✅ |
-| 4 | Core browsing: tabs, sidebar, spaces, profiles | 🟡 Tabs, sidebar, spaces, split view, Peek done; per-space profiles work, no profile UI yet; no downloads |
-| 5 | Extensions and content blocking | 🟡 Chrome/Firefox extensions and store installs done; built-in blocker next |
-| 6 | Connections, daily briefing, personalized feed | 🟡 Slack and GitHub, briefing and feed done (verified against local fakes); more connections next |
-| 7 | First public release | 🟡 Pre-release 0.1.0-alpha.1 (ad-hoc signed, not notarized) |
+| 4 | Core browsing: tabs, sidebar, spaces, profiles | 🟡 Tabs, sidebar, spaces, split view, Peek, Settings done; profiles work without a UI; downloads and windows queued |
+| 5 | Extensions and content blocking | 🟡 Chrome/Firefox extensions and store installs done; built-in blocker queued |
+| 6 | Connections, daily briefing, personalized feed | 🟡 Slack, GitHub, briefing and feed done (verified against local fakes); auto-connect and more connections queued |
+| 7 | First public release | 🟡 Pre-release 0.1.0-alpha.1 with OTA updates; not notarized yet |
 
-The full checklist is in [ROADMAP.md](ROADMAP.md). What's being built now is in [Coming soon](docs/guide/coming-soon.md).
+✅ shipped · 🟡 in progress or partly shipped · ⏳ queued. The full checklist is in [ROADMAP.md](ROADMAP.md). What's being built now is in [Coming soon](docs/guide/coming-soon.md).
 
 ## What works today
 
