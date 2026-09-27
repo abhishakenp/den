@@ -24,7 +24,7 @@ den_verify() {
 }
 
 # Pids of the installed den (either executable name, before and after the rename to lowercase).
-den_pids() { pgrep -f "^$DEN_APP_DEST/Contents/MacOS/[Dd]en( |\$)" || true; }
+den_pids() { pgrep -f "^$DEN_APP_DEST/Contents/MacOS/[Dd]en$" || true; }
 
 den_install() {
   local src=${1:-build/den.app}

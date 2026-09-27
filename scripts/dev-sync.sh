@@ -17,7 +17,7 @@ source scripts/lib/app.zsh
 mkdir -p build
 DEBOUNCE_MS=${DEBOUNCE_MS:-1500}
 POLL=${POLL:-1}
-WATCH=(Plugins Sources Resources Package.swift Package.resolved scripts/bundle.sh)
+WATCH_PATHS=(Plugins Sources Resources Package.swift Package.resolved scripts/bundle.sh)
 
 # Sort changed paths into plugin ids and a host flag, then act.
 handle() {
@@ -40,10 +40,10 @@ handle() {
   fi
 }
 
-den_say "dev-sync: watching $PWD (${WATCH[*]}) -> ~/.den/plugins and $DEN_APP_DEST"
+den_say "dev-sync: watching $PWD (${WATCH_PATHS[*]}) -> ~/.den/plugins and $DEN_APP_DEST"
 if command -v fswatch >/dev/null; then
   den_say "using fswatch"
-  fswatch -r -l 0.2 -e '/\.build/' -e '/build/' -e '\.swp$' -e '~$' $WATCH | while true; do
+  fswatch -r -l 0.2 -e '/\.build/' -e '/build/' -e '\.swp$' -e '~$' $WATCH_PATHS | while true; do
     typeset -a batch=()
     IFS= read -r first || break
     batch+=($first)
@@ -58,7 +58,7 @@ else
   typeset quiet_since=0
   while true; do
     touch $next
-    changed=(${(f)"$(find $WATCH -newer $stamp -type f ! -name '*.swp' 2>/dev/null; find Plugins -mindepth 1 -maxdepth 1 -type d -newer $stamp 2>/dev/null)"})
+    changed=(${(f)"$(find $WATCH_PATHS -newer $stamp -type f ! -name '*.swp' 2>/dev/null; find Plugins -mindepth 1 -maxdepth 1 -type d -newer $stamp 2>/dev/null)"})
     mv -f $next $stamp
     if (( ${#changed} )); then batch+=($changed); quiet_since=$(den_ms)
     elif (( ${#batch} )) && (( $(den_ms) - quiet_since >= DEBOUNCE_MS )); then
