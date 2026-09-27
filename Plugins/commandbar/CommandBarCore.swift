@@ -153,6 +153,9 @@ final class CommandBarCore {
   var tabsCache: [Value]? = nil
   var selectedCache: Value? = nil
   var windowsCache: [Value]? = nil
+  /// Settings > Search > "Search suggestions" (on): typed searches are sent to the search engine's
+  /// suggestion service as you type. Off: nothing leaves den until you press Return.
+  var suggestionsOn = true
 
   init(env: PluginEnv) { self.env = env }
 
@@ -212,10 +215,13 @@ final class CommandBarCore {
         ["key": "addEngine", "type": "text", "submit": true, "title": "Add a site search",
          "subtitle": "A keyword, then a URL with %s where the search goes, e.g. mdn https://developer.mozilla.org/search?q=%s",
          "placeholder": "keyword  https://…?q=%s"],
+        ["key": "suggestions", "type": "toggle", "title": "Search suggestions",
+         "subtitle": "Show suggestions from Google while you type. What you type is sent to Google as you type it.", "default": true],
         ["key": "banner", "type": "toggle", "title": "Offer to make den your default browser",
          "subtitle": "A small banner in the command bar while another browser opens your links.", "default": true],
       ],
     ])
+    if let on = env.call("settings", "get", ["id": .string(Self.ns), "key": "suggestions"]).bool { suggestionsOn = on }
     // The stored choice always reflects the current first engine.
     env.call("settings", "set", ["id": .string(Self.ns), "key": "defaultEngine", "value": .string(engines[0].keyword)])
   }
@@ -228,6 +234,9 @@ final class CommandBarCore {
       let e = list.remove(at: i)
       list.insert(e, at: 0)
       _ = handle("engines", ["engines": .array(list.map { $0.value })])
+    case "suggestions":
+      suggestionsOn = v.bool != false
+      if !suggestionsOn { env.call("suggest", "cancel") }
     case "banner":
       store("bannerDismissed", .bool(v.bool == false))
       if isOpen { render() }
@@ -1063,7 +1072,7 @@ final class CommandBarCore {
 
   /// Suggestions only make sense for a typed search in the main scope (not a full URL).
   func suggestible(_ q: String) -> Bool {
-    scope == .main && !q.isEmpty && !Text.contains(q, "://") && !(mode == "edit" && q == editURL)
+    suggestionsOn && scope == .main && !q.isEmpty && !Text.contains(q, "://") && !(mode == "edit" && q == editURL)
   }
 
   /// Asks the host for suggestions. A cached answer comes back at once; otherwise the host

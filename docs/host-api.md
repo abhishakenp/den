@@ -262,7 +262,7 @@ Every den surface takes its colors from one token layer, derived from the curren
 | `elevatedSurface` | a layer on a surface: sheet cards, the command bar banner | light: surface → white 55%; dark: surface → white 7% |
 | `textPrimary` / `textSecondary` / `textTertiary` (= `panelText`, `panelSecondaryText`) | text on a surface | ForegroundPrimary/Secondary/Tertiary composited on the surface, then pushed to ≥ 7:1 / 4.5:1 / 3:1 |
 | `text` / `secondaryText` | text on the sidebar (the window gradient) | checked against every gradient stop: ≥ 4.5:1 / 3:1 |
-| `primaryButton` (= `accentStrong`), `onAccent` | primary buttons, selection, focus, toggles, drop zones | the space's first color at saturation ≥ 0.55 (or the system accent), adjusted so its label is ≥ 4.5:1 and it stands ≥ 3:1 off the surface |
+| `primaryButton` (= `accentStrong`), `onAccent` | primary buttons, selection, focus, toggles, drop zones | the space's first color at saturation ≥ 0.55 (or the system accent), adjusted so its label is ≥ 4.5:1, then moved toward 3:1 against the surface as far as the label allows (a white-labelled accent can’t reach 3:1 on a near-black surface; Arc’s own #3139FB on #151C30 is 2.5:1) |
 | `destructive`, `onDestructive` | destructive buttons | DestructiveButtonFace #F53714, darkened just enough for a white label (4.5:1) |
 | `toast`, `onToast` | toasts | a deep blend of the theme (Arc's theme-tinted toasts, spec §6), white text ≥ 4.5:1 |
 | `hairline`, `rowHover`, `pressed` | dividers, hover and pressed fills | ink/white at α .08/.05/.09 (light) or .10/.07/.12 (dark) |

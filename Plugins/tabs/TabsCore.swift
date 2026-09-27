@@ -1215,11 +1215,20 @@ final class TabsCore {
       ("cmd+d", "tabs.key.pin", "Pin/Unpin Tab", "Tabs"),
       ("cmd+shift+k", "tabs.key.clear", "Clear Unpinned Tabs", "Tabs"),
       ("ctrl+tab", "tabs.key.recent", "Switch to Recent Tab", "Tabs"),
+      ("ctrl+shift+tab", "tabs.key.recentBack", "Switch to Oldest Recent Tab", "Tabs"),
+      // Arc's ⌥⌘↑/↓ first (shown in the menu), then Safari's and Chrome's ⌘⇧[ / ⌘⇧] (docs/shortcuts.md).
       ("cmd+opt+up", "tabs.key.prevTab", "Previous Tab", "Tabs"),
       ("cmd+opt+down", "tabs.key.nextTab", "Next Tab", "Tabs"),
+      ("cmd+shift+[", "tabs.key.prevTab", "Previous Tab", "Tabs"),
+      ("cmd+shift+]", "tabs.key.nextTab", "Next Tab", "Tabs"),
       ("ctrl+z", "tabs.key.undo", "Undo Sidebar Action", "Tabs"),
-      ("cmd+[", "tabs.key.back", "Back", "View"),
-      ("cmd+]", "tabs.key.forward", "Forward", "View"),
+      ("cmd+[", "tabs.key.back", "Back", "History"),
+      ("cmd+]", "tabs.key.forward", "Forward", "History"),
+      // ⌘←/⌘→ too; a text field being edited keeps them (the host stands these aside there).
+      ("cmd+left", "tabs.key.back", "Back", "History"),
+      ("cmd+right", "tabs.key.forward", "Forward", "History"),
+      ("cmd+y", "tabs.key.library", "Show Library", "History"),
+      ("cmd+shift+l", "tabs.key.library", "Show Library", "History"),
       ("cmd+r", "tabs.key.reload", "Reload Page", "View"),
       ("cmd+.", "tabs.key.stop", "Stop", "View"),
       ("cmd+s", "tabs.key.sidebar", "Show/Hide Sidebar", "View"),
@@ -1263,6 +1272,11 @@ final class TabsCore {
       guard !list.isEmpty else { return }
       if n == 9 { select(list[list.count - 1]) } else if n - 1 < list.count { select(list[n - 1]) }
     }
+    env.on("tabs.key.recentBack") { [self] _ in
+      // Arc's tab switcher backward from the current tab wraps to the least recent one.
+      if let id = mru.last(where: { $0 != selectedId && tabs[$0] != nil }) { select(id) }
+    }
+    env.on("tabs.key.library") { [self] _ in _ = handle("library", ["open": .bool(!libraryOpen)]) }
     env.on("tabs.key.prevTab") { [self] _ in stepTab(-1) }
     env.on("tabs.key.nextTab") { [self] _ in stepTab(1) }
     env.on("tabs.key.back") { [self] _ in web("back") }

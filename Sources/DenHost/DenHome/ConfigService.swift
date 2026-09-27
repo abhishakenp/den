@@ -110,9 +110,17 @@ public final class ConfigService: HostService {
     // Shortcuts: rebind from scratch.
     for c in boundChords { _ = call("keys", "unbind", ["chord": .string(c)]) }
     boundChords = []
+    _ = call("keys", "resetRemaps", .null)
     for (chord, v) in Self.lookup(config, "shortcuts").object ?? [] {
       guard let id = v.string, !id.isEmpty else {
         errors.append("config.toml [shortcuts] \"\(chord)\" needs a command id string")
+        continue
+      }
+      // A menu item id (docs/shortcuts.md: "tabs.next", "view.zoomIn", …) takes the chord in place;
+      // anything else is a command bar command, run through commands.run.
+      if MainMenu.item(id) != nil {
+        let r = call("keys", "remap", ["chord": .string(chord), "item": .string(id)])
+        if r.isError { errors.append("config.toml [shortcuts] \(r.str("error"))") }
         continue
       }
       let r = call("keys", "bind", ["chord": .string(chord), "event": "config.shortcut", "title": .string(id), "menu": "Shortcuts", "payload": ["id": .string(id)]])

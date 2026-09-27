@@ -67,15 +67,24 @@ public final class WindowService: HostService {
 /// content has focus, and standard Edit/Window shortcuts keep working).
 ///
 /// Methods:
-///   bind {chord: "cmd+shift+k", event, title?, menu?: File|Edit|View|Tabs|Spaces|Window|<any>, payload?}
+///   bind {chord: "cmd+shift+k", event, title?, menu?: File|Edit|View|History|Tabs|Spaces|Window|<any>, payload?}
 ///   unbind {chord}          list -> [{chord, event, title, menu}]
+///   remap {chord, item}     gives a menu item (MainMenu ids, docs/shortcuts.md) a new shortcut
+///   resetRemaps             restores every remapped item's own shortcut
 /// Emits the bound event with {chord, payload}.
+///
+/// A binding whose event has a slot in den's menu bar (`MainMenu.layout`) fills that item, so it
+/// shows in the right place with den's wording; a second chord for the same event is a hidden
+/// alternate; bindings with a payload (⌘1…9, ⌃1…9) are listed one item each under the slot.
+/// Other bindings are appended to the menu they name.
 @MainActor
-public final class KeysService: NSObject, HostService {
+public final class KeysService: NSObject, HostService, NSMenuItemValidation {
   public let name = "keys"
   let host: ServiceHost
-  struct Binding { let chord: String; let event: String; let title: String; let menu: String; let payload: Value; let item: NSMenuItem }
+  struct Binding { let chord: String; let event: String; let title: String; let menu: String; let payload: Value; let item: NSMenuItem; let owned: Bool }
   var bindings: [String: Binding] = [:]
+  /// item id -> its original key equivalent and mask, while remapped.
+  var remapped: [String: (key: String, mask: NSEvent.ModifierFlags, chord: String)] = [:]
 
   public init(host: ServiceHost) { self.host = host }
 
@@ -83,100 +92,111 @@ public final class KeysService: NSObject, HostService {
     switch method {
     case "bind":
       let chordStr = args.str("chord").lowercased()
-      guard let chord = Chord.parse(chordStr) else { return .error("keys: bad chord '\(chordStr)'") }
+      guard Chord.parse(chordStr) != nil else { return .error("keys: bad chord '\(chordStr)'") }
       let event = args.str("event")
       guard !event.isEmpty else { return .error("keys: missing event") }
-      unbind(chordStr)
       let title = args.str("title", event)
       let menuName = args.str("menu", "Tabs")
-      let item = NSMenuItem(title: title, action: #selector(fire(_:)), keyEquivalent: chord.key)
+      let payload = args["payload"]
+      // Rebinding the same chord to the same event (spaces does on every change) keeps its item:
+      // only a listed item's title can change (a renamed space).
+      if let b = bindings[chordStr], b.event == event, b.item.menu != nil {
+        if b.owned, !payload.isNull { b.item.title = title }
+        bindings[chordStr] = Binding(chord: chordStr, event: event, title: title, menu: menuName, payload: payload, item: b.item, owned: b.owned)
+        return .ok
+      }
+      unbind(chordStr)
+      let (item, owned) = place(event: event, title: title, menu: menuName, payload: payload)
+      MainMenu.setKey(item, chordStr)
+      // A [shortcuts] remap of this slot survives the plugin rebinding it.
+      if let id = item.identifier?.rawValue, let r = remapped[id] { MainMenu.setKey(item, r.chord) }
       item.target = self
+      item.action = #selector(fire(_:))
       item.representedObject = chordStr
-      var m: NSEvent.ModifierFlags = []
-      if chord.mods.contains(.cmd) { m.insert(.command) }
-      if chord.mods.contains(.shift) { m.insert(.shift) }
-      if chord.mods.contains(.opt) { m.insert(.option) }
-      if chord.mods.contains(.ctrl) { m.insert(.control) }
-      item.keyEquivalentModifierMask = m
-      MainMenu.menu(named: menuName).addItem(item)
-      bindings[chordStr] = Binding(chord: chordStr, event: event, title: title, menu: menuName, payload: args["payload"], item: item)
+      bindings[chordStr] = Binding(chord: chordStr, event: event, title: title, menu: menuName, payload: payload, item: item, owned: owned)
     case "unbind":
       unbind(args.str("chord").lowercased())
     case "list":
       return .array(bindings.values.sorted { $0.chord < $1.chord }.map {
         ["chord": .string($0.chord), "event": .string($0.event), "title": .string($0.title), "menu": .string($0.menu), "payload": $0.payload]
       })
+    case "remap":
+      let chord = args.str("chord").lowercased()
+      guard Chord.parse(chord) != nil else { return .error("keys: bad chord '\(chord)'") }
+      guard let mi = MainMenu.item(args.str("item")) else { return .error("keys: no menu item '\(args.str("item"))'") }
+      let id = args.str("item")
+      remapped[id] = (remapped[id]?.key ?? mi.keyEquivalent, remapped[id]?.mask ?? mi.keyEquivalentModifierMask, chord)
+      MainMenu.setKey(mi, chord)
+    case "resetRemaps":
+      for (id, r) in remapped {
+        guard let mi = MainMenu.item(id) else { continue }
+        mi.keyEquivalent = r.key
+        mi.keyEquivalentModifierMask = r.mask
+      }
+      remapped = [:]
     default:
       return .error("keys: unknown method '\(method)'")
     }
     return .ok
   }
 
+  /// Where a binding lives: its slot in the menu bar (or a hidden alternate / a payload item next
+  /// to it), else a new item at the end of the named menu. `owned` items are removed on unbind.
+  func place(event: String, title: String, menu: String, payload: Value) -> (NSMenuItem, Bool) {
+    guard let slot = MainMenu.slot(for: event), let parent = slot.menu else {
+      let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+      MainMenu.menu(named: menu).addItem(item)
+      return (item, true)
+    }
+    let taken = bindings.values.filter { $0.event == event && $0.item.menu != nil }
+    if taken.isEmpty && payload.isNull {
+      slot.isHidden = false
+      return (slot, false)
+    }
+    // Payload lists (⌘1…9 / ⌃1…9): the slot stays hidden and each binding is its own item after it.
+    let item = NSMenuItem(title: payload.isNull ? slot.title : title, action: nil, keyEquivalent: "")
+    if payload.isNull {
+      item.isHidden = true
+      item.allowsKeyEquivalentWhenHidden = true
+    }
+    let after = taken.map(\.item).compactMap { parent.index(of: $0) }.max() ?? parent.index(of: slot)
+    parent.insertItem(item, at: after + 1)
+    return (item, true)
+  }
+
   func unbind(_ chord: String) {
     guard let b = bindings.removeValue(forKey: chord) else { return }
-    b.item.menu?.removeItem(b.item)
+    if b.owned {
+      b.item.menu?.removeItem(b.item)
+    } else {
+      // A slot: hide it, unless another chord for the same event can take its place.
+      b.item.keyEquivalent = ""
+      b.item.isHidden = true
+      if let alt = bindings.values.first(where: { $0.event == b.event && $0.payload.isNull }) {
+        b.item.isHidden = false
+        MainMenu.setKey(b.item, alt.chord)
+        b.item.representedObject = alt.chord
+        alt.item.menu?.removeItem(alt.item)
+        bindings[alt.chord] = Binding(chord: alt.chord, event: alt.event, title: alt.title, menu: alt.menu, payload: alt.payload, item: b.item, owned: false)
+      }
+    }
   }
 
   @objc func fire(_ sender: NSMenuItem) {
     guard let c = sender.representedObject as? String, let b = bindings[c] else { return }
     host.emit(b.event, ["chord": .string(c), "payload": b.payload])
   }
-}
 
-/// Builds the standard main menu; plugin menus are created on demand.
-@MainActor
-public enum MainMenu {
-  public static func install() {
-    let main = NSMenu()
-    let appItem = NSMenuItem()
-    main.addItem(appItem)
-    let app = NSMenu(title: "den")
-    let about = app.addItem(withTitle: "About den", action: #selector(AboutPanel.show(_:)), keyEquivalent: "")
-    about.target = AboutPanel.shared
-    app.addItem(.separator())
-    let services = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
-    services.submenu = NSMenu()
-    NSApp.servicesMenu = services.submenu
-    app.addItem(services)
-    app.addItem(.separator())
-    app.addItem(withTitle: "Hide den", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-    let other = app.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
-    other.keyEquivalentModifierMask = [.command, .option]
-    app.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
-    app.addItem(.separator())
-    app.addItem(withTitle: "Quit den", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-    appItem.submenu = app
-
-    _ = menu(named: "File", in: main)
-    let edit = menu(named: "Edit", in: main)
-    edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-    edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
-    edit.addItem(.separator())
-    edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-    edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-    edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-    edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-    _ = menu(named: "View", in: main)
-    _ = menu(named: "Tabs", in: main)
-    _ = menu(named: "Spaces", in: main)
-    let window = menu(named: "Window", in: main)
-    window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-    window.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
-    let fs = window.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
-    fs.keyEquivalentModifierMask = [.command, .control]
-    NSApp.windowsMenu = window
-    NSApp.mainMenu = main
-  }
-
-  public static func menu(named name: String, in main: NSMenu? = NSApp.mainMenu) -> NSMenu {
-    let main = main ?? NSMenu()
-    if let it = main.items.first(where: { $0.submenu?.title == name }), let m = it.submenu { return m }
-    let item = NSMenuItem(title: name, action: nil, keyEquivalent: "")
-    let m = NSMenu(title: name)
-    item.submenu = m
-    // Keep Window last.
-    if let wi = main.items.firstIndex(where: { $0.submenu?.title == "Window" }) { main.insertItem(item, at: wi) } else { main.addItem(item) }
-    return m
+  /// ⌘←/⌘→ and friends are text-editing keys too: while a native text field (the command bar,
+  /// a Settings field) is being edited, plain ⌘-arrow bindings stand aside so the field gets them.
+  /// Web page fields handle them before the menu sees them (WKWebView offers keys to the page first).
+  public func validateMenuItem(_ mi: NSMenuItem) -> Bool {
+    let arrows: Set<String> = ["\u{F702}", "\u{F703}", "\u{F700}", "\u{F701}"]
+    if arrows.contains(mi.keyEquivalent), mi.keyEquivalentModifierMask == .command,
+       NSApp.keyWindow?.firstResponder is NSText {
+      return false
+    }
+    return true
   }
 }
 
