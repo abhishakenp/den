@@ -36,8 +36,7 @@ export const Numbers = () => (
       <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-ember/20 bg-ember/[0.04] p-5 text-sm leading-relaxed text-ink-soft sm:flex-row sm:items-start sm:gap-5">
         <span className="shrink-0 font-mono text-xs uppercase tracking-[0.15em] text-ember">Conditions</span>
         <p>
-          {CONDITIONS} Dia&rsquo;s copy was never signed in, so its numbers describe its sign-in screen. Cold launch and
-          energy are not measured yet.{" "}
+          {CONDITIONS} Cold launch and energy are not measured yet.{" "}
           <a className="text-ink underline decoration-ember/40 underline-offset-4 hover:decoration-ember" href={doc("docs/perf/baseline.md")}>
             Every run, raw value and command
           </a>

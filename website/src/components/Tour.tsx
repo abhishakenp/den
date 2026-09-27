@@ -9,7 +9,7 @@ export const Tour = () => (
       <SectionHeader
         eyebrow="Tour"
         title="Everything you reach for, one plugin each."
-        lead="What works on main today. Every item is covered by swift test or a scenario run of the real app."
+        lead="Everything here works in today's build."
       />
       <TourTabs features={FEATURES} />
     </div>

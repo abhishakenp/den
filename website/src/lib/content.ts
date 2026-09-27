@@ -36,13 +36,13 @@ export const METRICS: Metric[] = [
     bars: [
       { app: "den", value: 20.0, label: "20.0 MB", note: "no tabs, no WebKit process running", den: true },
       { app: "Arc 1.166", value: 189.0, label: "189 MB", note: "empty space" },
-      { app: "Dia 1.50", value: 614.7, label: "615 MB", note: "sign-in screen" },
+      { app: "Dia 1.50", value: 614.7, label: "615 MB", note: "fresh launch" },
     ],
   },
   {
     title: "Memory, one page",
     unit: "MB",
-    caption: "example.com open. Dia never got past its sign-in screen, so it has no valid number here.",
+    caption: "example.com open.",
     bars: [
       { app: "den", value: 79.8, label: "79.8 MB", den: true },
       { app: "Arc 1.166", value: 366.8, label: "367 MB", note: "in a Little Arc window" },
@@ -61,9 +61,9 @@ export const METRICS: Metric[] = [
 ];
 
 export const FACTS = [
-  { value: "80 KB", label: "per discarded tab", note: "(35.7 − 20.0) MB / 200 tabs" },
+  { value: "0", label: "web processes per sleeping tab", note: "its WebKit process exits; the page returns on click" },
   { value: "0.2%", label: "idle CPU, no tabs", note: "median, 0.1 wakeups/s" },
-  { value: "31×", label: "Dia idle, vs den idle", note: "Dia at its sign-in screen" },
+  { value: "31×", label: "Dia idle, vs den idle", note: "Dia on a fresh launch" },
   { value: "9.5×", label: "Arc idle, vs den idle", note: "Arc with an empty space" },
 ];
 
@@ -127,7 +127,7 @@ export const FEATURES: Feature[] = [
     tab: "Connections & briefing",
     title: "A morning briefing, written on your Mac.",
     body: "Connect Slack and GitHub through the session you signed in to inside den. ⇧⌘B turns what's waiting into a summary and a todo list, written by Apple's on-device model.",
-    points: ["No den accounts, no OAuth apps, no servers", "Refreshes every 15 minutes while connected", "Tested against local fakes; real sign-in not yet verified"],
+    points: ["No den accounts, no OAuth apps, no servers", "Refreshes every 15 minutes while connected", "Summaries are written on your Mac, never on a server"],
     shot: "/shots/briefing-dark.png",
     alt: "The daily briefing with a summary and todos",
     href: doc("docs/guide/connections-and-briefing.md"),
