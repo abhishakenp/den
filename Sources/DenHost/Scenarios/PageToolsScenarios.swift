@@ -1,3 +1,5 @@
+// Dev fixture: compiled only with the `Scenarios` package trait (on by default; release bundles leave it out).
+#if Scenarios
 // thin-host: feature-specific, migrate to plugin (snapshot scenarios that drive the `pagetools`
 // plugin; the feature itself lives in Plugins/pagetools).
 import AppKit
@@ -171,3 +173,4 @@ public enum PageToolsScenarios {
     return p.list("buttons").map { $0.str("id") + ($0.flag("active") ? "*" : "") }
   }
 }
+#endif
