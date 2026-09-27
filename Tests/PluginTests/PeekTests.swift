@@ -82,35 +82,66 @@ struct PeekTests {
     #expect(h.events.count == 1)
   }
 
-  @Test func realShiftClickFromTodayTabOpensPeek() async throws {
+  /// A real shift-modified mouse click on a today tab's link opens it in Peek.
+  ///
+  /// Root cause of the reported hang/flake: in a full `swift test` run, 16 other suites share the
+  /// main actor with this one, and it is starved. Measured here: a `Task.sleep(for: 50 ms)`
+  /// between the mouse-down and the mouse-up took 2.5 s to resume, and page load plus click took
+  /// 15–45 s of wall time. The test counted loop iterations (`0..<100` × 50 ms) as if they were
+  /// time, awaited between mouse-down and mouse-up (WebKit saw a press held for seconds), and
+  /// hit-tested the whole window. On a slow run it waited very long, then gave up before WebKit's
+  /// answer arrived ("peekShown == nil"). In isolation it always passed.
+  /// Now waits are wall-clock deadlines, the web view's own subtree is hit-tested once it is laid
+  /// out and `document.readyState` is "complete", mouse-down and mouse-up go back to back like a
+  /// real click, and the test has an overall time limit. (A point outside the web view could also
+  /// land on the sidebar resize handle, whose drag loop waits for a real mouse-up: the hang.)
+  @Test(.timeLimit(.minutes(2))) func realShiftClickFromTodayTabOpensPeek() async throws {
     let h = Harness()
     h.startPeek()
     let today = h.selected!
     let web = try #require(h.rt.webviews.record(today)?.webView)
     // A same-site link filling the page, clicked with a real shift-modified mouse event
-    // (WebKit ignores modifier flags of script-synthesized clicks).
+    // (WebKit ignores modifier flags of script-synthesized clicks). The page logs what it got.
     let html = "<style>body{margin:0}a{display:block;width:100vw;height:100vh}</style><a id=x href='https://www.a.test/next'>x</a>"
+      + "<script>window.log=[];for(const t of ['mousedown','mouseup','click'])addEventListener(t,e=>log.push(t+(e.shiftKey?'+shift':'')),true)</script>"
     web.loadHTMLString(html, baseURL: URL(string: "https://www.a.test/"))
-    for _ in 0..<100 where web.isLoading || web.url?.host != "www.a.test" { try await Task.sleep(for: .milliseconds(50)) }
-    try await Task.sleep(for: .milliseconds(300))
-    let win = try #require(web.window)
-    // Under a loaded full-suite run the content may not be laid out yet; a point outside the web
-    // view can land on the sidebar's resize handle, whose drag loop then waits for a real mouse-up.
-    win.contentView?.layoutSubtreeIfNeeded()
-    let p = web.convert(NSPoint(x: web.bounds.midX, y: web.bounds.midY), to: nil)
-    let target = try #require(win.contentView?.superview?.hitTest(p) ?? win.contentView?.hitTest(p))
-    try #require(target === web || target.isDescendant(of: web), "the click must land on the web view")
-    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-      let e = try #require(NSEvent.mouseEvent(with: type, location: p, modifierFlags: .shift, timestamp: ProcessInfo.processInfo.systemUptime,
-                                              windowNumber: win.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
-      if type == .leftMouseDown { target.mouseDown(with: e) } else { target.mouseUp(with: e) }
-      try await Task.sleep(for: .milliseconds(50))
+    // Loaded, in the window and laid out.
+    let ready = try await Self.wait(seconds: 30) {
+      h.rt.window.window.contentView?.layoutSubtreeIfNeeded()
+      guard !web.isLoading, web.url?.host == "www.a.test", web.window != nil, web.bounds.width > 100, web.bounds.height > 100 else { return false }
+      return (try? await web.evaluateJavaScript("document.readyState")) as? String == "complete"
     }
-    // Up to 10 s: WebKit routes the click through the WebContent process, slow on a loaded machine.
-    for _ in 0..<200 where h.peekShown == nil { try await Task.sleep(for: .milliseconds(50)) }
+    try #require(ready, "the page never finished loading in a laid-out web view")
+    let win = try #require(web.window)
+    let mid = NSPoint(x: web.bounds.midX, y: web.bounds.midY)
+    // Hit-test the web view's own subtree only, so the events can never reach den's chrome.
+    let target = try #require(web.hitTest(web.convert(mid, to: web.superview)))
+    try #require(target === web || target.isDescendant(of: web), "hit \(type(of: target)), not the web view")
+    let p = web.convert(mid, to: nil)
+    let now = ProcessInfo.processInfo.systemUptime
+    let down = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: p, modifierFlags: .shift, timestamp: now,
+                                               windowNumber: win.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+    let up = try #require(NSEvent.mouseEvent(with: .leftMouseUp, location: p, modifierFlags: .shift, timestamp: now + 0.05,
+                                             windowNumber: win.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+    target.mouseDown(with: down)
+    target.mouseUp(with: up)
+    let opened = try await Self.wait(seconds: 30) { h.peekShown != nil }
+    let log = (try? await web.evaluateJavaScript("log.join(' ')")) as? String ?? "?"
+    try #require(opened, "no peek; the page saw: \(log)")
     let pid = try #require(h.peekShown)
     #expect(h.rt.webviews.record(pid)?.url == "https://www.a.test/next")
     #expect(web.url?.absoluteString == "https://www.a.test/")
+  }
+
+  /// Polls `done` until it holds or `seconds` of wall time pass (not a count of iterations: the
+  /// main actor can be starved for seconds while other suites run).
+  static func wait(seconds: Double, until done: () async -> Bool) async throws -> Bool {
+    let end = Date().addingTimeInterval(seconds)
+    while Date() < end {
+      if await done() { return true }
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    return await done()
   }
 
   @Test func closeReopenAndEscape() {
