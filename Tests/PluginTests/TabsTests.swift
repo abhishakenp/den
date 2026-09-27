@@ -166,9 +166,13 @@ struct TabsTests {
     let h = Harness()
     h.startTabs()
     let t = h.ids("today")[0]
-    // The seeded tab is a live site (apple.com): its title can change when the page loads mid-test,
-    // so "the page title" is read from the tab's webview record each time, not captured once.
-    func pageTitle() -> String? { h.rt.webviews.record(t)?.title ?? h.tabs("list")["today"][0]["title"].string }
+    // The seeded tab is a live site (apple.com): if it loads mid-test, its title becomes whatever the
+    // site says now. "The page title" is the seeded one or, once loaded, the live one.
+    let seededTitle = h.tabs("list")["today"][0]["title"].string!
+    func isPageTitle(_ s: String?) -> Bool {
+      let live = h.rt.webviews.record(t)?.title ?? ""
+      return s == seededTitle || (!live.isEmpty && s == live)
+    }
     func row() -> TabRowNode? { HostScenarios.find(t, in: h.rt.ui.sidebarView) as? TabRowNode }
     func editor() async throws -> InlineTitleEditor {
       _ = await Wait.until("the inline title editor") { row()?.rename.editor?.currentEditor() != nil }
@@ -186,7 +190,8 @@ struct TabsTests {
 
     h.action(t, "doubleClick")
     #expect(h.tree("sidebar.today", 0)["children"][2]["editing"] == true)
-    #expect(try await editor().stringValue == pageTitle())
+    let shown = try await editor().stringValue
+    #expect(isPageTitle(shown), "\(shown)")
     #expect(row()?.label.isHidden == true)
     try await type("Reading list", ret)
     #expect(h.tabs("list")["today"][0]["title"] == "Reading list")
@@ -204,7 +209,7 @@ struct TabsTests {
     h.action(t, "doubleClick")
     try await type("", ret)
     #expect(h.tabs("list")["today"][0]["customTitle"] == .null)
-    #expect(h.tabs("list")["today"][0]["title"].string == pageTitle())
+    #expect(isPageTitle(h.tabs("list")["today"][0]["title"].string))
     h.key("ctrl+z")
     #expect(h.tabs("list")["today"][0]["title"] == "Reading list")
 
