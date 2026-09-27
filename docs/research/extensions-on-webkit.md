@@ -1,0 +1,156 @@
+# Chrome/Firefox extensions on WebKit — what den can actually do
+
+Research date: 2026-09-27. Legend: **[DOC]** = Apple/WebKit doc confirmed, **[SRC]** = read in WebKit/GitHub source, **[3P]** = third-party claim, **UNVERIFIED** = not confirmed.
+
+## TL;DR
+
+- Apple ships a real, public WebExtensions engine for third-party browsers: `WKWebExtension`, `WKWebExtensionContext`, `WKWebExtensionController` (+ `WKWebExtensionControllerDelegate`, `WKWebExtensionTab`, `WKWebExtensionWindow`). Minimum: **macOS 15.4** / iOS 18.4 / visionOS 2.4. **[DOC]**
+- It is the same engine Safari uses. Supports MV2 + MV3, `chrome.*` and `browser.*` namespaces, service-worker and non-persistent backgrounds, content scripts, action popups, `declarativeNetRequest`, native messaging (via delegate). **No blocking `webRequest`** — so classic uBlock Origin (MV2) cannot run at full strength; uBO Lite (MV3/DNR) can.
+- Orion does **not** appear to use it: Kagi says it wrote "its own implementation of the entire web extensions API" (~70% coverage). That is a multi-year effort den should not replicate.
+- Several open-source Swift browsers (Nook, Crest, Refrax, DuckDuckGo's macOS app) already use `WKWebExtensionController` and install directly from Chrome Web Store / AMO by downloading the CRX/XPI and stripping the CRX header. Good reference code exists.
+- **Recommendation:** build on `WKWebExtension*`, min target macOS 15.4 (or 26 to reduce bug surface), add CWS/AMO install + update polling, and ship a native content blocker (`WKContentRuleList` compiled from EasyList/uBO lists via `adblock-rust` or AdGuard `SafariConverterLib`) plus cosmetic/scriptlet injection. Accept that some extensions won't work; publish a compat list.
+
+---
+
+## 1. Apple's WKWebExtension API
+
+### Availability [DOC]
+From Apple doc JSON (`developer.apple.com/tutorials/data/documentation/webkit/<symbol>.json`), every one of these symbols reports: iOS 18.4, iPadOS 18.4, Mac Catalyst 18.4, **macOS 15.4**, visionOS 2.4.
+
+- https://developer.apple.com/documentation/webkit/wkwebextension
+- https://developer.apple.com/documentation/webkit/wkwebextensioncontext
+- https://developer.apple.com/documentation/webkit/wkwebextensioncontroller
+- https://developer.apple.com/documentation/webkit/wkwebextensioncontrollerdelegate
+- https://developer.apple.com/documentation/webkit/wkwebextensiontab
+- https://developer.apple.com/documentation/webkit/wkwebextensionwindow
+- Announcement: https://webkit.org/blog/16574/webkit-features-in-safari-18-4/#web-extensions — "WebKit on iOS 18.4, iPadOS 18.4, visionOS 2.4, and macOS Sequoia 15.4 adds support for integrating web extensions into WebKit-based browsers…"
+
+No dedicated WWDC session on these classes found (WWDC25 WebKit news only covered the Safari Web Extension Packager and menubar commands: https://webkit.org/blog/16993/news-from-wwdc25-web-technology-coming-this-fall-in-safari-26-beta/). UNVERIFIED whether a WWDC video exists.
+
+### Object model [DOC]
+| Class / protocol | Role | Key members |
+|---|---|---|
+| `WKWebExtension` | Parsed extension (manifest + resources) | `init(resourceBaseURL:)` — **directory or ZIP archive**; `init(appExtensionBundle:)`; `manifest`, `manifestVersion`, `supportsManifestVersion(_:)`, `requestedPermissions`, `optionalPermissions`, `allRequestedMatchPatterns`, `hasBackgroundContent`, `hasPersistentBackgroundContent`, `hasInjectedContent`, `hasOptionsPage`, `hasOverrideNewTabPage`, `hasContentModificationRules`, `hasCommands`, `errors`, `icon(for:)`, `actionIcon(for:)` |
+| `WKWebExtensionContext` | Runtime for one extension | `init(for:)`, `baseURL`, `uniqueIdentifier`, permission APIs (`setPermissionStatus(_:for:expirationDate:)`, `permissionStatus(for:)`, `hasAccess(to:)`, `currentPermissions`…), `action(for:)`, `performAction(for:)`, `commands`, `performCommand(_:)`, `menuItems(for:)`, `optionsPageURL`, `overrideNewTabPageURL`, `loadBackgroundContent(completionHandler:)`, `isInspectable`, **`unsupportedAPIs`** (host can hide APIs so extensions feature-detect), `userGesturePerformed(in:)`, tab/window event methods (`didOpenTab`, `didActivateTab(_:previousActiveTab:)`, `didCloseTab(_:windowIsClosing:)`, `didMoveTab(_:from:in:)`, `didChangeTabProperties(_:for:)`, `didOpenWindow`, `didFocusWindow`…) |
+| `WKWebExtensionController` | Manages loaded contexts; attach via `WKWebViewConfiguration.webExtensionController` | `init(configuration:)`, `load(_:)`, `unload(_:)`, `extensionContexts`, same tab/window event methods (broadcast to all), `fetchDataRecords(ofTypes:)`, `removeData(ofTypes:from:)` |
+| `WKWebExtensionController.Configuration` | Persistence | `default()`, `nonPersistent()`, `init(identifier:)`, `defaultWebsiteDataStore`, `webViewConfiguration` |
+| `WKWebExtensionControllerDelegate` | Host UI hooks | `openWindowsFor`, `focusedWindowFor`, `openNewTabUsing`, `openNewWindowUsing`, `openOptionsPageFor`, `promptForPermissions`, `promptForPermissionToAccess`, `promptForPermissionMatchPatterns`, `presentActionPopup`, `didUpdate` (action), `sendMessage:toApplicationWithIdentifier:` + `connectUsing:` (**native messaging**) |
+| `WKWebExtensionTab` (protocol, host implements) | Tab as seen by extensions | `webView(for:)`, `url`, `title`, `window`, `indexInWindow`, `isSelected`, `isPinned`, `isMuted`, `isPlayingAudio`, `isLoadingComplete`, `loadURL`, `reload`, `goBack/Forward`, `activate`, `close`, `duplicate`, `setZoomFactor`, `takeSnapshot`, `detectWebpageLocale`, reader-mode hooks, `shouldBypassPermissions`, `shouldGrantPermissionsOnUserGesture` |
+| `WKWebExtensionWindow` (protocol, host implements) | Window as seen by extensions | `tabs(for:)`, `activeTab`, `windowType`, `windowState`, `isPrivate`, `frame`, `screenFrame`, `setFrame`, `focus`, `close` |
+
+Native messaging note [DOC]: if `connectUsing` is not implemented, "the default behavior is to pass the messages to the app extension handler within the extension's bundle, if the extension was loaded from an app extension bundle; otherwise, no action is performed." → For CWS/AMO extensions, Chrome-style native hosts (e.g., 1Password/Bitwarden desktop bridges) need den to implement the delegate and bridge to the host manifest/stdio protocol itself. Whether that is enough for any specific password manager: UNVERIFIED.
+
+### Host responsibilities (what den must build)
+- Model every tab/window as objects conforming to `WKWebExtensionTab` / `WKWebExtensionWindow`.
+- Call controller `did*` methods on every tab/window lifecycle event (otherwise `tabs.onUpdated` etc. never fire).
+- Present action popups (`presentActionPopup` gives a `WKWebExtension.Action`; den renders its popup web view in an `NSPopover`), toolbar icons/badges (`didUpdate`), context menu items (`menuItems(for:)`), keyboard commands.
+- Permission prompts UI; persistence of granted permissions (context exposes state; storing across launches is on the host — UNVERIFIED whether controller persists grants automatically).
+- Assign `webExtensionController` on the `WKWebViewConfiguration` **before** creating each `WKWebView` (noted in https://github.com/Lukas-Bohez/ConvertTheSpireFlutter/issues/10 and the Apple doc for `WKWebExtensionController`).
+
+### Manifest & background [SRC]
+Read in `Source/WebKit/UIProcess/Extensions/WebExtension.cpp` (WebKit main, https://github.com/WebKit/WebKit):
+- Parses `background.service_worker`, `scripts`, `page`, `type: "module"`, `persistent`.
+- MV3 must be non-persistent; `service_worker` must be non-persistent; iOS requires non-persistent. MV2 persistent background pages are allowed on macOS.
+- Apple Safari docs: "Safari 15.4 and later supports manifest versions 2 and 3", "support both the chrome.* and browser.* namespaces", callbacks and Promises, "Blocking requests not supported", "BlockingResponse not supported", "opt_extraInfoSpec not supported" (https://developer.apple.com/documentation/safariservices/assessing-your-safari-web-extension-s-browser-compatibility). Applying Safari's statements to `WKWebExtension` rests on WebKit's stated goal that all WebKit browsers share one implementation — minor divergence UNVERIFIED.
+
+### Which APIs exist [SRC]
+IDL files in `Source/WebKit/WebProcess/Extensions/Interfaces/` on WebKit main: `action`/`browserAction`/`pageAction`, `alarms`, `commands`, `cookies`, `contextMenus`/`menus`, `declarativeNetRequest`, `devtools` (behind `INSPECTOR_EXTENSIONS`), `dom`, `extension`, `i18n`, `notifications`, `offscreen`, `permissions`, `runtime`, `scripting`, `storage`, `tabs`, `webNavigation`, `webRequest` (observe only), `windows`, `test`.
+- Compiled **off** on Cocoa in `PlatformEnableCocoa.h`: `bookmarks` (`ENABLE_WK_WEB_EXTENSIONS_BOOKMARKS 0`), `sidebarAction`/`sidePanel` (`ENABLE_WK_WEB_EXTENSIONS_SIDEBAR 0`).
+- On for trunk: `notifications`, `offscreen`. Which OS release first shipped them: UNVERIFIED.
+- **Absent entirely** (no IDL): `identity`, `history`, `downloads`, `proxy`, `privacy`, `sessions`, `tabGroups`, `topSites`, `search`, `management`, `userScripts`, `tts`, `idle`, `gcm`, `enterprise.*`. Extensions that hard-depend on these will break unless den polyfills them (not possible through public API for main-world `browser.*`; `unsupportedAPIs` only removes APIs, cannot add them).
+
+`declarativeNetRequest` limits [SRC] (`Source/WebKit/Shared/Extensions/WebExtensionConstants.h`): max **100** static rulesets, **50** enabled rulesets, **30,000** dynamic+session rules. DNR rules are converted to WebKit content rule lists; WebKit's parser caps one list at **150,000** rules (`maxRuleCount = 150000` in `Source/WebCore/contentextensions/ContentExtensionParser.cpp`).
+
+Recent changes: Safari 26.0 added `dom.openOrClosedShadowRoot()`, DNR fixes (priority ordering, redirects to extension resources) (https://webkit.org/blog/17333/webkit-features-in-safari-26-0/). Safari 27.0 notes user-gesture propagation through `sendMessage/connect/postMessage/executeScript` and `tabId` in `windows.create()` (https://webkit.org/blog/18325/webkit-features-for-safari-27-0/). Safari 18.4 added `documentId`, `storage.getKeys()`, `match_origin_as_fallback` (https://webkit.org/blog/16574/). Implication: bug fixes arrive with OS updates; den's compat depends on user's macOS version.
+
+## 2. Orion (Kagi)
+
+- FAQ: "Orion has its own implementation of the entire web extensions API and different 'manifests' are just numbers"; "ported hundreds of APIs, one by one"; supports "about 70% of Web Extensions APIs" (https://browser.kagi.com/faq.html, https://help.kagi.com/orion/browser-extensions/macos-extensions.html). Kagi keeps a public API-support spreadsheet (https://help.kagi.com/orion/misc/technical.html).
+- Orion predates `WKWebExtension` (iOS prototype years earlier). Whether it now uses `WKWebExtension` anywhere: **UNVERIFIED** — no Kagi statement found either way; its "own implementation" wording implies not. Whether it uses private WebKit SPI or a WebKit fork: UNVERIFIED (Kagi says only that it "shares … the WebKit rendering engine").
+- Install sources: one-click from Chrome Web Store and AMO, manual file install, Safari extensions from disk; "Automatic Extension Updates"; still labelled beta (macOS extensions doc above).
+- MV2 + MV3 both claimed ("Orion will support both").
+- Kagi: "It is enough that one API is not supported for the extension to not work." Third-party review reports uBO, Bitwarden, Dark Reader, Vimium, Stylus working; 1Password flows problematic [3P] (https://supasidebar.com/blog/orion-browser-mac-review-2026).
+- Built-in blocker "about 90% as efficient as uBlock Origin on default settings but faster"; recommends disabling it when running uBO (FAQ).
+- Orion is closed source.
+
+## 3. Installing from Chrome Web Store / AMO
+
+### Chrome Web Store (CRX3)
+- Download: `https://clients2.google.com/service/update2/crx?response=redirect&prodversion=<chrome ver>&acceptformat=crx2,crx3&x=id%3D<ID>%26installsource%3Dondemand%26uc` (widely documented; e.g. https://gist.github.com/noromanba/5776183). Same host is the official enterprise update URL (https://support.google.com/chrome/a/answer/7532015). The server filters by `prodversion`, so send a current Chrome version — Nook fetches it from `versionhistory.googleapis.com` [SRC].
+- Format [SRC] (https://github.com/chromium/chromium/blob/main/components/crx_file/crx3.proto): `"Cr24"` magic, uint32 version (3), uint32 LE header length N, N-byte protobuf `CrxFileHeader` (RSA/ECDSA proofs, `signed_header_data` with crx_id), then ZIP. Strip header → ZIP → `WKWebExtension(resourceBaseURL:)` (accepts ZIP). Whether `WKWebExtension` accepts a raw CRX without stripping: UNVERIFIED — strip it.
+- Verify signature (Crest has `CRX3Verifier.swift`; Nook skips verification and relies on HTTPS — comment in its `WebStoreDownloader.swift`).
+- Extension ID = first 128 bits of SHA-256 of public key, a–p encoded. Preserve manifest `key` so IDs stay stable (some extensions hard-code their own ID). Whether `WKWebExtensionContext.uniqueIdentifier` can be set to the Chrome ID: UNVERIFIED — check; affects `runtime.id` and `externally_connectable`.
+- Updates: poll the same update2 endpoint with `x=id=<ID>&v=<version>` (Omaha protocol) — Crest implements `ChromeWebStoreUpdateRequest.swift` [SRC].
+- Install UX: inject an "Add to den" button on `chromewebstore.google.com/detail/*` (Crest/Nook pattern). Orion does the same.
+
+### AMO (XPI)
+- API: `GET https://addons.mozilla.org/api/v5/addons/addon/<id|slug|guid>/` → `current_version.file.url` (https://mozilla.github.io/addons-server/topics/api/addons.html). Response also has hash/size — Crest checks "checksum, size, and identity" [SRC: Crest help doc].
+- XPI is a ZIP signed by Mozilla (signatures in `META-INF/` — standard, not confirmed on the fetched page). Load as ZIP directly.
+- Updates: re-query the API and compare `version`; listed add-ons update through AMO (https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/).
+- Firefox extensions often expect `browser.*` + Promises + persistent MV2 background — which WebKit supports on macOS.
+
+### Legal / ToS
+- Brave, Vivaldi, Edge, Orion and several open-source WebKit browsers install from CWS; no enforcement action found. Chrome Web Store user-facing ToS text could not be retrieved; whether it restricts use to Chrome: **UNVERIFIED**. Get a legal read before shipping.
+- Safer posture: fetch on the user's explicit action, from the official store, never mirror/redistribute packages (each extension has its own license), don't spoof beyond `prodversion`, and don't use Google/Mozilla branding.
+- AMO public API is documented for third-party use; AMO add-on licenses vary per add-on.
+
+## 4. Open-source WebKit browsers using WKWebExtension
+
+| Repo | Notes (as of 2026-09-27) |
+|---|---|
+| https://github.com/duckduckgo/apple-browsers | Apache-2.0, 257★. `SharedPackages/WebExtensions` (loader, manager, native messaging, window/tab provider, tests). Highest-quality reference. |
+| https://github.com/nook-browser/Nook | GPL-3.0, 1,948★. `ExtensionManager` (WKWebExtension), `WebStoreDownloader.swift` (CWS + Edge store, CRX2/3 → ZIP), `NookBlocker` (adblock-rust conversion + cosmetic engine). README says macOS 26+, Apple silicon. |
+| https://github.com/pauljoda/Crest | MPL-2.0, 62★. CWS + AMO + Safari extension install, CRX3 verification, update checks, per-Space isolation. macOS 26.1+. Claims side panels / Firefox sidebars — how, given WebKit's sidebar flag is off: UNVERIFIED. |
+| https://github.com/kageroumado/refrax-browser | GPL-3.0, 42★. `ExtensionManager`, `ExtensionGalleryService`, `ExtensionUpdateChecker`. |
+| https://github.com/griffinwork40/agent-browser (PR #37) | Minimal example: load unpacked dir/ZIP, `#available(macOS 15.4, *)` gating. |
+
+Found via GitHub code search for `WKWebExtensionController` in Swift. License caution: GPL code (Nook, Refrax) can't be copied into den unless den is GPL-compatible; DDG (Apache-2.0) and Crest (MPL-2.0, file-level copyleft) are easier to learn from.
+
+## 5. Content blocking on WebKit
+
+### Mechanisms
+- `WKContentRuleListStore` / `WKContentRuleList` (macOS 10.13+) [DOC]: compiled JSON rules (block, block-cookies, css-display-none, ignore-previous-rules, make-https, redirect…), applied via `WKUserContentController.add(_:)`. Compiled into bytecode in the network/web process — no JS on the hot path.
+- Limit: **150,000 rules per list** [SRC]. Apps can add multiple lists (AdGuard for Safari splits across 6 lists = 900k, https://adguard.com/kb/archive/adguard-for-safari/solving-problems/rule-limit/). Whether WebKit imposes any aggregate cap for an app using many lists: UNVERIFIED (none found in parser).
+- Safari 26 added `unless-frame-url`, `request-method` triggers (https://webkit.org/blog/17333/).
+- No public API to intercept arbitrary http(s) subresource requests: `setURLSchemeHandler` raises for schemes WebKit handles "such as https" [DOC]. So a uBO-style dynamic network filter (JS deciding per request) is **impossible** in WKWebView; everything must be declarative.
+
+### Gaps vs uBlock Origin
+- No blocking `webRequest` → full uBO MV2 won't filter network requests under `WKWebExtension`. uBO Lite (MV3, DNR-only) is on the Safari App Store (https://apps.apple.com/us/app/ublock-origin-lite/id6745342698; https://mjtsai.com/blog/2025/08/06/ublock-origin-lite-for-safari/) and should be the recommended extension-based blocker; DNR was reported "semi-broken until iOS 18.6" [3P] (https://news.ycombinator.com/item?id=44795825).
+- Content rule lists lack: uBO procedural cosmetic filters (`:has-text`, `:upward`, …), scriptlet injection (`+js(...)`), response-header/HTML filtering, `$removeparam` nuance, dynamic per-site toggles without recompiling. Regex is a restricted subset.
+- Rule-list compile time for ~100k rules is non-trivial: UNMEASURED — benchmark before shipping.
+
+### Making it excellent (den-native blocker)
+1. **Network:** compile EasyList + EasyPrivacy + uBO filters + Peter Lowe + annoyances into several `WKContentRuleList`s (≤150k each) using `adblock-rust` `content-blocking` feature (https://github.com/brave/adblock-rust — "conversion of standard ABP-style rules into Apple's content-blocking format") or AdGuard `SafariConverterLib` (https://github.com/AdguardTeam/SafariConverterLib, Swift, also emits "advanced" rules for scriptlets). Compile off-main-thread, cache in a store, diff-update daily.
+2. **Cosmetic:** inject per-site generic/specific hide CSS via `WKUserScript`/`WKUserStyleSheet` in an isolated `WKContentWorld`; procedural filters via a small JS engine (adblock-rust's cosmetic cache supplies selectors).
+3. **Scriptlets:** inject uBO/AdGuard scriptlets at document-start in the **page** world (required to defeat YouTube-style ad logic). Keep scriptlet resources updatable.
+4. **Per-site allowlist:** use `ignore-previous-rules` with `if-domain`/`unless-domain` in a small separate list so toggling a site doesn't recompile the big lists.
+5. **Coexist with extensions:** if the user installs uBO Lite, offer to disable den's blocker (Orion's advice).
+6. **Measure:** track blocked-count via DNR feedback/web inspector; compare against uBO on Chromium with a fixed site corpus.
+
+## 6. Recommended approach for den
+
+**Phase 1 — WKWebExtension foundation**
+- Deployment target macOS 15.4 minimum; consider **macOS 26** (Nook, Crest chose 26.x) to get DNR/extension fixes and avoid supporting early-bug versions. Decide by user base.
+- One `WKWebExtensionController` (persistent `Configuration(identifier:)`, separate non-persistent one for private windows).
+- Tab/Window model conforms to `WKWebExtensionTab`/`WKWebExtensionWindow`; central event bus that calls `did*` on the controller.
+- Toolbar actions + popovers, context menus, commands, options pages, permission prompts, new-tab override.
+- Load unpacked dir/ZIP (dev mode) first; verify with a test corpus (uBO Lite, Dark Reader, Bitwarden, Vimium, Stylus, SponsorBlock, Return YouTube Dislike, Refined GitHub, 1Password, Grammarly).
+
+**Phase 2 — store installs + updates**
+- CWS: CRX3 download, signature verify, strip header, preserve `key`; "Add to den" button injected on CWS/AMO pages; background update polling (Omaha for CWS, AMO v5 API).
+- Show WebKit-compat warnings pre-install by diffing manifest `permissions` and static analysis for missing namespaces (`identity`, `downloads`, `history`, …) — Crest does "WebKit Compatibility Warnings".
+
+**Phase 3 — native gaps**
+- Native messaging bridge via `connectUsing`/`sendMessage` delegate → launch Chrome-style native hosts from `~/Library/Application Support/Google/Chrome/NativeMessagingHosts` (feasibility per host: UNVERIFIED).
+- Built-in content blocker (section 5).
+- Upstream: file WebKit bugs for missing APIs (`identity`, `downloads`, `sidePanel`) rather than hacks.
+
+**Tradeoffs**
+| Option | Pros | Cons |
+|---|---|---|
+| **WKWebExtension (recommended)** | Apple-maintained, same engine as Safari, fixes ship with OS; weeks not years; many OSS references | Coverage fixed by Apple; no blocking webRequest; missing `identity`/`downloads`/`history`/`sidePanel`; behaviour varies by macOS version; macOS 15.4+ only |
+| Own JS shim (Orion-style) | Full control, can add missing APIs, MV2 blocking semantics possible only with engine hooks | Orion took years for ~70%; needs private SPI or fork for real request blocking; huge maintenance |
+| WebKit fork | Could add blocking webRequest | Lose system WebKit security updates; massive build/infra cost; App Store/notarization issues |
+| Hybrid: WKWebExtension + native blocker + targeted polyfills in content world | Best practical coverage | Polyfills can't reach `browser.*` in extension background contexts through public API (UNVERIFIED whether any workaround exists) |
+
+**Expected outcome:** Safari-level extension compatibility (i.e., whatever Safari runs, den runs), plus direct CWS/AMO install. Realistic compat vs Chrome: UNMEASURED — build the test corpus and publish a compat table rather than a number.

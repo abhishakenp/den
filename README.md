@@ -34,9 +34,9 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 ## Planned features
 
 - Arc-style interface: vertical sidebar tabs, spaces, split view, command bar, link previews
-- Connections to Slack, GitHub and more, with a daily briefing that turns them into a todo list
+- Connections to Slack, GitHub and more, with a daily briefing that turns them into a todo list, and a personalized feed
+- On-device AI via Apple Intelligence, used only for the briefing and feed. No chat, nothing sent to the cloud
 - Chrome and Firefox extension support
-- No built-in AI. If you want it, install a plugin
 - Native macOS integration: passkeys, Keychain, Shortcuts, iCloud sync
 
 ## Roadmap and status
@@ -48,7 +48,7 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 | 3 | Plugin host and app skeleton | ❌ |
 | 4 | Core browsing: tabs, sidebar, spaces, profiles | ❌ |
 | 5 | Extensions and content blocking | ❌ |
-| 6 | Connections and daily briefing | ❌ |
+| 6 | Connections, daily briefing, personalized feed | ❌ |
 | 7 | First public release | ❌ |
 
 The full checklist is in [ROADMAP.md](ROADMAP.md).

@@ -62,10 +62,15 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 
 ## Extensions
 
-- [ ] Chrome extension support _(research: extensions-on-webkit)_
-- [ ] Firefox extension support
-- [ ] Install from Chrome Web Store / addons.mozilla.org
-- [ ] Content blocking / ad blocking
+Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
+
+- [ ] Chrome and Firefox extensions via Apple's `WKWebExtension` API (macOS 15.4+; Manifest v2 and v3, `chrome.*` and `browser.*`)
+- [ ] One-click install from Chrome Web Store / addons.mozilla.org, with update checks (Chrome Web Store terms: needs a legal read)
+- [ ] Fill in APIs Apple leaves out where feasible: `bookmarks`, `sidePanel`, `downloads`, `history`, `identity`
+- [ ] Native messaging bridge (password managers)
+- [ ] Built-in ad/tracker blocker: filter lists compiled to content rule lists (e.g. `adblock-rust` or AdGuard's `SafariConverterLib`), plus CSS hiding and scriptlets
+- [ ] uBlock Origin Lite works (full uBlock Origin can't, since WebKit has no blocking `webRequest`)
+- [ ] Decide minimum macOS: 15.4 (extension API) or 26
 
 ## Connections and daily briefing (Dia-style)
 
@@ -74,15 +79,21 @@ Details and sources: [Dia notes](docs/research/dia.md).
 - [ ] Connection plugins: Slack, GitHub
 - [ ] More connections as plugins (Gmail, Calendar, Linear, Notion, Jira, …)
 - [ ] Tokens stored in the macOS Keychain; connections run locally (Dia keeps them on its servers)
-- [ ] Daily briefing built without AI, straight from the services: Slack mentions and unread DMs, PRs waiting for your review, today's calendar, emails awaiting a reply
+- [ ] Daily briefing from all connections: Slack mentions and unread DMs, PRs waiting for your review, today's calendar, emails awaiting a reply, summarized into a todo list
 - [ ] Briefing todos can be checked off and link back to their source
+- [ ] Personalized feed: one stream across all connections, ranked by what matters to you
 - [ ] Connections load and sync only when used
 
 ## AI
 
-No built-in AI: no chat, no agent, no model loaded. AI features come from plugins people choose to install.
+AI in den is Apple's on-device model, used only for the daily briefing and the personalized feed. No chat, no agent, nothing sent to a cloud model. Anything else is left to plugins.
 
-- [ ] Plugin API is rich enough for an AI plugin to be built by someone else (tab content, connections, sidebar panel), gated by user-granted permissions
+- [ ] Summarize and prioritize connection data with Apple's Foundation Models framework, on device _(research: apple-platform — OS version, context limits)_
+- [ ] Model loads only while generating a briefing or ranking the feed, then is released
+- [ ] Model output is text and todos only: no tools, cannot click, send or open anything
+- [ ] Every summary item links to its source message, PR or event
+- [ ] Works without the model (plain lists) on Macs without Apple Intelligence
+- [ ] Plugin API is rich enough for someone else to build a chat/AI plugin, gated by user-granted permissions
 
 ## Apple integration
 
