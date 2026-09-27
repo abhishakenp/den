@@ -261,10 +261,10 @@ enum Cards {
     var buttons: [Value] = []
     if failed > 0 {
       buttons.append(action("previews.pr:failures", icon: "", tooltip: "Open the failing checks", title: "Show " + PV.plural(Int(failed), "failure", "failures"),
-                            pill: true, tone: "destructive", width: 118))
+                            pill: true, tone: "destructive"))
     } else if d.b("conflicts") {
       buttons.append(action("previews.pr:conflicts", icon: "", tooltip: "Open the conflict editor", title: "Resolve conflicts",
-                            pill: true, tone: "destructive", width: 138))
+                            pill: true, tone: "destructive"))
     }
     buttons.append(action("previews.pr:comments", icon: "sf:bubble.left", tooltip: "Open the conversation", title: "Show comments", pill: true, tone: "strong"))
     kids.append(stack(buttons, axis: "h", spacing: 6))

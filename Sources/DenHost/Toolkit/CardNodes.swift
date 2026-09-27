@@ -55,6 +55,12 @@ enum CardTone {
   }
 }
 
+/// An icon whose tint its node sets: the recursive palette pass (`applyPaletteRecursively`) would
+/// otherwise reset it to the sidebar's text color after the node chose a tone.
+final class CardIconView: IconView {
+  override func apply(_ p: Palette) {}
+}
+
 /// Width a label needs to draw its text untruncated on one line.
 @MainActor
 func naturalWidth(_ l: NSTextField) -> CGFloat {
@@ -218,7 +224,7 @@ final class LabelNode: NodeView {
 // MARK: - icon
 
 final class IconNode: NodeView {
-  let icon = IconView()
+  let icon = CardIconView()
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
     addSubview(icon)
@@ -308,7 +314,7 @@ final class ImageNode: NodeView {
 
 final class BadgeNode: NodeView {
   static let height: CGFloat = 20
-  let icon = IconView()
+  let icon = CardIconView()
   let label = makeLabel(size: 11, weight: .semibold)
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
@@ -398,7 +404,8 @@ final class NoteNode: NodeView {
     apply(r.palette)
   }
   override func apply(_ p: Palette) {
-    label.textColor = node.str("tone", "danger") == "danger" ? p.tokens.card.onDangerSoft.ns : CardTone.color(node.str("tone"), p)
+    // Only the bar carries a non-danger tone: tinted text on a tinted fill wouldn't stay readable.
+    label.textColor = node.str("tone", "danger") == "danger" ? p.tokens.card.onDangerSoft.ns : p.tokens.card.text.ns
     needsDisplay = true
   }
   override func height(for w: CGFloat) -> CGFloat { label.stringValue.isEmpty ? 0 : CGFloat(node.num("height", 22)) }
@@ -437,7 +444,7 @@ final class NoteNode: NodeView {
 /// A row: optional icon, title, subtitle, trailing accessory. Clickable when it has an `id` and
 /// `clickable` isn't false.
 final class ItemNode: NodeView {
-  let icon = IconView()
+  let icon = CardIconView()
   let title = makeLabel(size: 12.5, weight: .medium)
   let subtitle = makeLabel(size: 11)
   let accessory = makeLabel(size: 11, weight: .medium)
@@ -515,7 +522,7 @@ final class ItemNode: NodeView {
 /// that brightens on hover). `pill` variant: a filled button with a title. The tooltip shows the
 /// action's `shortcut` ("Pin Tab  ⌘D"); while a card shows, that shortcut presses this button.
 final class ActionNode: NodeView {
-  let icon = IconView()
+  let icon = CardIconView()
   let label = makeLabel(size: 13, weight: .semibold)
   var hovering = false { didSet { if hovering != oldValue { apply(r.palette) } } }
   var pressedDown = false { didSet { if pressedDown != oldValue { needsDisplay = true } } }

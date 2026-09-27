@@ -283,7 +283,7 @@ public enum Sites {
 /// URL, an absolute image file path (extension icons), or text/emoji. A remote image that fails to load (or answers non-2xx) becomes the
 /// `site:` tile for `fallbackDomain`, else for the domain the icon URL names (Google s2's
 /// `domain=`, else its host); with no domain, a globe.
-public final class IconView: NSView, Themable {
+public class IconView: NSView, Themable {
   public var spec = "" { didSet { if spec != oldValue { reload() } } }
   /// Letter drawn on a plain tile when `spec` is empty.
   public var fallbackLetter = "" { didSet { needsDisplay = true } }
