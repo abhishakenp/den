@@ -146,6 +146,7 @@ final class RowNode: NodeView {
   override func height(for w: CGFloat) -> CGFloat { CGFloat(node.num("height", 32)) }
   override func layout() {
     super.layout()
+    if let r = SpaceIconReorder.active, r.icon.superview === self { return }  // mid-drag: keep the live slots
     let sp = CGFloat(node.num("spacing", 4))
     let fixed = kids.compactMap(\.preferredWidth).reduce(0, +) + sp * CGFloat(max(0, kids.count - 1))
     let flex = kids.filter { $0.preferredWidth == nil }.count

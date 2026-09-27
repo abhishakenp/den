@@ -128,6 +128,7 @@ final class SettingsRow: FlippedView, NSTextFieldDelegate {
     case "info":
       let l = makeLabel("", size: 12)
       l.lineBreakMode = .byTruncatingMiddle
+      l.alignment = .right
       l.isSelectable = true
       valueLabel = l
       addSubview(l)

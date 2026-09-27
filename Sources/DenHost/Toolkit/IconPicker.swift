@@ -197,7 +197,7 @@ final class PillLink: NSView, Themable, Hoverable {
   required init?(coder: NSCoder) { fatalError() }
   override var isFlipped: Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
-  var preferredWidth: CGFloat { label.textWidth + 16 }
+  var preferredWidth: CGFloat { ceil(label.attributedStringValue.size().width) + 26 }
   func apply(_ p: Palette) { label.textColor = p.panelSecondaryText; fill = p.rowHover.withAlphaComponent(p.dark ? 0.1 : 0.07); needsDisplay = true }
   override func layout() { label.frame = NSRect(x: 8, y: (bounds.height - 16) / 2, width: bounds.width - 16, height: 16) }
   override func draw(_ dirtyRect: NSRect) {

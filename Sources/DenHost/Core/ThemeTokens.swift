@@ -138,6 +138,10 @@ public struct ThemeTokens: Equatable, Sendable {
     var accent: RGB
     if let s = systemAccent {
       accent = s
+    } else if theme.accent != nil, (theme.colors.map { $0.hsb.s }.max() ?? 0) < 0.04 {
+      // A greyscale space (near-black, white, grey) gets a neutral accent, not the red that hue 0
+      // would turn into at full saturation.
+      accent = dark ? RGB(0.40, 0.40, 0.43) : RGB(0.25, 0.25, 0.27)
     } else if let a = theme.accent {
       let h = a.hsb
       accent = RGB(hue: h.h, saturation: max(h.s, 0.55), brightness: dark ? 0.72 : 0.78)

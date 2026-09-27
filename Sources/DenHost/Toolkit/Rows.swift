@@ -424,6 +424,8 @@ final class SpaceIconNode: HoverNode {
 /// it passes their midpoints, with a haptic tick per slot. Nothing is emitted until the drop.
 @MainActor
 final class SpaceIconReorder {
+  /// The drag in progress: its row keeps the live frames (a re-render mid-drag mustn't snap back).
+  static weak var active: SpaceIconReorder?
   let icon: SpaceIconNode
   let icons: [SpaceIconNode]  // strip order at pick-up
   let slots: [NSRect]
@@ -445,6 +447,7 @@ final class SpaceIconReorder {
     icon.wantsLayer = true
     icon.layer?.zPosition = 1
     setLift(true)
+    Self.active = self
     NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
   }
 
@@ -486,6 +489,7 @@ final class SpaceIconReorder {
     let slot = target < slots.count ? slots[target] : icon.frame
     animate { self.frame(self.icon, slot) }
     setLift(false)
+    if Self.active === self { Self.active = nil }
     icon.layer?.zPosition = 0
     if target != start { NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now) }
     return target != start ? target : nil

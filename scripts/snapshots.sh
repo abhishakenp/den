@@ -9,6 +9,8 @@ store=$(mktemp -d)
 shot() { # name scenario appearance — a fresh store each time, so the plugins' first-run seed shows
   build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
 }
+# ONLY=new scripts/snapshots.sh: just the space menu, Settings and theming shots.
+if [[ -z ${ONLY:-} ]]; then
 shot main-light main light
 shot main-dark main dark
 shot sidebar-hidden hidden light
@@ -76,15 +78,60 @@ if [[ -f build/den.app/Contents/PlugIns/briefing.dylib ]]; then
   shot connections-settings connectionsSettings light 6
   shot briefing briefing light 30; shot briefing-dark briefing dark 30; shot briefing-feed briefingFeed light 32
 fi
+fi  # ONLY=new
 # Native menus are separate windows: open one and capture it through its own window id.
-menu() { # name appearance
-  build/den.app/Contents/MacOS/den --no-den-home --storage "$store" --appearance "$2" --scenario contextMenu --stay &
+menu() { # name appearance [scenario] — the space menu needs the plugins' first-run seed, so a fresh store
+  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$2" --scenario "${3:-contextMenu}" --stay &
   local pid=$!; sleep 3.5
   local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; for w in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where w[kCGWindowOwnerPID as String] as? Int32 == p && w[kCGWindowLayer as String] as? Int == 101 { print(w[kCGWindowNumber as String]!) }' $pid | head -1)
   [[ -n $id ]] && screencapture -o -x -l$id "$out/$1.png"
   kill $pid
 }
-menu context-menu light
-menu context-menu-dark dark
+if [[ -z ${ONLY:-} ]]; then menu context-menu light; menu context-menu-dark dark; fi
+menu space-menu light spaceMenu
+menu space-menu-dark dark spaceMenu
+# Spaces: the icon picker, inline rename, and the footer's live drag-reorder (mid-drag).
+for sc in IconPicker Rename Reorder; do
+  n=$(echo $sc | sed -E 's/([a-z])([A-Z])/\1-\2/g' | tr A-Z a-z)
+  shot space-$n space$sc light 3
+  shot space-$n-dark space$sc dark 3
+done
+# Settings (⌘,): each section, from the real plugins. The Settings window draws blank through
+# cacheDisplay, so it's captured on screen by its window id (den's own window only).
+win() { # name scenario appearance width
+  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --stay &
+  local pid=$!; sleep 5
+  local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; let w = Double(CommandLine.arguments[2])!; for x in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where x[kCGWindowOwnerPID as String] as? Int32 == p { let b = x[kCGWindowBounds as String] as! [String: Any]; if abs((b["Width"] as! Double) - w) < 2 { print(x[kCGWindowNumber as String]!) } }' $pid $4 | head -1)
+  [[ -n $id ]] && screencapture -o -x -l$id "$out/$1.png"
+  kill $pid
+}
+for sc in "" Tabs Search Connections Briefing; do
+  if [[ -n $sc ]]; then n=settings-${(L)sc}; else n=settings; fi
+  win $n settings$sc light 740
+  win $n-dark settings$sc dark 740
+done
+# Theming: every surface follows the space. Four themes x light/dark x six surfaces, composed
+# into one grid (scripts/lib/grid.swift); each surface opens through its real path.
+tdir=$(mktemp -d)
+cells=()
+for t in sandy purple nearBlack pastel; do
+  for ap in light dark; do
+    cells+=("label:$t $ap")
+    for sf in alert confirm quit command toast hover; do
+      shot _theme-$t-$ap-$sf "themeSample:$t:$sf" $ap 3 || shot _theme-$t-$ap-$sf "themeSample:$t:$sf" $ap 4  # retry once under load
+      mv "$out/_theme-$t-$ap-$sf.png" "$tdir/$t-$ap-$sf.png"
+      case $sf in
+        alert|confirm|quit) crop=0.3,0.28,0.7,0.68 ;;
+        command) crop=0.18,0.2,0.82,0.62 ;;
+        toast) crop=0.58,0.0,1.0,0.16 ;;
+        hover) crop=0.12,0.38,0.44,0.98 ;;
+      esac
+      cells+=("$tdir/$t-$ap-$sf.png" "$crop")
+    done
+  done
+done
+swift scripts/lib/grid.swift "$out/theming-grid.png" 6 300 190 "${cells[@]}"
 # Store at 1x (1280 pt wide) to keep the repo small.
-for f in $out/*.png; do sips -Z 1280 "$f" --out "$f" >/dev/null; done
+files=($out/*.png)
+[[ -n ${ONLY:-} ]] && files=($out/space-*.png $out/settings*.png $out/theming-grid.png)
+for f in $files; do sips -Z 1280 "$f" --out "$f" >/dev/null; done

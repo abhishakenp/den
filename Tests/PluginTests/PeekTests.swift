@@ -98,6 +98,10 @@ struct PeekTests {
   @Test(.timeLimit(.minutes(2))) func realShiftClickFromTodayTabOpensPeek() async throws {
     let h = Harness()
     h.startPeek()
+    // The window must be on screen: a web view in an off-screen window is suspended by WebKit
+    // (`inactiveSchedulingPolicy`), and the click would never reach the page in a busy full run.
+    h.rt.window.window.orderFrontRegardless()
+    defer { h.rt.window.window.orderOut(nil) }
     let today = h.selected!
     let web = try #require(h.rt.webviews.record(today)?.webView)
     // A same-site link filling the page, clicked with a real shift-modified mouse event

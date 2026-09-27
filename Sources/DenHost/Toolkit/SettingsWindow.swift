@@ -11,7 +11,7 @@ import CordisValue
 public final class SettingsWindowController: NSObject, NSWindowDelegate {
   unowned let service: SettingsService
   public let window: NSWindow
-  let root = FlippedView()
+  let root = SettingsRoot()
   let sidebar = SettingsSidebar()
   let scroll = NSScrollView()
   let pane = SettingsPane()
@@ -30,6 +30,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     window.tabbingMode = .disallowed
     window.collectionBehavior.insert(.fullScreenNone)
     window.delegate = self
+    root.wantsLayer = true
     window.contentView = root
     root.addSubview(sidebar)
     scroll.drawsBackground = false
@@ -40,10 +41,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     root.addSubview(scroll)
     sidebar.onSelect = { [weak self] id in self?.select(id) }
     pane.service = service
-    root.postsFrameChangedNotifications = true
-    NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: root, queue: .main) { [weak self] _ in
-      MainActor.assumeIsolated { self?.layout() }
-    }
+    root.onLayout = { [weak self] in self?.layout() }
     window.center()
     window.setFrameAutosaveName("den.settings")
   }
@@ -57,6 +55,8 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
       select(service.sections.first?.id ?? "")
     }
     window.makeKeyAndOrderFront(nil)
+    root.needsLayout = true
+    root.layoutSubtreeIfNeeded()
     NSApp.activate()
   }
 
@@ -96,6 +96,17 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
 
   public func windowDidChangeEffectiveAppearance() {}
   public func windowDidBecomeKey(_ notification: Notification) { applyAppearance() }
+}
+
+/// The window's content view: lays the sidebar and pane out whenever AppKit lays it out (first
+/// show, resize), so nothing depends on the size the window had when it was built.
+@MainActor
+final class SettingsRoot: FlippedView {
+  var onLayout: (() -> Void)?
+  override func layout() {
+    super.layout()
+    onLayout?()
+  }
 }
 
 enum SettingsMetrics {

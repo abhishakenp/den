@@ -64,6 +64,10 @@ struct ThemeTokenTests {
     // The purple space's accent keeps its hue.
     let purple = ThemeTokens.make(theme: Self.themes[1].1, dark: true)
     #expect(abs(purple.accent.hsb.h - RGB(hex: "#4B2A7B")!.hsb.h) < 0.03)
+    // A greyscale space gets a neutral accent (hue 0 at full saturation would be red).
+    for dark in [false, true] { #expect(ThemeTokens.make(theme: Self.themes[2].1, dark: dark).accent.hsb.s < 0.1) }
+    // A pastel keeps its hue (low saturation, but a color).
+    #expect(ThemeTokens.make(theme: Self.themes[3].1, dark: false).accent.hsb.s > 0.4)
     #expect(sandy.grain > 0 && ThemeTokens.make(theme: Self.themes[4].1, dark: false).grain == 0)
     // The same inputs give the same tokens (cached).
     #expect(ThemeTokens.make(theme: Self.themes[0].1, dark: false) == sandy)

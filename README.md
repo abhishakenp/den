@@ -70,6 +70,9 @@ Each item is covered by `swift test` or a `--scenario` run of the real app.
 - **Passwords:** den offers to save logins to your Keychain, and fills them after Touch ID. It also suggests strong passwords on sign-up forms. "Passwords…" in the command bar lists them
 - **Google sign-in** works: den sends Safari's user agent
 - **Extensions:** Chrome and Firefox extensions on WebKit's engine. "Add to den" on Chrome Web Store and Firefox Add-ons pages, popups, pinned extensions in the URL pill, and an Extensions page. Verified with uBlock Origin Lite (blocks ads), ColorPick Eyedropper and Dark Reader
+- **Space menu** (right-click a space icon or title: rename, icon, theme, profile, duplicate, move, delete) and drag-to-reorder spaces in the footer
+- **Settings** (⌘,) with sections contributed by plugins, and a full menu bar where every shortcut lives ([docs/shortcuts.md](docs/shortcuts.md)); every default and why is in [docs/defaults.md](docs/defaults.md)
+- **Theming:** every dialog, bar, card and toast follows the space's colors with legible contrast
 - **Plugins:** the features are Embedded Swift plugins (`spaces`, `tabs`, `commandbar`, `peek`, `theme`, `quit`, `darkmode`, `passwords`, `extensions`, …) loaded from `den.app/Contents/PlugIns`
 
 <p align="center">

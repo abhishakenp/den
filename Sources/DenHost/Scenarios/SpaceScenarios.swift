@@ -7,7 +7,27 @@ import CordisValue
 public enum SpaceScenarios {
   public static let names = ["spaceMenu", "spaceIconPicker", "spaceRename", "spaceReorder"]
 
+  /// Settings window sections (with the bundled plugins): `settings` (General), `settingsTabs`, …
+  public static let settingsNames = ["settings": "general", "settingsTabs": "tabs", "settingsSearch": "commandbar",
+                                     "settingsConnections": "connections", "settingsBriefing": "briefing"]
+
+  /// Theme samples for the theming grid: `themeSample:<theme>:<surface>`.
+  public static let sampleThemes: [String: [String: Value]] = [
+    "sandy": ["colors": ["#E8D5B0", "#D9BF8C"], "intensity": 0.75, "grain": 0.8],
+    "purple": ["colors": ["#4B2A7B", "#2D1B4E"], "intensity": 0.85, "grain": 0.2],
+    "nearBlack": ["colors": ["#141414", "#0A0A0A"], "intensity": 1.0, "grain": 0.1],
+    "pastel": ["colors": ["#FBEAF3", "#E0F2FB"], "intensity": 0.6, "grain": 0.3],
+  ]
+
   public static func apply(_ name: String, runtime rt: DenRuntime) -> NSWindow? {
+    if let section = settingsNames[name] {
+      // Let the plugins register, then open Settings at that section and snapshot its window.
+      rt.call("settings", "open", ["section": .string(section)])
+      // `cacheDisplay` draws this window's content blank, so scripts/snapshots.sh captures it
+      // on screen by window id (like native menus); `--snapshot` still works for the main window.
+      return rt.settings.window?.window
+    }
+    if name.hasPrefix("themeSample:") { return themeSample(name, rt) }
     guard names.contains(name) else { return nil }
     let w = rt.window.window
     guard let sid = rt.call("spaces", "current")["id"].string else { return w }
@@ -40,6 +60,38 @@ public enum SpaceScenarios {
         a.mouseDragged(with: ev(.leftMouseDragged, pitch * 0.8))
       }
     default: break
+    }
+    return w
+  }
+
+  /// `themeSample:<theme>:<surface>`: every space gets the theme (appearance from --appearance), then
+  /// one surface opens through its real path: `alert`, `confirm` (a page's JS dialogs), `quit` (the
+  /// quit plugin), `command` (the command bar), `toast` and `hover` (a hover card).
+  static func themeSample(_ name: String, _ rt: DenRuntime) -> NSWindow? {
+    let parts = name.split(separator: ":").map(String.init)
+    guard parts.count == 3, let theme = sampleThemes[parts[1]] else { return nil }
+    for s in rt.call("spaces", "list").array ?? [] {
+      rt.call("spaces", "update", ["id": s["id"], "theme": .object(theme.map { ($0.key, $0.value) })])
+    }
+    let w = rt.window.window
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+      switch parts[2] {
+      case "alert", "confirm":
+        // The page's own dialog path (WebPrompts) on the selected tab, in the sample theme.
+        let id = rt.call("content", "get")["focus"].string ?? rt.call("content", "get").list("panes").first?.string ?? ""
+        guard let web = rt.webviews.record(id)?.webView, let prompts = rt.webviews.prompts else { return }
+        if parts[2] == "alert" {
+          prompts.alert("Your changes were saved.", frame: nil, webView: web) {}
+        } else {
+          prompts.confirm("Leave this page? Changes you made may not be saved.", frame: nil, webView: web) { _ in }
+        }
+      case "quit": rt.plugins.emit("app.quitRequested")
+      case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
+      case "toast":
+        rt.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Cleared Tabs! Use ⌃Z to undo.", "icon": "sf:arrow.uturn.backward", "duration": 60000]])
+      case "hover": _ = PreviewScenarios.apply("previewGitHub", runtime: rt, appearance: "")
+      default: break
+      }
     }
     return w
   }
