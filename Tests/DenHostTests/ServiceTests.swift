@@ -131,6 +131,12 @@ struct ServiceTests {
     #expect(item.keyEquivalent == "t" && item.keyEquivalentModifierMask == .command)
     rt.keys.fire(item)
     #expect(fired.count == 1 && fired[0]["chord"] == "cmd+t")
+    // A real key event resolves through the main menu's key equivalents.
+    _ = rt.call("keys", "bind", ["chord": "ctrl+2", "event": "tabs.new", "menu": "Spaces"])
+    let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .control, timestamp: 0, windowNumber: 0, context: nil,
+                               characters: "2", charactersIgnoringModifiers: "2", isARepeat: false, keyCode: 19)!
+    #expect(NSApp.mainMenu!.performKeyEquivalent(with: key))
+    #expect(fired.count == 2 && fired[1]["chord"] == "ctrl+2")
     _ = rt.call("keys", "unbind", ["chord": "cmd+t"])
     #expect(!MainMenu.menu(named: "File").items.contains { $0.title == "New Tab" })
   }
