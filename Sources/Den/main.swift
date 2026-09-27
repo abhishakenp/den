@@ -9,7 +9,7 @@ import os
 //   --appearance light|dark|auto   set every space's appearance through the spaces plugin
 //   --scenario <name>              state before snapshot: main, hidden, reveal, space2, toast, swipe, swipeCommit,
 //                                  load10, load10discard, split, split3, command, commandEdit, commandActions, dialog, peek,
-//                                  littleArcLink, littleArcCmdO (prints scenario.cmdO … ok=true|false, exits), rename
+//                                  littleArcLink, littleArcCmdO (prints scenario.cmdO … ok=true|false, exits), rename, themeLive
 //                                  (split*, command*, dialog, peek and littleArcLink need those plugins)
 //   --dev-plugins <dir>            also load <dir>/*.dylib and hot-reload them when rebuilt
 //   --snapshot <path.png>          render the window to PNG after load, then quit
@@ -210,6 +210,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           }
         }
       }
+    case "themeLive":
+      // The theme plugin's picker over the demo window (the space's "Edit Theme…").
+      let id = rt.call("spaces", "current")["id"]
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.plugins.emit("spaces.editTheme", ["id": id]) }
     case "rename":
       // Double-click the first today tab: the inline title editor.
       if let id = rt.call("tabs", "list").list("today").first?["id"] { rt.plugins.emit("ui.action", ["id": id, "action": "doubleClick"]) }
