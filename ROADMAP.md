@@ -345,4 +345,5 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ⏳ Emoji tab and folder icons, from rename and the right-click menu (Arc)
 - ⏳ Same tab in multiple windows: opt-in, ships with multi-window support
 - ⏳ AI tab tidying: Apple on-device model, off by default, enable in Settings, never automatic unless enabled
-- ⏳ Web panels: optional low-priority plugin. Zen removed theirs for a Firefox-specific sandbox issue (Mozilla bug 1935985, per Zen discussion #7314) that doesn't apply to WebKit, where a panel is an ordinary sandboxed web view
+- ⏳ Web panels: optional plugin, normal priority (chat, AI chat sites like claude.ai/Gemini, reference, dashboards beside any tab; slides out from the sidebar edge; sleeps when hidden). Zen removed theirs for a Firefox-specific sandbox issue (Mozilla bug 1935985, per Zen discussion #7314) that doesn't apply to WebKit, where a panel is an ordinary sandboxed web view
+- ⏳ Now-playing dock at the bottom of the sidebar (Arc): every playing tab with artwork, title and artist (from the page's media info), play/pause, previous/next, mute, jump to tab and stop. Handles several playing at once, most recent first. Media keys and Control Center's Now Playing control den. Zero cost when nothing plays; event-driven
