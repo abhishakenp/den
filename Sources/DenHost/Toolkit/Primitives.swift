@@ -28,6 +28,13 @@ public struct Palette {
   public var rowHover: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.05) }  // command bar RowHoverBackground
   public var panelText: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.80) }  // command bar TextPrimary
   public var panelSecondaryText: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.33) }  // command bar TextSecondary
+  /// Saturated theme color that white text reads on (command bar selection, split drop
+  /// indicators). Spec §2 measured (65,72,216) in the default theme; den derives it from the space.
+  public var accentStrong: NSColor {
+    guard let a = theme.accent else { return NSColor(srgbRed: 65 / 255, green: 72 / 255, blue: 216 / 255, alpha: 1) }
+    let c = a.ns.usingColorSpace(.sRGB) ?? a.ns
+    return NSColor(hue: c.hueComponent, saturation: max(c.saturationComponent, 0.55), brightness: dark ? 0.72 : 0.78, alpha: 1)  // estimate
+  }
   public var accent: NSColor {
     guard let a = theme.accent else { return .controlAccentColor }
     return (dark ? a.mix(RGB(1, 1, 1), 0.25) : a.mix(RGB(0, 0, 0), 0.15)).ns

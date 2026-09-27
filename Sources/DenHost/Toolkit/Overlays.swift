@@ -165,7 +165,7 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     searchIcon.tint = p.panelSecondaryText
     separator.layer?.backgroundColor = NSColor(white: p.dark ? 1 : 0, alpha: 0.10).cgColor  // HairlineDivider
     // Spec §2 measured a theme/accent-tinted highlight; den uses the space accent.
-    let accent = p.accent
+    let accent = p.accentStrong
     for r in rows {
       r.selected = r.rowId == selected
       r.accent = accent

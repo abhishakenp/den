@@ -11,6 +11,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Den"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp Resources/den.icns "$APP/Contents/Resources/den.icns"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 codesign --force --deep --options runtime --entitlements Resources/den.entitlements --sign - "$APP"
 codesign --verify --strict "$APP"

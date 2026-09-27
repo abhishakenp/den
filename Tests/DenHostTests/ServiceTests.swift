@@ -207,4 +207,41 @@ struct ServiceTests {
     for _ in 0..<100 where again.url == nil { try await Task.sleep(for: .milliseconds(50)) }
     #expect(again.url?.absoluteString == "https://example.com/")
   }
+
+  @Test func dragReorderEmitsTargetAndPosition() throws {
+    let rt = Self.runtime()
+    rt.window.window.orderFront(nil)
+    var got: [Value] = []
+    rt.host.on("ui.action") { if $0["action"] == "reorder" { got.append($0) } }
+    _ = rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "children": [
+      ["type": "tabRow", "id": "a", "title": "A"], ["type": "tabRow", "id": "b", "title": "B"], ["type": "tabRow", "id": "c", "title": "C"],
+    ]]])
+    rt.window.window.contentView?.layoutSubtreeIfNeeded()
+    rt.ui.sidebarView.layoutSubtreeIfNeeded()
+    let list = try #require(rt.ui.sidebarView.slot("sidebar.today", page: 0)?.root as? StackNode)
+    list.layoutSubtreeIfNeeded()
+    let a = list.kids[0] as! TabRowNode, c = list.kids[2] as! TabRowNode
+    func ev(_ type: NSEvent.EventType, _ v: NSView, _ fy: CGFloat) -> NSEvent {
+      let p = v.convert(NSPoint(x: v.bounds.midX, y: v.bounds.height * fy), to: nil)
+      return NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: 0, windowNumber: rt.window.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+    }
+    rt.ui.drag.begin(a, event: ev(.leftMouseDown, a, 0.5))
+    rt.ui.drag.move(ev(.leftMouseDragged, c, 0.8))  // lower half of C (flipped view: y grows down)
+    rt.ui.drag.end(ev(.leftMouseUp, c, 0.8))
+    #expect(got.count == 1)
+    #expect(got.first?["value"]["source"] == "a" && got.first?["value"]["target"] == "c" && got.first?["value"]["position"] == "after")
+  }
+
+  @Test func sidebarResizeClampsAndResets() {
+    let rt = Self.runtime()
+    rt.window.dragResize(to: 300)
+    #expect(rt.window.sidebarWidth == 300)
+    rt.window.dragResize(to: 5000)
+    #expect(rt.window.sidebarWidth == Tokens.sidebarMaxWidth)
+    rt.window.dragResize(to: 40)  // below the collapse threshold hides it
+    #expect(rt.window.sidebarHidden)
+    rt.window.setSidebarHidden(false, animated: false)
+    rt.window.setSidebarWidth(Tokens.sidebarDefaultWidth, animated: false)  // what double-click does
+    #expect(rt.window.sidebarWidth == 228)
+  }
 }

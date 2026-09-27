@@ -264,6 +264,11 @@ public final class SidebarView: FlippedView {
     window?.performDrag(with: event)
   }
   var onDoubleClickEmpty: (() -> Void)?
+
+  /// Delivers a scroll event as if it hit the visible space page (snapshots / tests).
+  public func deliverScrollForTesting(_ e: NSEvent) {
+    if let page = pager.pages.first(where: { !$0.isHidden }) { page.scrollWheel(with: e) } else { scrollWheel(with: e) }
+  }
 }
 
 /// Drag-to-reorder for tab rows, folders and favorite tiles, with haptics and a theme-tinted

@@ -15,7 +15,7 @@ Every item below has to respect these. If a feature can't, it gets redesigned or
 
 - [ ] Plugin host modeled on [cordis](https://github.com/cordiverse/cordis): shared context, services with `inject`, automatic cleanup of everything a plugin registers ([notes](docs/research/cordis-and-agent-harness.md))
 - [ ] Core features as swappable services: tabs, history, sidebar, connections
-- [ ] Typed UI slots plugins can fill: sidebar panels, toolbar items, command bar actions
+- [x] Typed UI slots plugins can fill: sidebar panels, toolbar items, command bar actions (host `ui` service: sidebar slots, command bar, dialogs, toasts, peek; [API](docs/host-api.md))
 - [ ] Plugin API versioning and permissions
 - [ ] Lazy loading for plugins and services
 - [ ] Settings system, per plugin, editable at runtime
@@ -29,7 +29,7 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
 
 - [ ] Tab model on `WKWebView`
 - [ ] Profiles with isolated data stores (`WKWebsiteDataStore(forIdentifier:)`, macOS 14+)
-- [ ] Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard (save state + snapshot, destroy the web view, recreate on focus)
+- [x] Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard (save state + snapshot, destroy the web view, recreate on focus)
 - [ ] Session restore and crash recovery, using WebKit's page state save/restore
 - [ ] Apple Pay exception: skip den's injected scripts on checkout pages, since any injection disables Apple Pay
 - [ ] Web push notifications: not supported in `WKWebView`; decide on a workaround or skip
@@ -59,7 +59,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - [ ] Little Arc-style quick window
 - [ ] Link routing rules (Arc's Air Traffic Control)
 - [ ] Boosts: per-site CSS/JS customization
-- [ ] Compact mode / hide sidebar, chrome-less content area
+- [x] Compact mode / hide sidebar, chrome-less content area
 - [ ] Theme and UI mods (Zen Mods style: CSS plus declared options)
 - [ ] Web apps (PWA) support
 - [ ] Keyboard shortcuts, fully remappable, Arc defaults
@@ -130,7 +130,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 ## Release and project
 
 - [x] Public repo, MIT license
-- [ ] App skeleton that builds
+- [x] App skeleton that builds (`scripts/bundle.sh`)
 - [ ] Signed and notarized `.dmg` on GitHub Releases
 - [ ] Auto-update
 - [ ] CI builds on every PR

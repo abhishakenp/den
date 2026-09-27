@@ -134,6 +134,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { d.clearToday() }
     case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { d.peek("https://www.swift.org") }
     case "space2": d.switchSpace(1, animated: false)
+    case "swipe", "swipeCommit":
+      // In-process synthetic two-finger swipe over the sidebar (no other app is touched).
+      let w = runtime.window.window
+      let p = NSPoint(x: w.frame.minX + 110, y: w.frame.maxY - 500)
+      func scroll(_ phase: UInt32, _ dx: Int32) {
+        guard let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: dx, wheel3: 0) else { return }
+        e.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+        e.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(phase))
+        e.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: Int64(dx))
+        e.location = CGPoint(x: p.x, y: (NSScreen.screens.first?.frame.height ?? 0) - p.y)
+        if let ne = NSEvent(cgEvent: e) { runtime.ui.sidebarView.deliverScrollForTesting(ne) }
+      }
+      scroll(1, 0)
+      for _ in 0..<3 { scroll(2, -32) }
+      if s == "swipeCommit" { scroll(4, 0) }
     case "load10", "load10discard":
       // Memory measurement: show 10 tabs one after another (each gets a live WKWebView),
       // then go back to the first; with "discard", fully discard the other 9.

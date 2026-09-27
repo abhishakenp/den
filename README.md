@@ -4,7 +4,7 @@ A fast, native macOS browser built on WebKit, where everything is a plugin.
 
 <p>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <img alt="Status: design phase" src="https://img.shields.io/badge/status-design%20phase-orange">
+  <img alt="Status: early development" src="https://img.shields.io/badge/status-early%20development-orange">
   <img alt="Platform: macOS 26+" src="https://img.shields.io/badge/platform-macOS%2026%2B-lightgrey">
 </p>
 
@@ -16,7 +16,9 @@ A fast, native macOS browser built on WebKit, where everything is a plugin.
 </p>
 
 > [!IMPORTANT]
-> den is in the design phase. There is no code or build yet.
+> den is in early development. The host app (window, sidebar UI toolkit, web views, services) builds and runs with demo data; the browser features themselves arrive as plugins next.
+
+<p align="center"><img src="docs/screenshots/main-light.png" alt="den main window with demo data" width="820"></p>
 
 ## What is den?
 
@@ -45,13 +47,29 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 |---|------|--------|
 | 1 | Research Arc, Dia, Zen, WebKit, extension support, plugin design | ✅ |
 | 2 | Feature and architecture design | 🟡 In progress |
-| 3 | Plugin host and app skeleton | ❌ |
+| 3 | Plugin host and app skeleton | 🟡 Host services and UI done; plugin loading next |
 | 4 | Core browsing: tabs, sidebar, spaces, profiles | ❌ |
 | 5 | Extensions and content blocking | ❌ |
 | 6 | Connections, daily briefing, personalized feed | ❌ |
 | 7 | First public release | ❌ |
 
 The full checklist is in [ROADMAP.md](ROADMAP.md).
+
+## Build and run
+
+Requires macOS 26 and Xcode 26 (Swift 6.2+). den depends on the `cordis-swift` package at `../cordis-swift`, so clone both side by side.
+
+```sh
+scripts/run.sh --demo        # build build/den.app, then launch it with demo spaces and tabs
+scripts/bundle.sh            # only build and sign build/den.app
+swift test                   # host service tests
+scripts/snapshots.sh         # regenerate docs/screenshots
+scripts/measure-memory.sh main   # memory of den + its WebKit processes
+```
+
+Useful flags: `--demo`, `--appearance light|dark`, `--scenario <name>`, `--snapshot out.png`, `--measure-launch`.
+
+The host API that plugins code against is in [docs/host-api.md](docs/host-api.md).
 
 ## Design docs
 

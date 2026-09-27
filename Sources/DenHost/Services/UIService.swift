@@ -41,7 +41,7 @@ public final class UIService: HostService {
     renderer.drag = drag
     drag.root = sidebarView
     drag.contentFrame = { [weak wc] in wc.map { $0.contentArea.convert($0.contentArea.bounds, to: nil) } ?? .zero }
-    drag.accent = { [weak self] in self?.renderer.palette.accent ?? .controlAccentColor }
+    drag.accent = { [weak self] in self?.renderer.palette.accentStrong ?? .controlAccentColor }
 
     wc.sidebar.body.addSubview(sidebarView)
     sidebarView.frame = wc.sidebar.body.bounds
