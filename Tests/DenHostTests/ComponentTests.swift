@@ -175,7 +175,8 @@ extension ComponentTests {
     let rt = Self.runtime()
     var got: [Value] = []
     rt.host.on("ui.action") { got.append($0) }
-    let now = Date()
+    // Midday: the newest fixture item is 24 min old, which is "Yesterday" just after midnight.
+    let now = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!
     rt.ui.library.now = { now }
     _ = rt.call("ui", "set", ["slot": "overlay.library", "tree": ["type": "library", "id": "archive", "items": HostScenarios.archiveItems(now: now)]])
     #expect(rt.call("ui", "get")["overlays"] == ["overlay.library"])
