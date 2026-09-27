@@ -365,6 +365,28 @@ struct PeekTests {
     #expect(h.panes == [web])
   }
 
+  /// Cmd-O as a real key event through the main menu's key equivalents (the path AppKit takes
+  /// when no view claims it) reaches the peek plugin. A Little Arc panel that is on screen but not
+  /// the key window stays put; the key-window case runs in the app (`--scenario littleArcCmdO`),
+  /// since a test process can't become the active app.
+  @Test func cmdOReachesPeekButOnlyMovesTheKeyLittleArc() throws {
+    let h = Harness()
+    NSApp.mainMenu = NSMenu()
+    MainMenu.install()
+    h.startPeek()
+    h.record(["peek.key.expand"])
+    h.rt.app.open([URL(string: "https://www.swift.org/")!])
+    let mini = try #require(h.rt.windowService.mini.windows.values.first)
+    mini.panel.orderFront(nil)
+    #expect(!mini.panel.isKeyWindow)
+    let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: mini.panel.windowNumber,
+                               context: nil, characters: "o", charactersIgnoringModifiers: "o", isARepeat: false, keyCode: 31)!
+    #expect(NSApp.mainMenu!.performKeyEquivalent(with: key))
+    #expect(h.events.map(\.0) == ["peek.key.expand"])
+    #expect(h.rt.call("window", "listMini").array?.count == 1)
+    #expect(h.ids("today").first != mini.webview)
+  }
+
   @Test func littleArcCloseArchiveAndSetting() {
     let h = Harness()
     h.startPeek()

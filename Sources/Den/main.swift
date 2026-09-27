@@ -9,7 +9,7 @@ import os
 //   --appearance light|dark|auto   set every space's appearance through the spaces plugin
 //   --scenario <name>              state before snapshot: main, hidden, reveal, space2, toast, swipe, swipeCommit,
 //                                  load10, load10discard, split, split3, command, commandEdit, commandActions, dialog, peek,
-//                                  littleArcLink, rename
+//                                  littleArcLink, littleArcCmdO (prints scenario.cmdO … ok=true|false, exits), rename
 //                                  (split*, command*, dialog, peek and littleArcLink need those plugins)
 //   --dev-plugins <dir>            also load <dir>/*.dylib and hot-reload them when rebuilt
 //   --snapshot <path.png>          render the window to PNG after load, then quit
@@ -186,6 +186,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // A link from another app, as macOS delivers it: the peek plugin opens it in Little Arc.
       snapMini = true
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { rt.app.open([URL(string: "https://www.swift.org/blog/")!]) }
+    case "littleArcCmdO":
+      // A link from another app opens Little Arc; with its panel the key window, a real Cmd-O key
+      // event goes through AppKit's dispatch (NSApp.sendEvent) and moves the page into a today tab.
+      rt.app.open([URL(string: "https://www.swift.org/")!])
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        guard let panel = NSApp.windows.first(where: { $0 is NSPanel && $0.isVisible }) else { print("scenario.cmdO no panel"); exit(1) }
+        let web = rt.call("window", "listMini")[0]["webview"].string ?? ""
+        NSApp.activate()
+        panel.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+          let wasKey = rt.call("window", "listMini")[0]["key"] == true
+          let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
+                                   windowNumber: panel.windowNumber, context: nil, characters: "o", charactersIgnoringModifiers: "o", isARepeat: false, keyCode: 31)!
+          NSApp.sendEvent(e)
+          // WKWebView first offers the key to the page (a WebContent round trip), then AppKit
+          // re-dispatches it to the main menu, so the move lands a moment later.
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            let first = rt.call("tabs", "list").list("today").first?["id"].string ?? ""
+            let ok = wasKey && first == web && rt.call("tabs", "selected")["id"].string == web && rt.call("window", "listMini").array?.isEmpty == true
+            print("scenario.cmdO key=\(wasKey) web=\(web) today0=\(first) minis=\(rt.call("window", "listMini").array?.count ?? -1) ok=\(ok)")
+            exit(ok ? 0 : 1)
+          }
+        }
+      }
     case "rename":
       // Double-click the first today tab: the inline title editor.
       if let id = rt.call("tabs", "list").list("today").first?["id"] { rt.plugins.emit("ui.action", ["id": id, "action": "doubleClick"]) }
