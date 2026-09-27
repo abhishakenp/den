@@ -32,6 +32,7 @@ One per-site panel from the URL pill.
 | Blank new tabs close when you switch apps | Arc | |
 
 ## C. Page tools: reading and capture
+Built: the `pagetools` plugin ([plugin-services.md](../plugin-services.md#pagetools-plugin-pagetools)); zoom per site is the host's page actions (`webviews.zoom`).
 
 | Feature | From | Notes |
 |---|---|---|

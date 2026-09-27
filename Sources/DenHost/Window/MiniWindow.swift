@@ -33,6 +33,7 @@ final class MiniWindowController: NSObject, NSWindowDelegate {
     panel.isReleasedWhenClosed = false
     panel.collectionBehavior.insert(.fullScreenAuxiliary)
     panel.minSize = Tokens.miniMinSize
+    TestMode.hide(panel)
     panel.delegate = self
     panel.contentView = root
     background.theme = theme

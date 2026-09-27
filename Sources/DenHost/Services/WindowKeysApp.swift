@@ -281,6 +281,24 @@ public final class AppService: HostService {
     case "copy":
       NSPasteboard.general.clearContents()
       NSPasteboard.general.setString(args.str("text"), forType: .string)
+    case "paths":
+      let fm = FileManager.default
+      return ["home": .string(fm.homeDirectoryForCurrentUser.path), "downloads": .string(fm.urls(for: .downloadsDirectory, in: .userDomainMask)[0].path),
+              "pictures": .string(fm.urls(for: .picturesDirectory, in: .userDomainMask)[0].path), "desktop": .string(fm.urls(for: .desktopDirectory, in: .userDomainMask)[0].path)]
+    case "chooseFolder":
+      // Emits app.folder {request, path} ("" when cancelled).
+      let request = args.str("request", "folder")
+      let panel = NSOpenPanel()
+      panel.canChooseDirectories = true
+      panel.canChooseFiles = false
+      panel.canCreateDirectories = true
+      panel.prompt = args.str("prompt", "Choose")
+      if !args.str("message").isEmpty { panel.message = args.str("message") }
+      let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+        self?.host.emit("app.folder", ["request": .string(request), "path": .string(r == .OK ? panel.url?.path ?? "" : "")])
+      }
+      if let w = wc?.window { panel.beginSheetModal(for: w, completionHandler: done) } else { panel.begin(completionHandler: done) }
+      return ["pending": true]
     case "info":
       return ["bundleId": .string(Bundle.main.bundleIdentifier ?? ""), "version": .string(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"),
               "launchMs": launchMs.map { .double($0) } ?? .null]

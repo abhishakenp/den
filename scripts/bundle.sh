@@ -39,6 +39,9 @@ for dir in Plugins/*/; do
   [[ "$id" == Shared ]] && continue
   # Declared permissions (session:<domain>, net:<domain>) ride next to the dylib as <id>.json.
   [[ -f "${dir}permissions.json" ]] && cp "${dir}permissions.json" "$APP/Contents/PlugIns/$id.json"
+  # Files the plugin injects into pages (webviews.inject), read only when a feature is used.
+  # (Under Resources: codesign --deep would take a folder in PlugIns for a nested bundle.)
+  [[ -d "${dir}resources" ]] && mkdir -p "$APP/Contents/Resources/plugin-resources" && cp -R "${dir}resources" "$APP/Contents/Resources/plugin-resources/$id"
   "$CORDIS_BUILD" --id "$id" --out "$APP/Contents/PlugIns/$id.dylib" "$dir"*.swift Plugins/Shared/*.swift &
   pids+=($!)
 done

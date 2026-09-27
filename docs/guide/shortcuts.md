@@ -45,6 +45,8 @@ Mouse back/forward buttons and two-finger swipes on the page work too.
 | Inspect element | ⌥⌘C |
 | JavaScript console | ⌥⌘J |
 | Full screen | ⌃⌘F |
+| Reader | ⌃⌘R |
+| Capture a region, element, visible area or full page | ⇧⌘2 |
 
 ## Sidebar, split view, Peek, briefing
 

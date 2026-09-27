@@ -33,6 +33,9 @@ public final class DenRuntime {
   public let settings: SettingsService
   /// The cordis registration of each host service (tests can withdraw one to stand in a fake).
   public private(set) var serviceHandles: [String: CordisHandle] = [:]
+  // On-device text to speech and translation (the `pagetools` plugin's reader and translation).
+  public let speech: SpeechService
+  public let translate: TranslateService
   /// Lets `PluginLoader` (built by the app from `plugins` alone) grant sidecar permissions.
   static var permissionsByHost: [ObjectIdentifier: Permissions] = [:]
   static func permissions(for plugins: PluginHost) -> Permissions? { permissionsByHost[ObjectIdentifier(plugins)] }
@@ -64,9 +67,15 @@ public final class DenRuntime {
                                    persistent: isDefault)
     extensions.content = content
     settings = SettingsService(host: host, storage: storage)
+    speech = SpeechService(host: host)
+    translate = TranslateService(host: host)
+    translate.window = { [weak window] in window?.window }
     Self.permissionsByHost[ObjectIdentifier(plugins)] = permissions
     // `webviews.eval` reads a live page only for a plugin with `session:<that page's host>`.
     webviews.allowScript = { [permissions] plugin, host in MainActor.assumeIsolated { permissions.allowsSession(plugin, host: host) } }
+    // `webviews.inject`: a plugin's own scripts (from its resource folder) with `pages:` permission.
+    webviews.allowPages = { [permissions] plugin, host in MainActor.assumeIsolated { permissions.allowsPages(plugin, host: host) } }
+    webviews.resource = { [permissions] plugin, name in MainActor.assumeIsolated { permissions.resource(plugin, name) } }
     windowService.ui = ui
     webviews.prompts = WebPrompts(window: window) { [weak ui] in ui?.renderer.palette }
     windowService.attach(webviews: webviews, host: host)
@@ -78,7 +87,7 @@ public final class DenRuntime {
       return (e.str("name", "Google"), u)
     }
     webviews.pageActions = pa
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions, settings, media] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions, settings, media, speech, translate] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

@@ -26,6 +26,8 @@ final class DenWebView: WKWebView {
   override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
     super.willOpenMenu(menu, with: event)
     Self.customize(menu, hit: context, peek: service?.host.hasListeners("peek.link") == true, engine: service?.pageActions?.searchEngineName ?? "Google", target: self)
+    // Plugins' items (`webviews.setMenu`, e.g. "Copy Link to Highlight").
+    service?.contextMenu?(self, menu)
   }
 
   /// Rewrites WebKit's default items (identifiers are WebKit's `WKMenuItemIdentifier…` strings).

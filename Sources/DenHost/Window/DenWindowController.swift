@@ -73,6 +73,7 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     window.delegate = self
     window.setFrameAutosaveName("den.main")
     if window.frame.origin == .zero { window.center() }
+    TestMode.hide(window)
 
     root.wantsLayer = true
     root.onLayout = { [weak self] in self?.layout() }

@@ -67,8 +67,10 @@ Chords are `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f
 | Inspect element | ⇧⌘C | ⇧⌘C | ⌥⌘C | ⌥⌘C | `view.inspectElement` |
 | JavaScript console | ⌥⌘C | ⌥⌘J | ⌥⌘J | ⌥⌘J | `view.console` |
 | Full screen | ⌃⌘F | ⌃⌘F | ⌃⌘F | ⌃⌘F | `view.fullScreen` |
+| Reader | ⇧⌘R | – | – | ⌃⌘R | `pagetools.reader` (command) |
+| Capture (region; the bar switches to element, visible area, full page) | – | – | ⇧⌘2 | ⇧⌘2 | `pagetools.capture.region` (command) |
 
-⌘S: Arc wins (Show/Hide Sidebar), so saving is Arc's ⇧⌘S. ⌥⌘C: Arc's Inspect Element wins over Safari's console; the console is ⌥⌘J like Chrome and Arc.
+Reader: Safari's ⇧⌘R is Arc's (and den's) Reload from Origin, so Reader is ⌃⌘R. ⌘S: Arc wins (Show/Hide Sidebar), so saving is Arc's ⇧⌘S. ⌥⌘C: Arc's Inspect Element wins over Safari's console; the console is ⌥⌘J like Chrome and Arc.
 
 ## Sidebar, split view, briefing
 

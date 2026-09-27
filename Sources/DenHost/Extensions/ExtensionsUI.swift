@@ -128,6 +128,7 @@ final class ExtensionsUI {
   private var panelAnchor: NSRect = .zero
 
   private func present(_ v: NSView) {
+    TestMode.keepActive(v)  // tests: the invisible window mustn't throttle the popup's page
     panel.setContent(v)
     panel.apply(palette)
     if backdrop.superview == nil { wc.overlays.addSubview(backdrop) }

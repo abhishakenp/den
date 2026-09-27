@@ -11,6 +11,11 @@ import Foundation
 /// - `session:<domain>`: read cookies and site storage for `<domain>` and its subdomains, and
 ///   `net.fetch` to them with the profile's cookies attached.
 /// - `net:<domain>`: `net.fetch` to `<domain>` and its subdomains, without cookies.
+/// - `pages:<domain>` (or `pages:*`): run the plugin's own scripts in pages of `<domain>` (every
+///   page with `*`) through `webviews.inject`, in the plugin's isolated content world.
+///
+/// A plugin's other sidecar is its resource folder, `<id>.resources/` next to the dylib
+/// (bundled plugins: `Contents/Resources/plugin-resources/<id>/`, from `Plugins/<id>/resources/`): files `webviews.inject` reads by name.
 ///
 /// cordis doesn't tell a host service which plugin called it, so callers pass their own id as
 /// `plugin` (the same convention as `commands.register {owner}`). Plugins are native code in den's
@@ -19,6 +24,8 @@ import Foundation
 @MainActor
 public final class Permissions {
   private var grants: [String: [String]] = [:]
+  /// Plugin id -> its resource folder (`<id>.resources` next to the dylib).
+  public private(set) var resources: [String: URL] = [:]
 
   public init() {}
 
@@ -33,6 +40,9 @@ public final class Permissions {
   /// Reads `<dylib without extension>.json` and grants its `permissions`. Returns what was granted.
   @discardableResult
   public func loadSidecar(plugin: String, dylib: URL) -> [String] {
+    let res = dylib.deletingPathExtension().appendingPathExtension("resources")
+    var isDir: ObjCBool = false
+    if FileManager.default.fileExists(atPath: res.path, isDirectory: &isDir), isDir.boolValue { resources[plugin] = res }
     let url = dylib.deletingPathExtension().appendingPathExtension("json")
     guard let data = try? Data(contentsOf: url),
       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -46,7 +56,7 @@ public final class Permissions {
   /// "session:slack.com" -> ("session", "slack.com").
   nonisolated static func parse(_ p: String) -> (kind: String, domain: String)? {
     let parts = p.split(separator: ":", maxSplits: 1).map(String.init)
-    guard parts.count == 2, ["session", "net"].contains(parts[0]), !parts[1].isEmpty else { return nil }
+    guard parts.count == 2, ["session", "net", "pages"].contains(parts[0]), !parts[1].isEmpty else { return nil }
     return (parts[0], parts[1].lowercased())
   }
 
@@ -67,8 +77,37 @@ public final class Permissions {
   /// Plain `net.fetch` to `host`.
   public func allowsNet(_ plugin: String, host: String) -> Bool {
     list(plugin).contains { p in
-      guard let (_, d) = Self.parse(p) else { return false }
+      guard let (k, d) = Self.parse(p), k != "pages" else { return false }
       return Self.covers(domain: d, host: host)
     }
   }
+
+  /// `webviews.inject` into a page on `host` (`pages:*` covers every page, `session:` its site).
+  public func allowsPages(_ plugin: String, host: String) -> Bool {
+    list(plugin).contains { p in
+      guard let (k, d) = Self.parse(p), k == "pages" || k == "session" else { return false }
+      return d == "*" || Self.covers(domain: d, host: host)
+    }
+  }
+
+  /// A file in the plugin's resource folder: plain names and subfolders only ("vendor/x.js").
+  /// Without a registered folder (tests, `swift run`), the checkout's `Plugins/<id>/resources`.
+  public func resource(_ plugin: String, _ name: String) -> URL? {
+    guard !name.isEmpty, !name.hasPrefix("/"), !name.split(separator: "/").contains("..") else { return nil }
+    let bundled = Bundle.main.resourceURL?.appendingPathComponent("plugin-resources").appendingPathComponent(plugin)
+    let dir = resources[plugin]
+      ?? bundled.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+      ?? Self.repoPlugins?.appendingPathComponent(plugin).appendingPathComponent("resources")
+    guard let url = dir?.appendingPathComponent(name), FileManager.default.fileExists(atPath: url.path) else { return nil }
+    return url
+  }
+
+  public func setResources(_ plugin: String, _ dir: URL) { resources[plugin] = dir }
+
+  /// `<checkout>/Plugins` when running from the repository (swift test / swift run), else nil.
+  nonisolated static let repoPlugins: URL? = {
+    let u = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().appendingPathComponent("Plugins")
+    return FileManager.default.fileExists(atPath: u.path) ? u : nil
+  }()
 }

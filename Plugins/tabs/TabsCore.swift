@@ -115,6 +115,8 @@ final class TabsCore {
   var dirty = false
   var shown = ""  // tab id currently in the content area
   var editing: String?  // tab or folder whose title is being renamed inline in the sidebar
+  /// Other plugins' buttons in the URL pill, per web view and owner (`pillButtons`).
+  var pillButtons: [String: [(String, [Value])]] = [:]
 
   init(env: PluginEnv) { self.env = env }
 
@@ -453,6 +455,16 @@ final class TabsCore {
       return .array(archive)
     case "library":
       if args.b("open", true) { openLibrary() } else { closeLibrary() }
+    case "pillButtons":
+      // Another plugin's buttons in the URL pill while `webview` is selected: [{id, icon, tooltip?, active?}].
+      // A click emits ui.action {id: <button id>, action: click, value: {webview}}.
+      let w = args.s("webview"), owner = args.s("owner")
+      guard !w.isEmpty, !owner.isEmpty else { return .err("tabs: pillButtons needs webview and owner") }
+      var list = pillButtons[w] ?? []
+      list.removeAll { $0.0 == owner }
+      if !args.a("buttons").isEmpty { list.append((owner, args.a("buttons"))) }
+      pillButtons[w] = list.isEmpty ? nil : list
+      if w == selectedId { renderHeader() }
     case "addToArchive":
       // A page that was never a tab (an auto-closed Little Arc window) goes into the archive.
       let url = args.s("url")
@@ -1119,7 +1131,8 @@ final class TabsCore {
     env.call("ui", "set", ["slot": "sidebar.header", "tree": ["type": "list", "id": "tabs.header", "spacing": 0, "children": [
       ["type": "navBar", "id": "tabs.nav", "canGoBack": .bool(st.b("canGoBack")), "canGoForward": .bool(st.b("canGoForward")), "loading": .bool(st.b("loading"))],
       ["type": "urlPill", "id": "tabs.url", "text": .string(text), "secure": .bool(Text.hasPrefix(tabs[selectedId ?? ""]?.url ?? "", "https:")),
-       "loading": .bool(st.b("loading")), "progress": .double(st["progress"].double ?? 0), "placeholder": "Search or Enter URL…"],
+       "loading": .bool(st.b("loading")), "progress": .double(st["progress"].double ?? 0), "placeholder": "Search or Enter URL…",
+       "buttons": .array((pillButtons[selectedId ?? ""] ?? []).flatMap { $0.1 }), "webview": .str(selectedId)],
     ]]])
   }
 

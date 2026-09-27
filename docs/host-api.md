@@ -57,7 +57,11 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 | `suspend` | `id`, `force?` | `{suspended: true}`, or `{suspended: false, reason}`. Full discard: keeps `interactionState` (back/forward list and scroll, ~1 KB), destroys the WKWebView, and its WebContent process exits. The page's snapshot is already on disk (below). Without `force` it refuses a page that plays media (`media`), is in picture in picture (`pip`), uses the camera or microphone (`capture`), holds unsaved form input (`form`), or is on screen (`visible`: a pane, peek, Little Arc, the mini player) |
 | `setMuted` | `id`, `muted` | ok. WebKit's page mute (`_setPageMuted:`, Safari's tab mute): every frame, `<audio>`/`<video>` and WebAudio, without changing the page's own `muted`. Kept across discards while the tab lives. Emits `webviews.muted` |
 | `snapshot` | `id`, `path`, `width?` (pt; a small copy at 2x, for previews), `format?: png\|jpeg` | `{pending}`, then the event `webviews.snapshot {id, path, ok}`. A view that can't draw (not in the window) writes its last snapshot, if any |
+| `snapshot` (capture) | `id`, and any of `rect?: {x, y, width, height}` (CSS px of the document, scroll included), `full?`, `clipboard?`, `folder?` + `name?` | `{pending}`, then `webviews.snapshot {id, ok, path?, clipboard, width, height, bytes, error?}` (pixels). See [Capture](#capture) |
 | `eval` | `id`, `plugin`, `script` (a function body that `return`s JSON data, ≤ 4 KB), `request?`, `timeoutMs?` (5000) | `{request}`, then `webviews.evalResult {request, webview, ok, value \| error}`. Only for a live page (it never loads or wakes one), in an isolated content world, and only when `plugin` has `session:<the page's host>` |
+| `inject` | `id`, `plugin`, `files?: [name]` (from the plugin's resource folder), `global?`, `script?` (function body, ≤ 64 KB), `args?` (named arguments of `script`), `request?` | `{request}`, then `webviews.injectResult {request, webview, plugin, ok, value \| error}`. See [Plugins in pages](#plugins-in-pages) |
+| `setMenu` | `plugin`, `items: [{id, title, when?: selection\|any}]` (`[]` removes) | ok. Picking one emits `webviews.menu {id, webview, plugin}` |
+| `setContentRules` | `plugin`, `rules: [WebKit content rule]` (`[]` removes) | `{pending}`, then `webviews.contentRules {plugin, ok, count, error?}` |
 | `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted, media: {playing, pip, dirty, video?}, suspended, live, profile, snapshot}` |
 | `list` | – | `[id]` |
 | `setLinkPolicy` | `id` (or `"*"` for the default), `rules: [{when: crossSite\|sameSite\|any, hosts?: [suffix], modifiers?: [cmd,shift,opt,ctrl], event}]` | ok |
@@ -78,6 +82,7 @@ Events:
 - `webviews.closed {id}`
 - `webviews.evalResult {request, webview, ok, value | error}`
 - `webviews.zoom {id, zoom}`, `webviews.find {id, visible, query, index, count}`
+- `webviews.injectResult {request, webview, plugin, ok, value | error}`, `webviews.message {webview, plugin, value}`, `webviews.menu {id, webview, plugin}`, `webviews.contentRules {plugin, ok, count, error?}`
 - One event per link rule, named by the rule's `event` field: `{id, url, source}`.
 
 Every web view sends Safari's user agent for this macOS (`applicationNameForUserAgent` = `Version/<Safari's version> Safari/605.1.15`, read once from Safari's Info.plist). WKWebView's default leaves that suffix out, and Google's sign-in then blocks the browser as an embedded web view.
@@ -99,6 +104,21 @@ The link policy is declarative because `WKNavigationDelegate` decisions are sync
 - **Dropped files** from Finder open as new tabs instead of replacing the page. File URLs load with read access to their folder.
 
 **Dropping links** on the sidebar (a dragged link, a URL string, files) emits `window.dropURLs {urls, target: sidebar|content}`; the `tabs` plugin opens them as today tabs, the last one selected.
+
+### Plugins in pages
+
+Generic blocks for plugins that work inside web pages (`PageScripting.swift`). The `pagetools` plugin's reader, translation, capture, Zap and text-fragment links are built only from these.
+
+- **`inject`** runs the plugin's own code in a live page (never loads or wakes one), in the plugin's own isolated content world `den.plugin.<id>`: the page's scripts can't see it, and plugins can't see each other's. `files` are read from the plugin's resource folder (`Plugins/<id>/resources/`, bundled as `Contents/Resources/plugin-resources/<id>/`) the first time they're used, then cached; `..` and absolute names are refused. With `global`, the files are skipped when `window[global]` already exists in that world (a library loaded once per page). Then `script` runs as an async function body with `args` as named arguments; its return value (JSON data) comes back in `webviews.injectResult`. A thrown error comes back as `error` with the exception's message.
+- **Permission** `pages:<domain>` (or `pages:*`) in the plugin's `permissions.json`; a `session:<domain>` grant also covers its site. Anything else is refused.
+- **Messages.** Code in the plugin's world calls `webkit.messageHandlers.den.postMessage(value)`; den emits `webviews.message {webview, plugin, value}`. A web view gets this handler on the first `inject` into it, and loses it when it is discarded.
+- **Context menu.** `setMenu` items appear in every page's context menu; `when: selection` items only in the menu for selected text (right after Copy).
+- **Content rules.** `setContentRules` compiles the plugin's [WebKit content rules](https://developer.apple.com/documentation/safariservices/creating-a-content-blocker) (`block`, `css-display-none`, …) into one list per plugin, added to every live and future web view. WebKit applies them at document start, with no script.
+- **Cost.** Nothing runs until a plugin calls one of these: no scripts, handlers or rule lists at launch.
+
+### Capture
+
+`snapshot` with `rect`, `full`, `clipboard` or `folder` is a capture, drawn by WebKit with no scrolling or stitching: a rect on screen is a `takeSnapshot` of it; anything reaching past the visible area (a `full` page, a tall element) comes from WebKit's whole-document PDF (`createPDF`), rasterised at the screen's scale and cropped (up to 16,000 pt tall). `takeSnapshot` alone leaves everything off screen blank, which `PageBlocksTests` checks. No `rect` and no `full` means the visible area. The PNG goes to `path`, or to `folder`/`name` (made unique with " 2", " 3" …), and/or to the general pasteboard as PNG and TIFF. The picking UI (region, element) belongs to the plugin.
 
 ## content
 
@@ -166,6 +186,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `setPages` | `count`, `current?` | ok |
 | `showPage` | `page`, `animated?` | ok |
 | `get` | – | `{page, pages, overlays}` |
+| `tokens` | – | den's theme tokens (`ThemeTokens`: space theme + appearance, contrast-checked) as CSS colors for UI drawn inside web pages: `{dark, bg, panel, text, secondary, border, hover, accent, onAccent, mark, shadow}` |
 
 **Slots:**
 - `sidebar.header`, `sidebar.favorites`, `sidebar.footer`
@@ -188,7 +209,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `text` | `text`, `style: title\|body\|caption\|secondary` | – |
 | `button` | `id`, `icon`, `title?`, `size?`, `tooltip?`, `enabled?`, `action?` | `click` (or `action`) |
 | `navBar` | `id`, `canGoBack`, `canGoForward`, `loading` | `toggleSidebar`, `back`, `forward`, `reload`, `stop` |
-| `urlPill` | `id`, `text`, `progress?`, `loading?`, `placeholder?` | `click`, `copy` |
+| `urlPill` | `id`, `text`, `progress?`, `loading?`, `placeholder?`, `buttons?: [{id, icon, tooltip?, active?}]`, `webview?` | `click`, `copy`. A `buttons` item (always visible, left of copy; `active` tints it with the accent) emits `{id: <its id>, action: click, value: {webview}}` |
 | `grid` | `columns?`, `children` | – |
 | `favoriteTile` | `id`, `icon`, `title`, `selected`, `audio`, `muted?`, `dropInto?` | `click`, `doubleClick`, `reorder`, `mute` (the speaker badge) |
 | `spaceTitle` | `id`, `title`, `icon?`, `editing?`, `editText?` | `click`, `doubleClick`, `more`, `rename {title}`, `renameCancel` |
@@ -461,8 +482,36 @@ Lets a plugin hide features whose provider isn't loaded.
 | `relaunch` | `background?` | ok. Quits cleanly (no quit dialog) and starts den again. With `background`, it doesn't take focus |
 | `setAbout` | `credits` | ok. Text for the About panel |
 | `showAbout` | – | ok. Shows the About panel (the command bar's "About den") |
+| `paths` | – | `{home, downloads, pictures, desktop}` |
+| `chooseFolder` | `request?`, `message?`, `prompt?` | `{pending}`. An open panel (a sheet on den's window); emits `app.folder {request, path}` (`""` when cancelled) |
 
-Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`.
+Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`, `app.folder`.
+
+## speech
+
+Text to speech with the system voices (`AVSpeechSynthesizer`), on device. One queue at a time. The synthesizer exists only while something is being read.
+
+| Method | Args | Returns |
+|---|---|---|
+| `speak` | `utterances: [string]`, `lang?` (BCP 47; picks the system voice), `rate?` (1 = normal, 0.5–2.5), `volume?` (0–1), `from?` (index), `request?` | `{request}`. Replaces the current queue |
+| `pause`, `resume`, `stop` | – | ok |
+| `setRate` | `rate` | ok. Restarts at the current utterance |
+| `state` | – | `{request, state, index, count, rate}` |
+
+Events: `speech.progress {request, index, count}` as each utterance starts (a reader highlights that sentence), `speech.state {request, state: playing|paused|stopped|done, index, count, rate}`.
+
+## translate
+
+Language detection (NaturalLanguage) and translation (Apple's Translation framework), both on device: text in, text out, no network.
+
+| Method | Args | Returns |
+|---|---|---|
+| `detect` | `text`, `hint?` (e.g. the page's `lang`) | `{lang, confidence, name}`: a base code (`fr`) and its name in the user's language (`French`); `lang: ""` when unsure. Falls back to `hint` for short text |
+| `userLanguage` | – | `{lang}`, from the first preferred language |
+| `availability` | `from`, `to?`, `request?` | `{request}`, then `translate.availability {request, from, to, status: installed\|supported\|unsupported}` |
+| `run` | `texts: [string]`, `from`, `to?` (default: the user's), `request?` | `{request}`, then `translate.result {request, ok, texts, from, to, ms}` or `{…, ok: false, error, needsDownload}`. Empty strings stay empty; order is kept |
+
+A session per language pair is kept while den runs. `supported` means the model isn't downloaded: `run` then shows macOS's own download prompt (a hidden SwiftUI `translationTask` view in den's window) and continues once it's installed; declining ends with `error: "notInstalled"`. `unsupported` pairs end with `error: "unsupported"`. On this Mac (macOS 26.5, en-GB), French, Japanese, German and Spanish to English all report `installed`, and translate with no network.
 
 ## suggest
 
@@ -586,6 +635,9 @@ A plugin declares what it may reach in `Plugins/<id>/permissions.json`, e.g. `{"
 
 - `session:<domain>`: cookies and site storage of `<domain>` and its subdomains, and `net.fetch` there with cookies.
 - `net:<domain>`: `net.fetch` there without cookies.
+- `pages:<domain>` or `pages:*`: `webviews.inject` into pages there (every page with `*`), in the plugin's own isolated world ([Plugins in pages](#plugins-in-pages)).
+
+A plugin's resource folder is its other sidecar: `Plugins/<id>/resources/` becomes `Contents/Resources/plugin-resources/<id>/` (a dylib elsewhere uses `<id>.resources/` next to it). From a checkout (`swift test`), den reads `Plugins/<id>/resources/` directly.
 
 cordis doesn't tell a host service who called it, so `session` and `net` calls pass `plugin: "<own id>"` (as `commands.register` passes `owner`). Plugins are native code in den's process: this keeps each plugin to the sites it declared; it is not a sandbox.
 

@@ -1,0 +1,14 @@
+Third-party scripts used by den's `pagetools` plugin (Plugins/pagetools). Each is read from
+disk and injected into a page (webviews.inject) only when its feature is used.
+
+Readability.js, Readability-readerable.js
+  Mozilla Readability, https://github.com/mozilla/readability
+  Commit ab4027a8b37669745016869a37a504727992b2ba, unmodified.
+  Apache License 2.0, see LICENSE-readability.
+
+fragment-generation.js
+  GoogleChromeLabs text-fragments-polyfill, https://github.com/GoogleChromeLabs/text-fragments-polyfill
+  src/text-fragment-utils.js and src/fragment-generation-utils.js at commit
+  abc6ed408b3f20e91d9cbda9977748459f5e3877, joined into one classic script: the ES module
+  import/export statements were replaced by an IIFE that sets window.__denFragments. No other change.
+  Copyright 2020 Google LLC. Apache License 2.0, see LICENSE-text-fragments.

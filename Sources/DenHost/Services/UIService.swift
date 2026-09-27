@@ -108,6 +108,8 @@ public final class UIService: HostService {
       sidebarView.pager.show(p, animated: args.flag("animated", true))
       wc.showTheme(for: sidebarView.pager.current)
       refreshPalette()
+    case "tokens":
+      return Self.tokens(renderer.palette)
     case "get":
       var overlays: [Value] = []
       if commandBarOpen { overlays.append("overlay.commandBar") }
@@ -418,5 +420,25 @@ public final class UIService: HostService {
       t.frame = NSRect(x: (b.width - Tokens.toastRightInset - w).rounded(), y: y, width: w, height: h)
       y += h + 8
     }
+  }
+}
+
+// MARK: - Tokens for web content
+
+extension UIService {
+  /// `ui.tokens`: den's theme tokens (`ThemeTokens`: space theme + appearance, contrast-checked)
+  /// as CSS colors, for UI a plugin draws inside a web page (a reader view, a picker bar):
+  /// `{dark, bg, panel, text, secondary, border, hover, accent, onAccent, mark, shadow}`.
+  static func tokens(_ p: Palette) -> Value {
+    let t = p.tokens
+    func css(_ c: RGB, _ a: CGFloat = 1) -> Value {
+      let k = c.clamped
+      return .string(String(format: "rgba(%d,%d,%d,%.3f)", Int((k.r * 255).rounded()), Int((k.g * 255).rounded()), Int((k.b * 255).rounded()), a))
+    }
+    return [
+      "dark": .bool(t.dark), "bg": css(t.surface), "panel": css(t.elevated, 0.92), "text": css(t.textPrimary), "secondary": css(t.textSecondary),
+      "border": css(t.hairline.rgb, t.hairline.a), "hover": css(t.hover.rgb, t.hover.a), "accent": css(t.accent), "onAccent": css(t.onAccent),
+      "mark": css(t.accent, 0.28), "shadow": css(t.shadow.rgb, t.shadow.a),
+    ]
   }
 }

@@ -135,8 +135,11 @@ final class NavBarNode: NodeView {
 
 }
 
-/// Simplified URL pill. {type:"urlPill", id, text, progress?, loading?, secure?, placeholder?}
-/// actions: click (open the command bar pre-filled), copy (hover button)
+/// Simplified URL pill. {type:"urlPill", id, text, progress?, loading?, secure?, placeholder?,
+/// buttons?: [{id, icon, tooltip?, active?}], webview?}
+/// actions: click (open the command bar pre-filled), copy (hover button). A `buttons` item
+/// (other plugins' page actions, e.g. Reader; always visible) emits
+/// {id: <its id>, action: click, value: {webview}}.
 /// With extensions installed, hovering also shows the pinned extensions' buttons and the
 /// extensions menu button (Arc shows pinned extensions in the URL bar on hover). They talk to the
 /// host `extensions` service directly, so plugins that render the pill need no changes.
@@ -148,6 +151,8 @@ final class URLPillNode: HoverNode {
   var extensionsObserver: NSObjectProtocol?
   /// Shows the hover accessories without a pointer (snapshots).
   var forceAccessories = false { didSet { hoverChanged() } }
+  var extra: [IconButton] = []
+  var extraKey = ""
   override var cornerRadius: CGFloat { Tokens.urlPillCornerRadius }
   override var baseFill: NSColor? { palette.pillFill }
   override var hoverColor: NSColor { palette.pillHoverFill }
@@ -210,6 +215,23 @@ final class URLPillNode: HoverNode {
     let t = v.str("text")
     label.stringValue = t.isEmpty ? v.str("placeholder", "Search or Enter URL…") : t
     lock.isHidden = true  // Arc shows the bare domain (spec §1: text at x = 20)
+    let buttons = v.list("buttons")
+    let key = buttons.map { $0.str("id") + "|" + $0.str("icon") + "|" + $0.str("tooltip") }.joined(separator: ",")
+    if key != extraKey {
+      extraKey = key
+      extra.forEach { $0.removeFromSuperview() }
+      extra = buttons.map { b in
+        let id = b.str("id")
+        let btn = IconButton(symbol: "doc", size: 22) { [weak self] in
+          guard let self else { return }
+          self.r.emit(id, "click", ["webview": .string(self.node.str("webview"))])
+        }
+        btn.icon.spec = b.str("icon")
+        btn.toolTip = b.str("tooltip")
+        addSubview(btn)
+        return btn
+      }
+    }
     apply(r.palette)
     needsDisplay = true
     needsLayout = true
@@ -222,6 +244,11 @@ final class URLPillNode: HoverNode {
       b.icon.tint = p.text.withAlphaComponent(0.75)
       b.hoverFill = p.hoverFill
       b.badge.apply(p)
+    }
+    let buttons = node.list("buttons")
+    for (i, b) in extra.enumerated() {
+      b.apply(p)
+      if i < buttons.count, buttons[i].flag("active") { b.tint = p.accentStrong }
     }
     needsDisplay = true
   }
@@ -237,6 +264,11 @@ final class URLPillNode: HoverNode {
       right -= s
       b.frame = NSRect(x: right, y: (h - s) / 2, width: s, height: s)
       if right < x + 40 { b.isHidden = true }  // a narrow sidebar keeps the domain readable
+    }
+    // Page actions (plugins' `buttons`) sit left of those, always visible.
+    for b in extra.reversed() {
+      right -= 24
+      b.frame = NSRect(x: right + 1, y: (h - 22) / 2, width: 22, height: 22)
     }
     label.frame = NSRect(x: x, y: (h - 17) / 2, width: max(0, min(bounds.width - x - 32, right - x - 4)), height: 17)
   }

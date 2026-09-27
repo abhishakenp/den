@@ -165,6 +165,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       defaultRules = args.list("rules").compactMap(LinkRule.init)
       return .ok
     }
+    if method == "setMenu" { return scripting.setMenu(args) }
+    if method == "setContentRules" { return scripting.setContentRules(args) }
     var args = args
     // Page actions (menu bar): `id` defaults to the page in front (peek, else the focused pane).
     if args.str("id").isEmpty, PageActions.methods.contains(method) || ["back", "forward", "reload", "stop", "get"].contains(method),
@@ -187,9 +189,11 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     case "suspend": return suspend(r, force: args.flag("force"))
     case "setMuted": setMuted(r, args.flag("muted"))
     case "snapshot":
+      if !args["rect"].isNull || args.flag("full") || args.flag("clipboard") || !args.str("folder").isEmpty { return capture(r, args) }
       snapshot(r, path: args.str("path"), width: args["width"].double.map { CGFloat($0) }, jpeg: args.str("format") == "jpeg")
       return ["pending": true]
     case "eval": return evaluate(r, args)
+    case "inject": return scripting.inject(r, args)
     case "get": return state(r)
     case "setLinkPolicy": r.rules = args.list("rules").compactMap(LinkRule.init)
     default: return .error("webviews: unknown method '\(method)'")
@@ -236,11 +240,13 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.media, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: PageScripts.world))
     config.userContentController.add(scriptHandler, contentWorld: PageScripts.world, name: PageScripts.handler)
     for h in configureHooks { h(r, config) }
+    for list in ruleLists { config.userContentController.add(list) }
     config.userContentController.addUserScript(WKUserScript(source: DenWebView.contextScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
     config.userContentController.add(scriptHandler, name: "denContext")
     let w = DenWebView(frame: .zero, configuration: config)
     w.service = self
     w.recordId = r.id
+    TestMode.keepActive(w)
     w.navigationDelegate = self
     w.uiDelegate = self
     w.allowsBackForwardNavigationGestures = true
@@ -337,6 +343,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       r.audio = false
       host.emit("webviews.audio", ["id": .string(r.id), "playing": false])
     }
+    // denMedia, and plugins' `den` handlers in their content worlds (PageScripting).
     w.configuration.userContentController.removeAllScriptMessageHandlers()
     w.navigationDelegate = nil
     w.uiDelegate = nil
@@ -551,6 +558,32 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
     return jpeg ? rep?.representation(using: .jpeg, properties: [.compressionFactor: 0.72]) : rep?.representation(using: .png, properties: [:])
   }
+
+  // MARK: Plugins in pages (PageScripting)
+
+  lazy var scripting = PageScripting(web: self)
+  /// Gate for `inject`: may `plugin` run scripts in a page on `host`? Wired to `pages:` (and
+  /// `session:`) permissions; nil denies everything.
+  public var allowPages: ((_ plugin: String, _ host: String) -> Bool)?
+  /// A file in a plugin's resource folder (wired to `Permissions.resource`).
+  public var resource: ((_ plugin: String, _ name: String) -> URL?)?
+
+  /// Plugins' content rule lists, on every web view. Empty until a plugin sets rules;
+  /// `setRuleLists` updates the live views too.
+  public private(set) var ruleLists: [WKContentRuleList] = []
+  public func setRuleLists(_ lists: [WKContentRuleList]) {
+    for r in records.values {
+      guard let c = r.webView?.configuration.userContentController else { continue }
+      for l in ruleLists { c.remove(l) }
+      for l in lists { c.add(l) }
+    }
+    ruleLists = lists
+  }
+
+  /// Adds items to a web page's context menu (plugins' `setMenu`).
+  public var contextMenu: ((WKWebView, NSMenu) -> Void)?
+
+  public func id(of w: WKWebView) -> String? { recordFor(w)?.id }
 
   // MARK: Page reads
 

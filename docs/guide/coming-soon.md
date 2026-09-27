@@ -26,10 +26,6 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 - **Automatic picture in picture** when you leave a tab playing video.
 - Hover play/pause/skip for any tab playing audio.
 
-## Page tools
-
-Reader mode with read aloud, on-device translation, page capture, zapping elements, and copying a link to a highlight.
-
 ## Connections & briefing
 
 - **Auto-connect** like Dia: if you're already signed in to GitHub or Slack in den, or sign in later, it connects without a click, with a "GitHub connected · Undo" toast.
