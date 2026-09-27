@@ -129,7 +129,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `folder` | `id`, `title`, `icon?`, `open`, `children`, `editing?` | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel` |
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
 | `newTabRow` | `id`, `title?` | `click` |
-| `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]` | `input {text}`, `select {row}` (arrow keys, or hovering a row after the mouse moves), `submit {row, query, modifiers}`, `tab {query}`, `dismiss` |
+| `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `headers?` (default true; false draws one flat list), `inputMode?: search\|go` (caret color), `banner?: {text, secondary, primary}` (the default-browser banner), `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?}]}]` | `input {text}`, `select {row}` (arrow keys, or hovering a row after the mouse moves), `submit {row, query, modifiers}`, `tab {query}`, `dismiss`, `banner {button: try\|set\|close}` |
 | `dialog` | `id`, `title`, `message?`, `icon?`, `iconStyle?: accent\|destructive\|plain`, `buttons: [{id, title, style: default\|cancel\|destructive\|secondary, default?, keycap?}]`, `checkbox?` | `button {button, checked}`. Return presses the `default` button (or the one with `default: true`), Esc the `cancel` one |
 | `toast` | `text`, `icon?`, `duration?` (ms) | – |
 | `library` | `id`, `title?`, `query?`, `placeholder?`, `clearTitle?`, `empty?`, `items: [{id, title, url?, subtitle?, icon?, closedAt?}]` | `input {text}`, `restore {item}`, `clear`, `dismiss` |
@@ -229,8 +229,22 @@ Lets a plugin hide features whose provider isn't loaded.
 | `interceptClose` | `enabled` | ok. Closing the window then emits `app.closeRequested` |
 | `closeWindow` | – | ok |
 | `pendingURLs` | – | `[url]` opened before any listener existed |
-| `setDefaultBrowser` | – | ok. Emits `app.defaultBrowser {scheme, error}` |
+| `setDefaultBrowser` | `bundleId?` | ok. Asks macOS to make den (or the app `bundleId`) the default for http and https; macOS shows its own confirmation. Emits `app.defaultBrowser {scheme, error}` |
+| `defaultBrowser` | – | `{bundleId, name, isDefault}`: the app that opens https links now |
 | `info` | – | `{bundleId, version, launchMs}` |
 | `copy` | `text` | ok. Puts the text on the general pasteboard |
 
 Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`.
+
+## suggest
+
+Web search autocomplete (Google's public suggest endpoint, `client=firefox`) for the command bar.
+
+| Method | Args | Returns |
+|---|---|---|
+| `query` | `q` | `{q, items}` at once when cached (no network, no event); otherwise `{q, pending: true}`, then `suggest.results {q, items}` |
+| `cancel` | – | ok. Drops the pending query |
+
+A pending query is debounced (50 ms) and cancels the one before it, so only the latest query emits; late answers for older queries are still cached. `q` is normalized (trimmed, lowercased, spaces collapsed). The cache is in memory (256 queries). A failed fetch emits `items: []` and isn't cached.
+
+Events: `suggest.results {q, items}`.

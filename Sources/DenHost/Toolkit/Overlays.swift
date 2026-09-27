@@ -278,6 +278,7 @@ final class PillButton: FlippedView, Themable {
   var hovering = false { didSet { needsDisplay = true } }
   var hoverFill: NSColor?
   var pressedFill: NSColor?
+  var cornerRadius = Tokens.dialogButtonCornerRadius
   init(title: String, style: String, keycap key: String = "", action: @escaping () -> Void) {
     self.style = style
     self.action = action
@@ -325,7 +326,7 @@ final class PillButton: FlippedView, Themable {
     keycap.frame = NSRect(x: bounds.width - 12.5 - keycapWidth, y: (bounds.height - 20) / 2, width: keycapWidth, height: 20)
   }
   override func draw(_ dirtyRect: NSRect) {
-    let r = Tokens.dialogButtonCornerRadius
+    let r = cornerRadius
     let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: r, yRadius: r)
     let f = pressedDown ? (pressedFill ?? fill.blended(withFraction: 0.15, of: .black) ?? fill) : (hovering ? (hoverFill ?? fill) : fill)
     f.setFill()

@@ -5,7 +5,14 @@ import Testing
 @testable import DenHost
 @testable import PluginCores
 
+/// The system default browser, faked so tests never touch macOS.
+final class FakeBrowsers: @unchecked Sendable {
+  var current: URL? = URL(fileURLWithPath: "/Applications/Safari.app")
+  var sets: [(URL, String)] = []
+}
+
 /// Web-suggestion requests a test hasn't answered yet, per harness.
+@MainActor var fakeBrowsers: [ObjectIdentifier: FakeBrowsers] = [:]
 @MainActor var pendingSuggest: [ObjectIdentifier: [(String, @Sendable ([String]?) -> Void)]] = [:]
 
 extension Harness {
@@ -19,6 +26,14 @@ extension Harness {
       return {}
     }
     suggest.debounce = 0
+    let fake = browsers
+    rt.app.browserDefaults = BrowserDefaults(
+      current: { fake.current },
+      set: { url, scheme, done in
+        fake.sets.append((url, scheme))
+        fake.current = url
+        done(nil)
+      })
     let core = CommandBarCore(env: env)
     rt.plugins.provide("commands") { m, a in core.handle(m, a) }
     core.start()
@@ -38,6 +53,12 @@ extension Harness {
       "row": .string(row ?? bar.str("selected")), "query": .string(rt.ui.commandBar.input.stringValue),
       "modifiers": .array(shift ? ["shift"] : []),
     ])
+  }
+  var browsers: FakeBrowsers {
+    if let b = fakeBrowsers[ObjectIdentifier(self)] { return b }
+    let b = FakeBrowsers()
+    fakeBrowsers[ObjectIdentifier(self)] = b
+    return b
   }
   var suggest: SuggestService { rt.host.services["suggest"] as! SuggestService }
   /// Answers the latest pending web-suggestion request, then waits for the event to land.
@@ -472,5 +493,69 @@ struct CommandBarTests {
     // Other scopes keep their headers.
     h.action("commandBar", "tab", ["query": ""])
     #expect(h.bar.flag("headers") == true)
+  }
+
+  // MARK: - Default-browser banner
+
+  @Test func bannerShowsUntilDenIsTheDefaultAndSnoozesFor14Days() async {
+    let h = Harness()
+    h.startCommandBar()
+    h.key("cmd+t")
+    #expect(h.bar["banner"].str("primary") == "Set den as default")
+    #expect(h.bar["banner"].str("secondary") == "Try for a week")
+    #expect(!h.rt.ui.commandBar.banner.isHidden)
+    // Its panel grows by the 60 pt banner (+ the bottom border).
+    let withBanner = h.rt.ui.commandBar.contentHeight
+
+    // "×" snoozes it for 14 days.
+    h.action("commandBar", "banner", ["button": "close"])
+    #expect(h.bar["banner"].isNull)
+    #expect(h.rt.ui.commandBar.contentHeight == withBanner - 61)
+    h.key("cmd+t")
+    h.clock += 13 * CommandBarCore.dayMs
+    h.key("cmd+t")
+    #expect(h.bar["banner"].isNull)
+    h.key("cmd+t")
+    h.clock += 2 * CommandBarCore.dayMs
+    h.key("cmd+t")
+    #expect(!h.bar["banner"].isNull)
+
+    // "Set den as default" asks macOS (for http and https); once den is the default it's gone.
+    h.action("commandBar", "banner", ["button": "set"])
+    #expect(h.browsers.sets.map { $0.1 } == ["http", "https"])
+    #expect(h.browsers.sets.allSatisfy { $0.0 == Bundle.main.bundleURL })
+    try? await Task.sleep(nanoseconds: 30_000_000)
+    #expect(h.rt.call("app", "defaultBrowser")["isDefault"] == true)
+    #expect(h.bar["banner"].isNull)
+  }
+
+  @Test func tryForAWeekAsksAfterSevenDaysAndCanSwitchBack() async {
+    let h = Harness()
+    h.startCommandBar()
+    h.key("cmd+t")
+    #expect(h.rt.call("app", "defaultBrowser")["bundleId"] == "com.apple.Safari")
+    h.action("commandBar", "banner", ["button": "try"])
+    #expect(h.storage("commandbar", "browserTrial").s("previous") == "com.apple.Safari")
+    #expect(h.browsers.current == Bundle.main.bundleURL)
+    try? await Task.sleep(nanoseconds: 30_000_000)
+    h.fireTimers()  // day 0: nothing to ask yet
+    #expect(!h.rt.ui.dialogOpen)
+    h.clock += 7 * CommandBarCore.dayMs
+    h.fireTimers()
+    #expect(h.rt.ui.dialogOpen)
+    #expect(h.rt.ui.dialog.node.str("title") == "Keep den as your default browser?")
+    h.action(CommandBarCore.trialDialog, "button", ["button": "switch"])
+    #expect(!h.rt.ui.dialogOpen)
+    #expect(h.browsers.current?.lastPathComponent == "Safari.app")
+    #expect(h.storage("commandbar", "browserTrial").isNull)
+
+    // Keep: den stays the default and the trial ends.
+    h.action("commandBar", "banner", ["button": "try"])
+    h.clock += 8 * CommandBarCore.dayMs
+    h.fireTimers()
+    #expect(h.rt.ui.dialogOpen)
+    h.action(CommandBarCore.trialDialog, "button", ["button": "keep"])
+    #expect(h.browsers.current == Bundle.main.bundleURL)
+    #expect(h.storage("commandbar", "browserTrial").isNull)
   }
 }

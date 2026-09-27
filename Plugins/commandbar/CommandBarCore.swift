@@ -95,6 +95,10 @@ final class CommandBarCore {
   static let reservedSuggestions = 2
   /// A match at least this good (prefix, word prefix, keyword or host) ranks above web suggestions.
   static let strongMatch = 60
+  /// Default-browser banner: "×" hides it for 14 days (den choice); "Try for a week" asks after 7.
+  static let bannerSnoozeMs: Int64 = 14 * 86_400_000
+  static let trialMs: Int64 = 7 * 86_400_000
+  static let trialDialog = "commandbar.trial"
   static let dayMs: Int64 = 86_400_000
 
   let env: PluginEnv
@@ -116,6 +120,12 @@ final class CommandBarCore {
   var suggestQuery = ""
   var suggestItems: [String] = []
   var shownSuggestions: [String] = []
+  // Default browser (the banner): read lazily when the bar opens, cached until app.defaultBrowser.
+  var browserChecked = false
+  var isDefaultBrowser = true
+  var currentBrowser = ""
+  var currentBrowserName = ""
+  var trialTimer = false
 
   init(env: PluginEnv) { self.env = env }
 
@@ -129,6 +139,12 @@ final class CommandBarCore {
     env.on("commands.key.edit") { [self] _ in toggle("edit") }
     env.on("ui.action") { [self] v in if v.s("id") == Self.barId { action(v.s("action"), v["value"]) } }
     env.on("suggest.results") { [self] v in suggestionsArrived(v.s("q"), v.a("items").compactMap { $0.string }) }
+    env.on("app.defaultBrowser") { [self] _ in
+      browserChecked = false
+      if isOpen { render() }
+    }
+    env.on("ui.action") { [self] v in if v.s("id") == Self.trialDialog { trialAnswered(v["value"].s("button")) } }
+    checkTrial()
   }
 
   func stop() {
@@ -297,6 +313,8 @@ final class CommandBarCore {
       tabKey()
     case "dismiss":
       close()
+    case "banner":
+      bannerButton(value.s("button"))
     default:
       break
     }
@@ -955,6 +973,82 @@ final class CommandBarCore {
     return order.prefix(limit).map { rows[$0] }
   }
 
+  // MARK: - Default-browser banner
+
+  func stored(_ key: String) -> Value { env.call("storage", "get", ["ns": .string(Self.ns), "key": .string(key)]) }
+  func store(_ key: String, _ v: Value) { env.call("storage", "set", ["ns": .string(Self.ns), "key": .string(key), "value": v]) }
+
+  /// Arc's banner under the rows, in the main scope, while den isn't the default browser and the
+  /// banner isn't snoozed. The default browser is read once per open-after-change (no launch cost).
+  var bannerVisible: Bool {
+    guard scope == .main else { return false }
+    if !browserChecked {
+      browserChecked = true
+      let r = env.call("app", "defaultBrowser")
+      isDefaultBrowser = r.isErr || r.isNull || r.b("isDefault")  // no `app` service: never nag
+      currentBrowser = r.s("bundleId")
+      currentBrowserName = r.s("name")
+    }
+    return !isDefaultBrowser && env.now() >= stored("bannerSnoozedUntil").i("t")
+  }
+
+  func bannerButton(_ b: String) {
+    switch b {
+    case "set":
+      env.call("app", "setDefaultBrowser")
+    case "try":
+      // Remember what to go back to, then ask macOS to make den the default.
+      store("browserTrial", ["previous": .string(currentBrowser), "name": .string(currentBrowserName), "start": .int(env.now())])
+      env.call("app", "setDefaultBrowser")
+      checkTrial()
+    case "close":
+      store("bannerSnoozedUntil", ["t": .int(env.now() + Self.bannerSnoozeMs)])
+      render()
+    default:
+      break
+    }
+  }
+
+  /// A running "Try for a week": after 7 days, ask whether to keep den. Checked at start and hourly
+  /// while a trial runs.
+  func checkTrial() {
+    let t = stored("browserTrial")
+    guard !t.isNull else { return }
+    if env.now() - t.i("start") >= Self.trialMs {
+      promptTrial(t)
+    } else if !trialTimer {
+      trialTimer = true
+      env.timer(3_600_000, true) { [self] in checkTrial() }
+    }
+  }
+
+  func promptTrial(_ t: Value) {
+    let r = env.call("app", "defaultBrowser")
+    guard !r.isErr, r.b("isDefault") else {
+      store("browserTrial", .null)  // they switched away already (or declined): nothing to ask
+      return
+    }
+    let prev = t.sOpt("name") ?? "your previous browser"
+    env.call("ui", "set", [
+      "slot": "dialog",
+      "tree": [
+        "type": "dialog", "id": .string(Self.trialDialog), "icon": "app:icon", "title": "Keep den as your default browser?",
+        "message": .string("It’s been a week. You can switch back to " + prev + " now, or any time in System Settings."),
+        "buttons": [
+          ["id": "switch", "title": .string("Switch back to " + prev), "style": "secondary"],
+          ["id": "keep", "title": "Keep den", "style": "default"],
+        ],
+      ],
+    ])
+  }
+
+  func trialAnswered(_ button: String) {
+    let t = stored("browserTrial")
+    env.call("ui", "set", ["slot": "dialog", "tree": .null])
+    store("browserTrial", .null)
+    if button == "switch", let prev = t.sOpt("previous") { env.call("app", "setDefaultBrowser", ["bundleId": .string(prev)]) }
+  }
+
   // MARK: - Render
 
   var placeholder: String {
@@ -987,9 +1081,14 @@ final class CommandBarCore {
       if !title.isEmpty { s.put("title", .string(title)) }
       secs.append(s)
     }
+    var banner: Value = .null
+    if bannerVisible {
+      banner = ["text": "den works best as your default browser", "secondary": "Try for a week", "primary": "Set den as default"]
+    }
     env.call("ui", "set", [
       "slot": .string(Self.slot),
       "tree": [
+        "banner": banner,
         "type": "commandBar", "id": .string(Self.barId), "query": .string(query), "replaceQuery": .bool(replace), "placeholder": .string(placeholder),
         "selected": .string(selected), "sections": .array(secs),
         // Arc's bar is one flat list; other scopes keep their section headers.

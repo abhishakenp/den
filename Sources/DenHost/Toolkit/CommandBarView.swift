@@ -130,6 +130,110 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     }
   }
 
+  /// Arc's default-browser banner (spec §2, AX): 764x60 at the bottom, inside the border.
+  /// App icon 18x18 at (22, 21); text (SF 13.5, TextSecondary) at x 51; "Try for a week" 110x38
+  /// and the primary button 131x38, 8 pt apart and 10 pt before a 24x24 close button 22 pt from
+  /// the right edge. Background BannerBackground #161616 / #FDFDFE.
+  /// Emits `banner {button: "try" | "set" | "close"}`.
+  final class Banner: FlippedView {
+    let icon = IconView()
+    let label = makeLabel(size: 13.5)
+    var secondary: PillButton?
+    var primary: PillButton?
+    let close = CloseButton()
+    var onButton: ((String) -> Void)?
+    var bg: NSColor = .clear
+    override init(frame: NSRect) {
+      super.init(frame: frame)
+      icon.spec = "app:icon"
+      label.font = M.rowFont
+      close.onClick = { [weak self] in self?.onButton?("close") }
+      [icon, label, close].forEach { addSubview($0) }
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    func update(_ v: Value) {
+      label.stringValue = v.str("text")
+      if secondary?.label.stringValue != v.str("secondary") || primary?.label.stringValue != v.str("primary") {
+        secondary?.removeFromSuperview()
+        primary?.removeFromSuperview()
+        let s = PillButton(title: v.str("secondary"), style: "secondary") { [weak self] in self?.onButton?("try") }
+        let p = PillButton(title: v.str("primary"), style: "default") { [weak self] in self?.onButton?("set") }
+        for b in [s, p] {
+          b.cornerRadius = 8  // not measured; slightly rounder than the dialog buttons (6)
+          addSubview(b)
+        }
+        (secondary, primary) = (s, p)
+      }
+      needsLayout = true
+    }
+    func apply(_ p: Palette) {
+      bg = p.dark ? NSColor(srgbRed: 0x16 / 255, green: 0x16 / 255, blue: 0x16 / 255, alpha: 1) : NSColor(srgbRed: 0xFD / 255, green: 0xFD / 255, blue: 0xFE / 255, alpha: 1)
+      label.textColor = NSColor(white: p.dark ? 1 : 0, alpha: 0.33)
+      close.tint = NSColor(white: p.dark ? 1 : 0, alpha: 0.33)
+      close.hoverFill = NSColor(white: p.dark ? 1 : 0, alpha: 0.05)
+      for b in [secondary, primary].compactMap({ $0 }) {
+        b.apply(p)
+        if b.style == "secondary" && !p.dark {
+          // Light: a quiet white pill with a hairline (estimate; Arc's light banner wasn't measured).
+          b.fill = .white
+          b.border = NSColor(white: 0, alpha: 0.12)
+          b.label.textColor = NSColor(white: 0, alpha: 0.8)
+        }
+      }
+      needsDisplay = true
+    }
+    override func draw(_ dirtyRect: NSRect) {
+      bg.setFill()
+      bounds.fill()
+    }
+    override func layout() {
+      let h = bounds.height
+      icon.frame = NSRect(x: 22, y: (h - 18) / 2, width: 18, height: 18)
+      close.frame = NSRect(x: bounds.width - 22 - 24, y: (h - 24) / 2, width: 24, height: 24)
+      var x = close.frame.minX - 10
+      if let p = primary {
+        let w = max(131, p.preferredWidth)
+        p.frame = NSRect(x: x - w, y: (h - 38) / 2, width: w, height: 38)
+        x -= w + 8
+      }
+      if let s = secondary {
+        let w = max(110, s.preferredWidth)
+        s.frame = NSRect(x: x - w, y: (h - 38) / 2, width: w, height: 38)
+        x -= w + 12
+      }
+      label.frame = NSRect(x: 51, y: (h - 18) / 2, width: max(0, x - 51), height: 18)
+    }
+  }
+
+  /// The banner's 24x24 "×".
+  final class CloseButton: FlippedView {
+    let glyph = IconView()
+    var onClick: (() -> Void)?
+    var tint: NSColor = .secondaryLabelColor { didSet { glyph.tint = tint } }
+    var hoverFill: NSColor = .clear
+    var hovering = false { didSet { needsDisplay = true } }
+    override init(frame: NSRect) {
+      super.init(frame: frame)
+      glyph.spec = "sf:xmark"
+      addSubview(glyph)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func layout() { glyph.frame = bounds.insetBy(dx: 6.5, dy: 6.5) }
+    override func draw(_ dirtyRect: NSRect) {
+      guard hovering else { return }
+      hoverFill.setFill()
+      NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+    }
+    override func updateTrackingAreas() {
+      super.updateTrackingAreas()
+      trackingAreas.forEach(removeTrackingArea)
+      addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+  }
+
   /// The 1 pt border as its measured two-pixel ramp: an outer and an inner half-point stroke.
   /// Drawn (not a layer border) so it also shows in `--snapshot` renders; ignores the mouse.
   final class Border: NSView {
@@ -156,6 +260,8 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
   let list = FlippedView()
   let separator = NSView()
   let border = Border()
+  let banner = Banner()
+  static let bannerHeight: CGFloat = 60  // AX
   var rows: [Row] = []
   var headers: [NSTextField] = []
   var node: Value = .null
@@ -178,7 +284,11 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     searchIcon.spec = "sf:magnifyingglass"
     separator.wantsLayer = true
     surface.layer?.borderWidth = 0
-    [searchIcon, input, separator, list, border].forEach { surface.addSubview($0) }
+    banner.onButton = { [weak self] b in
+      guard let self else { return }
+      self.emit(self.barId, "banner", ["button": .string(b)])
+    }
+    [searchIcon, input, separator, list, banner, border].forEach { surface.addSubview($0) }
   }
   required init?(coder: NSCoder) { fatalError() }
 
@@ -224,6 +334,8 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       if !t.isEmpty { list.addSubview(h) }
       return h
     }
+    banner.isHidden = v["banner"].isNull
+    if !banner.isHidden { banner.update(v["banner"]) }
     selected = v.str("selected", rowIds.first ?? "")
     apply(p)
     needsLayout = true
@@ -284,15 +396,17 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       r.keycap.needsDisplay = true
     }
     for h in headers { h.textColor = c.secondary }
+    banner.apply(p)
   }
 
   var shownRows: Int { min(rows.count, Tokens.commandBarMaxRows) }
 
   var contentHeight: CGFloat {
     let n = shownRows
-    guard n > 0 else { return M.dividerY }
+    let b: CGFloat = banner.isHidden ? 0 : Self.bannerHeight + 1  // + the bottom border
+    guard n > 0 else { return M.dividerY + b }
     let sections = headers.filter { !$0.stringValue.isEmpty }.count
-    return M.listTop + CGFloat(n) * Tokens.commandBarRowHeight + CGFloat(sections) * M.headerHeight + M.bottomPadding
+    return M.listTop + CGFloat(n) * Tokens.commandBarRowHeight + CGFloat(sections) * M.headerHeight + M.bottomPadding + b
   }
 
   override func layout() {
@@ -300,6 +414,8 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     let scale = window?.backingScaleFactor ?? 2
     border.frame = bounds
     border.radius = radius
+    // AX: the banner is 764 wide at x 1, its bottom on the inner edge of the 1 pt border.
+    banner.frame = NSRect(x: 1, y: bounds.height - 1 - Self.bannerHeight, width: bounds.width - 2, height: Self.bannerHeight)
     searchIcon.frame = NSRect(origin: M.iconOrigin, size: NSSize(width: 18, height: 18))
     input.frame = NSRect(x: M.fieldX, y: M.fieldY, width: bounds.width - M.fieldX - M.fieldTrailing, height: M.fieldHeight)
     separator.frame = NSRect(x: 0, y: M.dividerY - 1 / scale, width: bounds.width, height: rows.isEmpty ? 0 : 1 / scale)

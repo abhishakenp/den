@@ -185,7 +185,8 @@ public enum MainMenu {
 ///   interceptClose {enabled}     -> when on, closing the window emits app.closeRequested
 ///   closeWindow                  -> closes the main window (bypassing interception)
 ///   pendingURLs                  -> [url] opened before a listener existed (clears the buffer)
-///   setDefaultBrowser            -> asks macOS to make den the default for http/https
+///   setDefaultBrowser {bundleId?} -> asks macOS to make den (or the app `bundleId`) the default for http/https
+///   defaultBrowser               -> {bundleId, name, isDefault}: the app that opens https links now
 ///   info                         -> {bundleId, version, launchMs}
 ///   copy {text}                  -> puts text on the general pasteboard
 /// Events: app.quitRequested, app.closeRequested, app.openURL {urls: [string]}, app.activate
@@ -201,6 +202,8 @@ public final class AppService: HostService {
   var forceClose = false
   var buffered: [String] = []
   public var launchMs: Double?
+  /// Reads and sets the system default browser. Tests swap in a fake so they never touch macOS.
+  public var browserDefaults = BrowserDefaults.system
 
   public init(host: ServiceHost, window: DenWindowController?) {
     self.host = host
@@ -228,13 +231,24 @@ public final class AppService: HostService {
       defer { buffered = [] }
       return .array(buffered.map { .string($0) })
     case "setDefaultBrowser":
-      let url = Bundle.main.bundleURL
+      var url = Bundle.main.bundleURL
+      if let id = args["bundleId"].string, !id.isEmpty {
+        guard let u = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { return .error("app: no application '\(id)'") }
+        url = u
+      }
       for scheme in ["http", "https"] {
-        NSWorkspace.shared.setDefaultApplication(at: url, toOpenURLsWithScheme: scheme) { [weak self] err in
-          let msg = err?.localizedDescription ?? ""
+        browserDefaults.set(url, scheme) { [weak self] err in
+          let msg = err ?? ""
           DispatchQueue.main.async { MainActor.assumeIsolated { self?.host.emit("app.defaultBrowser", ["scheme": .string(scheme), "error": .string(msg)]) } }
         }
       }
+    case "defaultBrowser":
+      let current = browserDefaults.current()
+      let id = current.flatMap { Bundle(url: $0)?.bundleIdentifier } ?? ""
+      let name = current.map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") } ?? ""
+      let mine = Bundle.main.bundleIdentifier ?? ""
+      let isMe = current?.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL || (!mine.isEmpty && id == mine)
+      return ["bundleId": .string(id), "name": .string(name), "isDefault": .bool(isMe)]
     case "copy":
       NSPasteboard.general.clearContents()
       NSPasteboard.general.setString(args.str("text"), forType: .string)
@@ -270,4 +284,17 @@ public final class AppService: HostService {
       buffered += list
     }
   }
+}
+
+/// Where `app` reads and writes the system default browser (NSWorkspace; a fake in tests).
+public struct BrowserDefaults: Sendable {
+  public var current: @Sendable () -> URL?
+  public var set: @Sendable (URL, String, @escaping @Sendable (String?) -> Void) -> Void
+  public init(current: @escaping @Sendable () -> URL?, set: @escaping @Sendable (URL, String, @escaping @Sendable (String?) -> Void) -> Void) {
+    self.current = current
+    self.set = set
+  }
+  public static let system = BrowserDefaults(
+    current: { NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https://example.com")!) },
+    set: { url, scheme, done in NSWorkspace.shared.setDefaultApplication(at: url, toOpenURLsWithScheme: scheme) { done($0?.localizedDescription) } })
 }
