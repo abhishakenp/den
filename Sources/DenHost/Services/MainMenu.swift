@@ -138,10 +138,19 @@ public enum MainMenu {
   ]
 
   /// Every entry by id (submenus included).
-  public static var entries: [Entry] {
+  /// Every entry by id (submenus included), flattened once.
+  public static let entries: [Entry] = {
     func flat(_ es: [Entry]) -> [Entry] { es.flatMap { e -> [Entry] in if case let .submenu(s) = e.kind { return [e] + flat(s) } else { return [e] } } }
     return layout.flatMap { flat($0.1) }
-  }
+  }()
+  static let entryById: [String: Entry] = Dictionary(entries.filter { !$0.id.isEmpty }.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+  static let slotByEvent: [String: String] = Dictionary(entries.compactMap { e -> (String, String)? in
+    if case let .event(ev) = e.kind { return (ev, e.id) }
+    return nil
+  }, uniquingKeysWith: { a, _ in a })
+  /// The installed items by id (weak: the menu owns them). Filled by `install`.
+  private static let itemTable = NSMapTable<NSString, NSMenuItem>.strongToWeakObjects()
+  private static weak var installedMenu: NSMenu?
 
   public static func install() {
     let main = NSMenu()
@@ -171,6 +180,10 @@ public enum MainMenu {
       m.insertItem(alt, at: m.index(of: zi) + 1)
     }
     NSApp.mainMenu = main
+    installedMenu = main
+    itemTable.removeAllObjects()
+    func index(_ m: NSMenu) { for mi in m.items { if let id = mi.identifier?.rawValue { itemTable.setObject(mi, forKey: id as NSString) }; if let s = mi.submenu { index(s) } } }
+    index(main)
   }
 
   static func build(_ items: [Entry], into m: NSMenu) {
@@ -211,6 +224,8 @@ public enum MainMenu {
 
   public static func item(_ id: String, in menu: NSMenu? = NSApp.mainMenu) -> NSMenuItem? {
     guard let menu else { return nil }
+    // The installed bar: a table lookup (keys.bind asks for every binding at launch).
+    if menu === installedMenu, let mi = itemTable.object(forKey: id as NSString), mi.menu != nil { return mi }
     for mi in menu.items {
       if mi.identifier?.rawValue == id { return mi }
       if let s = mi.submenu, let f = item(id, in: s) { return f }
@@ -220,8 +235,8 @@ public enum MainMenu {
 
   /// The item slot a plugin event fills, if the layout has one.
   static func slot(for event: String) -> NSMenuItem? {
-    guard let e = entries.first(where: { if case let .event(ev) = $0.kind { return ev == event }; return false }) else { return nil }
-    return item(e.id)
+    guard let id = slotByEvent[event] else { return nil }
+    return item(id)
   }
 
   public static func menu(named name: String, in main: NSMenu? = NSApp.mainMenu) -> NSMenu {
@@ -237,7 +252,7 @@ public enum MainMenu {
 
   /// Runs a host action or command item (also the `[shortcuts]` remap path).
   public static func perform(_ id: String) {
-    guard let e = entries.first(where: { $0.id == (id == "view.zoomIn.alt" ? "view.zoomIn" : id) }) else { return }
+    guard let e = entryById[id == "view.zoomIn.alt" ? "view.zoomIn" : id] else { return }
     switch e.kind {
     case let .host(a): handler?(a)
     case let .command(c): runCommand?(c)
@@ -269,7 +284,7 @@ final class MenuTarget: NSObject, NSMenuDelegate, NSMenuItemValidation {
   }
 
   func validateMenuItem(_ mi: NSMenuItem) -> Bool {
-    guard let id = mi.identifier?.rawValue, let e = MainMenu.entries.first(where: { $0.id == id }) else { return true }
+    guard let id = mi.identifier?.rawValue, let e = MainMenu.entryById[id] else { return true }
     switch e.kind {
     case let .host(a): return MainMenu.canPerform?(a) ?? true
     case let .command(c): return MainMenu.commandAvailable?(c) ?? false
@@ -280,7 +295,7 @@ final class MenuTarget: NSObject, NSMenuDelegate, NSMenuItemValidation {
   /// Command items show only while their command exists (checked when the menu opens).
   func menuNeedsUpdate(_ menu: NSMenu) {
     for mi in menu.items {
-      guard let id = mi.identifier?.rawValue, let e = MainMenu.entries.first(where: { $0.id == id }), case let .command(c) = e.kind else { continue }
+      guard let id = mi.identifier?.rawValue, let e = MainMenu.entryById[id], case let .command(c) = e.kind else { continue }
       mi.isHidden = !(MainMenu.commandAvailable?(c) ?? false)
     }
     MainMenu.tidy(menu)

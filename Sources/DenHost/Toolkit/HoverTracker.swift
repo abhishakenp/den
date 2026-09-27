@@ -48,8 +48,15 @@ enum HoverTracker {
   static func refresh(_ window: NSWindow?) {
     guard let window else { return }
     observe(window)
-    apply(hot(in: window, at: pointer(window)), in: window)
+    let h = hot(in: window, at: pointer(window))
+    // Nothing hovered before and nothing now (the pointer is elsewhere, e.g. at launch): no walk.
+    let id = ObjectIdentifier(window)
+    if h.isEmpty, !hotWindows.contains(id) { return }
+    if h.isEmpty { hotWindows.remove(id) } else { hotWindows.insert(id) }
+    apply(h, in: window)
   }
+  /// Windows where some view may be hovered (a refresh found something under the pointer).
+  private static var hotWindows: Set<ObjectIdentifier> = []
 
   static func apply(_ hot: [HoverGroup: ObjectIdentifier], in window: NSWindow) {
     guard let top = window.contentView?.superview ?? window.contentView else { return }
