@@ -159,29 +159,30 @@ jobs:
         env:
           SNAPSHOT_APPEARANCE: ${{ inputs.snapshot_appearance == 'all' && '' || 'dark' }}
         run: |
-          mkdir -p build/ci-logs build/snapshots
-          touch build/snapshots/.start
-          # To a file, not a pipe: a den left running by a --stay capture would hold a pipe open.
-          rc=0
-          scripts/snapshots.sh > build/ci-logs/snapshots.log 2>&1 || rc=$?
+          touch "$RUNNER_TEMP/snapshots.start"
+          # Straight to the log (no pipe: a den left running by a --stay capture would hold it open).
+          scripts/snapshots.sh
+
+      - name: Collect snapshots
+        if: always()
+        env:
+          SNAPSHOT_APPEARANCE: ${{ inputs.snapshot_appearance == 'all' && '' || 'dark' }}
+        run: |
           pkill -x den || true
-          cat build/ci-logs/snapshots.log
-          find docs/screenshots -name '*.png' -newer build/snapshots/.start -exec cp {} build/snapshots/ \;
+          mkdir -p build/snapshots
+          find docs/screenshots -name '*.png' -newer "$RUNNER_TEMP/snapshots.start" -exec cp {} build/snapshots/ \;
           count=$(find build/snapshots -name '*.png' | wc -l | tr -d ' ')
           {
-            echo "### Snapshots (${SNAPSHOT_APPEARANCE:-light and dark}): $count PNGs, exit $rc"
-            echo "Artifact \`snapshots\`; commit them into docs/screenshots/."
+            echo "### Snapshots (${SNAPSHOT_APPEARANCE:-light and dark}): $count PNGs"
+            echo "Artifact \`snapshots\`: copy them into docs/screenshots/ and commit."
             find build/snapshots -name '*.png' -exec basename {} \; | sort | sed 's/^/- /'
           } >> "$GITHUB_STEP_SUMMARY"
-          exit $rc
 
       - name: Upload snapshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: snapshots
-          path: |
-            build/snapshots/*.png
-            build/ci-logs
+          path: build/snapshots/*.png
           if-no-files-found: ignore
           retention-days: 14
