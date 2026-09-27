@@ -309,17 +309,117 @@ final class SpaceIconNode: HoverNode {
   }
 }
 
+// MARK: - Inline rename
+
+/// Arc's in-place rename field: the row's title becomes editable with all text selected.
+/// Return commits, Esc cancels, clicking elsewhere commits (like Finder).
+final class InlineTitleEditor: NSTextField, NSTextFieldDelegate {
+  var onCommit: ((String) -> Void)?
+  var onCancel: (() -> Void)?
+  private var finished = false
+
+  init() {
+    super.init(frame: .zero)
+    isBordered = false
+    drawsBackground = false
+    focusRingType = .none
+    isEditable = true
+    isSelectable = true
+    lineBreakMode = .byClipping
+    usesSingleLineMode = true
+    cell?.isScrollable = true
+    cell?.wraps = false
+    delegate = self
+  }
+  required init?(coder: NSCoder) { fatalError() }
+
+  /// Shows the field with `text`, selected, as first responder.
+  func begin(_ text: String, font: NSFont?, color: NSColor) {
+    finished = false
+    stringValue = text
+    self.font = font
+    textColor = color
+    window?.makeFirstResponder(self)
+    currentEditor()?.selectAll(nil)
+  }
+
+  func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+    switch sel {
+    case #selector(NSResponder.insertNewline(_:)): finish(commit: true); return true
+    case #selector(NSResponder.cancelOperation(_:)): finish(commit: false); return true
+    default: return false
+    }
+  }
+
+  func controlTextDidEndEditing(_ obj: Notification) { finish(commit: true) }
+
+  func finish(commit: Bool) {
+    guard !finished else { return }
+    finished = true
+    let text = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    if commit { onCommit?(text) } else { onCancel?() }
+  }
+}
+
+/// Adds `editing` support to a row: {editing: true} swaps `label` for an `InlineTitleEditor`
+/// and emits `rename {title}` (empty = reset) or `renameCancel`.
+@MainActor
+final class RenameSupport {
+  unowned let owner: NodeView
+  let label: NSTextField
+  var editor: InlineTitleEditor?
+  init(owner: NodeView, label: NSTextField) { (self.owner, self.label) = (owner, label) }
+
+  var active: Bool { editor != nil }
+
+  func update(_ v: Value) {
+    if v.flag("editing") {
+      guard editor == nil else { return }
+      let e = InlineTitleEditor()
+      e.onCommit = { [weak self] t in self?.end(); self?.owner.emit("rename", ["title": .string(t)]) }
+      e.onCancel = { [weak self] in self?.end(); self?.owner.emit("renameCancel") }
+      owner.addSubview(e)
+      editor = e
+      label.isHidden = true
+      e.frame = label.frame
+      // Begin once the row is in its window and laid out.
+      DispatchQueue.main.async { [weak self, weak e] in
+        guard let self, let e, self.editor === e else { return }
+        e.frame = self.label.frame
+        e.begin(v.str("editText", v.str("title")), font: self.label.font, color: self.label.textColor ?? .labelColor)
+      }
+    } else if editor != nil {
+      end()
+    }
+  }
+
+  func layout() { editor?.frame = label.frame.insetBy(dx: -1, dy: 0) }
+
+  private func end() {
+    guard let e = editor else { return }
+    editor = nil
+    let hadFocus = e.currentEditor() != nil
+    e.onCommit = nil
+    e.onCancel = nil
+    e.removeFromSuperview()
+    label.isHidden = false
+    if hadFocus { owner.window?.makeFirstResponder(nil) }
+  }
+}
+
 // MARK: - Tabs
 
-/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, indent?, muted?}
-/// actions: click {modifiers?}, doubleClick, close, reset (favicon click while drifted), mute, contextMenu/menu, reorder, dropOnContent
+/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, indent?, muted?, editing?, editText?}
+/// actions: click {modifiers?}, doubleClick, close, reset (favicon click while drifted), mute, contextMenu/menu, reorder,
+/// dropOnContent, rename {title} / renameCancel (while `editing`)
 final class TabRowNode: HoverNode {
   let icon = IconView()
   let label = makeLabel()
   let drift = makeLabel("/", size: Tokens.tabRowFontSize, weight: .medium)
   let audio = IconView()
   lazy var close = IconButton(symbol: "xmark", size: 22) { [weak self] in self?.emit("close") }
-  override var draggable: Bool { node.flag("draggable", true) }
+  lazy var rename = RenameSupport(owner: self, label: label)
+  override var draggable: Bool { node.flag("draggable", true) && !rename.active }
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
     [icon, drift, label, audio, close].forEach { addSubview($0) }
@@ -339,11 +439,13 @@ final class TabRowNode: HoverNode {
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))
     toolTip = v.str("title")
     apply(r.palette)
+    rename.update(v)
     needsLayout = true
   }
   override func apply(_ p: Palette) {
     label.textColor = p.text
     label.font = .systemFont(ofSize: Tokens.tabRowFontSize, weight: node.flag("selected") ? .medium : .regular)
+    rename.editor?.textColor = p.text
     drift.textColor = p.tertiaryText
     icon.tint = p.text
     audio.tint = p.secondaryText
@@ -365,6 +467,7 @@ final class TabRowNode: HoverNode {
     if !close.isHidden { close.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 26 }
     if !audio.isHidden { audio.frame = NSRect(x: right - 16, y: (h - 13) / 2, width: 14, height: 13); right -= 20 }
     label.frame = NSRect(x: x, y: (h - 18) / 2, width: max(0, right - x), height: 18)
+    rename.layout()
   }
   override func clicked(at p: NSPoint, event: NSEvent) {
     if node.flag("drift"), icon.frame.insetBy(dx: -4, dy: -4).contains(p) { emit("reset"); return }
@@ -378,13 +481,15 @@ final class TabRowNode: HoverNode {
   override func otherMouseUp(with event: NSEvent) { if event.buttonNumber == 2 { emit("close") } }
 }
 
-/// {type:"folder", id, title, icon?, open, children}  actions: toggle, click, reorder (as target: position "into")
+/// {type:"folder", id, title, icon?, open, children, editing?}  actions: toggle, click, reorder (as target: position "into"),
+/// rename {title} / renameCancel (while `editing`)
 final class FolderNode: NodeView {
   final class Header: HoverNode {
     let chevron = IconView()
     let icon = IconView()
     let label = makeLabel()
-    override var draggable: Bool { true }
+    lazy var rename = RenameSupport(owner: self, label: label)
+    override var draggable: Bool { !rename.active }
     override var fillRect: NSRect { bounds.insetBy(dx: 0, dy: (bounds.height - 36) / 2) }
     required init(renderer: Renderer) {
       super.init(renderer: renderer)
@@ -400,6 +505,7 @@ final class FolderNode: NodeView {
       icon.frame = NSRect(x: x, y: (h - s) / 2, width: s, height: s)
       label.frame = NSRect(x: x + s + 8, y: (h - 17) / 2, width: bounds.width - x - s - 34, height: 17)
       chevron.frame = NSRect(x: bounds.width - 22, y: (h - 10) / 2, width: 10, height: 10)
+      rename.layout()
     }
   }
   lazy var header = Header(renderer: r)
@@ -414,6 +520,7 @@ final class FolderNode: NodeView {
     super.update(v)
     header.update(v)
     header.label.stringValue = v.str("title", "Folder")
+    header.rename.update(v)
     header.icon.spec = v.str("icon", open ? "sf:folder" : "sf:folder.fill")
     header.chevron.spec = open ? "sf:chevron.down" : "sf:chevron.right"
     let indent = v.num("indent", 0) + 1

@@ -108,6 +108,7 @@ final class TabsCore {
   var saveScheduled = false
   var dirty = false
   var shown = ""  // tab id currently in the content area
+  var editing: String?  // tab or folder whose title is being renamed inline in the sidebar
 
   init(env: PluginEnv) { self.env = env }
 
@@ -862,6 +863,28 @@ final class TabsCore {
     changed(spaceOf(id) ?? folders[id]?.spaceId)
   }
 
+  /// Inline rename in the sidebar (Arc: double-click or right-click > Rename). The row shows an
+  /// editor; `endRename` gets its text (nil = Esc). An empty tab title resets it to the page's.
+  func beginRename(_ id: String) {
+    guard tabs[id] != nil || folders[id] != nil else { return }
+    let previous = editing
+    editing = id
+    if let p = previous, p != id, let ps = spaceOf(p) ?? folders[p]?.spaceId { renderPage(ps) }
+    if let sid = spaceOf(id) ?? folders[id]?.spaceId { renderPage(sid) }
+  }
+
+  func endRename(_ id: String, _ title: String?) {
+    guard editing == id else { return }
+    editing = nil
+    let sid = spaceOf(id) ?? folders[id]?.spaceId
+    if let t = title {
+      let changed = folders[id] != nil ? !t.isEmpty && t != folders[id]!.title
+        : t.isEmpty ? tabs[id]?.customTitle != nil : t != tabs[id]?.displayTitle
+      if changed { rename(id, t); return }
+    }
+    if let sid { renderPage(sid) }
+  }
+
   func clearToday(_ sid: String) {
     let keep = selected[sid]
     let victims = (today[sid] ?? []).filter { $0 != keep }
@@ -1030,15 +1053,17 @@ final class TabsCore {
 
   func row(_ id: String, _ sid: String, box: Box) -> Value {
     let t = tabs[id]!
-    return ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(selected[sid] == id),
-            "audio": .bool(t.audio), "drift": .bool(kind(of: box) != "today" && t.drift), "menu": .array(menu(for: id, box: box))]
+    var r: Value = ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(selected[sid] == id),
+                    "audio": .bool(t.audio), "drift": .bool(kind(of: box) != "today" && t.drift), "menu": .array(menu(for: id, box: box))]
+    if editing == id { r.put("editing", true) }
+    return r
   }
 
   func node(_ id: String, _ sid: String, parent: Box) -> Value? {
     if let f = folders[id] {
-      return ["type": "folder", "id": .string(id), "title": .string(f.title), "icon": "sf:folder", "open": .bool(f.open),
+      return ["type": "folder", "id": .string(id), "title": .string(f.title), "icon": "sf:folder", "open": .bool(f.open), "editing": .bool(editing == id),
               "children": .array(f.children.compactMap { node($0, sid, parent: .folder(id)) }),
-              "menu": [["id": "newFolder", "title": "New Folder Inside", "icon": "sf:folder.badge.plus"],
+              "menu": [["id": "renameFolder", "title": "Rename Folder…", "icon": "sf:pencil"], ["id": "newFolder", "title": "New Folder Inside", "icon": "sf:folder.badge.plus"],
                        ["separator": true], ["id": "deleteFolder", "title": "Delete Folder…", "icon": "sf:trash"]]]
     }
     if let sp = splits[id] {
@@ -1087,6 +1112,8 @@ final class TabsCore {
   func menu(for id: String, box: Box) -> [Value] {
     guard let t = tabs[id] else { return [] }
     var m: [Value] = [["id": "copy", "title": "Copy Link", "icon": "sf:link"], ["id": "duplicate", "title": "Duplicate", "icon": "sf:plus.square.on.square"]]
+    // Favorites are icon tiles with no title to edit in place.
+    if box != .favorites { m.append(["id": "rename", "title": "Rename…", "icon": "sf:pencil"]) }
     let k = kind(of: box)
     if k != "today" && t.drift {
       m.append(["id": "reset", "title": "Go Back to Pinned URL", "icon": "sf:arrow.uturn.backward"])
@@ -1331,6 +1358,9 @@ final class TabsCore {
     if tabs[id] != nil {
       switch action {
       case "click": select(id)
+      case "doubleClick": if kindOf(id) != "favorite" { beginRename(id) }
+      case "rename": endRename(id, value.s("title"))
+      case "renameCancel": endRename(id, nil)
       case "close": close(id)
       case "reset": reset(id)
       case "reorder": handleReorder(value)
@@ -1350,7 +1380,10 @@ final class TabsCore {
         folders[id]?.open.toggle()
         changed(folders[id]?.spaceId)
       case "reorder": handleReorder(value)
+      case "rename": endRename(id, value.s("title"))
+      case "renameCancel": endRename(id, nil)
       case "menu":
+        if value.string == "renameFolder" { beginRename(id) }
         if value.string == "deleteFolder" { confirmDeleteFolder(id) }
         if value.string == "newFolder" {
           let sid = folders[id]!.spaceId
@@ -1399,6 +1432,7 @@ final class TabsCore {
         env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Copied Link", "icon": "sf:link"]])
       }
     case "duplicate": _ = duplicate(id)
+    case "rename": beginRename(id)
     case "reset": reset(id)
     case "replacePinned":
       checkpoint()

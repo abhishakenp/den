@@ -159,6 +159,67 @@ struct TabsTests {
     #expect(h.tabs("list")["today"][1]["url"] == "https://example.net/")
   }
 
+  /// Inline rename through the real sidebar row: double-click or the context menu opens the
+  /// editor, Return commits, Esc cancels, an empty title resets to the page's.
+  @Test func inlineRenameInTheSidebar() async throws {
+    let h = Harness()
+    h.startTabs()
+    let t = h.ids("today")[0]
+    let pageTitle = h.tabs("list")["today"][0]["title"].string!
+    func row() -> TabRowNode? { HostScenarios.find(t, in: h.rt.ui.sidebarView) as? TabRowNode }
+    func editor() async throws -> InlineTitleEditor {
+      for _ in 0..<20 {
+        if let e = row()?.rename.editor, e.currentEditor() != nil { return e }
+        try await Task.sleep(for: .milliseconds(20))
+      }
+      throw CancellationError()
+    }
+    func type(_ text: String, _ command: Selector) async throws {
+      let e = try await editor()
+      let fieldEditor = try #require(e.currentEditor() as? NSTextView)
+      fieldEditor.selectAll(nil)
+      fieldEditor.insertText(text, replacementRange: fieldEditor.selectedRange())
+      fieldEditor.doCommand(by: command)
+    }
+    let ret = #selector(NSResponder.insertNewline(_:)), esc = #selector(NSResponder.cancelOperation(_:))
+
+    h.action(t, "doubleClick")
+    #expect(h.tree("sidebar.today", 0)["children"][2]["editing"] == true)
+    #expect(try await editor().stringValue == pageTitle)
+    #expect(row()?.label.isHidden == true)
+    try await type("Reading list", ret)
+    #expect(h.tabs("list")["today"][0]["title"] == "Reading list")
+    #expect(h.tree("sidebar.today", 0)["children"][2]["editing"] == .null)
+    #expect(row()?.rename.editor == nil && row()?.label.stringValue == "Reading list")
+
+    // Context menu > Rename…, then Esc keeps the title.
+    #expect(h.tree("sidebar.today", 0)["children"][2]["menu"].array?.contains { $0["id"] == "rename" } == true)
+    h.action(t, "menu", "rename")
+    try await type("Something else", esc)
+    #expect(h.tabs("list")["today"][0]["title"] == "Reading list")
+    #expect(row()?.rename.editor == nil)
+
+    // Empty resets to the page title; Ctrl-Z brings the custom one back.
+    h.action(t, "doubleClick")
+    try await type("", ret)
+    #expect(h.tabs("list")["today"][0]["customTitle"] == .null)
+    #expect(h.tabs("list")["today"][0]["title"].string == pageTitle)
+    h.key("ctrl+z")
+    #expect(h.tabs("list")["today"][0]["title"] == "Reading list")
+
+    // Folders: Rename Folder… from their menu.
+    let folder = h.tabs("list")["pinned"].array!.first { $0["folder"] == true }!["id"].string!
+    h.action(folder, "menu", "renameFolder")
+    #expect(h.tree("sidebar.pinned", 0)["children"].array!.first { $0["id"].string == folder }?["editing"] == true)
+    let header = try #require((HostScenarios.find(folder, in: h.rt.ui.sidebarView) as? FolderNode)?.header)
+    for _ in 0..<20 where header.rename.editor?.currentEditor() == nil { try await Task.sleep(for: .milliseconds(20)) }
+    let fe = try #require(header.rename.editor?.currentEditor() as? NSTextView)
+    fe.selectAll(nil)
+    fe.insertText("Docs", replacementRange: fe.selectedRange())
+    fe.doCommand(by: ret)
+    #expect(h.tabs("list")["pinned"].array!.first { $0["id"].string == folder }?["title"] == "Docs")
+  }
+
   @Test func autoArchiveAndSuspension() async {
     let h = Harness()
     let core = h.startTabs()

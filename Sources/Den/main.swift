@@ -9,7 +9,7 @@ import os
 //   --appearance light|dark|auto   set every space's appearance through the spaces plugin
 //   --scenario <name>              state before snapshot: main, hidden, reveal, space2, toast, swipe, swipeCommit,
 //                                  load10, load10discard, split, split3, command, commandEdit, commandActions, dialog, peek,
-//                                  littleArcLink
+//                                  littleArcLink, rename
 //                                  (split*, command*, dialog, peek and littleArcLink need those plugins)
 //   --dev-plugins <dir>            also load <dir>/*.dylib and hot-reload them when rebuilt
 //   --snapshot <path.png>          render the window to PNG after load, then quit
@@ -186,6 +186,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // A link from another app, as macOS delivers it: the peek plugin opens it in Little Arc.
       snapMini = true
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { rt.app.open([URL(string: "https://www.swift.org/blog/")!]) }
+    case "rename":
+      // Double-click the first today tab: the inline title editor.
+      if let id = rt.call("tabs", "list").list("today").first?["id"] { rt.plugins.emit("ui.action", ["id": id, "action": "doubleClick"]) }
     case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
     case "commandEdit": rt.plugins.emit("commands.key.edit")  // Cmd-L
     case "commandActions":
