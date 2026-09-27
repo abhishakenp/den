@@ -87,6 +87,7 @@ public final class SessionService: NSObject, HostService, WKNavigationDelegate {
 
   func evaluate(id: String, origin: URL, script: String, profile: String, timeoutMs: Int) {
     let config = WKWebViewConfiguration()
+    config.applicationNameForUserAgent = WebViewsService.applicationNameForUserAgent
     config.websiteDataStore = webviews.store(for: profile)
     let w = WKWebView(frame: NSRect(x: 0, y: 0, width: 10, height: 10), configuration: config)
     w.navigationDelegate = self

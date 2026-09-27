@@ -11,6 +11,7 @@ import os
 //                                  load10, load10discard, split, split3, command, commandEdit, commandActions, dialog, peek,
 //                                  littleArcLink, littleArcCmdO (prints scenario.cmdO … ok=true|false, exits), rename, themeLive
 //                                  (split*, command*, dialog, peek and littleArcLink need those plugins)
+//                                  page: opens --url <url> as the selected tab (dark mode, sign-in and vault checks)
 //   --dev-plugins <dir>            also load <dir>/*.dylib and hot-reload them when rebuilt
 //   --snapshot <path.png>          render the window to PNG after load, then quit
 //   --snapshot-delay <seconds>     wait before snapshot (default 4)
@@ -336,6 +337,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case "rename":
       // Double-click the first today tab: the inline title editor.
       if let id = rt.call("tabs", "list").list("today").first?["id"] { rt.plugins.emit("ui.action", ["id": id, "action": "doubleClick"]) }
+    case "page":
+      guard let u = arg("--url") else { print("scenario.page needs --url"); exit(1) }
+      let id = rt.call("tabs", "open", ["url": .string(u)])["id"]
+      rt.call("tabs", "select", ["id": id])
     case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
     case "commandEdit": rt.plugins.emit("commands.key.edit")  // Cmd-L
     case "commandActions":

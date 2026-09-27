@@ -22,6 +22,8 @@ public final class DenRuntime {
   public let net: NetService
   public let ai: AIService
   public let schedule: ScheduleService
+  /// Per-site user stylesheets and appearance (the `darkmode` plugin), and den's password vault.
+  public let pageStyle: PageStyleService
   /// Lets `PluginLoader` (built by the app from `plugins` alone) grant sidecar permissions.
   static var permissionsByHost: [ObjectIdentifier: Permissions] = [:]
   static func permissions(for plugins: PluginHost) -> Permissions? { permissionsByHost[ObjectIdentifier(plugins)] }
@@ -41,12 +43,13 @@ public final class DenRuntime {
     net = NetService(host: host, webviews: webviews, permissions: permissions)
     ai = AIService(host: host)
     schedule = ScheduleService(host: host, storage: storage)
+    pageStyle = PageStyleService(host: host, webviews: webviews)
     Self.permissionsByHost[ObjectIdentifier(plugins)] = permissions
     // `webviews.eval` reads a live page only for a plugin with `session:<that page's host>`.
     webviews.allowScript = { [permissions] plugin, host in MainActor.assumeIsolated { permissions.allowsSession(plugin, host: host) } }
     windowService.ui = ui
     windowService.attach(webviews: webviews, host: host)
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle] {
       host.provide(s)
       plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

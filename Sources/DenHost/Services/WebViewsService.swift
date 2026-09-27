@@ -58,6 +58,27 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   public init(host: ServiceHost) { self.host = host }
 
+  /// Hooks for host services that style or script pages per web view (`pagestyle`, `vault`).
+  /// `configure` runs before each WKWebView is created, `created` right after, and
+  /// `navigating` on every main-frame navigation decision, before the new document exists
+  /// (so a user stylesheet set there applies from the first paint).
+  public var configureHooks: [@MainActor (WebRecord, WKWebViewConfiguration) -> Void] = []
+  public var createdHooks: [@MainActor (WebRecord, WKWebView) -> Void] = []
+  public var navigatingHooks: [@MainActor (WebRecord, WKWebView, URL) -> Void] = []
+
+  /// Safari's `Version/x.y Safari/605.1.15` suffix, so den's user agent is exactly Safari's for
+  /// this macOS (WKWebView's default omits it, and Google's sign-in then refuses the browser as
+  /// an embedded web view). Read once, at the first web view, from Safari's own Info.plist.
+  public nonisolated static let applicationNameForUserAgent: String = {
+    let plist = NSDictionary(contentsOfFile: "/Applications/Safari.app/Contents/Info.plist")
+    var version = plist?["CFBundleShortVersionString"] as? String ?? ""
+    if version.isEmpty {
+      let v = ProcessInfo.processInfo.operatingSystemVersion
+      version = "\(v.majorVersion).\(v.minorVersion)"
+    }
+    return "Version/\(version) Safari/605.1.15"
+  }()
+
   public func handle(method: String, args: Value) -> Value {
     if method == "create" { return create(args) }
     if method == "list" { return .array(order.map { .string($0) }) }
@@ -113,8 +134,10 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     config.websiteDataStore = store(for: r.profile)
     config.preferences.isElementFullscreenEnabled = true
     config.preferences.inactiveSchedulingPolicy = .suspend
+    config.applicationNameForUserAgent = Self.applicationNameForUserAgent
     config.userContentController.addUserScript(WKUserScript(source: Self.mediaScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
     config.userContentController.add(scriptHandler, name: "denMedia")
+    for h in configureHooks { h(r, config) }
     let w = WKWebView(frame: .zero, configuration: config)
     w.navigationDelegate = self
     w.uiDelegate = self
@@ -124,6 +147,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     w.underPageBackgroundColor = .clear
     r.webView = w
     observe(r, w)
+    for h in createdHooks { h(r, w) }
     if let state = r.interactionState {
       w.interactionState = state
       r.interactionState = nil
@@ -182,7 +206,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     guard let w = r.webView else { return }
     r.observers.forEach { $0.invalidate() }
     r.observers = []
-    w.configuration.userContentController.removeScriptMessageHandler(forName: "denMedia")
+    w.configuration.userContentController.removeAllScriptMessageHandlers()
     w.navigationDelegate = nil
     w.uiDelegate = nil
     w.stopLoading()
@@ -344,6 +368,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   public func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
     guard let r = recordFor(webView), let target = action.request.url else { return decisionHandler(.allow) }
+    let mainFrame = action.targetFrame?.isMainFrame ?? true
     let rules = r.rules.isEmpty ? defaultRules : r.rules
     var mods = Set<Chord.Mod>()
     let f = action.modifierFlags
@@ -351,11 +376,12 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if f.contains(.shift) { mods.insert(.shift) }
     if f.contains(.option) { mods.insert(.opt) }
     if f.contains(.control) { mods.insert(.ctrl) }
-    if let event = LinkPolicy.route(rules: rules, source: webView.url, target: target, isLinkClick: action.navigationType == .linkActivated, isMainFrame: action.targetFrame?.isMainFrame ?? true, modifiers: mods) {
+    if let event = LinkPolicy.route(rules: rules, source: webView.url, target: target, isLinkClick: action.navigationType == .linkActivated, isMainFrame: mainFrame, modifiers: mods) {
       decisionHandler(.cancel)
       host.emit(event, ["id": .string(r.id), "url": .string(target.absoluteString), "source": .string(webView.url?.absoluteString ?? "")])
       return
     }
+    if mainFrame { for h in navigatingHooks { h(r, webView, target) } }
     decisionHandler(.allow)
   }
 
