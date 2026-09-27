@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -12,7 +13,7 @@ import WebKit
 /// translation. The clipboard is never touched: `app.copy` is intercepted, captures go to a
 /// temporary folder.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct PageToolsTests {
   @MainActor final class Rig {
     let h = Harness()
@@ -54,7 +55,7 @@ struct PageToolsTests {
     func load(_ id: String, _ html: String, url: String) async throws {
       let w = try #require(rt.webviews.record(id)?.webView)
       w.loadHTMLString(html, baseURL: URL(string: url))
-      for _ in 0..<100 where w.isLoading || w.url?.absoluteString != url { try await Task.sleep(for: .milliseconds(30)) }
+      _ = await Wait.until("w.isLoading || w.url?.absoluteString != url") { !(w.isLoading || w.url?.absoluteString != url) }
       try await Task.sleep(for: .milliseconds(150))
     }
 
@@ -64,12 +65,8 @@ struct PageToolsTests {
       return await awaitCallback(10, UncheckedBox<Any?>(nil)) { done in w.evaluateJavaScript(script) { r, _ in done(UncheckedBox(r)) } }.value
     }
 
-    func until(_ timeout: Int = 400, _ cond: () async -> Bool) async -> Bool {
-      for _ in 0..<timeout {
-        if await cond() { return true }
-        try? await Task.sleep(for: .milliseconds(50))
-      }
-      return await cond()
+    func until(_ timeout: Int = 400, line: UInt = #line, _ cond: () async -> Bool) async -> Bool {
+      await Wait.until("a condition", seconds: Double(timeout) / 20, every: .milliseconds(50), line: line) { await cond() }
     }
 
     func pillButtons() -> [String] {

@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -11,7 +12,7 @@ import WebKit
 /// `ui.tokens` services. Real WebKit pages (loadHTMLString with a fake origin), real speech and
 /// real on-device translation.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct PageBlocksTests {
   static func runtime() -> DenRuntime { ServiceTests.runtime() }
 
@@ -21,7 +22,7 @@ struct PageBlocksTests {
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     let w = try #require(rt.webviews.record(id)?.webView)
     w.loadHTMLString(html, baseURL: URL(string: origin))
-    for _ in 0..<100 where w.isLoading || w.url?.host == nil { try await Task.sleep(for: .milliseconds(30)) }
+    _ = await Wait.until("w.isLoading || w.url?.host == nil") { !(w.isLoading || w.url?.host == nil) }
     try await Task.sleep(for: .milliseconds(100))
     return w
   }
@@ -30,7 +31,7 @@ struct PageBlocksTests {
     var got: Value?
     let token = rt.plugins.on(event) { v in if got == nil, match(v) { got = v } }
     _ = token
-    for _ in 0..<timeout where got == nil { try? await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("event \(event)", seconds: Double(timeout) / 20) { got != nil }
     return got
   }
 
@@ -76,7 +77,7 @@ struct PageBlocksTests {
     rt.plugins.on("webviews.message") { m = $0 }
     let r2 = await Self.wait(rt, "webviews.injectResult") { $0["request"] == second["request"] }
     #expect(r2?["value"] == "sent")
-    for _ in 0..<40 where m == nil { try await Task.sleep(for: .milliseconds(25)) }
+    _ = await Wait.until("m == nil") { !(m == nil) }
     #expect(m?["plugin"] == "demo" && m?["webview"] == "p" && m?["value"]["said"] == "yo")
     let again = rt.call("webviews", "inject", ["id": "p", "plugin": "demo", "script": "return window.__demo.n"])
     #expect(await Self.wait(rt, "webviews.injectResult") { $0["request"] == again["request"] }?["value"] == 1)

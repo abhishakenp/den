@@ -273,7 +273,7 @@ struct TabsTests {
     h.tabs("select", ["id": .string(today[0])])
     #expect(h.rt.call("webviews", "get", ["id": .string(today[1])])["live"] == true)
     // The page that left the screen waits in the window while its snapshot is taken.
-    for _ in 0..<40 where h.rt.webviews.record(today[1])?.webView?.window != nil { try? await Task.sleep(for: .milliseconds(50)) }
+    _ = await Wait.until("h.rt.webviews.record(today[1])?.webView?.window != nil") { !(h.rt.webviews.record(today[1])?.webView?.window != nil) }
     // 4 minutes idle: kept. 6 minutes (default 5): the background tab is discarded, the visible one is not.
     h.clock += 4 * 60_000
     core.tick()

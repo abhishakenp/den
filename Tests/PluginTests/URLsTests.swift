@@ -1,4 +1,5 @@
 import CordisValue
+import DenTestSupport
 import Testing
 
 @testable import DenHost
@@ -6,7 +7,7 @@ import Testing
 
 /// Title and icon fallbacks: no data:/raw URLs or empty strings where a title or icon belongs.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct URLsTests {
   @Test func titleFallsBackToAPrettifiedLocation() {
     #expect(URLs.title("https://www.news.ycombinator.com/item?id=1") == "news.ycombinator.com")

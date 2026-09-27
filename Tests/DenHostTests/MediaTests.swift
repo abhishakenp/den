@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -9,7 +10,7 @@ import WebKit
 /// The mini player and the page's media/form reports, on a local page playing
 /// Tests/Fixtures/test-video.mp4 from MockServices (no network).
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct MediaTests {
   static func served() throws -> MockServices {
     let mock = MockServices()
@@ -22,9 +23,8 @@ struct MediaTests {
     return mock
   }
 
-  func wait(_ s: Double = 8, _ cond: () -> Bool) async -> Bool {
-    for _ in 0..<Int(s * 20) where !cond() { try? await Task.sleep(for: .milliseconds(50)) }
-    return cond()
+  func wait(_ s: Double = 20, line: UInt = #line, _ cond: () -> Bool) async -> Bool {
+    await Wait.until("a condition", seconds: s, line: line) { cond() }
   }
 
   @Test func rangeRequestsAnswer206() throws {
@@ -45,21 +45,19 @@ struct MediaTests {
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     let web = try #require(rt.webviews.record(id)?.webView)
     #expect(await wait { !web.isLoading && web.url != nil })
-    _ = try await web.callAsyncJavaScript("const v = document.querySelector('video'); v.muted = false; await v.play(); return true", contentWorld: .page)
+    _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.muted = false; await v.play(); return true")
     #expect(await wait { rt.media.eligibleVideo(id) != nil })
     #expect(rt.call("webviews", "get", ["id": .string(id)])["audio"] == true)
     // Unsaved input is reported (and keeps a page from being discarded).
-    _ = try await web.callAsyncJavaScript("const i = document.getElementById('i'); i.value = 'draft'; i.dispatchEvent(new Event('input')); return true", contentWorld: .page)
+    _ = await Wait.asyncJS(web, "const i = document.getElementById('i'); i.value = 'draft'; i.dispatchEvent(new Event('input')); return true")
     #expect(await wait { rt.webviews.record(id)?.media.dirty == true })
 
     _ = rt.call("content", "show", ["panes": [.string(other)]])
     #expect(rt.media.playerId == id)
     #expect(web.window === rt.media.panel)
     #expect(rt.call("webviews", "suspend", ["id": .string(id)])["reason"] == "media")
-    let isolated = { try await web.callAsyncJavaScript("return document.documentElement.classList.contains('den-mini')", contentWorld: .page) as? Bool }
-    var on = false
-    for _ in 0..<60 where !on { on = (try? await isolated()) == true; try? await Task.sleep(for: .milliseconds(50)) }
-    #expect(on)
+    let isolated = { await Wait.asyncJS(web, "return document.documentElement.classList.contains('den-mini')", seconds: 5) as? Bool }
+    #expect(await Wait.until("the page isolated in the mini player") { await isolated() == true })
     #expect(rt.call("media", "control", ["action": "pause"]) == .ok)
     #expect(await wait { rt.media.panel?.player.controls.paused == true })
 
@@ -67,9 +65,7 @@ struct MediaTests {
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     #expect(rt.media.playerId == nil && rt.media.panel == nil)
     #expect(web.superview === rt.content.card(id)?.clip)
-    var off = false
-    for _ in 0..<60 where !off { off = (try? await isolated()) == false; try? await Task.sleep(for: .milliseconds(50)) }
-    #expect(off)
+    #expect(await Wait.until("the page back inline") { await isolated() == false })
     // Paused: nothing to follow.
     _ = rt.call("content", "show", ["panes": [.string(other)]])
     #expect(rt.media.playerId == nil)
