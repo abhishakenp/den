@@ -255,7 +255,8 @@ final class SpacesCore {
       ["type": "spacer"],
     ]
     for s in spaces {
-      row.append(["type": "spaceIcon", "id": .string("spaces.icon:" + s.id), "icon": .string(s.icon), "title": .string(s.name), "selected": .bool(s.id == current)])
+      row.append(["type": "spaceIcon", "id": .string("spaces.icon:" + s.id), "icon": .string(s.icon), "title": .string(s.name), "selected": .bool(s.id == current),
+                  "spaceId": .string(s.id)])
     }
     row.append(["type": "spacer"])
     row.append(["type": "button", "id": "spaces.new", "icon": "sf:plus", "tooltip": "New Space", "size": 32])

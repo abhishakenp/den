@@ -270,11 +270,15 @@ final class SpaceTitleNode: HoverNode {
   }
 }
 
-/// Footer space switcher item. {type:"spaceIcon", id, icon?, selected}  (empty icon = dot)
+/// Footer space switcher item. {type:"spaceIcon", id, icon?, title, selected, spaceId?}  (empty icon = dot)
+/// With `spaceId`, a tab row dragged over the icon highlights it and drops as `dropOnSpace`.
 final class SpaceIconNode: HoverNode {
   let icon = IconView()
+  /// A dragged tab is over this icon.
+  var dropTarget = false { didSet { if dropTarget != oldValue { apply(r.palette) } } }
   override var cornerRadius: CGFloat { 6 }
-  override var fillRect: NSRect { hovering ? bounds : .zero }
+  override var fillRect: NSRect { hovering || dropTarget ? bounds : .zero }
+  override var hoverColor: NSColor { dropTarget ? palette.selectedFill : palette.hoverFill }
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
     addSubview(icon)
@@ -289,8 +293,8 @@ final class SpaceIconNode: HoverNode {
     needsDisplay = true
   }
   override func apply(_ p: Palette) {
-    icon.tint = node.flag("selected") ? p.text : p.secondaryText
-    icon.alphaValue = node.flag("selected") ? 1 : 0.55
+    icon.tint = node.flag("selected") || dropTarget ? p.text : p.secondaryText
+    icon.alphaValue = node.flag("selected") || dropTarget ? 1 : 0.55
     needsDisplay = true
   }
   override func height(for w: CGFloat) -> CGFloat { Tokens.spaceIconSize + 4 }
@@ -301,10 +305,14 @@ final class SpaceIconNode: HoverNode {
     icon.isHidden = icon.spec.isEmpty
   }
   override func draw(_ dirtyRect: NSRect) {
+    if dropTarget && !hovering {
+      palette.selectedFill.setFill()
+      NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius).fill()
+    }
     super.draw(dirtyRect)
     guard icon.spec.isEmpty else { return }
     let d = Tokens.spaceDotSize * (node.flag("selected") ? 1.25 : 1)
-    (node.flag("selected") ? palette.text : palette.secondaryText.withAlphaComponent(0.4)).setFill()
+    (node.flag("selected") || dropTarget ? palette.text : palette.secondaryText.withAlphaComponent(0.4)).setFill()
     NSBezierPath(ovalIn: NSRect(x: bounds.midX - d / 2, y: bounds.midY - d / 2, width: d, height: d)).fill()
   }
 }

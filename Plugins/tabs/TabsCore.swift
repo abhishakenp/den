@@ -818,6 +818,15 @@ final class TabsCore {
     return .okay
   }
 
+  /// "Move to <Space>" and dropping a row on a footer space icon: the tab (or folder) keeps its
+  /// section (pinned stays pinned) in the other space; a favorite lands in that space's today.
+  func moveToSpace(_ id: String, _ sid: String) {
+    guard pageIndex(sid) != nil, tabs[id] != nil || folders[id] != nil else { return }
+    let kind = folders[id] != nil ? "pinned" : kindOf(id)
+    if kind != "favorite" && (spaceOf(id) ?? folders[id]?.spaceId) == sid { return }
+    _ = move(["id": .string(id), "spaceId": .string(sid), "kind": .string(kind == "favorite" ? "today" : kind)])
+  }
+
   func contains(folder f: String, _ other: String) -> Bool {
     for c in folders[f]?.children ?? [] {
       if c == other { return true }
@@ -1364,6 +1373,7 @@ final class TabsCore {
       case "close": close(id)
       case "reset": reset(id)
       case "reorder": handleReorder(value)
+      case "dropOnSpace": moveToSpace(id, value.s("spaceId"))
       case "dropOnContent":
         if let sel = selectedId, sel != id {
           let side = value.s("side")
@@ -1380,6 +1390,7 @@ final class TabsCore {
         folders[id]?.open.toggle()
         changed(folders[id]?.spaceId)
       case "reorder": handleReorder(value)
+      case "dropOnSpace": moveToSpace(id, value.s("spaceId"))
       case "rename": endRename(id, value.s("title"))
       case "renameCancel": endRename(id, nil)
       case "menu":
@@ -1446,10 +1457,7 @@ final class TabsCore {
     case "close": close(id)
     default:
       if splitMenuPicked(item) { return }
-      if Text.hasPrefix(item, "move:") {
-        let kind = kindOf(id)
-        _ = move(["id": .string(id), "spaceId": .string(Text.dropPrefix(item, "move:")), "kind": .string(kind == "favorite" ? "today" : kind)])
-      }
+      if Text.hasPrefix(item, "move:") { moveToSpace(id, Text.dropPrefix(item, "move:")) }
     }
   }
 }

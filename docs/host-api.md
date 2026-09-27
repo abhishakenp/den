@@ -123,7 +123,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `grid` | `columns?`, `children` | – |
 | `favoriteTile` | `id`, `icon`, `title`, `selected`, `audio` | `click`, `doubleClick`, `reorder` |
 | `spaceTitle` | `id`, `title`, `icon?` | `click`, `more` |
-| `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected` | `click` |
+| `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected`, `spaceId?` (makes it a drop target for dragged rows) | `click` |
 | `tabRow` | `id`, `title`, `icon`, `selected`, `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `indent?`, `draggable=true`, `editing?`, `editText?` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel` |
 | `folder` | `id`, `title`, `icon?`, `open`, `children`, `editing?` | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel` |
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
@@ -140,7 +140,7 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
   - `{id, title, icon?, key?, destructive?, enabled=true, checked?, items?}`. `icon` is an `sf:` symbol. `key` is a chord hint drawn on the right (`cmd+w`), display only; the real binding lives in `keys`. `destructive` draws the title and icon in DestructiveButtonFace red (#F53714). `items` makes it a submenu ("Move to Space ▸").
   - `{separator: true}` and `{header: "Title"}` (section header).
 - **Inline rename.** `editing: true` on a `tabRow` or `folder` swaps its title for a text field holding `editText` (default: `title`), all selected and focused. Return or a click elsewhere emits `rename {title}` (trimmed; may be empty), Esc emits `renameCancel`. The plugin then sends the node without `editing`.
-- **Drag reorder.** Dragging emits `reorder {source, target, position: before|after|into}` with a haptic tick. Dropping on the web content emits `dropOnContent {source, side: left|center|right}`.
+- **Drag reorder.** Dragging emits `reorder {source, target, position: before|after|into}` with a haptic tick. Dropping on the web content emits `dropOnContent {source, side: left|center|right}`. Dragging a tab row or folder over a footer `spaceIcon` that has a `spaceId` highlights the icon; dropping there emits `dropOnSpace {source, target, spaceId}` (from the dragged row).
 - **View reuse.** Views are reused by `type` + `id`, so it's cheap to resend a whole tree on every change.
 
 ### Theme picker popover

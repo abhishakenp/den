@@ -272,8 +272,9 @@ public final class SidebarView: FlippedView {
 }
 
 /// Drag-to-reorder for tab rows, folders and favorite tiles, with haptics and a theme-tinted
-/// insertion indicator. Emits ui.action {id: source, action: "reorder", value: {source, target, position}}
-/// or {action: "dropOnContent", value: {source, side}} when dropped on the web content.
+/// insertion indicator. Emits ui.action {id: source, action: "reorder", value: {source, target, position}},
+/// {action: "dropOnContent", value: {source, side}} when dropped on the web content, or
+/// {action: "dropOnSpace", value: {source, target, spaceId}} when a row is dropped on a footer space icon.
 @MainActor
 final class DragController {
   weak var root: NSView?  // sidebar view
@@ -289,6 +290,7 @@ final class DragController {
   private var ghost: NSImageView?
   private let indicator = NSView()
   private var target: (String, String)?
+  private(set) weak var spaceTarget: SpaceIconNode?
   private var grabOffset = NSPoint.zero
 
   init(emit: @escaping (String, String, Value) -> Void) {
@@ -366,13 +368,34 @@ final class DragController {
     return out
   }
 
+  func spaceIcons(in v: NSView) -> [SpaceIconNode] {
+    v.subviews.flatMap { s -> [SpaceIconNode] in
+      guard !s.isHidden else { return [] }
+      return (s as? SpaceIconNode).map { [$0] } ?? spaceIcons(in: s)
+    }
+  }
+
+  /// Highlights the footer space icon under the dragged row (Arc: drop a tab on a space to move it).
+  func setSpaceTarget(_ t: SpaceIconNode?) {
+    guard t !== spaceTarget else { return }
+    spaceTarget?.dropTarget = false
+    spaceTarget = t
+    t?.dropTarget = true
+    if t != nil { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
+  }
+
   func move(_ event: NSEvent) {
     guard let root, let ghost, let source else { return }
     let p = root.convert(event.locationInWindow, from: nil)
     ghost.setFrameOrigin(NSPoint(x: source is FavoriteTileNode ? p.x - grabOffset.x : ghost.frame.minX, y: p.y - grabOffset.y))
     var newTarget: (String, String)?
     let isTile = source is FavoriteTileNode
-    if p.x > root.bounds.maxX + 6 {
+    let icon = isTile ? nil : spaceIcons(in: root).first { !$0.node.str("spaceId").isEmpty && root.convert($0.bounds, from: $0).insetBy(dx: -2, dy: -4).contains(p) }
+    setSpaceTarget(icon)
+    if icon != nil {
+      indicator.isHidden = true
+      updateDropZone(nil)
+    } else if p.x > root.bounds.maxX + 6 {
       indicator.isHidden = true
       updateDropZone(contentFrame().contains(event.locationInWindow) ? event.locationInWindow : nil)
     } else if let hit = candidates(in: root).first(where: { root.convert($0.bounds, from: $0).contains(p) && ($0 is FavoriteTileNode) == isTile }) {
@@ -389,7 +412,7 @@ final class DragController {
       newTarget = (hit.nodeId, pos)
       indicator.isHidden = false
     }
-    if p.x <= root.bounds.maxX + 6 { updateDropZone(nil) }
+    if p.x <= root.bounds.maxX + 6 && icon == nil { updateDropZone(nil) }
     if newTarget?.0 != target?.0 || newTarget?.1 != target?.1 {
       target = newTarget
       if newTarget != nil { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
@@ -401,13 +424,17 @@ final class DragController {
     let pWin = event.locationInWindow
     let cf = contentFrame()
     let p = root.convert(pWin, from: nil)
-    if p.x > root.bounds.maxX + 6, cf.contains(pWin) {
+    if let icon = spaceTarget {
+      emit(source.nodeId, "dropOnSpace", ["source": .string(source.nodeId), "target": .string(icon.nodeId), "spaceId": .string(icon.node.str("spaceId"))])
+      NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+    } else if p.x > root.bounds.maxX + 6, cf.contains(pWin) {
       let side = Self.side(at: pWin, in: cf)
       emit(source.nodeId, "dropOnContent", ["source": .string(source.nodeId), "side": .string(side)])
     } else if let (t, pos) = target {
       emit(source.nodeId, "reorder", ["source": .string(source.nodeId), "target": .string(t), "position": .string(pos)])
       NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
     }
+    setSpaceTarget(nil)
     source.alphaValue = 1
     ghost?.removeFromSuperview()
     indicator.removeFromSuperview()

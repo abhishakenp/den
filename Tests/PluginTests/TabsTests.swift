@@ -220,6 +220,52 @@ struct TabsTests {
     #expect(h.tabs("list")["pinned"].array!.first { $0["id"].string == folder }?["title"] == "Docs")
   }
 
+  /// Dragging a tab row onto another space's footer icon highlights it and moves the tab there,
+  /// through the real drag controller.
+  @Test func dragTabOntoSpaceIcon() throws {
+    let h = Harness()
+    h.startTabs()
+    let w = h.rt.window.window
+    w.orderFront(nil)
+    w.contentView?.layoutSubtreeIfNeeded()
+    h.rt.ui.sidebarView.layoutSubtreeIfNeeded()
+    let (s0, s1) = (h.spaceIds[0], h.spaceIds[1])
+    let t = h.ids("today", s0)[1]
+    let row = try #require(HostScenarios.find(t, in: h.rt.ui.sidebarView) as? TabRowNode)
+    let icon = try #require(HostScenarios.find("spaces.icon:" + s1, in: h.rt.ui.sidebarView) as? SpaceIconNode)
+    icon.superview?.layoutSubtreeIfNeeded()
+    func ev(_ type: NSEvent.EventType, _ v: NSView) -> NSEvent {
+      let p = v.convert(NSPoint(x: v.bounds.midX, y: v.bounds.midY), to: nil)
+      return NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+    }
+    let drag = h.rt.ui.drag
+    drag.begin(row, event: ev(.leftMouseDown, row))
+    drag.move(ev(.leftMouseDragged, icon))
+    #expect(icon.dropTarget)
+    #expect(drag.spaceTarget === icon)
+    drag.end(ev(.leftMouseUp, icon))
+    #expect(!icon.dropTarget)
+    #expect(!h.ids("today", s0).contains(t))
+    #expect(h.ids("today", s1).first == t)
+    // A pinned tab stays pinned; ctrl-z undoes.
+    let p = h.ids("pinned", s0)[0]
+    let prow = try #require(HostScenarios.find(p, in: h.rt.ui.sidebarView) as? TabRowNode)
+    drag.begin(prow, event: ev(.leftMouseDown, prow))
+    drag.move(ev(.leftMouseDragged, icon))
+    drag.end(ev(.leftMouseUp, icon))
+    #expect(h.ids("pinned", s1).last == p)
+    h.key("ctrl+z")
+    #expect(h.ids("pinned", s0).first == p)
+    // Dropping on the current space's icon changes nothing.
+    let own = try #require(HostScenarios.find("spaces.icon:" + s0, in: h.rt.ui.sidebarView) as? SpaceIconNode)
+    let before = h.ids("today", s0)
+    let r0 = try #require(HostScenarios.find(before[0], in: h.rt.ui.sidebarView) as? TabRowNode)
+    drag.begin(r0, event: ev(.leftMouseDown, r0))
+    drag.move(ev(.leftMouseDragged, own))
+    drag.end(ev(.leftMouseUp, own))
+    #expect(h.ids("today", s0) == before)
+  }
+
   @Test func autoArchiveAndSuspension() async {
     let h = Harness()
     let core = h.startTabs()
