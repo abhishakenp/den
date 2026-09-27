@@ -89,7 +89,7 @@ bundled < Application Support < managed < `~/.den/plugins/<id>.dylib` < source f
 
 `scripts/updater.sh install` installs a user LaunchAgent, `io.github.abhishakenp.den.updater`:
 
-- It runs `updater.sh check` every 150 s, and at login. `ProcessType=Background`, nice 10 and low-priority I/O keep it out of the way. Nothing runs between checks.
+- It runs `updater.sh check` every 150 s, and at login, at nice 10. Nothing runs between checks. Throttled I/O (`ProcessType=Background`, i.e. `taskpolicy -b`, or `LowPriorityIO`) is opt-in (`DEN_UPDATER_PROCESS_TYPE=Background scripts/updater.sh install`): while other processes kept the disk busy, it left a plugin build that takes 12 s with about 20 s of CPU in 11–12 minutes.
 - **Check for Updates…** starts it immediately (`launchctl kickstart`).
 - `scripts/updater.sh uninstall` removes it.
 

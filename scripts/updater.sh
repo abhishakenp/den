@@ -18,7 +18,10 @@
 #                        apply" and relaunches when you're not using it (the updates plugin)
 #   anything fails    -> nothing deployed; logged in ~/.den/logs/updater.log; that commit is
 #                        not retried until main moves
-# The agent runs as ProcessType=Background with nice 10 and low-priority I/O.
+# The agent runs at nice 10, so the user's apps get the CPU first. Throttled I/O is not used:
+# with ProcessType=Background (taskpolicy -b) or LowPriorityIO, a plugin build that takes 12 s
+# got ~20 s of CPU in 11-12 minutes while other processes kept the disk busy (load ~350).
+# DEN_UPDATER_PROCESS_TYPE=Background at install time opts into it anyway.
 set -uo pipefail
 
 SELF=${0:A}
@@ -88,9 +91,8 @@ cmd_install() {
   <key>ProgramArguments</key><array><string>/bin/zsh</string><string>$BIN/updater.sh</string><string>check</string></array>
   <key>StartInterval</key><integer>$INTERVAL</integer>
   <key>RunAtLoad</key><true/>
-  <key>ProcessType</key><string>Background</string>
+  <key>ProcessType</key><string>${DEN_UPDATER_PROCESS_TYPE:-Standard}</string>
   <key>Nice</key><integer>10</integer>
-  <key>LowPriorityIO</key><true/>
   <key>StandardOutPath</key><string>$LOG</string>
   <key>StandardErrorPath</key><string>$LOG</string>
   <key>EnvironmentVariables</key><dict><key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string></dict>
@@ -123,6 +125,12 @@ run_tests() {
   (cd $SRC && swift test ${1:+--filter "$1"} > $out 2>&1); local rc=$?
   cat $out >> $LOG
   (( rc == 0 )) && return 0
+  if ! grep -q "Test run with" $out; then
+    # The test process died (a crash stops every test after it): run the same set again, whole.
+    log "test run did not finish; running it again once"
+    (cd $SRC && swift test ${1:+--filter "$1"} >> $LOG 2>&1)
+    return
+  fi
   local failed=(${(f)"$(sed -nE 's/^✘ Test ([A-Za-z0-9_]+)\(.*\) failed.*/\1/p' $out | sort -u)"})
   (( ${#failed} )) || return 1
   log "re-running failed tests once: ${failed[*]}"
