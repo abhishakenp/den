@@ -74,9 +74,10 @@ public final class UIService: HostService {
     }
     cards.windowRect = { [weak wc] r in
       guard let wc, let content = wc.window.contentView else { return r }
-      // Window content coordinates, top-left origin -> overlays.
-      let bl = NSRect(x: r.minX, y: content.bounds.height - r.maxY, width: r.width, height: r.height)
-      return wc.overlays.convert(content.convert(bl, to: nil), from: nil)
+      // Window coordinates with a top-left origin (the content view spans the window) -> the
+      // window's own bottom-left base coordinates -> overlays.
+      let base = NSRect(x: r.minX, y: content.frame.height - r.maxY, width: r.width, height: r.height)
+      return wc.overlays.convert(base, from: nil)
     }
     renderer.hover = cards
 

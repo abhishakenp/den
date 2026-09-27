@@ -33,7 +33,7 @@ public enum PreviewScenarios {
       let sel = rt.call("tabs", "selected").str("id")
       guard let other = today().first(where: { $0.0 != sel }) else { return rt.window.window }
       rt.call("tabs", "select", ["id": .string(other.0)])
-      after(2.5) {
+      after(5) {
         rt.call("tabs", "select", ["id": .string(sel)])
         hover(rt, other.0)
       }
@@ -132,6 +132,9 @@ public enum PreviewScenarios {
     let cards = rt.ui.cards!
     cards.onShown = { ms in print(String(format: "scenario.card intentToVisibleMs=%.2f", ms)) }
     cards.intent.enter(target.nodeId, delayMs: 0)
+    // Hold it as if the pointer rested on the card: a snapshot run's window is transparent and
+    // click-through, and the real pointer moving over its place must not close the card.
+    after(0.1) { cards.intent.enterCard() }
   }
 
   /// Holds ⇧ over the link `selector` in tab `id`'s page, the way a person would: the page sees a
