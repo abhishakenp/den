@@ -3,6 +3,7 @@
 A fast, native macOS browser built on WebKit, where everything is a plugin.
 
 <p>
+  <a href="https://github.com/abhishakenp/den/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/abhishakenp/den/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Status: early development" src="https://img.shields.io/badge/status-early%20development-orange">
   <img alt="Platform: macOS 26+" src="https://img.shields.io/badge/platform-macOS%2026%2B-lightgrey">

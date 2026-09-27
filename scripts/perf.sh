@@ -1,6 +1,8 @@
 #!/bin/zsh
 # den performance regression check against the absolute budgets in docs/perf/budgets.json.
-# usage: scripts/perf.sh [path/to/den.app]     (default build/den.app; scripts/bundle.sh builds it)
+# usage: scripts/perf.sh [--report-only] [path/to/den.app]   (default build/den.app; scripts/bundle.sh builds it)
+#   --report-only       never fail on a budget (CI: budgets were calibrated on an M3, not a runner)
+#   PERF_REPORT=file    also write the results as a Markdown table to file
 #   PERF_RUNS=10        measured warm launches (after 1 discarded warm-up)
 #   PERF_QUIET_WAIT=600 seconds to wait for a quiet machine (1-min load < 4, no Swift build)
 # Method (the same one used for Dia/Arc in docs/perf/baseline.md): scripts/perf/perfprobe.swift asks
@@ -12,6 +14,8 @@
 # Exits 1 if any metric exceeds its budget, 2 on setup errors.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+report_only=0
+[[ ${1:-} == --report-only ]] && { report_only=1; shift; }
 app=${1:-build/den.app}
 runs=${PERF_RUNS:-10}
 budgets=docs/perf/budgets.json
@@ -74,10 +78,16 @@ echo "load average at end: $(sysctl -n vm.loadavg)"
 
 budget() { plutil -extract "den.$1" raw -o - $budgets; }
 fail=0
+report=${PERF_REPORT:-}
+if [[ -n $report ]]; then
+  mkdir -p "${report:h}"
+  { echo "| metric | measured | budget | |"; echo "|---|---:|---:|---|"; } > "$report"
+fi
 check() { # name measured budget-key
-  local b; b=$(budget $3)
-  if awk "BEGIN{exit !($2 <= $b)}"; then printf "PASS  %-26s %8.2f <= %s\n" $1 $2 $b
-  else printf "FAIL  %-26s %8.2f >  %s\n" $1 $2 $b; fail=1; fi
+  local b r; b=$(budget $3)
+  if awk "BEGIN{exit !($2 <= $b)}"; then r=PASS; printf "PASS  %-26s %8.2f <= %s\n" $1 $2 $b
+  else r=FAIL; printf "FAIL  %-26s %8.2f >  %s\n" $1 $2 $b; fail=1; fi
+  [[ -z $report ]] || printf "| %s | %.2f | %s | %s |\n" $1 $2 $b $r >> "$report"
 }
 echo "== budgets ($budgets)"
 check launch.medianMs $launch_med launchMedianMs
@@ -88,4 +98,8 @@ check noTabs.idleCpuPct $cpu0 idleCpuPct
 check noTabs.idleWakeupsPerSec $wake0 idleWakeupsPerSec
 check discardedTab.KB $per_tab_kb perDiscardedTabKB
 check onePage.totalMB $page_total onePageTotalMB
+if [[ -n $report ]]; then
+  { echo; echo "$(sysctl -n machdep.cpu.brand_string), $(sysctl -n hw.ncpu) cores, $(( $(sysctl -n hw.memsize) / 1073741824 )) GB; $runs runs; load at end: $(sysctl -n vm.loadavg)"; } >> "$report"
+fi
+if (( fail && report_only )); then echo "report-only: budget failures do not fail the run"; exit 0; fi
 exit $fail

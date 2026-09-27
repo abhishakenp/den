@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Host: Xcode 26's Swift 6.3. Plugins: swift.org toolchain with the Embedded Swift stdlib.
+  XCODE_APP: /Applications/Xcode_26.5.app
+  SWIFT_TOOLCHAIN_VERSION: 6.3.2
+
+jobs:
+  build-test:
+    name: Build, test, perf (macOS 26, arm64)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # bundle.sh derives CFBundleVersion / DenHostAPI from commit counts
+
+      - name: Select Xcode 26
+        run: |
+          app=$XCODE_APP
+          [[ -d $app ]] || app=$(printf "%s\n" /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$app/Contents/Developer"
+          sw_vers
+          xcodebuild -version
+          swift --version
+          xcrun --show-sdk-path
+          sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize
+          # cordis-build resolves $CORDIS_TOOLCHAIN first.
+          echo "CORDIS_TOOLCHAIN=$HOME/toolchains/swift-$SWIFT_TOOLCHAIN_VERSION-RELEASE.xctoolchain" >> "$GITHUB_ENV"
+
+      - name: Cache swift.org toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/toolchains/swift-${{ env.SWIFT_TOOLCHAIN_VERSION }}-RELEASE.xctoolchain
+          key: swift-toolchain-${{ env.SWIFT_TOOLCHAIN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install swift.org toolchain ${{ env.SWIFT_TOOLCHAIN_VERSION }}
+        run: scripts/ci/install-toolchain.sh "$SWIFT_TOOLCHAIN_VERSION" "$CORDIS_TOOLCHAIN"
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ runner.arch }}-xcode26-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-${{ runner.arch }}-xcode26-
+
+      - name: swift build
+        run: swift build
+
+      - name: Bundle den.app (ad-hoc signed, Embedded Swift plugins)
+        run: |
+          scripts/bundle.sh
+          ls -l build/den.app/Contents/PlugIns
+          codesign -dv build/den.app 2>&1 | grep -E 'Identifier|Signature'
+
+      - name: Test (scripts/test.sh, UI suites included)
+        run: scripts/ci/run-tests.sh
+
+      - name: Perf (report only)
+        continue-on-error: true
+        env:
+          PERF_RUNS: 5
+          PERF_QUIET_WAIT: 60
+          PERF_REPORT: docs/perf/ci-report.md
+        run: |
+          scripts/perf.sh --report-only 2>&1 | tee docs/perf/ci-perf.log
+          {
+            echo "### Perf (report only; budgets were calibrated on an M3)"
+            cat docs/perf/ci-report.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload perf results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf
+          path: docs/perf
+          if-no-files-found: ignore
+
+      - name: Upload test logs and snapshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            build/ci-logs
+            build/**/*.png
+            .build/**/*.xcresult
+            ~/Library/Logs/DiagnosticReports/*.ips
+          if-no-files-found: ignore
