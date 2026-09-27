@@ -25,6 +25,8 @@ final class MiniWindowController: NSObject, NSWindowDelegate {
     self.webview = webview
     panel = DenNSPanel(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     super.init()
+    // AppKit pulls a new panel's rect onto a display; an invisible one belongs where it was placed.
+    if Presentation.invisible { panel.setFrame(frame, display: false) }
     panel.titlebarAppearsTransparent = true
     panel.titleVisibility = .hidden
     panel.isFloatingPanel = true  // spec §8: AXSystemDialog-style floating panel

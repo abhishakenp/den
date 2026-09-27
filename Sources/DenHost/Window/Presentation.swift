@@ -1,21 +1,14 @@
 import AppKit
 import WebKit
 
-/// How den's windows reach the screen. `invisible` (`--background`, and automatically inside a
-/// test runner) is for automation: an accessory app (no Dock icon), never activated, and every
-/// window placed on a virtual screen far off every display, so nothing ever shows on the user's
-/// screen. Windows are still ordered in, so layout, `--snapshot` (cacheDisplay + WKWebView
-/// `takeSnapshot`) and key-window logic behave as usual.
+/// How den's windows reach the screen. `invisible` (`--background`) is for automation: an
+/// accessory app (no Dock icon), never activated, and every window placed on a virtual screen far
+/// off every display, so nothing ever shows on the user's screen. Windows are still ordered in, so
+/// layout, `--snapshot` (cacheDisplay + WKWebView `takeSnapshot`) and key-window logic behave as
+/// usual. (Test processes hide their windows their own way: DenTestSupport.)
 @MainActor
 public enum Presentation {
-  public static var invisible = isTestHarness
-
-  /// Running inside `swift test` (XCTest or swift-testing's helper). `DEN_TEST_VISIBLE=1` opts out.
-  public nonisolated static let isTestHarness: Bool = {
-    let p = ProcessInfo.processInfo
-    guard p.environment["DEN_TEST_VISIBLE"] == nil else { return false }
-    return p.processName == "xctest" || p.processName.hasPrefix("swiftpm-testing-helper") || p.environment["XCTestConfigurationFilePath"] != nil
-  }()
+  public static var invisible = false
 
   /// The off-display area invisible windows live in (sized like a laptop's visible frame).
   public static let virtualScreen = NSRect(x: -40000, y: -40000, width: 1470, height: 920)
@@ -32,7 +25,7 @@ public enum Presentation {
   public static func park(_ window: NSWindow) {
     guard invisible else { return }
     window.animationBehavior = .none
-    guard !virtualScreen.contains(window.frame.origin) else { return }
+    guard NSScreen.screens.contains(where: { $0.frame.intersects(window.frame) }) else { return }
     window.setFrameOrigin(NSPoint(x: virtualScreen.minX + 20, y: virtualScreen.minY + 20))
   }
 
@@ -45,6 +38,22 @@ public enum Presentation {
   /// `NSApp.activate()`, except when invisible (automation never takes focus).
   public static func activate() {
     if !invisible { NSApp.activate() }
+  }
+
+  /// A web view entered a window: if that window is ordered in while invisible, its page paints.
+  static func webViewMoved(_ web: WKWebView) {
+    guard invisible, let w = web.window, w.isVisible else { return }
+    ignoreOcclusion(web)
+  }
+
+  /// An invisible window was ordered in: every page in it paints (a window that is never ordered
+  /// in keeps WebKit's usual hidden-page rules).
+  static func windowOrderedIn(_ window: NSWindow) {
+    guard invisible, window.isVisible, let root = window.contentView else { return }
+    var stack: [NSView] = [root]
+    while let v = stack.popLast() {
+      if let web = v as? WKWebView { ignoreOcclusion(web) } else { stack += v.subviews }
+    }
   }
 
   /// An off-display window counts as occluded, and WebKit stops painting its pages (snapshots come
@@ -61,6 +70,16 @@ public enum Presentation {
 /// den's windows: AppKit keeps a titled window's title bar on a display when it's ordered in or
 /// resized. Invisible windows (`Presentation.invisible`) stay where they were parked.
 public final class DenNSWindow: NSWindow {
+  public override func order(_ place: NSWindow.OrderingMode, relativeTo otherWin: Int) {
+    super.order(place, relativeTo: otherWin)
+    Presentation.windowOrderedIn(self)
+  }
+
+  public override func orderFrontRegardless() {
+    super.orderFrontRegardless()
+    Presentation.windowOrderedIn(self)
+  }
+
   public override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
     Presentation.invisible ? frameRect : super.constrainFrameRect(frameRect, to: screen)
   }
@@ -68,6 +87,16 @@ public final class DenNSWindow: NSWindow {
 
 /// `DenNSWindow` for panels (Little Arc).
 public final class DenNSPanel: NSPanel {
+  public override func order(_ place: NSWindow.OrderingMode, relativeTo otherWin: Int) {
+    super.order(place, relativeTo: otherWin)
+    Presentation.windowOrderedIn(self)
+  }
+
+  public override func orderFrontRegardless() {
+    super.orderFrontRegardless()
+    Presentation.windowOrderedIn(self)
+  }
+
   public override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
     Presentation.invisible ? frameRect : super.constrainFrameRect(frameRect, to: screen)
   }

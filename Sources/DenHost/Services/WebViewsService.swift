@@ -253,9 +253,6 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     w.allowsMagnification = true
     w.isInspectable = true
     w.underPageBackgroundColor = .clear
-    // An automation launch (--background) renders pages off-display for --snapshot. Test runs keep
-    // WebKit's own visibility rules (their pages are only visible where a test orders its window in).
-    if Presentation.invisible, !Presentation.isTestHarness { Presentation.ignoreOcclusion(w) }
     r.webView = w
     r.discarding = false
     observe(r, w)

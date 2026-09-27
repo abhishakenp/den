@@ -21,6 +21,12 @@ final class DenWebView: WKWebView {
     try{webkit.messageHandlers.denContext.postMessage({link:a?a.href:'',image:i?(i.currentSrc||i.src||''):'',selection:String(window.getSelection()||'')})}catch(x){}},true);
     """
 
+  /// Off-display (invisible) windows: a page shown in an ordered-in window paints (`Presentation`).
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    Presentation.webViewMoved(self)
+  }
+
   // MARK: Context menu
 
   override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {

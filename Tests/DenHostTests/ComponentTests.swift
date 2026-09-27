@@ -182,7 +182,7 @@ extension ComponentTests {
     let id = try #require(r["id"].string)
     let m = try #require(rt.windowService.mini.windows[id])
     // Spec §8: 1185x832, 20 pt from the screen's right edge and below the menu bar.
-    let vis = Presentation.visibleFrame(near: rt.window.window)  // test runs place windows off-display
+    let vis = (rt.window.window.screen ?? NSScreen.main)!.visibleFrame
     #expect(m.panel.frame.size == CGSize(width: min(1185, vis.width - 40), height: min(832, vis.height - 40)))
     #expect(m.panel.frame.maxX == vis.maxX - 20 && m.panel.frame.maxY == vis.maxY - 20)
     #expect(m.panel.isFloatingPanel)
