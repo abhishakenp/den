@@ -46,7 +46,7 @@ The session (spaces, tabs, selection) comes back from plugin storage. The rule i
 
 `scripts/release.sh <semver>` publishes a release. A `-` suffix makes it a pre-release, for example `0.1.0-alpha.1`. The script:
 
-1. Runs `swift test` and `scripts/bundle.sh`, and refuses a dirty tree.
+1. Runs `scripts/test.sh` and `scripts/bundle.sh`, and refuses a dirty tree.
 2. Builds `den-<v>.zip` (`ditto -c -k --keepParent`) and `den-<v>.dmg`.
 3. Uploads every plugin as its own asset, plus `plugins.json`: id, version, abi, hostAPI, sha256, EdDSA signature, url and permissions for each.
 4. Runs `gh release create`, with release notes built from the commits since the last tag.
@@ -97,8 +97,9 @@ Each check:
 
 1. `git ls-remote` of `origin/main`. When nothing changed, that's the whole check.
 2. On a new commit, it builds **only that pushed commit** in its own clone `~/.den/src` (den's watcher ignores that folder), and diffs it against the last deployed commit:
-   - **Only `Plugins/**` changed:** it builds the affected plugins with cordis-build (`Plugins/Shared` means all of them) and runs their `swift test` suites. It then places them in `~/.den/updates/plugins` with the commit's `hostAPI`, and the running den hot-swaps them (same pid).
-   - **`Sources/`, `Package.*`, `Resources/` or `scripts/bundle.sh` changed:** it runs the full `swift test` and `scripts/bundle.sh`, installs with `ditto` (next to the old app, then swaps it in), and removes the follow-main plugin builds the new bundle supersedes. den shows the toast and applies the relaunch rule.
+   - **Only `Plugins/**` changed:** it builds the affected plugins with cordis-build (`Plugins/Shared` means all of them) and runs their test suites. It then places them in `~/.den/updates/plugins` with the commit's `hostAPI`, and the running den hot-swaps them (same pid).
+   - **`Sources/`, `Package.*`, `Resources/` or `scripts/bundle.sh` changed:** it runs the full test suite and `scripts/bundle.sh`, installs with `ditto` (next to the old app, then swaps it in), and removes the managed plugin builds, which the new bundle supersedes. den shows the toast and applies the relaunch rule.
+   - Every test run goes through `scripts/test.sh`, which lets only one `swift test` run on the machine at a time.
    - **Anything fails:** nothing is deployed, the last good version stays, and `~/.den/logs/updater.log` says why. That commit isn't retried until `main` moves.
      - A test run that crashed is run again once.
      - Failed tests are re-run once on their own, because WebKit and latency tests are timing-sensitive.

@@ -137,16 +137,20 @@ cmd_status() {
 # swift test [filter]. UI and WebKit tests can be flaky under heavy load, so: a run that
 # crashed (no summary) is run again whole, once; then tests that failed are re-run once on their
 # own. Deploys need every test to pass by then.
+# Tests go through scripts/test.sh when the commit has it: it holds a machine-wide lock so only
+# one `swift test` runs at a time (concurrent runs starve each other's timing-sensitive tests).
+swift_test() { if [[ -x $SRC/scripts/test.sh ]]; then $SRC/scripts/test.sh "$@"; else swift test "$@"; fi; }
+
 run_tests() {
   local out=$STAGE/test.log filter=${1:-} args=()
   [[ -n $filter ]] && args=(--filter "$filter")
   mkdir -p $STAGE
-  (cd $SRC && swift test $args > $out 2>&1); local rc=$?
+  (cd $SRC && swift_test $args > $out 2>&1); local rc=$?
   cat $out >> $LOG
   (( rc == 0 )) && return 0
   if ! grep -q "Test run with" $out; then
     log "test run did not finish; running it again once"
-    (cd $SRC && swift test $args > $out 2>&1); rc=$?
+    (cd $SRC && swift_test $args > $out 2>&1); rc=$?
     cat $out >> $LOG
     (( rc == 0 )) && return 0
     grep -q "Test run with" $out || return 1
@@ -154,7 +158,7 @@ run_tests() {
   local failed=(${(f)"$(sed -nE 's/^✘ Test ([A-Za-z0-9_]+)\(.*\) failed.*/\1/p' $out | sort -u)"})
   (( ${#failed} )) || return 1
   log "re-running failed tests once: ${failed[*]}"
-  (cd $SRC && swift test --filter "${(j:|:)failed}" >> $LOG 2>&1)
+  (cd $SRC && swift_test --filter "${(j:|:)failed}" >> $LOG 2>&1)
 }
 
 # Test suites for a plugin id: Tests/PluginTests/<Id>Tests.swift (case-insensitive).
@@ -205,11 +209,9 @@ deploy_host() { # sha
   rm -rf $APP.old
   [[ -d $APP ]] && mv $APP $APP.old
   mv $APP.new $APP && rm -rf $APP.old
-  # The bundle has every plugin as of this commit: follow-main plugin builds are superseded.
-  local j
-  for j in $MANAGED/*.json(N); do
-    grep -q '"source":"follow-main"' $j && rm -f $j ${j:r}.dylib ${j:r}.prev.dylib ${j:r}.prev.json
-  done
+  # The bundle has every plugin as of this commit: every managed build (follow-main or an older
+  # release) is superseded.
+  rm -f $MANAGED/*.dylib(N) $MANAGED/*.json(N)
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f $APP >/dev/null 2>&1
   mdimport $APP >/dev/null 2>&1
   log "installed host @ $(short $sha) (hostAPI $(plutil -extract DenHostAPI raw -o - $APP/Contents/Info.plist))"

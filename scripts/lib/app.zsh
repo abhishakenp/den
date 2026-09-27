@@ -1,5 +1,5 @@
 # Shared by scripts/install.sh and scripts/dev-sync.sh. Source it from the repo root.
-#   den_verify            build build/den.app and run swift test; nonzero if either fails
+#   den_verify            build build/den.app and run scripts/test.sh (swift test); nonzero if either fails
 #   den_install [app]     quit the running den (SIGTERM: clean, no quit dialog), swap the app into
 #                         /Applications, register it with LaunchServices/Spotlight, relaunch, and
 #                         wait for the first window; prints the relaunch gap and session check
@@ -18,8 +18,8 @@ den_verify() {
   local t0=$(den_ms)
   den_say "build: scripts/bundle.sh"
   scripts/bundle.sh > build/dev-sync-bundle.log 2>&1 || { den_say "build FAILED (build/dev-sync-bundle.log):"; grep -m5 -E "error:" build/dev-sync-bundle.log; return 1; }
-  den_say "test: swift test"
-  swift test > build/dev-sync-test.log 2>&1 || { den_say "tests FAILED (build/dev-sync-test.log):"; grep -m8 -E "error:|✘" build/dev-sync-test.log; return 1; }
+  den_say "test: scripts/test.sh"
+  scripts/test.sh > build/dev-sync-test.log 2>&1 || { den_say "tests FAILED (build/dev-sync-test.log):"; grep -m8 -E "error:|✘" build/dev-sync-test.log; return 1; }
   den_say "verified in $(( ($(den_ms) - t0) / 1000 )) s: $(grep -Eo 'Test run with [0-9]+ tests.*passed' build/dev-sync-test.log | tail -1)"
 }
 
