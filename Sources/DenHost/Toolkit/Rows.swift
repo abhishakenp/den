@@ -296,7 +296,6 @@ final class FavoriteTileNode: HoverNode {
     super.update(v)
     icon.spec = v.str("icon")
     icon.fallbackLetter = v.str("title")
-    toolTip = v.str("title")
     audio.spec = "sf:speaker.wave.2.fill"
     audio.isHidden = !v.flag("audio")
   }
@@ -635,7 +634,6 @@ final class TabRowNode: HoverNode {
     drift.isHidden = !v.flag("drift")
     audio.spec = v.flag("muted") ? "sf:speaker.slash.fill" : "sf:speaker.wave.2.fill"
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))
-    toolTip = v.str("title")
     apply(r.palette)
     rename.update(v)
     needsLayout = true
@@ -728,7 +726,6 @@ final class SplitRowNode: HoverNode {
       s.icon.spec = p.str("icon")
       s.icon.fallbackLetter = p.str("title")
     }
-    toolTip = panes.map { $0.str("title") }.joined(separator: "  |  ")
     apply(r.palette)
     needsLayout = true
     needsDisplay = true

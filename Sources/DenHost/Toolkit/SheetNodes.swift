@@ -201,7 +201,6 @@ final class TodoRowNode: SheetRowNode {
     icon.fallbackLetter = v.str("title")
     subtitle.stringValue = v.str("subtitle")
     subtitle.isHidden = subtitle.stringValue.isEmpty
-    toolTip = v["url"].string
     apply(r.palette)
     needsLayout = true
   }

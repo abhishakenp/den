@@ -411,7 +411,6 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       r.toggle.on = rv.flag("toggle")
       r.onClick = { [weak self, rid = r.rowId] in self?.submit(rid, modifiers: []) }
       r.onHover = { [weak self, rid = r.rowId] in self?.hover(rid, at: NSEvent.mouseLocation) }
-      r.toolTip = rv.str("subtitle").isEmpty ? nil : rv.str("subtitle")
       r.needsLayout = true
       rowIds.append(r.rowId)
     }

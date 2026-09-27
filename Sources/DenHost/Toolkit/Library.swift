@@ -172,7 +172,6 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
       r.title.stringValue = it.str("title", "Untitled")
       let sub = it["subtitle"].string ?? [Self.host(it.str("url")), Self.time(it["closedAt"].double)].filter { !$0.isEmpty }.joined(separator: " · ")
       r.subtitle.stringValue = sub
-      r.toolTip = it.str("url")
       let iid = r.itemId
       r.onRestore = { [weak self] in self?.send("restore", ["item": .string(iid)]) }
       rows.append(r)
