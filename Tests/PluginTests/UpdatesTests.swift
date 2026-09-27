@@ -10,7 +10,7 @@ import Testing
 struct UpdatesTests {
   /// A fake host `updates` service that records calls.
   final class FakeUpdates {
-    var info: Value = ["version": "0.1.0", "build": 10, "commit": "aaaaaaa1", "hostAPI": 5, "crashed": [], "sparkle": false]
+    var info: Value = ["version": "0.1.0", "build": 10, "commit": "aaaaaaa1", "hostAPI": 5, "crashed": [], "sparkle": false, "onDiskCommit": "aaaaaaa1"]
     var state: Value = .null
     var plugins: Value = [["id": "tabs", "layer": "bundle", "sha256": "old"], ["id": "theme", "layer": "bundle", "sha256": "same"]]
     var calls: [(String, Value)] = []
@@ -44,6 +44,7 @@ struct UpdatesTests {
   @Test func followMainHostInstallAsksToRestartAndRelaunchesInTheBackground() {
     let fake = FakeUpdates()
     fake.state = ["deployed": "bbbbbbb2", "installedCommit": "bbbbbbb2", "deployedAt": "2026-09-27T19:00:00Z", "lastCheck": "2026-09-27T19:01:00Z"]
+    fake.info = fake.info.with("onDiskCommit", "bbbbbbb2")  // the updater replaced den.app
     let (h, core, registered) = setup(fake)
     #expect(core.channel == "follow-main")
     #expect(registered.contains("den.checkForUpdates"))
@@ -64,6 +65,21 @@ struct UpdatesTests {
     // The toast's Restart button relaunches in the foreground.
     h.action("updates.toast", "toast")
     #expect(relaunched == [true, false])
+  }
+
+  /// state.json names another build, but the app on disk is the running one (installed by hand):
+  /// nothing to restart for. A pending toast goes away once disk and process agree again.
+  @Test func onlyTheAppOnDiskDecidesWhetherARestartIsPending() {
+    let fake = FakeUpdates()
+    fake.state = ["deployed": "0ld0ld0", "installedCommit": "0ld0ld0", "lastCheck": "t1"]
+    let (h, core, _) = setup(fake)
+    #expect(core.pendingRestart.isEmpty && h.rt.ui.toasts.isEmpty)
+    fake.info = fake.info.with("onDiskCommit", "bbbbbbb2")
+    h.rt.plugins.emit("updates.stateChanged", ["state": ["installedCommit": "bbbbbbb2", "lastCheck": "t2"]])
+    #expect(core.pendingRestart == "follow-main" && h.rt.ui.toasts.count == 1)
+    fake.info = fake.info.with("onDiskCommit", "aaaaaaa1")
+    h.rt.plugins.emit("updates.stateChanged", ["state": ["installedCommit": "aaaaaaa1", "lastCheck": "t3"]])
+    #expect(core.pendingRestart.isEmpty && h.rt.ui.toasts.isEmpty)
   }
 
   @Test func sameCommitMeansNothingPendingAndManualCheckKicksTheUpdater() {

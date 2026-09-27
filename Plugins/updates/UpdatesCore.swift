@@ -229,10 +229,14 @@ final class UpdatesCore {
     followState = state
     guard !state.isNull else { return }
     channel = pickChannel(env.call("config", "get", ["key": "updates"]))
-    // The follow-main updater installed a host build other than the one running.
-    let running = info.s("commit"), installed = state.s("installedCommit")
-    if !installed.isEmpty, !running.isEmpty, installed != running {
-      hostUpdateReady(kind: "follow-main", version: state.s("installedCommit"))
+    // The app on disk is a different build than the one running: an update was installed.
+    // (Asked of the host, not state.json: a build installed by hand is not an update.)
+    let running = info.s("commit"), onDisk = env.call("updates", "info").s("onDiskCommit")
+    if !onDisk.isEmpty, !running.isEmpty, onDisk != running {
+      hostUpdateReady(kind: "follow-main", version: onDisk)
+    } else if pendingRestart == "follow-main" {
+      pendingRestart = ""
+      env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "id": .string(Self.toastId), "dismiss": true]])
     } else if manual && state.s("lastCheck") != prevCheck {
       manual = false
       toast(state.s("lastResult").isEmpty ? "den is up to date" : state.s("lastResult"), icon: "sf:checkmark.circle", action: "", duration: 3000)

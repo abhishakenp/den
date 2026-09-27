@@ -7,7 +7,7 @@ import Foundation
 /// every string the user sees) belongs to the `updates` plugin.
 ///
 /// Methods:
-///   info            -> {version, build, commit, hostAPI, builtAt, crashed: [id], sparkle: bool, publicKey: bool}
+///   info            -> {version, build, commit, hostAPI, builtAt, crashed: [id], sparkle: bool, publicKey: bool, onDiskCommit}
 ///   state           -> ~/.den/updates/state.json (the follow-main updater's state) or null
 ///   fetch {url, etag?, json?} -> {pending}. Conditional GET; emits updates.fetched
 ///                      {url, status, etag, body (string, only on 200), value (parsed, with json), bytes}
@@ -53,7 +53,9 @@ public final class UpdatesService: HostService {
     case "info":
       return ["version": .string(build.version), "build": .int(Int64(build.build)), "commit": .string(build.commit),
               "hostAPI": build.hostAPI.map { .int(Int64($0)) } ?? .null, "builtAt": .string(build.builtAt),
-              "crashed": .array(crashed.map { .string($0) }), "sparkle": .bool(sparkle != nil), "publicKey": .bool(publicKey != nil)]
+              "crashed": .array(crashed.map { .string($0) }), "sparkle": .bool(sparkle != nil), "publicKey": .bool(publicKey != nil),
+              // The build on disk now (an installed update the running process doesn't have yet).
+              "onDiskCommit": .string(DenBuild(info: (NSDictionary(contentsOf: Bundle.main.bundleURL.appendingPathComponent("Contents/Info.plist")) as? [String: Any]) ?? [:]).commit)]
     case "state": return readState()
     case "fetch":
       let url = args.str("url")

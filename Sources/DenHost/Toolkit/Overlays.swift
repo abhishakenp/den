@@ -216,9 +216,10 @@ final class Keycap: NSView {
 
 // MARK: - Toast
 
-/// {type:"toast", id?, text, icon?, duration?: ms, action?: "Restart"}. Theme-tinted pill;
-/// auto-dismisses. With `action`, a button at the end emits `ui.action {id, action: "toast"}` and
-/// closes the toast; `duration: 0` keeps it until then.
+/// {type:"toast", id?, text, icon?, duration?: ms, action?: "Restart", dismiss?}. Theme-tinted
+/// pill; auto-dismisses. With `action`, a button at the end emits `ui.action {id, action: "toast"}`
+/// and closes the toast; `duration: 0` keeps it until then. A new toast with the same `id`
+/// replaces it; `dismiss: true` removes it.
 @MainActor
 final class ToastView: FlippedView, Themable {
   let icon = IconView()
@@ -227,6 +228,7 @@ final class ToastView: FlippedView, Themable {
   let divider = NSView()
   var color: NSColor = .black
   var onAction: (() -> Void)?
+  var toastId = ""
 
   override init(frame: NSRect) {
     super.init(frame: frame)

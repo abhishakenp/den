@@ -194,7 +194,16 @@ public final class UIService: HostService {
   }
 
   func showToast(_ tree: Value) {
+    // A toast with an `id` replaces the one showing with that id; `dismiss: true` only removes it.
+    let id = tree.str("id")
+    if !id.isEmpty {
+      for old in toasts where old.toastId == id { old.removeFromSuperview() }
+      toasts.removeAll { $0.toastId == id }
+      layoutOverlays()
+      if tree.flag("dismiss") { return }
+    }
     let t = ToastView()
+    t.toastId = id
     t.update(tree, palette: renderer.palette)
     wc.overlays.addSubview(t)
     toasts.append(t)
