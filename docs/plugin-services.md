@@ -128,7 +128,7 @@ Injects: `tabs`, `spaces`, `webviews`, `content`, `ui`, `keys`, `window`, `stora
 | `unsplit` | `id` | ok. Forwards to `tabs.unsplit` |
 | `reopen` | `after?` (ms timestamp) | `{id}`, or an error if no peek was closed at or after `after` |
 | `openExternal` | `urls` | `{claimed}`. Opens each URL in Little Arc; `claimed: false` when Little Arc is off or the host has no mini windows |
-| `settings` | `peekLinks?` (default true), `littleArc?` (default true), `littleArcArchiveMs?` (default 6 h, 0 = never) | the settings |
+| `settings` | `peekLinks?` (default true), `littleArc?` (default false: links from other apps open as a normal tab), `littleArcArchiveMs?` (default 6 h, 0 = never) | the settings |
 | `get` | – | `{peek, sourceId, littleArcs: [{window, webview, url}]}` |
 
 Events: `peek.opened {id, url}`, `peek.closed {id}`. `peek.link {id, url, source}` is the link-rule event the plugin listens on.

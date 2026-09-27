@@ -33,7 +33,8 @@ final class PeekCore {
 
   // Settings (persisted in storage ns "peek", key "settings")
   var peekLinks = true  // "Open a Peek window when clicking on links to other sites"
-  var littleArcEnabled = true  // "Links from other apps open in Little Arc"
+  var littleArcEnabled = false  // Off by default: links from other apps open as a normal tab
+
   var littleArcArchiveMs = PeekCore.defaultLittleArcArchiveMs
 
   // Runtime

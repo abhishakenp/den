@@ -340,9 +340,19 @@ struct PeekTests {
     #expect(h.tabs("archive").array?.isEmpty == true)
   }
 
+  @Test func linksFromOtherAppsOpenAsTabsByDefault() {
+    let h = Harness()
+    h.startPeek()
+    #expect(h.peek("settings")["littleArc"] == false)
+    h.rt.app.open([URL(string: "https://www.swift.org/")!])
+    #expect(h.rt.call("window", "listMini").array?.isEmpty == true)
+    #expect(h.tabs("list")["today"][0]["url"] == "https://www.swift.org/")
+  }
+
   @Test func littleArcTakesLinksFromOtherApps() {
     let h = Harness()
     h.startPeek()
+    h.peek("settings", ["littleArc": true])
     let today = h.ids("today")
     h.rt.app.open([URL(string: "https://www.swift.org/blog/")!])
     let minis = h.rt.call("window", "listMini").array ?? []
@@ -374,6 +384,7 @@ struct PeekTests {
     NSApp.mainMenu = NSMenu()
     MainMenu.install()
     h.startPeek()
+    h.peek("settings", ["littleArc": true])
     h.record(["peek.key.expand"])
     h.rt.app.open([URL(string: "https://www.swift.org/")!])
     let mini = try #require(h.rt.windowService.mini.windows.values.first)
@@ -390,6 +401,7 @@ struct PeekTests {
   @Test func littleArcCloseArchiveAndSetting() {
     let h = Harness()
     h.startPeek()
+    h.peek("settings", ["littleArc": true])
     h.rt.app.open([URL(string: "https://webkit.org/")!])
     var web = h.rt.call("window", "listMini")[0]["webview"].string!
     // Closing the window (it emits window.miniClosed) drops its page.
