@@ -100,6 +100,9 @@ public final class WebRecord {
 ///                                                 media: {playing, pip, dirty, video?}, suspended, live, snapshot}
 ///   list                                       -> [id]
 ///   setLinkPolicy {id | "*", rules: [{when: crossSite|sameSite|any, hosts?: [suffix], modifiers?: [cmd,...], event}]}
+///   watchLinks {modifier: shift|none|off, yieldTo?: [css selector]}  (all web views; LinkHover.swift)
+///                                             -> events webviews.linkHover {id, url, text, rect: {x,y,w,h} (window pt,
+///                                                top-left origin), yield} and webviews.linkHoverEnd {id}
 ///
 /// Events: webviews.title {id,title}  webviews.url {id,url}  webviews.favicon {id,url}
 ///   webviews.progress {id,progress,loading}  webviews.state {id,canGoBack,canGoForward}
@@ -142,6 +145,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   /// `navigating` on every main-frame navigation decision, before the new document exists
   /// (so a user stylesheet set there applies from the first paint).
   public var configureHooks: [@MainActor (WebRecord, WKWebViewConfiguration) -> Void] = []
+  /// `watchLinks`: nothing installed until a plugin asks.
+  public let links = LinkHover()
   public var createdHooks: [@MainActor (WebRecord, WKWebView) -> Void] = []
   public var navigatingHooks: [@MainActor (WebRecord, WKWebView, URL) -> Void] = []
 
@@ -161,6 +166,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   public func handle(method: String, args: Value) -> Value {
     if method == "create" { return create(args) }
     if method == "list" { return .array(order.map { .string($0) }) }
+    if method == "watchLinks" { return watchLinks(args) }
     if method == "setLinkPolicy", args.str("id") == "*" {
       defaultRules = args.list("rules").compactMap(LinkRule.init)
       return .ok
@@ -256,6 +262,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     r.webView = w
     r.discarding = false
     observe(r, w)
+    if links.enabled { links.install(w, handler: scriptHandler) }
     if r.muted { Self.applyMuted(w, true) }
     for h in createdHooks { h(r, w) }
     let start = { [weak w] in
@@ -336,6 +343,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   func destroyView(_ r: WebRecord) {
     guard let w = r.webView else { return }
     willDestroy?(r.id)
+    links.forget(w)
     r.observers.forEach { $0.invalidate() }
     r.observers = []
     r.frames = [:]
@@ -801,6 +809,13 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   }
 
   func didReceive(_ msg: WKScriptMessage) {
+    if msg.name == LinkHover.handlerName {
+      // The id is the host's own record for the sending view; the page only supplies the link.
+      guard msg.frameInfo.isMainFrame, let w = msg.webView, let r = recordFor(w),
+            let (name, payload) = LinkHover.event(id: r.id, body: msg.body, toWindow: { LinkHover.toWindow($0, in: w) }) else { return }
+      host.emit(name, payload)
+      return
+    }
     if msg.name == "denContext" {
       guard let w = msg.webView as? DenWebView, let b = msg.body as? [String: Any] else { return }
       w.context = .init(link: b["link"] as? String ?? "", image: b["image"] as? String ?? "", selection: b["selection"] as? String ?? "")
@@ -821,6 +836,19 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       r.frames[key] = (msg.frameInfo, media)
     }
     mediaChanged(r)
+  }
+
+  // MARK: Links
+
+  func watchLinks(_ args: Value) -> Value {
+    guard links.configure(modifier: args.str("modifier", "shift"), yieldTo: args.list("yieldTo").compactMap(\.string)) else {
+      return .error("webviews: modifier must be shift, none or off")
+    }
+    for r in records.values {
+      guard let w = r.webView else { continue }
+      if links.enabled { links.install(w, handler: scriptHandler) } else { links.uninstall(w) }
+    }
+    return .ok
   }
 
   func mediaChanged(_ r: WebRecord) {

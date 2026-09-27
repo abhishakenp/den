@@ -65,6 +65,7 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 | `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted, media: {playing, pip, dirty, video?}, suspended, live, profile, snapshot, zoom}` |
 | `list` | – | `[id]` |
 | `setLinkPolicy` | `id` (or `"*"` for the default), `rules: [{when: crossSite\|sameSite\|any, hosts?: [suffix], modifiers?: [cmd,shift,opt,ctrl], event}]` | ok |
+| `watchLinks` | `modifier: shift\|none\|off`, `yieldTo?: [css selector]` | ok. For every web view, now and later: reports the link under the pointer (`webviews.linkHover` / `webviews.linkHoverEnd`). `shift` reports only while Shift is held, `none` on plain hover, `off` removes the script and handler. Nothing is installed until a plugin calls it |
 
 Events:
 - `webviews.title {id,title}`
@@ -84,6 +85,9 @@ Events:
 - `webviews.zoom {id, zoom}`, `webviews.find {id, visible, query, index, count}`
 - `webviews.injectResult {request, webview, plugin, ok, value | error}`, `webviews.message {webview, plugin, value}`, `webviews.menu {id, webview, plugin}`, `webviews.contentRules {plugin, ok, count, error?}`
 - One event per link rule, named by the rule's `event` field: `{id, url, source}`.
+- `webviews.linkHover {id, url, text, rect: {x, y, w, h}, yield}` and `webviews.linkHoverEnd {id}` (after `watchLinks`). `rect` is the link's box in window points with a top-left origin (page zoom and magnification applied). `yield` is true when an element matching one of `yieldTo` is visible, i.e. the site is showing its own preview (Wikipedia's `.mwe-popups`). The end event fires when the pointer leaves the link, Shift is released (shift mode), the page scrolls or the mouse goes down. The same link doesn't report twice in a row.
+
+**Link hover.** A few passive listeners in an isolated content world (`den-links`), main frame only: no timers and no network. Only http(s) links count; `javascript:` links and same-page `#fragment` links are ignored. The host fills in `id` from its own record of the sending web view and never takes one from the page. What to show, and when to defer to a site's own previews, is up to the plugin (`LinkHover.swift`).
 
 **Passkeys** (`Passkeys.swift`). Without Apple's browser entitlement (`com.apple.developer.web-browser.public-key-credential`, [research/passkeys.md](research/passkeys.md)) every platform-passkey and hybrid (phone / Bluetooth) request fails, yet WebKit's `getClientCapabilities()` claims both, so Google starts a passkey sign-in and ends on "Make sure Bluetooth is on". A document-start script in the page world (every frame) therefore reports what den can do: `isUserVerifyingPlatformAuthenticatorAvailable()` and `isConditionalMediationAvailable()` resolve false, and `getClientCapabilities()` answers false for `passkeyPlatformAuthenticator`, `userVerifyingPlatformAuthenticator`, `hybridTransport`, `conditionalGet` and `conditionalCreate` (everything else, and `navigator.credentials`, untouched). The alternative, WebKit's private `WebAuthenticationEnabled` feature flag (`WKPreferences._setEnabled:forFeature:`), removes `PublicKeyCredential` entirely: SPI, and sites then see a browser without WebAuthn. Setting: General ▸ "Skip passkey sign-in, use the password" (`settings` id `general`, key `passkeyFallback`, default on; web views created afterwards). It switches itself off when den runs with the entitlement (`SecTaskCopyValueForEntitlement`). `PasskeysTests` checks both states in a live web view.
 
@@ -671,13 +675,14 @@ Reads what a signed-in site exposes, from den's own `WKWebsiteDataStore` for a p
 
 | Method | Args | Result |
 |---|---|---|
-| `fetch` | `plugin`, `url`, `method?` (GET), `headers?`, `body?` (string), `as?: json\|text`, `session?` (false), `profile?`, `timeoutMs?` (20 s, max 60), `maxBytes?` (5 MB, max 20) | `net.result {id, ok, status, headers, json\|text, error?}` |
+| `fetch` | `plugin`, `url`, `method?` (GET), `headers?`, `body?` (string), `as?: json\|text`, `session?` (false), `profile?`, `timeoutMs?` (20 s, max 60), `maxBytes?` (5 MB, max 20), `stopAfter?` (a marker such as `</head>`) | `net.result {id, ok, status, headers, json\|text, truncated?, error?}` |
 | `cancel` | `id` | ok |
 
 - `session: true` copies the profile's cookies for that URL (domain, path, secure, expiry rules) into the request. A `Cookie` header from the plugin is ignored.
 - Ephemeral `URLSession`: no cookie jar, no disk cache; responses never write cookies back. `set-cookie` is dropped from `headers` (names lowercased).
 - Redirects are followed only to hosts the plugin may fetch, with the cookie header dropped; otherwise the 3xx comes back.
 - `ok` is true for any HTTP response (check `status`). Over `maxBytes`: `error: "too large"`.
+- `stopAfter: "</head>"` streams the body and stops reading once the marker (case-insensitive) has arrived or `maxBytes` is reached: `ok: true` with the text so far and `truncated: true` (`false` when the whole body arrived first). Add `headers: {Range: "bytes=0-65535"}` for servers that honor ranges. Link previews read only a page's `<head>` this way.
 
 ### ai
 
