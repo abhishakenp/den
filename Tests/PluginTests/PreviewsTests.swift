@@ -220,7 +220,7 @@ struct PreviewsTests {
     let c = m.card
     #expect(m.last["width"]["min"] == 288)
     #expect(Self.words(c) == ["Parser: accept trailing commas in tuple patterns", "abhi · #482", "+214 −37 · 6 files",
-                              "build (macOS)", "test (linux)", "Conflicts with main", "Show 2 failures", "Show Comments"])
+                              "build (macOS)", "test (linux)", "Conflicts with main", "Show 2 failures", "Show comments"])
     // avatar 16 pt round
     let avatar = try #require(Self.of(c, "image").first)
     #expect(avatar["width"] == 16 && avatar["radius"] == 8 && avatar.s("src") == "https://avatars.githubusercontent.com/u/1?v=4&s=32")
@@ -254,7 +254,7 @@ struct PreviewsTests {
     #expect(Cards.status(data([])) == "No checks")
     let passing = Cards.pr(data([run("completed", "success")]), title: "", loading: false, actions: [])
     #expect(Self.words(passing).contains("All checks passed") && Self.of(passing, "note").isEmpty)
-    #expect(Self.actions(passing).map { $0.s("title") } == ["Show Comments"])
+    #expect(Self.actions(passing).map { $0.s("title") } == ["Show comments"])
     let merged = Cards.pr(data([run("completed", "success")], merged: true), title: "", loading: false, actions: [])
     #expect(Self.words(merged).contains("Merged") && Self.of(merged, "meter").isEmpty)
     // More than 3 failures: 3 rows, and the button counts them all.

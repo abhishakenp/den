@@ -197,7 +197,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 **Slots:**
 - `sidebar.header`, `sidebar.favorites`, `sidebar.footer`
 - Per space page: `sidebar.spaceHeader`, `sidebar.pinned`, `sidebar.today`
-- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections`, `overlay.passwords`, `overlay.extensions` (see [Briefing page](#briefing-page-and-connections-sheet)), `hoverCard` (see [Hover card](#hover-card))
+- Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections`, `overlay.passwords`, `overlay.extensions` (see [Briefing page](#briefing-page-and-connections-sheet)). Cards: [`ui.card`](#uicard-popover-cards-and-hover-intent)
 
 **Event:** `ui.action {id, action, value}`
 
@@ -221,7 +221,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `spaceTitle` | `id`, `title`, `icon?`, `editing?`, `editText?` | `click`, `doubleClick`, `more`, `rename {title}`, `renameCancel` |
 | `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected`, `spaceId?` (makes it a drop target for dragged rows), `reorderable?` | `click`, `move {index}` (after a drag-reorder, see [Space icon reorder](#space-icon-reorder)) |
 | `iconPicker` | `id`, `anchor?`, `title?`, `selected?` (popover slot) | `pick {icon}` (`sf:<name>`, an emoji, or "" to remove), `dismiss {reason?}` |
-| `tabRow` | `id`, `title`, `icon`, `selected`, `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `closeTitle?` (the X's tooltip), `indent?`, `draggable=true`, `editing?`, `editText?`, `hover=true`, `dropInto?`, `dropIntoIcon?` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel`, `hover` (see [Hover card](#hover-card)) |
+| `tabRow` | `id`, `title`, `icon`, `selected`, `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `closeTitle?` (the X's tooltip), `indent?`, `draggable=true`, `editing?`, `editText?`, `hoverIntent?`, `dropInto?`, `dropIntoIcon?` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel`, `hover` (see [ui.card](#uicard-popover-cards-and-hover-intent)) |
 | `splitRow` | `id`, `selected` (the split is shown), `layout?`, `panes: [{id, title, icon, selected}]` (`selected` = focused pane), `closable=true`, `indent?` | `click {pane}`, `close` (hover X), `reorder` (as target, a tab row can drop `into` it), `dropOnSpace` |
 | `folder` | `id`, `title`, `icon?`, `open`, `children`, `editing?` | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel` |
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
@@ -303,27 +303,48 @@ A `spaceIcon` with `reorderable: true` can be dragged along the footer strip (`S
 | `choiceRow` | `id`, `title`, `subtitle?`, `options: [{id, title}]`, `selected` | `select {option}` |
 | `extensionRow` | `id`, `icon`, `title`, `subtitle?`, `on`, `note?` (accent caption, e.g. "Update 2.0") | `toggle {on}` (switch), `open` (row) |
 
-### Hover card
+### ui.card (popover cards and hover intent)
 
-Dia-style previews next to the sidebar. Hovering a `tabRow`, `favoriteTile`, `folder` or `splitRow` (unless it has `hover: false`) for a moment emits `ui.action {id: <row id>, action: "hover"}`. The row's owner asks for content, and whoever owns previews (the `previews` plugin) answers with `ui.set {slot: "hoverCard", tree}`. The host owns the timing; the plugins own the content.
+A generic floating card, placed next to a node or below a window rectangle, with Dia's measured motion (docs/reference/dia-ui-spec.md §2). The host owns only the pointer- and platform-bound parts; what a card shows, its strings and its sizes come from the plugin as a tree of [generic nodes](#generic-nodes). The `previews` plugin composes the tab card, the PR peek and link cards with it.
 
-- **Intent** (`HoverIntent`). The first card waits for a 450 ms dwell; passing over rows quickly shows nothing. While a card is up, or for 600 ms after one closed, the next row's card shows at once (no second dwell), and the card glides to it. Moving off the row closes the card after a 200 ms grace, so the pointer can cross the 8 pt gap onto it; the card stays while the pointer is on it. Clicking a row closes its card until the pointer leaves that row. Dia's values aren't in its app resources, so all four are estimates (`Tokens.hoverCard*`).
-- **Closing.** The card closes on mouse-out, when an action or row on it is clicked, when anything modal opens (`overlay.*`, `dialog`, `popover`), or when the tree is set to null. Each close emits `ui.action {id: "hoverCard", action: "close", value: {anchor}}`.
-- **Anchoring.** A tree must carry `anchor` (the hovered row's id); a tree for a row that is no longer hovered is dropped. The card sits 8 pt right of the sidebar (or of the revealed sidebar overlay), its top level with the row, clamped to the window with a 10 pt margin.
-- **Look.** 320 wide, 14 pt continuous radius, PopoverBackground #FAFBFF / #151C30 with a 0.5 pt border (PopoverBorder in dark mode) and PopoverShadow (#151C32 α0.30 / α0.80), spec §3. It fades in with a 4 pt slide over 0.16 s on Dia's (0.2, 0.8, 0.2, 1) curve and fades out in 0.1 s; Reduce Motion turns both off. The geometry is an estimate.
-- **Cost.** Nothing runs until a dwell starts: no timers, views or events. The host logs intent-to-visible time (`os_log` category `hoverCard`, `lastShownMs`); the `--scenario preview*` snapshots print it.
+**Hover intent on any node.** A node with `hoverIntent: <ms>` (any node type) starts a dwell when the pointer enters it; when the dwell ends the host emits `ui.action {id: <node id>, action: "hover"}`. `tabs` puts 700 on rows and 300 on favorite tiles (Dia: 685–915 ms and 285–416 ms). Passing over quickly shows nothing and leaves no timer. While a card is up (or for 600 ms after one closed), entering another intent node swaps at once; with `swap: "dwell"` on the card (or `ui.hoverIntent {redwell: true}`) the old card stays until the new node's own dwell completes (Dia). Leaving closes the card after a 200 ms grace (Dia: 202–267 ms), so the pointer can cross onto it; the card stays while the pointer is on it. Clicking the node closes its card until the pointer leaves it.
 
-Tree: `{type: "hoverCard", anchor, id? ("hoverCard"), icon, title, subtitle?, accessory?, badges?, sections?, image?, imageVersion?, imagePending?, actions?, footer?, empty?, loading?}`
+`ui.card {id, tree | null, anchor?, rect?, place?, width?, gap?, swap?, graceMs?}` → `{shown}`
 
-| Field | Shape | Notes |
+| Arg | Meaning |
+|---|---|
+| `id` | the card's id (a plugin can show several: `previews.tab`, `previews.link`) |
+| `tree` | a generic node tree; `null` closes the card |
+| `anchor` | the hovered node's id. The card belongs to that node's hover intent: a tree for a node that isn't the hovered one is dropped (`shown: false`) |
+| `rect` | `{x, y, w, h}` in window points, top-left origin (e.g. from `webviews.linkHover`). A free card: it closes when the plugin sets `null`, after `graceMs` (200) and never while the pointer is on it |
+| `place` | `trailing` (default for `anchor`): x = max(node maxX, sidebar edge) + `gap` (3), vertically centred on the node. `tile`: below-right of a tile, x = maxX − 3, y = maxY − 3. `below` (default for `rect`): left-aligned, `gap` (8) below, flipped above when there's no room. Always kept 8 pt inside the window |
+| `width` | a number, or `{min, max}` around the tree's natural width (default 170–200, Dia's clamp) |
+| `swap` | `instant` (default) or `dwell` |
+
+- **Motion.** In: opacity 0→1 and scale 0.93→1 from the top-leading corner over 180 ms. Out: opacity →0 and scale →0.93 toward the same corner over 100 ms. A new tree for a card that is showing is a hard cut: content and frame change in one frame. Reduce Motion turns the animations off.
+- **Look.** Dia's neutral card from the theme tokens (`ThemeTokens.card`, below): 12 pt continuous radius, a 0.5 pt hairline (light: plus a 1 pt white inner highlight), a soft even shadow (8 pt blur, no offset).
+- **Tooltips.** An `action` node's `tooltip` shows as Dia's chip 3 pt below the button (28 pt tall, 12 pt text) after 0.5 s, then instantly while moving between buttons. With a `shortcut`, the chip shows it ("Pin Tab  ⌘D").
+- **Card shortcuts.** While a card with `shortcut` buttons shows, a local key monitor runs those chords on the card (the hovered tab, the hovered link) before the menu bar sees them. The monitor exists only while such a card is up.
+- **Closing.** Mouse-out after the grace, anything modal (`overlay.*`, `dialog`, `popover`), `null`, or the plugin after an action. Each close emits `ui.action {id: <card id>, action: "close", value: {anchor}}`.
+- **Cost.** Nothing runs until a dwell starts: no timers, views, events or key monitor. The host logs intent-to-visible time (`os_log` category `card`, `CardController.lastShownMs`); the `--scenario` preview snapshots print it.
+
+`ThemeTokens.card`: `fill` (dark #262626, light #F4F4F4, tinted at most 6% toward the space's colors), `text`, `secondary`, `glyph` (contrast-checked: 7:1, 4.5:1, 3:1), `border`, `highlight` (light only), `hover` (dark #373737), `tooltip`/`onTooltip` (#474747 / #E4E4E4), `success`/`warning`/`danger`/`track` (the CI bar), `addText`/`delText`, `dangerSoft`/`onDangerSoft` (failing-check rows), `strong`/`onStrong` and `destructive`/`onDestructive` (pill buttons).
+
+### Generic nodes
+
+Feature-free nodes any plugin can compose (Toolkit/CardNodes.swift). Colors are tones resolved from the theme tokens, never hex in the tree: `primary`, `secondary`, `glyph`, `success`, `warning`, `danger`, `add`, `del`, `accent`.
+
+| Node | Fields | Actions |
 |---|---|---|
-| header | `icon`, `title` (up to 2 lines), `subtitle` (domain), `accessory` (right, e.g. `#482`) | `icon` as in any node |
-| `badges` | `[{text, style, icon?}]` | Pills that wrap. `style`: `success`, `failure`, `pending`, `merged`, `accent`, `attention`, `neutral` |
-| `sections` | `[{title?, rows: [{id, title, subtitle?, icon?, status?, accessory?, url?}]}]` | `status` tints the icon and accessory with the badge colors. A row with a `url` highlights on hover and emits `open {row, url, anchor}` |
-| `image` | local path or http(s) URL | A page snapshot, 16:10, aspect-filled from the top. `imagePending` keeps its space with a placeholder; bump `imageVersion` to reload the same path |
-| `actions` | `[{id, title, icon?, style: primary\|secondary, url?}]` | Buttons along the bottom; emit `action {action, anchor, url}` |
-| `loading` | bool | Skeleton lines while the first answer is on its way |
-| `empty`, `footer` | text | A hint (e.g. "Sign in to …") and a small bottom line |
+| `stack` | `axis: v\|h`, `spacing`, `padding` (n or [top, right, bottom, left]), `distribute: fill\|equal`, `align: start\|center\|end`, `height?` (h), `children` | – |
+| `label` | `text` or `runs: [{text, tone?, weight?}]`, `size` (13), `weight`, `tone`, `lines` (1; more wrap and end in "…"), `lineHeight?`, `align` | – |
+| `icon` | `spec` (sf:/URL/path/emoji), `size`, `tone`, `letter?` | – |
+| `image` | `src` (URL or path), `width?`, `height?`, `aspect?`, `radius?`, `placeholder?`, `version?` | – |
+| `badge` | `text`, `tone`, `icon?` | – |
+| `meter` | `segments: [{value, tone}]`, `total?`, `height` (6): a capsule, segments left to right over the track | – |
+| `note` | `text`, `tone` (danger), `id?`, `value?`: a tinted 22 pt row with a 3 pt leading bar | `click {value}` |
+| `item` | `id`, `title`, `subtitle?`, `icon?`, `accessory?`, `tone?`, `value?` | `click {value}` |
+| `action` | `id`, `icon?`, `title?`, `variant: icon\|pill`, `tone: default\|primary\|strong\|destructive`, `tooltip?`, `shortcut?`, `enabled?`, `menu?` (opens on click), `width?`, `value?` | `click {value}`, `menu {item id}` |
 
 Actions arrive as `ui.action {id: <tree id>, action, value}`. Snapshots: `--scenario previewGitHub|previewCalendar|previewPage|previewFolder` (`docs/screenshots/preview-*.png`).
 

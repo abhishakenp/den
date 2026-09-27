@@ -263,10 +263,10 @@ enum Cards {
       buttons.append(action("previews.pr:failures", icon: "", tooltip: "Open the failing checks", title: "Show " + PV.plural(Int(failed), "failure", "failures"),
                             pill: true, tone: "destructive", width: 118))
     } else if d.b("conflicts") {
-      buttons.append(action("previews.pr:conflicts", icon: "", tooltip: "Open the conflict editor", title: "Resolve Conflicts",
+      buttons.append(action("previews.pr:conflicts", icon: "", tooltip: "Open the conflict editor", title: "Resolve conflicts",
                             pill: true, tone: "destructive", width: 138))
     }
-    buttons.append(action("previews.pr:comments", icon: "sf:bubble.left", tooltip: "Open the conversation", title: "Show Comments", pill: true, tone: "strong"))
+    buttons.append(action("previews.pr:comments", icon: "sf:bubble.left", tooltip: "Open the conversation", title: "Show comments", pill: true, tone: "strong"))
     kids.append(stack(buttons, axis: "h", spacing: 6))
     kids.append(spacer(12))
     return prFrame(kids, actions)

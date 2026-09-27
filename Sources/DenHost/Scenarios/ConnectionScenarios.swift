@@ -16,7 +16,7 @@ import WebKit
 /// - `connectionsSettings`: the Connections sheet with the workspace picker.
 @MainActor
 public enum ConnectionScenarios {
-  public static let names = ["briefingEmpty", "connectToast", "briefing", "briefingFeed", "connectionsSettings"]
+  public static let names = ["briefingEmpty", "connectToast", "autoConnectToast", "briefing", "briefingFeed", "connectionsSettings"]
   static var mock: MockServices?
 
   public static func apply(_ name: String, runtime rt: DenRuntime) {
@@ -39,6 +39,16 @@ public enum ConnectionScenarios {
       case "connectToast":
         // Explicit URL: the plugin may have registered its sign-in page before the mock existed.
         rt.call("connections", "connect", ["id": "slack", "url": .string(m.base + "/slack/signin")])
+      case "autoConnectToast":
+        // Auto-connect, the real path: the github plugin watches its cookie domain (here the
+        // mock, in the private profile), the user signs in on a page, the host's cookie watch
+        // fires, the plugin probes and `connections` shows "GitHub connected" with Undo.
+        rt.call("session", "watchCookies", ["plugin": "github", "domain": "127.0.0.1", "profile": "private"])
+        let id = rt.call("webviews", "create", ["url": .string(m.base + "/login"), "profile": "private"]).str("id")
+        _ = rt.webviews.materialize(id)
+        poll({ (rt.call("connections", "get", ["id": "github"]).flag("connected")) }) {
+          print("scenario.autoConnectToast connected=\(rt.call("connections", "get", ["id": "github"]).flag("connected"))")
+        }
       case "connectionsSettings":
         connectBoth(rt, m) {
           rt.call("connections", "open")

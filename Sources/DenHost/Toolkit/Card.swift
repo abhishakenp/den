@@ -291,7 +291,7 @@ public final class CardController {
     // A tree for a node that isn't the hovered one is stale: drop it.
     if bound && anchor != intent.anchor { return ["shown": false] }
     closing.removeValue(forKey: id)?.cancel()
-    intent.redwell = args.str("swap") == "dwell"
+    if bound { intent.redwell = args.str("swap") == "dwell" }
     let c = cards[id] ?? PopoverCard(renderer: renderer)
     cards[id] = c
     c.cardId = id

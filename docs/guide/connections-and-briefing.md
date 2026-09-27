@@ -31,6 +31,13 @@ Connect uses the current space's [profile](spaces-and-themes.md#profiles-separat
 
 You don't have to press Connect. **Sign in to github.com or Slack in den, now or any time later, and the connection turns itself on**, with a toast: **"GitHub connected · Undo"**. If you'd rather not, press **Undo**: den disconnects and stops doing it for that service until you press Connect yourself.
 
+<p align="center">
+  <img src="../screenshots/connected-toast.png" alt="Toast in the window's top-right corner: GitHub connected, with an Undo button" width="360">
+  <img src="../screenshots/connected-toast-dark.png" alt="The same toast in a dark space" width="360">
+</p>
+
+A pull request card for a private repository has a **Connect GitHub** button of its own, and fills in as soon as you're signed in ([Hover previews](hover-previews.md#the-github-pr-peek)).
+
 This costs nothing while you browse: den doesn't check on a timer. It notices because signing in changes that site's cookies in den (a cookie-store observer, plus the page load that ends every sign-in), and only then looks at whether you're signed in. It works in your default profile; for another space's profile, use Connect.
 
 If you sign out of the site later, den notices, removes the connection and tells you: "Signed out of GitHub. Connect again to keep it in your briefing". Disconnect any time from Settings or the command bar (**Disconnect Slack**).

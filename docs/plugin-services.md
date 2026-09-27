@@ -57,6 +57,7 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 | `move` | `id`, `spaceId?`, `kind?`, `folderId?`, `index?` | ok |
 | `reset` | `id` | ok. Navigates back to `pinnedUrl` |
 | `duplicate` | `id` | `{id}` |
+| `act` | `id`, `action`, `value?` | ok. A hover-card verb on tab `id`: `pin`, `unpin`, `reset`, `duplicate`, `copy` (link + toast), `mute`, `unmute`, `move {spaceId}`, `close` (archives a Today tab), `split` (the active tab + this one, this one on the right; on the active tab or inside a split it adds a pane like ⌃⇧=) |
 | `rename` | `id`, `title` (empty string clears it) | ok |
 | `navigate` | `id?` (default: selected), `url` | ok |
 | `clearToday` | `spaceId?` | ok. Shows the "Cleared tabs" toast with undo |
@@ -231,14 +232,14 @@ Injects `ui`, `storage`, `keys`, `schedule`, `ai`; calls `connections`, `tabs` a
 
 ## `previews` (plugin `previews`)
 
-Injects: `ui`, `webviews`, `storage`. It also calls `net`, `session` and `tabs` when they exist. Permissions (`permissions.json`): `net:api.github.com`, and `session:` for `github.com`, `calendar.google.com`, `mail.google.com` and `slack.com`.
+Injects: `ui`, `webviews`, `storage`. It also calls `net`, `session`, `tabs`, `peek`, `connections` and `settings` when they exist. Permissions (`permissions.json`): `net:api.github.com`, `net:*` (link heads, never with cookies), and `session:` for `github.com`, `calendar.google.com`, `mail.google.com` and `slack.com`.
 
-Dia-style hover cards for sidebar tabs. It's a plugin of its own rather than part of `tabs`: `tabs` only says what is hovered, and everything site-specific (providers, permissions, caches) lives here, so it can be left out or replaced, and other plugins can add providers without touching `tabs`.
+Dia-style hover cards for sidebar tabs, the GitHub PR peek, and ⇧-hover link cards on any page, all composed from the host's generic nodes and shown with `ui.card` (cards `previews.tab` and `previews.link`). It's a plugin of its own rather than part of `tabs`: `tabs` only says what is hovered, and everything site-specific (providers, permissions, caches) lives here, so it can be left out or replaced, and other plugins can add providers without touching `tabs`.
 
 | Method | Args | Returns |
 |---|---|---|
-| `show` | `anchor` (row id), `url`, `title?`, `icon?`, `webview?`, `selected?`, `kind?`, `items?` (folders) | ok. Puts a card in the host's `hoverCard` slot at once and fills it in when the provider answers |
-| `hide` | – | ok. Clears the slot |
+| `show` | `anchor` (row id), `url`, `title?`, `icon?`, `webview?`, `selected?`, `kind?` (`today`, `pinned`, `favorite`, `folder`), `items?` (folders), `drift?`, `audio?`, `muted?`, `inSplit?`, `spaces?: [{id, name}]`, `panes?` (a split row), `place?` | ok. Shows the card at once and fills it in when the provider answers. `tabs` sends everything the card's buttons need |
+| `hide` | – | ok. Closes the tab card |
 | `register` | `pattern`, `provider`, `owner?`, `ttlMs?` (60000) | ok. An external provider for URLs matching `pattern` |
 | `unregister` | `provider` | ok |
 | `answer` | `request`, `card` | ok. An external provider's answer: a card fragment (below) |
@@ -246,14 +247,17 @@ Dia-style hover cards for sidebar tabs. It's a plugin of its own rather than par
 | `match` | `url` | `{provider}` |
 | `get` | `url` | `{provider, data, at}` from the cache, or null |
 | `clear` | – | ok. Drops the caches |
-| `stats` | – | `{fetches, cached, inflight}` |
+| `stats` | – | `{fetches, cached, inflight, links}` |
 
 Events: `previews.request {provider, request, url, anchor, webview, profile}` asks an external provider for a card.
 
 - **Patterns** are `host/path` globs (`*` matches anything, including `/`) against the URL without scheme, `www.`, query or fragment; a leading `*.` also matches the bare domain. The pattern with the most literal characters wins, so a plugin can override a built-in for a narrower pattern (`github.com/apple/*/pull/*`).
 - **Card fragments** (provider answers): any of `title`, `subtitle`, `accessory`, `badges`, `sections`, `actions`, `footer`, `empty`, `image`, plus `summary {text, style}` (a digest shown next to the tab in folder cards) and `noCache` (show it, but ask again on the next hover: sign-in hints, a page that isn't loaded). `{error}` keeps the last good card.
 - **Cost.** Nothing runs until a hover: no timers, no polling, no requests at launch. The card shows at once with the tab's favicon, title and domain (and cached data, if any), with skeleton lines while the first answer loads. Answers are cached per URL for the provider's TTL; a stale card shows at once while it refreshes, and hovers of the same URL share one request.
-- **Actions.** A card button or row with a `url` opens it in a new tab (`tabs.open`).
+- **Actions.** The tab card's buttons call `tabs.act` on the hovered tab and close the card (Mute keeps it open, now offering Unmute); Move to Space opens a menu of spaces. A row or button with a `url` opens it in a new tab. PR peek buttons open the checks tab, the conversation or the conflict editor in the hovered tab itself; failing-check rows open the check. The link card's buttons: `peek.open`, a split with the active tab, and copy.
+- **PR peek data** (`GitHub.prData`): GitHub's public REST API, no sign-in: `pulls/<n>`, then `commits/<head>/check-runs` and `commits/<head>/status` (3 requests, cached 60 s). Checks count as passed (success, skipped, neutral), running, queued or failed. A 404 (private) or 403/429 (rate limit) falls back to the github.com page with the user's den session; with no session the card offers **Connect GitHub** (`connections.connect {id: "github"}`), and `connections.changed` refills it live.
+- **Link cards.** `webviews.watchLinks {modifier: shift}` at start (setting: `shift`, `none` with a 700 ms wait, or `off`), with `yieldTo` selectors for sites that have their own previews (Wikipedia's `.mwe-popups`, GitHub's hovercards, X's). On `webviews.linkHover`, a URL a provider matches gets that provider's card; anything else gets an OpenGraph card from `net.fetch {as: text, stopAfter: "</head>", headers: {Range: bytes=0-262143}}` parsed by `OpenGraph.parse`, cached 10 minutes (100 URLs). `webviews.linkHoverEnd` closes it after the host's grace.
+- **Settings** (section `previews`): `links` (`shift`, `hover`, `off`) and `redwell` (a second dwell before switching tab cards).
 
 Built-in providers:
 

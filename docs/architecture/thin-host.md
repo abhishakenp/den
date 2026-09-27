@@ -493,7 +493,7 @@ These landed after the survey above, with the marker `// thin-host: feature-spec
 | Theme picker | `Toolkit/ThemePicker.swift` (listed) | Arc's picker as one node | Generic pad/slider/dial nodes composed by `theme` |
 | Command bar view | `Toolkit/CommandBarView.swift` (marked) | Banner copy, row semantics | Already driven by the `commandbar` plugin's tree; the banner node could be a generic `banner` |
 | Library sheet | `Toolkit/Library.swift` (listed) | "Clear Archive", day grouping | A generic `sheet` + `list` composed by `tabs` |
-| Hover card | `Toolkit/HoverCard.swift` (listed) | Card layout specific to previews | Generic card node; `previews` composes it |
+| ~~Hover card~~ | ~~`Toolkit/HoverCard.swift`~~ | **Migrated.** The host has `ui.card` (placement, Dia's motion, grace, card shortcuts, tooltips), hover intent on any node (`hoverIntent: ms`) and generic nodes (`stack`, `label`, `icon`, `image`, `badge`, `meter`, `note`, `item`, `action`) in `Toolkit/Card.swift` and `CardNodes.swift`. `previews` composes every card; `tabs` only sets each row's dwell | – |
 | Briefing and connection rows | `Toolkit/SheetNodes.swift` `todoRow`, `feedRow`, `connectionRow` (listed) | Feature rows | Compose from generic row parts |
 | Little Arc chrome | `Window/MiniWindow.swift` (listed) | "Open in <space>" button | A generic mini-window with a toolbar tree from `peek` |
 | Search suggestions | `Services/SuggestService.swift` (listed) | Google's endpoint | A plugin fetching through `net` |

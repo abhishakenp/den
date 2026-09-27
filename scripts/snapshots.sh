@@ -16,6 +16,21 @@ store=$(mktemp -d)
 shot() { # name scenario appearance — a fresh store each time, so the plugins' first-run seed shows
   $den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
 }
+# ONLY=cards scripts/snapshots.sh: hover cards, the PR peek, the ⇧-hover link card and the
+# auto-connect toast (PreviewScenarios, ConnectionScenarios), light and dark, rendered off screen.
+card() { # name scenario appearance [delay]
+  build/den.app/Contents/MacOS/den --no-den-home --offscreen --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
+}
+if [[ ${ONLY:-} == cards ]]; then
+  for pair in card-tab:previewTab card-pinned:previewPinned card-split:previewSplit card-playing:previewPlaying \
+              pr-peek-passing:prPassing pr-peek-failing:prFailing pr-peek-conflicts:prConflicts pr-peek-private:prPrivate \
+              link-card:linkCard connected-toast:autoConnectToast; do
+    n=${pair%%:*}; sc=${pair#*:}
+    card $n $sc light; card $n-dark $sc dark
+  done
+  for f in $out/card-*.png $out/pr-peek-*.png $out/link-card*.png $out/connected-toast*.png; do sips -Z 1280 "$f" --out "$f" >/dev/null; done
+  exit 0
+fi
 # ONLY=new scripts/snapshots.sh: just the space menu, Settings and theming shots.
 if [[ -z ${ONLY:-} ]]; then
 shot main-light main light

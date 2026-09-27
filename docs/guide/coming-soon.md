@@ -2,11 +2,6 @@
 
 What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the current work plan. **No promises and no dates.** Plans change, and anything here may ship differently or not at all. None of it is in den today; everything in the rest of this guide is.
 
-## Link previews
-
-- **⇧-hover any link on any page** for a preview card: the page's image, title, description and site, fetched from just the target's `<head>` and cached, costing nothing until you deliberately hover. Rich cards (GitHub PRs, YouTube, …) reuse the providers behind the sidebar's [hover cards](hover-previews.md). Actions: Open in Peek, Open in Split, Copy Link. Stays out of the way on sites with their own previews (like Wikipedia). Plain hover as an optional setting.
-- An inline **Connect GitHub** button on cards that need a connection (private repos), filling in live once you're signed in.
-
 ## Tabs
 
 - **⌘-click grouping** like Dia: a ⌘-clicked link opens under its source tab and the two are grouped, later ⌘-clicks from either join the group, and ⌥⌘T opens a new tab in it.

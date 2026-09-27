@@ -48,8 +48,10 @@ Everything in den that you won't find by looking at it. One line each, with a li
 
 ## Hover previews
 
-- **Rest on a tab for half a second** for a card with what's in it; after that, other tabs' cards show instantly. [Hover previews](hover-previews.md)
-- **Hover a GitHub PR tab** for its checks, reviews and conflicts, no sign-in needed. [Hover previews](hover-previews.md#the-github-pr-peek)
+- **Rest on a tab** for a card with what's in it and buttons for pin, split, duplicate, copy, mute, move and archive; after that, other tabs' cards show instantly. [Hover previews](hover-previews.md)
+- **Press a card button's shortcut while the card is open** (⌘D, ⇧⌘C, ⌘W, ⌃⇧=) and it acts on the tab you're pointing at, not the selected one. [Hover previews](hover-previews.md#buttons-on-the-card)
+- **Hold ⇧ over any link** on a page for a preview of where it goes: picture, title, summary, and Open in Peek / Split / Copy Link. [Hover previews](hover-previews.md#link-previews-hold--over-a-link)
+- **Hover a GitHub PR tab** (or ⇧-hover a PR link) for its checks, diff size and conflicts, no sign-in needed. [Hover previews](hover-previews.md#the-github-pr-peek)
 - **Hover a Calendar tab** for a **Join** button for your next meeting. [Hover previews](hover-previews.md#what-the-cards-show)
 - **Hover a folder** to see its tabs without opening it. [Hover previews](hover-previews.md#what-the-cards-show)
 

@@ -62,7 +62,8 @@ Moving feature code out of `DenHost` so the host holds only platform capabilitie
 - ✅ 3. `DenDev` split: scenarios and mock services are behind the `Scenarios` package trait; release bundles leave them out and no longer link Network.framework (the snapshotter stays: `--snapshot` works in release)
 - ⏳ 4. `ui.layer`, `ui.styles`, `ui.palette` alongside the old slots
 - ⏳ 5. New generic nodes and behaviors, each with a golden test
-- ⏳ 6. Migrate screens one by one (toast → dialogs → library → briefing/connections → hover card → theme picker → sidebar rows → command bar → peek → Little Arc)
+- 🟡 6. Migrate screens one by one (toast → dialogs → library → briefing/connections → hover card → theme picker → sidebar rows → command bar → peek → Little Arc)
+  - ✅ hover card: `HoverCard.swift` is gone; generic `ui.card` + hover intent on any node + generic nodes (`stack`, `label`, `icon`, `image`, `badge`, `meter`, `note`, `item`, `action`); `previews` composes every card
 - ⏳ 7. Remove the old slots and nodes
 - ⏳ 8. Land in-flight features on the generic primitives
 - ⏳ 9. Separately loadable native modules
@@ -163,11 +164,12 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 
 ### Hover previews
 
-- ✅ Hover cards for sidebar tabs, favorites, folders and splits (450 ms, then instant; nothing fetched until hovered)
-- ✅ PR peek: state, checks (failures first), conflicts, reviews, +/− lines, files; public repos with no sign-in, private repos through the github.com session
+- ✅ Hover cards for sidebar tabs, favorites, folders and splits, rebuilt to Dia's measured spec: 0.7 s on rows, 0.3 s on tiles, 0.2 s grace, fade + scale from the top-left, hard-cut swaps (optional re-dwell); theme-token surface (light and dark); nothing fetched until hovered
+- ✅ Actions on the card: pin/unpin, back to pinned URL, open as split, duplicate, copy link, mute, move to space ▸, archive/close; tooltips show shortcuts, and the shortcuts act on the hovered tab while its card is open
+- ✅ PR peek per Dia's layout: title, avatar · author · #N, +adds −dels · files, a CI bar, a status line or up to 3 failing checks, Show N failures / Show Comments / Resolve Conflicts; public repos through GitHub's public API with no sign-in
 - ✅ Cards for GitHub issues, Google Calendar (Join button), Gmail, Slack, and a page snapshot for anything else
-- ⏳ Inline "Connect GitHub" button on cards that need a connection (private repos), filling in live
-- ⏳ ⇧-hover link previews on any page: an OpenGraph card from the target's `<head>`, cached, zero cost until a deliberate hover; rich providers reused; Open in Peek / Split / Copy Link; stays out of the way where a site has its own previews; plain hover as an option
+- ✅ Inline "Connect GitHub" button on cards that need a connection (private repos), filling in live
+- ✅ ⇧-hover link previews on any page: an OpenGraph card from the target's `<head>`, cached, zero cost until a deliberate hover; rich providers reused; Open in Peek / Split / Copy Link; stays out of the way where a site has its own previews; plain hover as an option
 - ⏳ Hover play/pause/skip for any tab playing audio
 
 ### Getting around
@@ -176,7 +178,8 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ⏳ One-time discovery tips, one at a time, with a global off switch ([spec](docs/guide/_in-app-tips.md))
 - 🟡 Shortcuts shown on every surface where the action appears
   - ✅ menu bar, command bar rows
-  - ⏳ tab, space, link and page context menus; icon-button and hover-card tooltips; Settings rows
+  - ✅ hover-card button tooltips (and the shortcuts act on the hovered tab while its card is open)
+  - ⏳ tab, space, link and page context menus; icon-button tooltips; Settings rows
 - ✅ No row tooltips: tab rows, tiles, split rows and list rows show hover cards instead
 - ✅ User guide ([docs/guide](docs/guide/)), with Tips & hidden gems
 - ⏳ Detail audit: every interaction compared with Arc/Dia (hover states, click targets, tooltips, context menus, animations, empty states, error pages, keyboard coverage) and fixed, plus Dia's micro-interactions
@@ -213,8 +216,8 @@ How it connects (user decision, see [auth research](docs/research/integrations-a
 - ✅ Connection plugins: Slack (unread DMs, mentions, threads awaiting your reply; workspace picker) and GitHub (review requests, mentions, assigned issues, failing CI on your PRs)
 - ✅ Multiple Slack workspaces at once, each switchable in Settings ▸ Connections
 - ✅ "Connect X": opens the sign-in page in a tab, detects the session, toasts "X connected"; disconnect; sign-out detected
-- ⏳ Auto-connect like Dia: already signed in to github.com/Slack in den, or signing in later, connects automatically (a `WKHTTPCookieStore` observer, event-driven, zero polling) with a "GitHub connected · Undo" toast; the same for every connection plugin
-- ⏳ Important Slack channels (across workspaces) and important GitHub repos: ranked higher in the briefing and feed, never dropped from the summary; picker in Settings and via the command bar
+- ✅ Auto-connect like Dia: already signed in to github.com/Slack in den, or signing in later, connects automatically (a `WKHTTPCookieStore` observer, event-driven, zero polling) with a "GitHub connected · Undo" toast; the same for every connection plugin
+- ✅ Important Slack channels (across workspaces) and important GitHub repos: ranked higher in the briefing and feed, never dropped from the summary; picker in Settings and via the command bar
 - ⏳ More connections as plugins, in this order: Gmail (per-account switching) and Google Calendar (choose calendars; from the session, without an iCal paste if feasible), then Notion, then Linear and Jira/Confluence, then Outlook's calendar from a loaded tab. Drive/Docs activity via Gmail. Skipped: Teams, SharePoint, Zoom, Figma, YouTube, LinkedIn, Sheets
 - ✅ No tokens stored: session tokens are read on demand and kept in memory only; connections run locally
 - ⏳ Official OAuth option (Slack PKCE / GitHub device flow) for users who don't want session reuse
