@@ -231,6 +231,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     w.configuration.userContentController.removeAllScriptMessageHandlers()
     w.navigationDelegate = nil
     w.uiDelegate = nil
+    prompts?.cancel(for: w)
     w.stopLoading()
     w.removeFromSuperview()
     r.webView = nil
@@ -429,6 +430,66 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       host.emit("webviews.newWindow", ["id": .string(r.id), "url": .string(u.absoluteString)])
     }
     return nil
+  }
+
+  // MARK: Page prompts and error pages (WebPrompts.swift, WebErrorPage.swift)
+
+  /// Host-drawn dialogs for alert/confirm/prompt, HTTP sign-in and camera/mic (set by DenRuntime).
+  public var prompts: WebPrompts?
+
+  public func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void) {
+    guard let prompts else { return completionHandler() }
+    prompts.alert(message, frame: frame, webView: webView, done: completionHandler)
+  }
+
+  public func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (Bool) -> Void) {
+    guard let prompts else { return completionHandler(false) }
+    prompts.confirm(message, frame: frame, webView: webView, done: completionHandler)
+  }
+
+  public func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor (String?) -> Void) {
+    guard let prompts else { return completionHandler(nil) }
+    prompts.prompt(prompt, defaultText: defaultText, frame: frame, webView: webView, done: completionHandler)
+  }
+
+  public func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping @MainActor (WKPermissionDecision) -> Void) {
+    guard let prompts else { return decisionHandler(.deny) }
+    prompts.media(origin, type: type, webView: webView, done: decisionHandler)
+  }
+
+  /// `<input type=file>`: an open panel as a sheet on the page's window.
+  public func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor ([URL]?) -> Void) {
+    let panel = Self.openPanel(multiple: parameters.allowsMultipleSelection, directories: parameters.allowsDirectories)
+    let done: (NSApplication.ModalResponse) -> Void = { r in MainActor.assumeIsolated { completionHandler(r == .OK ? panel.urls : nil) } }
+    if let w = webView.window { panel.beginSheetModal(for: w, completionHandler: done) } else { panel.begin(completionHandler: done) }
+  }
+
+  static func openPanel(multiple: Bool, directories: Bool) -> NSOpenPanel {
+    let p = NSOpenPanel()
+    p.canChooseFiles = true
+    p.canChooseDirectories = directories
+    p.allowsMultipleSelection = multiple
+    p.resolvesAliases = true
+    p.prompt = "Choose"
+    return p
+  }
+
+  /// HTTP Basic/Digest/NTLM ask for a username and password; everything else (server trust,
+  /// client certificates) gets WebKit's default handling. Cancel lets the server's 401 page show.
+  public func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @MainActor (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    let m = challenge.protectionSpace.authenticationMethod
+    guard let prompts, [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodNTLM].contains(m) else {
+      return completionHandler(.performDefaultHandling, nil)
+    }
+    prompts.signIn(challenge.protectionSpace, previousFailures: challenge.previousFailureCount, proposedUser: challenge.proposedCredential?.user, webView: webView) { cred in
+      if let cred { completionHandler(.useCredential, cred) } else { completionHandler(.rejectProtectionSpace, nil) }
+    }
+  }
+
+  public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    let url = ((error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? webView.url
+    guard let url, let page = WebErrorPage.page(for: error, url: url) else { return }
+    webView.loadSimulatedRequest(URLRequest(url: url), responseHTML: WebErrorPage.html(page, url: url, colors: prompts?.errorPageColors))
   }
 
   func didReceive(_ msg: WKScriptMessage) {

@@ -55,6 +55,12 @@ for sc in GitHub Calendar Page Folder; do
 done
 shot library-footer libraryFooter light 4
 shot library-footer-dark libraryFooter dark 4
+# Web page prompts and error pages (PromptScenarios.swift).
+for sc in jsAlert jsPrompt httpAuth permissionCamera errorHost errorOffline errorSecure; do
+  n=$(echo $sc | sed -E 's/([a-z])([A-Z])/\1-\2/g' | tr A-Z a-z)
+  host $n $sc light
+  host $n-dark $sc dark
+done
 for v in DeleteSpace DeleteFolder ClearArchive; do
   n=$(echo $v | sed -E 's/([a-z])([A-Z])/\1-\2/g' | tr A-Z a-z)
   host dialog-$n dialog$v light

@@ -43,8 +43,11 @@ class PanelView: FlippedView, Themable {
 // MARK: - Dialog
 
 /// {type:"dialog", id, title, message?, icon?, iconStyle?: accent|destructive|plain,
-///  buttons: [{id, title, style: default|cancel|destructive|secondary, default?, keycap?}], checkbox?: {id, title, checked}}
-/// action (id = dialog id): button {button, checked}. Return presses the `default` style button or the
+///  buttons: [{id, title, style: default|cancel|destructive|secondary, default?, keycap?}], checkbox?: {id, title, checked},
+///  fields?: [{id, placeholder?, value?, secure?}]}
+/// action (id = dialog id): button {button, checked, fields?: {id: text}}. Fields (a web page's prompt(),
+/// HTTP sign-in) stack under the message; the first one takes focus, and Return in any of them
+/// presses the default button. Return presses the `default` style button or the
 /// button flagged `default: true` (e.g. a destructive confirm); Escape presses the cancel button.
 /// Icons: `app:icon` (or an image file, e.g. an extension's icon) draws at 62 pt (quit sheet, spec §5);
 /// an `sf:` symbol is a 76 pt hero icon (spec §5 "Dialog hero icons"): the symbol on a tinted disc.
@@ -58,6 +61,7 @@ final class DialogView: PanelView {
   let message = NSTextField(wrappingLabelWithString: "")
   var buttons: [PillButton] = []
   var checkbox: NSButton?
+  var fields: [NSTextField] = []
   var node: Value = .null
   let emit: (String, String, Value) -> Void
 
@@ -96,6 +100,20 @@ final class DialogView: PanelView {
       surface.addSubview(c)
       checkbox = c
     }
+    fields.forEach { $0.removeFromSuperview() }
+    fields = v.list("fields").map { f in
+      let t: NSTextField = f.flag("secure") ? NSSecureTextField() : NSTextField()
+      t.placeholderString = f.str("placeholder")
+      t.stringValue = f.str("value")
+      t.font = .systemFont(ofSize: 13)
+      t.bezelStyle = .roundedBezel
+      t.usesSingleLineMode = true
+      t.cell?.isScrollable = true
+      t.target = self
+      t.action = #selector(fieldReturn(_:))
+      surface.addSubview(t)
+      return t
+    }
     apply(p)
     needsLayout = true
   }
@@ -118,8 +136,23 @@ final class DialogView: PanelView {
 
   func pressed(_ i: Int) {
     let spec = node.list("buttons")[i]
-    emit(node.str("id", "dialog"), "button", ["button": .string(spec.str("id")), "checked": .bool(checkbox?.state == .on)])
+    var value: Value = ["button": .string(spec.str("id")), "checked": .bool(checkbox?.state == .on)]
+    if !fields.isEmpty {
+      let ids = node.list("fields").map { $0.str("id") }
+      value = value.with("fields", .object(zip(ids, fields).map { ($0, .string($1.stringValue)) }))
+    }
+    emit(node.str("id", "dialog"), "button", value)
   }
+
+  /// Return in a text field presses the default button (a field's action also fires when it loses
+  /// focus; only Return counts).
+  @objc func fieldReturn(_ sender: NSTextField) {
+    guard let e = NSApp.currentEvent, e.type == .keyDown, e.keyCode == 36 || e.keyCode == 76 else { return }
+    if let i = node.list("buttons").firstIndex(where: Self.isDefault) { pressed(i) }
+  }
+
+  /// What takes focus when the dialog opens: the first field, or the dialog itself (Return / Esc).
+  var focusTarget: NSView { fields.first ?? self }
 
   static func isDefault(_ b: Value) -> Bool { b["default"].bool ?? (b.str("style") == "default") }
 
@@ -149,6 +182,7 @@ final class DialogView: PanelView {
     var h = pad + (icon.isHidden ? 0 : iconSize + 17) + titleHeight
     if !message.isHidden { h += 8 + messageHeight }
     if checkbox != nil { h += 30 }
+    if !fields.isEmpty { h += 14 + CGFloat(fields.count) * 36 - 8 }
     h += 33 + Tokens.dialogButtonHeight + Tokens.dialogButtonInset
     return max(icon.isHidden ? 0 : 248, h)
   }
@@ -171,7 +205,11 @@ final class DialogView: PanelView {
     let th = titleHeight
     title.frame = NSRect(x: pad, y: y, width: w, height: th); y += th
     if !message.isHidden { message.frame = NSRect(x: pad, y: y + 8, width: w, height: messageHeight); y += 8 + messageHeight }
-    if let c = checkbox { c.sizeToFit(); c.frame.origin = NSPoint(x: pad - 2, y: y + 8) }
+    if let c = checkbox { c.sizeToFit(); c.frame.origin = NSPoint(x: pad - 2, y: y + 8); y += 30 }
+    if !fields.isEmpty {
+      y += 14
+      for f in fields { f.frame = NSRect(x: pad, y: y, width: w, height: 28); y += 36 }
+    }
     // Buttons: one row, 28 pt from the sides and bottom (PX). Cancel/default buttons pack to the
     // right 7 pt apart (spec §5); a leading secondary button ("Quit, and don’t ask again") sits left.
     let inset = Tokens.dialogButtonInset

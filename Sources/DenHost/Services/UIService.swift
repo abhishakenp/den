@@ -197,7 +197,7 @@ public final class UIService: HostService {
       wc.overlays.addSubview(dialogBackdrop)
       wc.overlays.addSubview(dialog)
     }
-    wc.window.makeFirstResponder(dialog)
+    wc.window.makeFirstResponder(dialog.focusTarget)
     layoutOverlays()
   }
 

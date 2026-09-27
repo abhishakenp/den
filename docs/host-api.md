@@ -94,6 +94,20 @@ Events: `content.focus {id}`, `content.peekAction {action: close|expand|split, w
 
 Web views that aren't shown are detached from the window, which lets WebKit suspend them.
 
+### Web page prompts and error pages
+
+The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.swift`); plugins aren't involved and nothing blocks the app (WebKit's completion handler is kept and called when you answer). Dialogs use the `dialog` look (spec §5) with the current space's palette, over the window that shows the page (a Little Arc panel too), one at a time. Closing a page answers its pending dialogs with Cancel. Snapshots: `--scenario jsAlert|jsConfirm|jsPrompt|httpAuth|permissionCamera|errorHost|errorOffline|errorSecure` (`docs/screenshots/js-*.png`, `http-auth*.png`, `permission-camera*.png`, `error-*.png`).
+
+| Page asks for | den shows |
+|---|---|
+| `alert()` / `confirm()` / `prompt()` | "<host> says", the message, OK (↩) / Cancel (esc); `prompt()` adds a text field holding the default text |
+| HTTP Basic, Digest or NTLM sign-in | "Sign in to <host>", the realm, Username and Password fields, Cancel / Sign In. A wrong password asks again ("That didn’t work."); plain http says the password is sent unencrypted. The credential goes to WebKit for the session only; den never logs or stores it. Cancel shows the server's own 401 page |
+| Camera / microphone (`getUserMedia`) | "Allow <host> to use your camera (and microphone)?", Don’t Allow / Allow. The answer is kept per origin and device until den quits. The app declares `NSCameraUsageDescription`, `NSMicrophoneUsageDescription` and the hardened-runtime camera / audio-input entitlements, so macOS asks once for den itself |
+| `<input type=file>` | An open panel as a sheet on the page's window, with the input's multiple / directory options |
+| Geolocation, notifications | Not available: WKWebView on macOS has no public API to ask the user. WebKit denies them (`Notification.requestPermission()` resolves `"denied"`, verified in a live web view) |
+
+**Error pages.** When a page fails before anything arrives (offline, unknown host, refused connection, timeout, certificate problems), den loads its own small page for that error with `loadSimulatedRequest` for the failed URL: an icon, a title ("You’re offline", "Can’t find <host>", "This connection isn’t private", …), one line of explanation, the URL, and **Try Again**. The tab keeps the real URL, so Reload, Try Again and Back/Forward retry it. The page takes the space's palette colors (with a `prefers-color-scheme` fallback). Cancelled or replaced navigations (NSURLErrorCancelled, WebKit's 102 and 204) show nothing. There's no "proceed anyway" for certificate errors.
+
 ## ui
 
 | Method | Args | Returns |

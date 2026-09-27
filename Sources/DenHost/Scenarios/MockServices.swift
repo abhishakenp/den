@@ -160,6 +160,13 @@ public final class MockServices: @unchecked Sendable {
     case ("GET", "/search"): return githubSearch(r)
     case ("GET", "/redirect-out"): return (302, [("Location", "http://example.invalid/")], Data())
     case ("GET", "/big"): return (200, [("Content-Type", "text/plain")], Data(repeating: 65, count: 300_000))
+    case ("GET", "/basic-auth"):
+      // HTTP Basic sign-in (user "den", password "secret") for the web page sign-in dialog.
+      if r.headers["authorization"] == "Basic " + Data("den:secret".utf8).base64EncodedString() {
+        return (200, [("Content-Type", "text/html; charset=utf-8")], Data("<!doctype html><title>Signed in</title><body>Welcome, den</body>".utf8))
+      }
+      return (401, [("Content-Type", "text/html; charset=utf-8"), ("WWW-Authenticate", "Basic realm=\"den test\"")],
+              Data("<!doctype html><title>Unauthorized</title><body>401</body>".utf8))
     default:
       if r.path.hasPrefix("/api/") { return slackAPI(String(r.path.dropFirst(5)), r) }
       return (404, [("Content-Type", "text/plain")], Data("not found".utf8))

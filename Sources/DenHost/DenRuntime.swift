@@ -64,6 +64,7 @@ public final class DenRuntime {
     // `webviews.eval` reads a live page only for a plugin with `session:<that page's host>`.
     webviews.allowScript = { [permissions] plugin, host in MainActor.assumeIsolated { permissions.allowsSession(plugin, host: host) } }
     windowService.ui = ui
+    webviews.prompts = WebPrompts(window: window) { [weak ui] in ui?.renderer.palette }
     windowService.attach(webviews: webviews, host: host)
     for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions, settings] {
       host.provide(s)

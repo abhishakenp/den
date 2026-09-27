@@ -4,5 +4,9 @@
 <dict>
   <!-- Plugins are dylibs signed by their authors (or ad hoc); load them under the hardened runtime. -->
   <key>com.apple.security.cs.disable-library-validation</key><true/>
+  <!-- Web pages may ask for the camera and microphone (den asks you first, per site). The
+       hardened runtime blocks both without these. -->
+  <key>com.apple.security.device.camera</key><true/>
+  <key>com.apple.security.device.audio-input</key><true/>
 </dict>
 </plist>
