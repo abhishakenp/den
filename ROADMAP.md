@@ -8,7 +8,7 @@ Every item below has to respect these. If a feature can't, it gets redesigned or
 
 - **Plugin-based.** The core is a small host. Features — including built-in ones like the sidebar, split view, and connections — are plugins.
 - **Hot-swappable.** Any plugin can be loaded, unloaded, updated, or replaced at runtime without restarting the browser or losing tabs.
-- **Lazy by default.** Nothing loads until it's needed: plugins, connections, AI models, web content, even tab processes.
+- **Lazy by default.** Nothing loads until it's needed: plugins, connections, web content, even tab processes.
 - **Minimal resources.** Idle tabs cost as close to nothing as possible. Memory and energy use are tracked like bugs.
 
 ## Core
@@ -74,24 +74,15 @@ Details and sources: [Dia notes](docs/research/dia.md).
 - [ ] Connection plugins: Slack, GitHub
 - [ ] More connections as plugins (Gmail, Calendar, Linear, Notion, Jira, …)
 - [ ] Tokens stored in the macOS Keychain; connections run locally (Dia keeps them on its servers)
-- [ ] Daily briefing: calendar, emails that need a reply, Slack, GitHub, key links
+- [ ] Daily briefing built without AI, straight from the services: Slack mentions and unread DMs, PRs waiting for your review, today's calendar, emails awaiting a reply
 - [ ] Briefing todos can be checked off and link back to their source
 - [ ] Connections load and sync only when used
 
 ## AI
 
-- [ ] AI sidebar chat with tab context
-- [ ] Apple on-device model by default _(research: apple-platform)_
-- [ ] Bring-your-own model (cloud providers, local models)
-- [ ] Agent harness modeled on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): every step and tool call goes through hooks plugins can wrap ([notes](docs/research/cordis-and-agent-harness.md))
-- [ ] Append-only session log of everything the model saw
-- [ ] Tool approvals deny by default
-- [ ] Prompt-injection defenses:
-  - [ ] Page content is labeled as untrusted, with its source
-  - [ ] Only fetch URLs that appear in your tabs or messages; never follow URLs the model made up (Dia's rule)
-  - [ ] No irreversible actions without confirmation
-  - [ ] Moving data between sites or connections needs approval
-- [ ] Skills / saved prompts
+No built-in AI: no chat, no agent, no model loaded. AI features come from plugins people choose to install.
+
+- [ ] Plugin API is rich enough for an AI plugin to be built by someone else (tab content, connections, sidebar panel), gated by user-granted permissions
 
 ## Apple integration
 

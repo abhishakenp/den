@@ -26,9 +26,9 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 
 ## Principles
 
-- **Plugin-based.** The core is a small host. Tabs, the sidebar, split view, connections and AI are all plugins.
+- **Plugin-based.** The core is a small host. Tabs, the sidebar, split view and connections are all plugins.
 - **Hot-swappable.** Any plugin can be loaded, unloaded, updated or replaced while the browser runs, without losing your tabs.
-- **Lazy by default.** Nothing loads until you need it: plugins, connections, AI models, web pages.
+- **Lazy by default.** Nothing loads until you need it: plugins, connections, web pages.
 - **Minimal footprint.** Idle tabs should cost close to nothing. Memory and energy regressions are treated as bugs.
 
 ## Planned features
@@ -36,7 +36,7 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 - Arc-style interface: vertical sidebar tabs, spaces, split view, command bar, link previews
 - Connections to Slack, GitHub and more, with a daily briefing that turns them into a todo list
 - Chrome and Firefox extension support
-- Apple on-device AI, with the option to bring your own model
+- No built-in AI. If you want it, install a plugin
 - Native macOS integration: passkeys, Keychain, Shortcuts, iCloud sync
 
 ## Roadmap and status
@@ -48,7 +48,7 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 | 3 | Plugin host and app skeleton | ❌ |
 | 4 | Core browsing: tabs, sidebar, spaces, profiles | ❌ |
 | 5 | Extensions and content blocking | ❌ |
-| 6 | Connections, daily briefing, AI | ❌ |
+| 6 | Connections and daily briefing | ❌ |
 | 7 | First public release | ❌ |
 
 The full checklist is in [ROADMAP.md](ROADMAP.md).
