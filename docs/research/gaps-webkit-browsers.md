@@ -1,5 +1,7 @@
 # Gaps vs WebKit browsers: Safari, Orion, DuckDuckGo
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Researched 2026-09-27. We compared den with the three shipping WebKit browsers on macOS (Safari 26/27, Kagi Orion, DuckDuckGo for Mac) and list only what den lacks. A feature is not listed if [ROADMAP](../../ROADMAP.md), [FEATURES](../FEATURES.md), the wave 5 plan (`~/.plans/2026-09-27_20-25-den-wave-5.md`) or [apple-platform notes](apple-platform.md) already covers it. Examples: find bar, native dark mode, mini player and PiP, tab mute, downloads, auto grouping, Copy Clean URL (as a clipboard action), content blocker, GPC, HTTPS-first, profiles, Handoff, the vault, passkeys, `WKWebExtension`, Web Inspector, printing and PDF.
 
 This is a doc read, not a test. "Feasible" means a public API exists according to Apple's docs; nothing has been built or run yet. **UNVERIFIED** marks anything no source confirmed.

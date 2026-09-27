@@ -1,5 +1,7 @@
 # Gaps: small conveniences from Arc, Dia, Zen, Firefox and SigmaOS
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Research date: 2026-09-27. This goes deeper than [arc.md](arc.md), [dia.md](dia.md) and [zen.md](zen.md): it looks at **small daily conveniences**, not headline features.
 
 It lists only **real gaps**: things that are not already in [ROADMAP.md](../../ROADMAP.md), [FEATURES.md](../FEATURES.md), the wave-5 plan, or the work in progress. Work in progress means:

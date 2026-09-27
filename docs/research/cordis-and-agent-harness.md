@@ -1,5 +1,7 @@
 # Research: Cordis and DeepSeek Harness, and what den should take from them
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Date: 2026-09-27. Scope: research only. Sources were fetched on this date. Every code snippet below is quoted from upstream docs. Items marked **UNVERIFIED** were not confirmed against a primary source.
 
 ## TL;DR

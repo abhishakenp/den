@@ -1,5 +1,7 @@
 # Arc (macOS): Feature and Interaction Inventory
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Research for **den**, a WebKit/AppKit browser whose UX tracks Arc as closely as it can.
 Compiled 2026-09-27.
 

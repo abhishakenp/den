@@ -1,5 +1,7 @@
 # Dia (The Browser Company / Atlassian) — Feature & Architecture Inventory
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Research for **den** (open-source macOS WebKit browser). Compiled 2026-09-27 from public sources via web search and fetch.
 
 **Method caveat:** pages were read through an automated fetch-and-summarize tool, so quotes are close to the source but not guaranteed character-for-character. Items marked **UNVERIFIED** come from a single third-party source, conflict with another source, or could not be confirmed on a first-party page. No numbers here were measured by us.

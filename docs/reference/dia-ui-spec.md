@@ -1,5 +1,7 @@
 # Dia UI Spec: hover cards, GitHub PR peek, and tab chrome
 
+> Research snapshot, 2026-09-28. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 > **Reference only. Do not copy.** den must not ship any Dia or Arc assets, icons, sounds, fonts, videos or artwork. This file records **measurements, structure and behavior** so den can rebuild the *feel* with its own assets and copy. Screenshots and recordings stay in the scratchpad and never enter this repo. Nothing from the observer's own accounts (tab titles, repo names, people, messages) is recorded here.
 
 - **Observed:** 2026-09-27/28, Dia **1.50.1** (`company.thebrowser.dia`), macOS 26 (Darwin 25.5), 2x Retina display at 1470x956 pt, **dark** appearance, vertical-tabs (sidebar) layout, window 1470x923 pt at (0, 33).
@@ -175,7 +177,7 @@ This demo was skipped. The user reviewed **den's vertical-sidebar PR peek** dire
 1. Build it as a **variant of the tab card** (same window, shadow, radius and placement engine), with a wider fixed width of about 288 pt and a vertical stack: title → avatar+author·#n → `+a −d · n files` → 6 pt segmented CI capsule → status line *or* up to 3 failing-check rows → action buttons.
 2. Put a **status dot on the favicon** (pending yellow / failed red / passed green / conflict) so CI state is visible without hovering.
 3. **Update counts in place** while the card is open (5 → 7 failures) without re-animating.
-4. Data: prefer the GitHub GraphQL API with the user's token (den's integrations model) over HTML scraping. Fields: `additions`, `deletions`, `changedFiles`, `mergeable`, `reviewDecision`, `statusCheckRollup.contexts`, `reviewThreads(isResolved:false)`.
+4. Data: prefer the GitHub GraphQL API with the user's token (den's integrations model) [Correction 2026-09-28: den's integrations model is session reuse with no OAuth app and no token; the `github` plugin reads github.com's own search JSON with the signed-in web session (see Plugins/github/GitHubCore.swift:5–16)] over HTML scraping. Fields: `additions`, `deletions`, `changedFiles`, `mergeable`, `reviewDecision`, `statusCheckRollup.contexts`, `reviewThreads(isResolved:false)`.
 5. Offer buttons **"Show N failures"** (opens the checks tab filtered to failures), **"Show comments"** (jumps to the conversation), and **"Resolve conflicts"** when `mergeable == CONFLICTING`.
 
 ---

@@ -1,5 +1,7 @@
 # den — Passkeys / WebAuthn in WKWebView (macOS 26)
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Researched 2026-09-27 on macOS 26.5 (SDK 26.5). This expands [apple-platform.md §1.7](apple-platform.md#17-passkeys--webauthn).
 
 **Method.** Apple API facts come from the doc JSON (`developer.apple.com/tutorials/data/documentation/<path>.json`) fetched this session. WebKit behavior comes from `WebKit/WebKit@main` source, read this session. Empirical results come from a probe binary run on this machine (§3). Anything not confirmed that way is marked **UNVERIFIED**.
@@ -101,10 +103,10 @@ Observed output (verbatim):
   - Don't overwrite `navigator.credentials` in injected scripts.
   - Tab web views must be in the key window so `document.hasFocus()` is true.
 - Accept that sign-in with passkeys or security keys fails on third-party sites with `NotAllowedError`. Sites fall back to passwords or OTP. Optionally, on a WebAuthn failure, offer "Open this page in the default browser" (`NSWorkspace.open`). That's a den UX choice.
-- **Do not** add the entitlement to `Resources/den.entitlements` while `scripts/bundle.sh` signs ad hoc (`codesign … --sign -`, line 40). The app would be killed at launch (observed §3).
+- **Do not** add the entitlement to `Resources/den.entitlements` while `scripts/bundle.sh` signs ad hoc (`codesign … --sign -`, line 40). The app would be killed at launch (observed §3). [Correction 2026-09-28: `scripts/bundle.sh` now signs with `$DEN_SIGN_IDENTITY`, else the self-signed "den Local Signing" identity from `scripts/make-signing-identity.sh` when present, else ad hoc (`codesign … --sign "$SIGN"`, lines 59–70). Neither is a provisioning-profile-backed signature (see scripts/bundle.sh:59).]
 
 **Existing files:**
-- `Resources/den.entitlements` contains only `com.apple.security.cs.disable-library-validation` (for plugins). No passkey key.
+- `Resources/den.entitlements` contains ~~only `com.apple.security.cs.disable-library-validation` (for plugins)~~ → `com.apple.security.cs.disable-library-validation` (for plugins), `com.apple.security.device.camera` and `com.apple.security.device.audio-input` *(corrected 2026-09-28: Resources/den.entitlements:6–10)*. No passkey key.
 - `Resources/Info.plist`: bundle id `io.github.abhishakenp.den`, `http`/`https` in `CFBundleURLTypes` (meets the criterion), HTML document types, `LSMinimumSystemVersion` 26.0.
 
 **Maintainer steps to get passkeys (manual, needs Apple):**
@@ -113,7 +115,7 @@ Observed output (verbatim):
 3. Register an explicit App ID `io.github.abhishakenp.den`. After approval, enable the managed capability on it (Certificates, Identifiers & Profiles → Identifiers → Capability Requests / Additional Capabilities).
 4. Create a **Developer ID Application** certificate and a **Developer ID** provisioning profile for that App ID (it should pick up the entitlement automatically). Developer ID profile support for this capability is **UNVERIFIED** (§1.2).
 5. Add `com.apple.developer.web-browser.public-key-credential` = `true` to `Resources/den.entitlements`. Also add `com.apple.application-identifier` / `com.apple.developer.team-identifier` matching the profile if `codesign` requires them (**UNVERIFIED**).
-6. In `scripts/bundle.sh`, copy the profile to `build/den.app/Contents/embedded.provisionprofile` **before** signing. Replace `--sign -` with `--sign "Developer ID Application: <Name> (<TEAMID>)"` and keep `--options runtime --timestamp`. Note: this changes the designated requirement, so users re-grant TCC permissions once.
+6. In `scripts/bundle.sh`, copy the profile to `build/den.app/Contents/embedded.provisionprofile` **before** signing. Replace `--sign -` with `--sign "Developer ID Application: <Name> (<TEAMID>)"` and keep `--options runtime --timestamp`. [Correction 2026-09-28: bundle.sh now signs with `--sign "$SIGN"`, and `DEN_SIGN_IDENTITY` already overrides the identity; it passes `--options runtime` but not `--timestamp` (see scripts/bundle.sh:62–70).] Note: this changes the designated requirement, so users re-grant TCC permissions once.
 7. Notarize: `xcrun notarytool submit den.zip --keychain-profile … --wait`, then `xcrun stapler staple build/den.app`.
 8. In den, call `ASAuthorizationWebBrowserPublicKeyCredentialManager().requestAuthorizationForPublicKeyCredentials` when the state is `.notDetermined`. Then re-run the §3 probe logic in-app and expect `uvpaa: true`.
 9. Contributors who build locally stay ad hoc and must strip the key. Keep two entitlements files (release vs dev).

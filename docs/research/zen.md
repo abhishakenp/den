@@ -1,5 +1,7 @@
 # Zen Browser — Research for den
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Researched 2026-09-27. Sources are cited per section. Numbers marked "observed" come from the GitHub API or pages fetched on that date. Anything I could not confirm directly is marked **UNVERIFIED**.
 
 ---

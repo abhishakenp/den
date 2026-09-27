@@ -1,5 +1,7 @@
 # den — Apple platform research (WebKit, Apple Intelligence, efficiency, fundamentals)
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Researched 2026-09-27. Current shipping OS: macOS 27 + Safari 27 (released 2026-09-14 — [9to5Mac](https://9to5mac.com/2026/09/09/apple-confirms-macos-27-golden-gate-launch-date-september-14/), [WebKit blog: Safari 27.0](https://webkit.org/blog/18325/webkit-features-for-safari-27-0/)).
 
 **Method.** API names and "introduced" versions below come from Apple's documentation JSON (`developer.apple.com/tutorials/data/documentation/<path>.json`, `metadata.platforms[].introducedAt`), fetched this session. Anything not confirmed that way is marked **UNVERIFIED**.

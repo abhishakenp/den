@@ -1,5 +1,7 @@
 # Gap shortlist
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 This merges three reports into one shortlist of frictionless features from other browsers that den doesn't have yet:
 - [WebKit browsers](gaps-webkit-browsers.md): Safari, Orion, DuckDuckGo
 - [Chromium browsers](gaps-chromium-browsers.md): Chrome, Edge, Brave, Vivaldi, Opera

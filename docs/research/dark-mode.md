@@ -1,5 +1,7 @@
 # den — Dark mode for every website: options, cost, Apple Pay
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Researched and measured 2026-09-27 on macOS 26.5 (WebKit 21624.2.5.11.4), a heavily loaded machine (load average 260–500 during the runs; other agents were compiling). Implementation: [`pagestyle`](../host-api.md#pagestyle) + [`darkmode`](../plugin-services.md#darkmode-plugin-darkmode).
 
 ## Options

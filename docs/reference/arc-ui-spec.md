@@ -1,5 +1,7 @@
 # Arc UI Spec: den's visual-fidelity reference
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 > **Reference only. Do not copy.** den must not include any Arc or Dia assets, icons, sounds, fonts, videos, Lottie files or proprietary artwork, and must not copy asset-catalog entries wholesale. This file records **measurements**, meaning numbers, colors, timings and structure, so den can reproduce the *feel* with its own assets. The UI copy quoted here may inspire den's wording, but den should write its own text. Screenshots and recordings stay in the scratchpad and never go into this repo.
 
 - **Measured:** 2026-09-27, macOS 26 (Darwin 25.5), 2x Retina display (1470x956 pt), dark appearance.

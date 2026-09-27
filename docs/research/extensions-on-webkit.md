@@ -1,5 +1,7 @@
 # Chrome/Firefox extensions on WebKit — what den can actually do
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Research date: 2026-09-27. Legend: **[DOC]** = Apple/WebKit doc confirmed, **[SRC]** = read in WebKit/GitHub source, **[3P]** = third-party claim, **UNVERIFIED** = not confirmed.
 
 ## TL;DR

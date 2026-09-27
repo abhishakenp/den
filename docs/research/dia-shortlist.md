@@ -1,5 +1,7 @@
 # Dia shortlist: connections and quality-of-life gaps for den
 
+> Research snapshot, 2026-09-28. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 - **Date:** 2026-09-28
 - **Input:** [dia-changelog-inventory.md](dia-changelog-inventory.md), covering 56 changelog versions (v0.43.0 → v1.50.0) and 43 release-note pages. `/release-notes/latest` was re-fetched today and is still Issue 043 / v1.50.0 ("Crafted with care…"), so nothing is newer than the inventory.
 - **Filtered against:** [ROADMAP.md](../../ROADMAP.md), [FEATURES.md](../FEATURES.md), [gaps-shortlist.md](gaps-shortlist.md) (approved), [plugin-services.md](../plugin-services.md), the wave-5 plan (`~/.plans/2026-09-27_20-25-den-wave-5.md`), and [dia-ui-spec.md](../reference/dia-ui-spec.md). An item that already appears in any of these is listed here only if Dia adds a detail den's plan lacks. When that happens, the row says so.

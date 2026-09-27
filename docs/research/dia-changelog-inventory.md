@@ -1,5 +1,7 @@
 # Dia changelog — full feature inventory
 
+> Research snapshot, 2026-09-28. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 - **Source:** https://www.diabrowser.com/changelog (index) + per-version pages `https://www.diabrowser.com/changelog/mac/<x-y-z>` listed in https://www.diabrowser.com/sitemap.xml
 - **Date fetched:** 2026-09-27
 - **Versions covered:** macOS v0.43.0 (Aug 21, 2025) .. v1.50.0 (Sep 24, 2026) — **56 version pages**, all read.

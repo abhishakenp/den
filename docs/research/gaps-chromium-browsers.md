@@ -1,5 +1,7 @@
 # Gaps vs Chrome, Edge, Brave, Vivaldi, Opera
 
+> Research snapshot, 2026-09-27. Decisions made later are in [ROADMAP.md](../../ROADMAP.md) / [FEATURES.md](../FEATURES.md).
+
 Researched 2026-09-27. This lists the everyday conveniences in the five big Chromium browsers that den does **not** already have or plan. Before writing it I checked [`ROADMAP.md`](../../ROADMAP.md), [`FEATURES.md`](../FEATURES.md), [`plugin-services.md`](../plugin-services.md), [`host-api.md`](../host-api.md) and the wave-5 plan (`~/.plans/2026-09-27_20-25-den-wave-5.md`).
 
 **How to read it**
