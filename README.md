@@ -5,7 +5,7 @@ A fast, native macOS browser built on WebKit, where everything is a plugin.
 <p>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Status: design phase" src="https://img.shields.io/badge/status-design%20phase-orange">
-  <img alt="Platform: macOS" src="https://img.shields.io/badge/platform-macOS-lightgrey">
+  <img alt="Platform: macOS 26+" src="https://img.shields.io/badge/platform-macOS%2026%2B-lightgrey">
 </p>
 
 <p>
@@ -20,7 +20,7 @@ A fast, native macOS browser built on WebKit, where everything is a plugin.
 
 ## What is den?
 
-den is an open-source browser for macOS, built on the WebKit engine that ships with the system. It takes the interface people love from Arc, the connected workflow from Dia, and the openness of Zen, and puts them in a browser that stays light and starts instantly.
+den is an open-source browser for macOS 26 Tahoe and later, built on the WebKit engine that ships with the system. It takes the interface people love from Arc, the connected workflow from Dia, and the openness of Zen, and puts them in a browser that stays light and starts instantly.
 
 It exists because the browsers with the best interfaces are heavy, closed, or no longer actively developed, and the lightweight ones don't feel good to use.
 
@@ -55,7 +55,8 @@ The full checklist is in [ROADMAP.md](ROADMAP.md).
 
 ## Design docs
 
-Research notes and design documents live in [`docs/`](docs/).
+- [Feature comparison](docs/FEATURES.md): what Arc, Dia and Zen do, and what den is going for
+- [Research notes](docs/research/)
 
 ## Contributing
 

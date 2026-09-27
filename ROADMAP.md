@@ -30,7 +30,7 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
 - [ ] Tab model on `WKWebView`
 - [ ] Profiles with isolated data stores (`WKWebsiteDataStore(forIdentifier:)`, macOS 14+)
 - [ ] Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard (save state + snapshot, destroy the web view, recreate on focus)
-- [ ] Session restore and crash recovery (page state save/restore needs macOS 26)
+- [ ] Session restore and crash recovery, using WebKit's page state save/restore
 - [ ] Apple Pay exception: skip den's injected scripts on checkout pages, since any injection disables Apple Pay
 - [ ] Web push notifications: not supported in `WKWebView`; decide on a workaround or skip
 - [ ] Downloads
@@ -68,13 +68,13 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 
 Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 
-- [ ] Chrome and Firefox extensions via Apple's `WKWebExtension` API (macOS 15.4+; Manifest v2 and v3, `chrome.*` and `browser.*`)
+- [ ] Chrome and Firefox extensions via Apple's `WKWebExtension` API (Manifest v2 and v3, `chrome.*` and `browser.*`)
 - [ ] One-click install from Chrome Web Store / addons.mozilla.org, with update checks (Chrome Web Store terms: needs a legal read)
 - [ ] Fill in APIs Apple leaves out where feasible: `bookmarks`, `sidePanel`, `downloads`, `history`, `identity`
 - [ ] Native messaging bridge (password managers)
 - [ ] Built-in ad/tracker blocker: filter lists compiled to content rule lists (e.g. `adblock-rust` or AdGuard's `SafariConverterLib`), plus CSS hiding and scriptlets
 - [ ] uBlock Origin Lite works (full uBlock Origin can't, since WebKit has no blocking `webRequest`)
-- [ ] Decide minimum macOS: 15.4 (extensions work, no on-device AI) or 26 (everything, including AI and page state restore)
+- [x] Minimum macOS: 26 Tahoe. No support for older versions; newer-OS APIs (macOS 27) used when available
 
 ## Connections and daily briefing (Dia-style)
 
@@ -92,7 +92,7 @@ Details and sources: [Dia notes](docs/research/dia.md).
 
 AI in den is Apple's on-device model, used only for the daily briefing and the personalized feed. No chat, no agent, nothing sent to a cloud model. Anything else is left to plugins.
 
-- [ ] Summarize and prioritize connection data with Apple's Foundation Models framework, on device (macOS 26+)
+- [ ] Summarize and prioritize connection data with Apple's Foundation Models framework, on device
 - [ ] Fit the model's small context (4,096 tokens on macOS 26): summarize each source separately, then combine the summaries
 - [ ] Model loads only while generating a briefing or ranking the feed, then is released
 - [ ] Model output is text and todos only: no tools, cannot click, send or open anything
