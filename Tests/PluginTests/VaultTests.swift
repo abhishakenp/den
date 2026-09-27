@@ -61,6 +61,14 @@ struct VaultTests {
     h.rt.window.window.contentView?.addSubview(w)
     w.loadHTMLString(html, baseURL: URL(string: base))
     _ = await Wait.until("\(base) to load") { !w.isLoading && w.url?.absoluteString == base }
+    // Loaded isn't enough on a slow machine (a CI runner's first WebContent process): typing could
+    // hit the old document for one field and the form for the other (a capture with an empty
+    // username). Wait for the form itself.
+    for _ in 0..<600 {  // up to 30 s
+      let r = await js(w, "return document.readyState === 'complete' && !!document.getElementById('f')")
+      if r == "1" || r == "true" { break }
+      try await Task.sleep(for: .milliseconds(50))
+    }
     return w
   }
 
@@ -74,7 +82,8 @@ struct VaultTests {
   }
 
   func type(_ w: WKWebView, _ fields: [String: String]) async {
-    for (id, v) in fields { await js(w, "document.getElementById('\(id)').value = '\(v)'") }
+    // One script, in a fixed order, so every field lands in the same document.
+    await js(w, fields.sorted { $0.key < $1.key }.map { "document.getElementById('\($0.key)').value = '\($0.value)';" }.joined())
   }
 
 
