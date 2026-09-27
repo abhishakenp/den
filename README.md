@@ -16,7 +16,7 @@ A fast, native macOS browser built on WebKit, where everything is a plugin.
 </p>
 
 > [!IMPORTANT]
-> den is in early development. The host app (window, sidebar UI toolkit, web views, services) builds and runs with demo data; the browser features themselves arrive as plugins next.
+> den is in early development. It browses the web with an Arc-style sidebar, spaces, split view and a command bar, but there are no profiles, extensions, downloads or sync yet.
 
 <p align="center"><img src="docs/screenshots/main-light.png" alt="den main window with demo data" width="820"></p>
 
@@ -47,13 +47,35 @@ It exists because the browsers with the best interfaces are heavy, closed, or no
 |---|------|--------|
 | 1 | Research Arc, Dia, Zen, WebKit, extension support, plugin design | ✅ |
 | 2 | Feature and architecture design | 🟡 In progress |
-| 3 | Plugin host and app skeleton | 🟡 Host services and UI done; plugin loading next |
-| 4 | Core browsing: tabs, sidebar, spaces, profiles | ❌ |
+| 3 | Plugin host and app skeleton | ✅ |
+| 4 | Core browsing: tabs, sidebar, spaces, profiles | 🟡 Tabs, sidebar and spaces done; profiles next |
 | 5 | Extensions and content blocking | ❌ |
 | 6 | Connections, daily briefing, personalized feed | ❌ |
 | 7 | First public release | ❌ |
 
 The full checklist is in [ROADMAP.md](ROADMAP.md).
+
+## What works today
+
+Each item is covered by `swift test` or a `--scenario` run of the real app.
+
+- **Sidebar:** favorites, pinned tabs and folders, today tabs; drag to reorder; double-click or right-click to rename in place
+- **Spaces:** each with its own theme; switch by swiping or with the footer icons; drop a tab on a space's icon to move it there
+- **Tabs:** archive on close, with auto-archive after 12 h, idle tabs suspended after 30 min, Ctrl-Z undo, and an archive searchable from the command bar
+- **Split view:** 2–4 panes, created by dragging a tab onto the page; shown as one sidebar row
+- **Command bar:** tabs, archive, spaces, actions, URLs and web search (Cmd-T / Cmd-L)
+- **Peek** for links from pinned tabs, and **Little Arc** windows for links from other apps (Cmd-O moves one into a space)
+- **Theme picker** per space, and the quit dialog
+- **Plugins:** all of the above are six Embedded Swift plugins (`spaces`, `tabs`, `commandbar`, `peek`, `theme`, `quit`) loaded from `den.app/Contents/PlugIns`
+
+<p align="center">
+  <img src="docs/screenshots/command-bar.png" alt="Command bar" width="410">
+  <img src="docs/screenshots/split-view.png" alt="Split view" width="410">
+</p>
+<p align="center">
+  <img src="docs/screenshots/theme-picker-live.png" alt="Theme picker" width="410">
+  <img src="docs/screenshots/quit-dialog.png" alt="Quit dialog" width="410">
+</p>
 
 ## Build and run
 

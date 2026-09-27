@@ -49,7 +49,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - [x] Favorites grid, shared across spaces
 - [x] Pinned tabs per space, which reset to their original URL
 - [x] Today tabs with auto-archive (Arc default: 12h; configurable)
-- [ ] Archive of closed tabs, searchable
+- [x] Archive of closed tabs, searchable (command bar "View Archive"; Little Arc windows auto-archive into it)
 - [ ] Folders, including live folders fed by GitHub or RSS (from Zen)
 - [x] Spaces with their own colors/themes, swipe to switch
 - [ ] A profile per space (Zen's most-requested missing feature)

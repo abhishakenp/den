@@ -365,7 +365,7 @@ final class PeekCore {
   }
 
   /// Little Arc windows archive after `littleArcArchiveMs` without use (Arc default 6 h): the
-  /// window closes and its page goes into the tabs archive, where Cmd-Shift-T or the Library
+  /// window closes and its page goes into the tabs archive, where Cmd-Shift-T or View Archive
   /// can bring it back as a tab.
   func tick() {
     guard littleArcArchiveMs > 0 else { return }
