@@ -35,6 +35,21 @@ final class QuitCore {
       if v.s("id") == Self.enableCommandId { setWarn(true, announce: true) }
     }
     registerCommands()
+    registerSettings()
+  }
+
+  /// Settings > General > "Ask before quitting" (the host `settings` service; storage ns `quit`, `prefs`).
+  func registerSettings() {
+    let r = env.call("settings", "register", [
+      "id": .string(Self.ns), "section": "general", "title": "Quitting", "order": 50,
+      "controls": [["key": "warn", "type": "toggle", "title": "Ask before quitting",
+                    "subtitle": "Command-Q shows a confirmation first. Your tabs come back either way.", "default": .bool(warn)]],
+    ])
+    guard !r.isErr else { return }
+    if let w = env.call("settings", "get", ["id": .string(Self.ns), "key": "warn"]).bool, w != warn { setWarn(w, announce: false) }
+    env.on("settings.changed") { [self] v in
+      if v.s("id") == Self.ns, v.s("key") == "warn", let w = v["value"].bool, w != warn { setWarn(w, announce: false) }
+    }
   }
 
   /// On unload, quitting must not wait for a dialog nobody will answer.
@@ -79,6 +94,7 @@ final class QuitCore {
     warn = on
     env.call("storage", "set", ["ns": .string(Self.ns), "key": "warn", "value": .bool(on)])
     env.call("app", "interceptQuit", ["enabled": .bool(on)])
+    env.call("settings", "set", ["id": .string(Self.ns), "key": "warn", "value": .bool(on)])
     if announce {
       env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "den will ask before quitting", "icon": "sf:checkmark.circle.fill"]])
     }

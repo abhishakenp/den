@@ -65,7 +65,7 @@ final class HeadingNode: NodeView {
     subtitle.isHidden = subtitle.stringValue.isEmpty
     apply(r.palette)
   }
-  override func apply(_ p: Palette) { title.textColor = p.text; subtitle.textColor = p.secondaryText }
+  override func apply(_ p: Palette) { title.textColor = p.textPrimary; subtitle.textColor = p.textSecondary }
   override func height(for w: CGFloat) -> CGFloat { subtitle.isHidden ? 34 : 54 }
   override func layout() {
     subtitle.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 17)
@@ -97,7 +97,7 @@ final class ParagraphNode: NodeView {
     needsLayout = true
   }
   override func apply(_ p: Palette) {
-    let color = style == "body" ? p.text : p.secondaryText
+    let color = style == "body" ? p.textPrimary : p.textSecondary
     let s = NSMutableAttributedString(attributedString: label.attributedStringValue)
     s.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: s.length))
     label.attributedStringValue = s
@@ -151,8 +151,8 @@ final class SectionNode: NodeView {
     needsLayout = true
   }
   override func apply(_ p: Palette) {
-    title.textColor = p.secondaryText
-    accessory.textColor = p.secondaryText
+    title.textColor = p.textSecondary
+    accessory.textColor = p.textSecondary
     card.layer?.backgroundColor = p.sectionFill.cgColor
     card.layer?.borderColor = p.sectionBorder.cgColor
     dividers.forEach { $0.layer?.backgroundColor = p.hairline.cgColor }
@@ -205,11 +205,11 @@ final class TodoRowNode: SheetRowNode {
     needsLayout = true
   }
   override func apply(_ p: Palette) {
-    var attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13.5, weight: .medium), .foregroundColor: done ? p.secondaryText : p.text]
+    var attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13.5, weight: .medium), .foregroundColor: done ? p.textSecondary : p.textPrimary]
     if done { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
     title.attributedStringValue = NSAttributedString(string: node.str("title"), attributes: attrs)
-    subtitle.textColor = p.secondaryText
-    icon.tint = p.text
+    subtitle.textColor = p.textSecondary
+    icon.tint = p.textPrimary
     icon.alphaValue = done ? 0.5 : 1
     needsDisplay = true
   }
@@ -306,10 +306,10 @@ final class FeedRowNode: SheetRowNode {
     needsLayout = true
   }
   override func apply(_ p: Palette) {
-    title.textColor = p.text
-    subtitle.textColor = p.secondaryText
-    time.textColor = p.secondaryText
-    icon.tint = p.text
+    title.textColor = p.textPrimary
+    subtitle.textColor = p.textSecondary
+    time.textColor = p.textSecondary
+    icon.tint = p.textPrimary
     badge.color = p.accentStrong
     badge.dark = p.dark
     needsDisplay = true
@@ -424,15 +424,15 @@ final class ConnectionRowNode: NodeView {
     needsLayout = true
   }
   override func apply(_ p: Palette) {
-    title.textColor = p.text
-    icon.tint = p.text
+    title.textColor = p.textPrimary
+    icon.tint = p.textPrimary
     let text = node.str("status")
     if node.flag("connected") {
       let s = NSMutableAttributedString(string: "● ", attributes: [.font: NSFont.systemFont(ofSize: 9), .foregroundColor: p.success, .baselineOffset: 1])
-      s.append(NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: p.secondaryText]))
+      s.append(NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: p.textSecondary]))
       status.attributedStringValue = s
     } else {
-      status.attributedStringValue = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: p.secondaryText])
+      status.attributedStringValue = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: p.textSecondary])
     }
     buttons.forEach { $0.apply(p) }
   }
@@ -473,7 +473,7 @@ class SettingRowNode: NodeView {
     apply(r.palette)
     needsLayout = true
   }
-  override func apply(_ p: Palette) { title.textColor = p.text; subtitle.textColor = p.secondaryText; icon.tint = p.text }
+  override func apply(_ p: Palette) { title.textColor = p.textPrimary; subtitle.textColor = p.textSecondary; icon.tint = p.textPrimary }
   override func height(for w: CGFloat) -> CGFloat { subtitle.isHidden ? Tokens.settingRowHeight : Tokens.settingRowHeight + 8 }
   var control: NSView? { nil }
   override func layout() {

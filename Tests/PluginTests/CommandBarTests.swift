@@ -498,7 +498,7 @@ struct CommandBarTests {
 
   // MARK: - Default-browser banner
 
-  @Test func bannerShowsUntilDenIsTheDefaultAndSnoozesFor14Days() async {
+  @Test func bannerShowsUntilDenIsTheDefaultOrDismissed() async {
     let h = Harness()
     h.startCommandBar()
     h.key("cmd+t")
@@ -508,16 +508,17 @@ struct CommandBarTests {
     // Its panel grows by the 60 pt banner (+ the bottom border).
     let withBanner = h.rt.ui.commandBar.contentHeight
 
-    // "×" snoozes it for 14 days.
+    // "×" hides it for good (docs/defaults.md); Settings > Search brings it back.
     h.action("commandBar", "banner", ["button": "close"])
     #expect(h.bar["banner"].isNull)
     #expect(h.rt.ui.commandBar.contentHeight == withBanner - 61)
+    #expect(h.rt.call("settings", "get", ["id": "commandbar", "key": "banner"]) == false)
     h.key("cmd+t")
-    h.clock += 13 * CommandBarCore.dayMs
+    h.clock += 60 * CommandBarCore.dayMs
     h.key("cmd+t")
     #expect(h.bar["banner"].isNull)
     h.key("cmd+t")
-    h.clock += 2 * CommandBarCore.dayMs
+    h.rt.call("settings", "set", ["id": "commandbar", "key": "banner", "value": true])
     h.key("cmd+t")
     #expect(!h.bar["banner"].isNull)
 

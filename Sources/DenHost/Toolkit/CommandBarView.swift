@@ -68,17 +68,21 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     }
     init(_ p: Palette) {
       dark = p.dark
-      let ink = NSColor(white: p.dark ? 1 : 0, alpha: 1)
-      text = ink.withAlphaComponent(0.80)  // TextPrimary
-      secondary = ink.withAlphaComponent(0.33)  // TextSecondary
-      hover = ink.withAlphaComponent(0.05)  // RowHoverBackground
-      accessory = ink.withAlphaComponent(0.05)  // AccessoryBackground
-      divider = ink.withAlphaComponent(0.10)  // HairlineDivider
-      placeholder = ink.withAlphaComponent(0.30)  // PlaceholderPlaceholderText (spec §3)
+      // ARC_CommandBar TextPrimary/Secondary (α .80/.33), PlaceholderPlaceholderText (α .30), as
+      // theme tokens: tinted by the space and pushed to WCAG contrast on the bar's surface.
+      text = p.textPrimary
+      secondary = p.textSecondary
+      hover = p.rowHover  // RowHoverBackground
+      accessory = p.rowHover  // AccessoryBackground
+      divider = p.hairline  // HairlineDivider
+      placeholder = p.textTertiary
       // Spec §2: the selected row is a solid theme-colored fill, (65,72,216) in Arc's default theme,
       // with white text and the icon on a white tile. den takes the space's hue and matches
-      // that color's luminance, so every theme reads like Arc's (saturated, not neon).
-      tint = Colors.selectionFill(p.theme.accent == nil ? nil : p.accentStrong)
+      // that color's luminance, so every theme reads like Arc's (saturated, not neon); with the
+      // system accent chosen it's the tokens' accent. Either way white text stays AA-legible.
+      let raw = Palette.accentSource == .system ? p.accentStrong : Colors.selectionFill(p.theme.accent == nil ? nil : p.accentStrong)
+      let rs = raw.usingColorSpace(.sRGB) ?? raw
+      tint = ThemeTokens.ensure(RGB(rs.redComponent, rs.greenComponent, rs.blueComponent), on: RGB(1, 1, 1), ThemeTokens.bodyContrast).ns
       selection = tint
       selectionKeycap = NSColor(white: 1, alpha: 0.2)  // estimate
     }
@@ -235,19 +239,12 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       needsLayout = true
     }
     func apply(_ p: Palette) {
-      bg = p.dark ? NSColor(srgbRed: 0x16 / 255, green: 0x16 / 255, blue: 0x16 / 255, alpha: 1) : NSColor(srgbRed: 0xFD / 255, green: 0xFD / 255, blue: 0xFE / 255, alpha: 1)
-      label.textColor = NSColor(white: p.dark ? 1 : 0, alpha: 0.33)
-      close.tint = NSColor(white: p.dark ? 1 : 0, alpha: 0.33)
-      close.hoverFill = NSColor(white: p.dark ? 1 : 0, alpha: 0.05)
-      for b in [secondary, primary].compactMap({ $0 }) {
-        b.apply(p)
-        if b.style == "secondary" && !p.dark {
-          // Light: a quiet white pill with a hairline (estimate; Arc's light banner wasn't measured).
-          b.fill = .white
-          b.border = NSColor(white: 0, alpha: 0.12)
-          b.label.textColor = NSColor(white: 0, alpha: 0.8)
-        }
-      }
+      // BannerBackground (#FDFDFE / #161616, spec §2): a layer above the bar's surface (tokens).
+      bg = p.elevatedSurface
+      label.textColor = p.textSecondary
+      close.tint = p.textSecondary
+      close.hoverFill = p.rowHover
+      for b in [secondary, primary].compactMap({ $0 }) { b.apply(p) }
       needsDisplay = true
     }
     override func draw(_ dirtyRect: NSRect) {
@@ -459,12 +456,13 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     let c = Colors(p)
     surface.layer?.borderWidth = 0
     if p.dark {
-      border.outer = M.darkBorderOuter
-      border.inner = M.darkBorderInner
+      // Spec §2 dark ramp (61,61,61) → (78,78,82) over (28,27,34): white α≈.14 / .2 on the surface.
+      border.outer = p.textPrimary.withAlphaComponent(0.14)
+      border.inner = p.textPrimary.withAlphaComponent(0.2)
     } else {
       // Light border: not measured; a hairline at HairlineDivider strength (estimate).
-      border.outer = NSColor(white: 0, alpha: 0.10)
-      border.inner = NSColor(white: 0, alpha: 0.04)
+      border.outer = p.hairline
+      border.inner = p.hairline.withAlphaComponent(0.04)
     }
     border.needsDisplay = true
     input.textColor = c.text

@@ -184,20 +184,20 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
   override func apply(_ p: Palette) {
     super.apply(p)
     palette = p
-    surface.layer?.backgroundColor = p.popover.cgColor
-    titleLabel.textColor = p.text
-    headerIcon.tint = p.text
+    surface.layer?.backgroundColor = p.surface.cgColor
+    titleLabel.textColor = p.textPrimary
+    headerIcon.tint = p.textPrimary
     clearButton.apply(p)
     closeButton.apply(p)
     searchField.layer?.backgroundColor = p.pillFill.cgColor
-    searchIcon.tint = p.secondaryText
-    input.textColor = p.text
-    emptyLabel.textColor = p.secondaryText
-    headers.forEach { $0.textColor = p.secondaryText }
+    searchIcon.tint = p.textSecondary
+    input.textColor = p.textPrimary
+    emptyLabel.textColor = p.textSecondary
+    headers.forEach { $0.textColor = p.textSecondary }
     for r in rows {
-      r.title.textColor = p.text
-      r.subtitle.textColor = p.secondaryText
-      r.icon.tint = p.text
+      r.title.textColor = p.textPrimary
+      r.subtitle.textColor = p.textSecondary
+      r.icon.tint = p.textPrimary
       r.hoverFill = p.rowHover.withAlphaComponent(p.dark ? 0.08 : 0.05)
       r.restore.apply(p)
     }

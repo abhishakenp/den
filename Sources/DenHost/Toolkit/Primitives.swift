@@ -2,18 +2,50 @@ import AppKit
 import CordisValue
 
 /// Colors for chrome drawn on top of the themed background.
+///
+/// Surfaces (dialogs, the command bar, popovers, toasts, hover cards, sheets, Settings, Little Arc)
+/// take their colors from `tokens` (ThemeTokens.swift): derived from the space theme and the
+/// appearance, contrast-checked, and cached per theme. See docs/host-api.md "Theming".
 @MainActor
-public struct Palette {
+public struct Palette: Equatable {
   public let dark: Bool
   public let theme: Theme
+  public let tokens: ThemeTokens
 
-  public init(theme: Theme, dark: Bool) { (self.theme, self.dark) = (theme, dark) }
+  /// Settings > General > Accent color: the space's colors (Arc) or the system accent.
+  public static var accentSource: AccentSource = .theme
+
+  public init(theme: Theme, dark: Bool) {
+    (self.theme, self.dark) = (theme, dark)
+    var sys: RGB?
+    if Self.accentSource == .system, let c = NSColor.controlAccentColor.usingColorSpace(.sRGB) { sys = RGB(c.redComponent, c.greenComponent, c.blueComponent) }
+    tokens = ThemeTokens.make(theme: theme, dark: dark, systemAccent: sys)
+  }
+
+  nonisolated public static func == (a: Palette, b: Palette) -> Bool { a.tokens == b.tokens && a.theme == b.theme }
+
+  // MARK: Tokens (docs/host-api.md "Theming")
+  public var surface: NSColor { tokens.surface.ns }
+  public var elevatedSurface: NSColor { tokens.elevated.ns }
+  public var textPrimary: NSColor { tokens.textPrimary.ns }
+  public var textSecondary: NSColor { tokens.textSecondary.ns }
+  public var textTertiary: NSColor { tokens.textTertiary.ns }
+  public var onAccent: NSColor { tokens.onAccent.ns }
+  public var onDestructive: NSColor { tokens.onDestructive.ns }
+  public var onToast: NSColor { tokens.onToast.ns }
+  public var hairline: NSColor { tokens.hairline.ns }
+  public var pressed: NSColor { tokens.pressed.ns }
+  public var shadowColor: NSColor { tokens.shadow.rgb.ns }
+  public var shadowOpacity: Float { Float(tokens.shadow.a) }
+  public var dialogDim: CGFloat { tokens.dialogDim }
+  public var sheetDim: CGFloat { tokens.sheetDim }
 
   // Values from docs/reference/arc-ui-spec.md §3 unless marked estimate.
   static func ink(_ a: CGFloat) -> NSColor { NSColor(srgbRed: 0x0E / 255, green: 0x0F / 255, blue: 0x10 / 255, alpha: a) }
   static func snow(_ a: CGFloat) -> NSColor { NSColor(srgbRed: 0xFA / 255, green: 0xFB / 255, blue: 1, alpha: a) }
-  public var text: NSColor { dark ? NSColor(white: 1, alpha: 0.80) : Self.ink(0.90) }  // ForegroundPrimary
-  public var secondaryText: NSColor { dark ? NSColor(white: 1, alpha: 0.50) : NSColor(white: 0, alpha: 0.50) }  // ForegroundSecondary
+  /// Sidebar text: ForegroundPrimary/Secondary, pushed for contrast on very light or dark themes.
+  public var text: NSColor { tokens.sidebarText.ns }
+  public var secondaryText: NSColor { tokens.sidebarSecondary.ns }
   public var tertiaryText: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.30) }  // ForegroundTertiary / TabCellSlash
   public var hoverFill: NSColor { dark ? Self.snow(0.08) : NSColor(white: 1, alpha: 0.32) }  // TabCellBackgroundPrevious (hover rule UNVERIFIED)
   public var selectedFill: NSColor { dark ? Self.snow(0.20) : NSColor(white: 1, alpha: 0.85) }  // TabCellBackgroundCurrent
@@ -23,30 +55,27 @@ public struct Palette {
   public var pillHoverFill: NSColor { dark ? Self.snow(0.15) : Self.ink(0.10) }  // SidebarItemHoveredBackground
   public var tileFill: NSColor { dark ? Self.snow(0.10) : Self.ink(0.05) }  // estimate: favorites use SidebarItemBackground
   public var divider: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.15) }  // SidebarSeparator
-  public var primaryButton: NSColor { NSColor(srgbRed: 0x31 / 255, green: 0x39 / 255, blue: 0xFB / 255, alpha: 1) }  // primary button #3139FB
-  public var destructive: NSColor { NSColor(srgbRed: 0xF5 / 255, green: 0x37 / 255, blue: 0x14 / 255, alpha: 1) }  // DestructiveButtonFace
-  public var rowHover: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.05) }  // command bar RowHoverBackground
-  public var panelText: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.80) }  // command bar TextPrimary
-  public var panelSecondaryText: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.33) }  // command bar TextSecondary
+  /// The theme's accent (Arc's #3139FB is the no-theme default's cousin), with `onAccent` on it.
+  public var primaryButton: NSColor { tokens.accent.ns }
+  public var destructive: NSColor { tokens.destructive.ns }  // DestructiveButtonFace, darkened for a white label
+  public var rowHover: NSColor { tokens.hover.ns }  // command bar RowHoverBackground
+  public var panelText: NSColor { tokens.textPrimary.ns }  // command bar TextPrimary
+  public var panelSecondaryText: NSColor { tokens.textSecondary.ns }  // command bar TextSecondary
   /// Saturated theme color that white text reads on (command bar selection, split drop
   /// indicators). Spec §2 measured (65,72,216) in the default theme; den derives it from the space.
-  public var accentStrong: NSColor {
-    guard let a = theme.accent else { return NSColor(srgbRed: 65 / 255, green: 72 / 255, blue: 216 / 255, alpha: 1) }
-    let c = a.ns.usingColorSpace(.sRGB) ?? a.ns
-    return NSColor(hue: c.hueComponent, saturation: max(c.saturationComponent, 0.55), brightness: dark ? 0.72 : 0.78, alpha: 1)  // estimate
-  }
+  public var accentStrong: NSColor { tokens.accent.ns }
   public var accent: NSColor {
     guard let a = theme.accent else { return .controlAccentColor }
     return (dark ? a.mix(RGB(1, 1, 1), 0.25) : a.mix(RGB(0, 0, 0), 0.15)).ns
   }
-  /// Command bar surface: (28,27,34) dark measured (spec §2); light = PopoverBackground #FAFBFF.
-  public var panel: NSColor { dark ? NSColor(srgbRed: 28 / 255, green: 27 / 255, blue: 34 / 255, alpha: 1) : Self.snow(1) }
-  /// Dialog surface: PopoverBackground #FAFBFF / #151C30 (spec §3).
-  public var popover: NSColor { dark ? NSColor(srgbRed: 0x15 / 255, green: 0x1C / 255, blue: 0x30 / 255, alpha: 1) : Self.snow(1) }
-  public var toast: NSColor {
-    let base = dark ? RGB(0.2, 0.2, 0.21) : RGB(0.12, 0.12, 0.13)
-    return (theme.accent.map { base.mix($0, 0.45) } ?? base).ns
-  }
+  /// Command bar and dialog surfaces: PopoverBackground (#FAFBFF / #151C30, spec §3) tinted by the space.
+  public var panel: NSColor { tokens.surface.ns }
+  public var popover: NSColor { tokens.surface.ns }
+  public var toast: NSColor { tokens.toast.ns }
+}
+
+extension RGBA {
+  public var ns: NSColor { NSColor(srgbRed: rgb.r, green: rgb.g, blue: rgb.b, alpha: a) }
 }
 
 /// Everything in the toolkit that depends on theme/appearance implements this.

@@ -27,6 +27,7 @@ public enum HostScenarios {
       return rt.window.window
     }
     if let w = PreviewScenarios.apply(name, runtime: rt, appearance: appearance) { return w }
+    if let w = SpaceScenarios.apply(name, runtime: rt) { return w }
     guard names.contains(name) else { return nil }
     switch name {
     case "themePicker", "themePickerEmpty":

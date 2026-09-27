@@ -28,6 +28,8 @@ public final class DenRuntime {
   /// Chrome/Firefox extensions (docs/host-api.md#extensions). Nothing WebKit-side exists until
   /// something is installed.
   public let extensions: ExtensionsService
+  /// den's Settings window (⌘,) and the sections plugins contribute to it.
+  public let settings: SettingsService
   /// Lets `PluginLoader` (built by the app from `plugins` alone) grant sidecar permissions.
   static var permissionsByHost: [ObjectIdentifier: Permissions] = [:]
   static func permissions(for plugins: PluginHost) -> Permissions? { permissionsByHost[ObjectIdentifier(plugins)] }
@@ -57,12 +59,13 @@ public final class DenRuntime {
                                      : storageRoot.appendingPathComponent("extensions", isDirectory: true),
                                    persistent: isDefault)
     extensions.content = content
+    settings = SettingsService(host: host, storage: storage)
     Self.permissionsByHost[ObjectIdentifier(plugins)] = permissions
     // `webviews.eval` reads a live page only for a plugin with `session:<that page's host>`.
     webviews.allowScript = { [permissions] plugin, host in MainActor.assumeIsolated { permissions.allowsSession(plugin, host: host) } }
     windowService.ui = ui
     windowService.attach(webviews: webviews, host: host)
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, vault, extensions, settings] {
       host.provide(s)
       plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }
@@ -77,6 +80,10 @@ public final class DenRuntime {
     host.externalListeners = { [weak plugins] e in plugins?.hasListeners(e) ?? false }
     window.emit = { [weak host] e, v in host?.emit(e, v) }
     window.onCloseRequest = { [weak app] in app?.shouldClose() ?? true }
+    settings.dark = { [unowned window] in window.isDark }
+    settings.palette = { [unowned ui] in ui.renderer.palette }
+    ui.onPalette = { [weak settings] _ in settings?.window?.applyAppearance() }
+    GeneralSettings.install(self)
   }
 
   /// The `plugins` service: lets a plugin see which services, plugins and listeners exist, so it

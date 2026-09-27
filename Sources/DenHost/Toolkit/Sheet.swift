@@ -2,14 +2,11 @@ import AppKit
 import CordisValue
 
 extension Palette {
-  /// Surface of the briefing page and the connections sheet (estimates: den's own UI).
-  var sheetSurface: NSColor {
-    dark ? NSColor(srgbRed: 28 / 255, green: 27 / 255, blue: 34 / 255, alpha: 1) : NSColor(srgbRed: 0.965, green: 0.965, blue: 0.975, alpha: 1)
-  }
-  /// Rounded `section` card on that surface.
-  var sectionFill: NSColor { dark ? Self.snow(0.05) : NSColor(white: 1, alpha: 1) }
-  var sectionBorder: NSColor { NSColor(white: dark ? 1 : 0, alpha: dark ? 0.08 : 0.07) }
-  var hairline: NSColor { NSColor(white: dark ? 1 : 0, alpha: dark ? 0.08 : 0.07) }
+  /// Surface of the briefing page and the connections sheet: the theme's surface token.
+  var sheetSurface: NSColor { surface }
+  /// Rounded `section` card on that surface: the elevated token (white-ish in light, a lift in dark).
+  var sectionFill: NSColor { dark ? elevatedSurface : tokens.surface.mix(RGB(1, 1, 1), 0.7).ns }
+  var sectionBorder: NSColor { hairline }
   var success: NSColor { NSColor(srgbRed: 0.20, green: 0.72, blue: 0.40, alpha: 1) }
 }
 
@@ -86,9 +83,9 @@ final class SheetView: PanelView {
     super.apply(p)
     surface.layer?.backgroundColor = p.sheetSurface.cgColor
     surface.layer?.borderWidth = isPage ? 0 : 0.5
-    titleLabel.textColor = p.text
-    subtitleLabel.textColor = p.secondaryText
-    icon.tint = p.text
+    titleLabel.textColor = p.textPrimary
+    subtitleLabel.textColor = p.textSecondary
+    icon.tint = p.textPrimary
     closeButton.apply(p)
     headerButtons.forEach { $0.apply(p) }
   }

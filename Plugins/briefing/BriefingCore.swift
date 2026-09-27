@@ -59,6 +59,63 @@ final class BriefingCore {
   func load(_ key: String) -> Value { env.call("storage", "get", ["ns": .string(Self.ns), "key": .string(key)]) }
   func store(_ key: String, _ v: Value) { env.call("storage", "set", ["ns": .string(Self.ns), "key": .string(key), "value": v]) }
 
+  static let defaultShortcut = "cmd+shift+b"
+  var shortcut = ""
+
+  func bindShortcut(_ chord: String) {
+    if !shortcut.isEmpty { env.call("keys", "unbind", ["chord": .string(shortcut)]) }
+    shortcut = chord
+    if !chord.isEmpty { env.call("keys", "bind", ["chord": .string(chord), "event": "briefing.key.open", "title": "Daily Briefing", "menu": "View"]) }
+  }
+
+  /// Settings > Briefing (host `settings` service): the morning briefing, its time and shortcut.
+  func registerSettings() {
+    var times: [Value] = []
+    var m: Int64 = 5 * 60
+    while m <= 12 * 60 {
+      times.append(["value": .int(m), "title": .string(Self.clock(m))])
+      m += 30
+    }
+    let now = hour * 60 + minute
+    if now % 30 != 0 || now < 5 * 60 || now > 12 * 60 { times.append(["value": .int(now), "title": .string(Self.clock(now))]) }
+    let r = env.call("settings", "register", [
+      "id": .string(Self.ns), "title": "Briefing", "icon": "sf:sun.horizon", "order": 40,
+      "controls": [
+        ["key": "enabled", "type": "toggle", "title": "Morning briefing",
+         "subtitle": "Once a day den gathers what needs you from your connections and lets you know. Only while something is connected.", "default": .bool(enabled)],
+        ["key": "time", "type": "choice", "title": "Time", "options": .array(times), "default": .int(now)],
+        ["key": "shortcut", "type": "shortcut", "title": "Open the briefing", "default": .string(Self.defaultShortcut)],
+      ],
+    ])
+    guard !r.isErr else { return }
+    let v = env.call("settings", "get", ["id": .string(Self.ns)])
+    for k in ["enabled", "time", "shortcut"] { applySetting(k, v[k]) }
+    env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { applySetting(v.s("key"), v["value"]) } }
+  }
+
+  func applySetting(_ key: String, _ v: Value) {
+    switch key {
+    case "enabled":
+      guard let b = v.bool, b != enabled else { return }
+      _ = handle("settings", ["enabled": .bool(b)])
+    case "time":
+      guard let t = v.int, t != hour * 60 + minute else { return }
+      _ = handle("settings", ["hour": .int(t / 60), "minute": .int(t % 60)])
+    case "shortcut":
+      guard let c = v.string, c != shortcut else { return }
+      bindShortcut(c)
+      store("shortcut", .string(c))
+    default: break
+    }
+  }
+
+  /// "8:00 AM" for minutes since midnight.
+  static func clock(_ m: Int64) -> String {
+    let h = m / 60, mm = m % 60
+    let h12 = h % 12 == 0 ? 12 : h % 12
+    return String(h12) + ":" + (mm < 10 ? "0" : "") + String(mm) + (h < 12 ? " AM" : " PM")
+  }
+
   func start() {
     todos = load("todos").array ?? []
     if case let .object(pairs) = load("affinity") { for (k, v) in pairs { affinity[k] = v.int ?? 0 } }
@@ -67,8 +124,9 @@ final class BriefingCore {
     minute = s.i("minute", 0)
     enabled = s.b("enabled", true)
     seenAt = load("seenAt").int ?? 0
-    env.call("keys", "bind", ["chord": "cmd+shift+b", "event": "briefing.key.open", "title": "Daily Briefing", "menu": "View"])
+    bindShortcut(load("shortcut").string ?? Self.defaultShortcut)
     env.on("briefing.key.open") { [self] _ in isOpen ? close() : open() }
+    registerSettings()
     env.on("commands.run") { [self] v in if v.s("id") == "briefing.open" { open() } }
     env.on("feed.items") { [self] v in received(v) }
     env.on("connections.changed") { [self] _ in
@@ -105,6 +163,8 @@ final class BriefingCore {
       scheduled = false
       updateSchedule()
       render()
+      env.call("settings", "set", ["id": .string(Self.ns), "key": "enabled", "value": .bool(enabled)])
+      env.call("settings", "set", ["id": .string(Self.ns), "key": "time", "value": .int(hour * 60 + minute)])
       return ["hour": .int(hour), "minute": .int(minute), "enabled": .bool(enabled)]
     case "state":
       return ["open": .bool(isOpen), "refreshing": .bool(refreshing), "summary": .string(summary), "summaryState": .string(summaryState),

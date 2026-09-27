@@ -11,7 +11,7 @@ class PanelView: FlippedView, Themable {
     super.init(frame: .zero)
     wantsLayer = true
     layer?.shadowColor = NSColor.black.cgColor
-    layer?.shadowOpacity = 0.28  // estimate
+    layer?.shadowOpacity = 0.28  // estimate; apply(_:) sets the theme's PopoverShadow
     layer?.shadowRadius = 24  // estimate
     layer?.shadowOffset = CGSize(width: 0, height: -8)
     surface.wantsLayer = true
@@ -23,8 +23,11 @@ class PanelView: FlippedView, Themable {
   }
   required init?(coder: NSCoder) { fatalError() }
   func apply(_ p: Palette) {
-    surface.layer?.backgroundColor = p.panel.cgColor
-    surface.layer?.borderColor = NSColor(white: p.dark ? 1 : 0, alpha: 0.1).cgColor
+    surface.layer?.backgroundColor = p.surface.cgColor
+    surface.layer?.borderColor = p.hairline.cgColor
+    layer?.shadowColor = p.shadowColor.cgColor
+    layer?.shadowOpacity = min(0.45, p.shadowOpacity)
+    SurfaceGrain.apply(to: surface, palette: p)
   }
   override func layout() {
     super.layout()
@@ -99,13 +102,13 @@ final class DialogView: PanelView {
 
   override func apply(_ p: Palette) {
     super.apply(p)
-    surface.layer?.backgroundColor = p.popover.cgColor
-    title.textColor = p.text
-    message.textColor = p.secondaryText
+    surface.layer?.backgroundColor = p.surface.cgColor
+    title.textColor = p.textPrimary
+    message.textColor = p.textSecondary
     let tint: NSColor
     switch node.str("iconStyle", "accent") {
     case "destructive": tint = p.destructive
-    case "plain": tint = p.text
+    case "plain": tint = p.textPrimary
     default: tint = p.accentStrong
     }
     icon.tint = tint
@@ -198,8 +201,8 @@ final class Keycap: NSView {
   var fill: NSColor = NSColor(white: 0, alpha: 0.05)
   var fg: NSColor = .secondaryLabelColor
   func apply(_ p: Palette, onAccent: Bool) {
-    fill = onAccent ? NSColor(white: 1, alpha: 0.2) : NSColor(white: p.dark ? 1 : 0, alpha: 0.05)  // AccessoryBackground (spec §2)
-    fg = onAccent ? NSColor(white: 1, alpha: 0.9) : p.panelSecondaryText
+    fill = onAccent ? p.onAccent.withAlphaComponent(0.2) : p.rowHover  // AccessoryBackground (spec §2)
+    fg = onAccent ? p.onAccent.withAlphaComponent(0.9) : p.panelSecondaryText
     needsDisplay = true
   }
   var preferredWidth: CGFloat { max(21, ceil((text as NSString).size(withAttributes: [.font: font]).width) + 10) }
@@ -270,9 +273,10 @@ final class ToastView: FlippedView, Themable {
   override var mouseDownCanMoveWindow: Bool { false }
   func apply(_ p: Palette) {
     layer?.backgroundColor = p.toast.cgColor
-    label.textColor = .white
-    actionLabel.textColor = .white
-    icon.tint = .white
+    label.textColor = p.onToast
+    actionLabel.textColor = p.onToast
+    icon.tint = p.onToast
+    layer?.shadowColor = p.shadowColor.cgColor
   }
   var actionWidth: CGFloat { hasAction ? ceil(actionLabel.textWidth) + 25 : 0 }
   var contentWidth: CGFloat { ceil(label.textWidth) + (icon.isHidden ? 40 : 64) + actionWidth }
@@ -329,28 +333,37 @@ final class PillButton: FlippedView, Themable {
   var keycapWidth: CGFloat { max(28, ceil((keycap.text as NSString).size(withAttributes: [.font: keycap.font]).width) + 14) }
   func apply(_ p: Palette) {
     border = nil
+    hoverFill = nil
+    pressedFill = nil
+    let t = p.tokens
     switch style {
-    case "default": fill = p.primaryButton; label.textColor = .white
+    case "default":
+      // The theme accent (Arc's #3139FB in its default theme) with its contrast-checked label.
+      fill = p.primaryButton; label.textColor = p.onAccent
+      hoverFill = t.accent.mix(RGB(0, 0, 0), 0.08).ns
     case "destructive":
-      // Spec §3 DestructiveButtonFace #F53714, hover #DD3112, pressed #D02F11.
-      fill = p.destructive; label.textColor = .white
-      hoverFill = NSColor(srgbRed: 0xDD / 255, green: 0x31 / 255, blue: 0x12 / 255, alpha: 1)
-      pressedFill = NSColor(srgbRed: 0xD0 / 255, green: 0x2F / 255, blue: 0x11 / 255, alpha: 1)
+      // Spec §3 DestructiveButtonFace #F53714 (hover #DD3112, pressed #D02F11), darkened by the
+      // tokens just enough for its white label (WCAG AA).
+      fill = p.destructive; label.textColor = p.onDestructive
+      hoverFill = t.destructive.mix(RGB(0, 0, 0), 0.08).ns
+      pressedFill = t.destructive.mix(RGB(0, 0, 0), 0.14).ns
     case "destructiveSecondary":  // estimate: red text on a faint red pill (e.g. "Clear Archive")
       fill = p.destructive.withAlphaComponent(p.dark ? 0.16 : 0.08)
       border = p.destructive.withAlphaComponent(0.35)
-      label.textColor = p.dark ? p.destructive.blended(withFraction: 0.25, of: .white)! : p.destructive
+      label.textColor = ThemeTokens.ensure(p.dark ? t.destructive.mix(RGB(1, 1, 1), 0.3) : t.destructive, on: t.surface, ThemeTokens.bodyContrast).ns
     default:
-      // PX (dark, arc_quit_dialog.png): fill (48,47,99), 1 pt border (99,98,174). Light: estimate.
-      fill = p.dark ? NSColor(srgbRed: 48 / 255, green: 47 / 255, blue: 99 / 255, alpha: 1) : p.primaryButton.withAlphaComponent(0.08)
-      border = p.dark ? NSColor(srgbRed: 99 / 255, green: 98 / 255, blue: 174 / 255, alpha: 1) : p.primaryButton.withAlphaComponent(0.28)
-      label.textColor = p.dark ? .white : p.text
+      // PX (dark, arc_quit_dialog.png): fill (48,47,99) with a (99,98,174) border on #151C30: the
+      // surface pulled toward the accent. den derives both from the theme's accent and surface.
+      fill = t.surface.mix(t.accent, p.dark ? 0.2 : 0.07).ns
+      border = t.surface.mix(t.accent, p.dark ? 0.5 : 0.28).ns
+      label.textColor = ThemeTokens.ensure(t.textPrimary, on: t.surface.mix(t.accent, p.dark ? 0.2 : 0.07), ThemeTokens.bodyContrast).ns
     }
-    keycap.apply(p, onAccent: true)
     // PX: keycaps are white α≈0.12 over their button ((78,76,122) on (48,47,99); (70,77,251) on blue).
-    keycap.fill = (style == "default" || style == "destructive" || p.dark) ? NSColor(white: 1, alpha: 0.12) : p.primaryButton.withAlphaComponent(0.1)
-    keycap.border = style == "default" ? NSColor(white: 1, alpha: 0.35) : nil  // estimate: outlined ↩ cap on the primary button
-    keycap.fg = (style == "default" || style == "destructive" || p.dark) ? NSColor(white: 1, alpha: 0.75) : p.primaryButton.withAlphaComponent(0.8)
+    let onFill = style == "default" ? p.onAccent : (style == "destructive" ? p.onDestructive : label.textColor ?? p.textPrimary)
+    keycap.fill = onFill.withAlphaComponent(0.13)
+    keycap.border = style == "default" ? onFill.withAlphaComponent(0.35) : nil  // estimate: outlined ↩ cap on the primary button
+    keycap.fg = onFill.withAlphaComponent(0.8)
+    keycap.needsDisplay = true
     needsDisplay = true
   }
   override func layout() {

@@ -17,6 +17,7 @@ Injects: `window`, `ui`, `storage`, `keys`.
 | `update` | `id`, plus any of `name`, `icon`, `theme`, `profile` | ok |
 | `delete` | `id` | ok. The deleting plugin or UI confirms first |
 | `move` | `id`, `index` | ok |
+| `duplicate` | `id` | `{id}`. A new space right after it, with its icon, theme and profile, named "<name> Copy" |
 
 Events:
 - `spaces.changed {spaces}` fires when the list or any space's fields change.
@@ -26,7 +27,14 @@ Events:
 
 `switch` also takes `animated` (default true). `update` merges a partial `theme` into the space's theme.
 
-UI node ids: `spaces.title:<spaceId>`, `spaces.icon:<spaceId>`, `spaces.new`, `spaces.library`, dialog `spaces.delete:<spaceId>`. First run seeds three spaces (Personal, Work, Side Project) with Arc-like gradients. Storage keys (ns `spaces`): `spaces`, `current`, `nextId`.
+**Space menu** (Arc's SpaceMenu, den's wording). Right-clicking a footer space icon or the space title shows the same menu: Rename Space, Change Space Icon…, Edit Theme Color…, Profile ▸ (Default, each profile a space uses, New Profile), Duplicate Space, Move Left, Move Right, New Space, Delete Space…. Everything goes through this service.
+- **Rename** edits the title in place (`editing` on the `spaceTitle` node); double-clicking the title does the same. Return commits, Esc cancels, an empty name keeps the old one. From another space's icon, den switches to that space first.
+- **Change Space Icon…** opens the host `iconPicker` in the `popover` slot (node id `spaces.iconPicker`), anchored to the icon or title it came from: a field for any emoji, 32 symbols, 32 emoji, and Remove (the footer then shows a dot).
+- **Profile ▸ New Profile** names the profile after the space ("Work", "Work 2" if taken). A toast confirms the change. Pages opened after the change use the new profile's cookies and site data.
+- **Delete Space…** confirms with the Delete Space dialog. It's disabled for the last space.
+- **Drag to reorder.** Footer icons carry `reorderable: true`. Dragging one sideways lifts it (a 1.15× scale), the others slide into their new slots as it passes their midpoints (0.2 s on Dia's (0.2, 0.8, 0.2, 1) curve; Reduce Motion snaps), with a haptic tick per slot and one on drop. The drop emits `move {index}`, and the plugin calls `spaces.move`, which persists the order. A click without a drag still switches.
+
+UI node ids: `spaces.title:<spaceId>`, `spaces.icon:<spaceId>`, `spaces.new`, `spaces.library`, `spaces.iconPicker`, dialog `spaces.delete:<spaceId>`. First run seeds three spaces (Personal, Work, Side Project) with Arc-like gradients. Storage keys (ns `spaces`): `spaces`, `current`, `nextId`.
 
 Owns: the sidebar `spaceHeader` and `footer` slots, the window theme per space page, the space-switch shortcuts (Ctrl-1…9, Cmd-Opt-←/→) and swipe handling.
 

@@ -388,20 +388,23 @@ public final class HoverCardView: FlippedView, Themable {
   public func apply(_ p: Palette) {
     palette = p
     let dark = p.dark
-    surface.layer?.backgroundColor = p.popover.cgColor  // PopoverBackground #FAFBFF / #151C30 (spec §3)
-    surface.layer?.borderColor = (dark ? NSColor(srgbRed: 211 / 255, green: 206 / 255, blue: 237 / 255, alpha: 0.2) : NSColor(white: 0, alpha: 0.08)).cgColor  // PopoverBorder (dark); light hairline estimate
-    layer?.shadowOpacity = dark ? 0.8 : 0.3  // spec §3 PopoverShadow α0.30 / α0.80
-    title.textColor = p.panelText
-    subtitle.textColor = p.secondaryText
-    accessory.textColor = p.secondaryText
-    footer.textColor = CardColors.tertiary(dark)
-    empty.textColor = p.secondaryText
-    icon.tint = p.panelText
+    // PopoverBackground #FAFBFF / #151C30 (spec §3), tinted by the space (theme tokens).
+    surface.layer?.backgroundColor = p.surface.cgColor
+    surface.layer?.borderColor = (dark ? p.textPrimary.withAlphaComponent(0.2) : p.hairline).cgColor  // PopoverBorder (dark); light hairline estimate
+    layer?.shadowColor = p.shadowColor.cgColor
+    layer?.shadowOpacity = p.shadowOpacity  // spec §3 PopoverShadow α0.30 / α0.80
+    SurfaceGrain.apply(to: surface, palette: p)
+    title.textColor = p.textPrimary
+    subtitle.textColor = p.textSecondary
+    accessory.textColor = p.textSecondary
+    footer.textColor = p.textTertiary
+    empty.textColor = p.textSecondary
+    icon.tint = p.textPrimary
     badges.forEach { $0.apply(dark: dark) }
     sections.forEach { $0.apply(p) }
     buttons.forEach { $0.apply(p) }
     imageView.apply(dark: dark)
-    skeleton.forEach { $0.layer?.backgroundColor = NSColor(white: dark ? 1 : 0, alpha: 0.07).cgColor }
+    skeleton.forEach { $0.layer?.backgroundColor = p.textPrimary.withAlphaComponent(0.07).cgColor }
   }
 
   // MARK: Layout
@@ -749,10 +752,10 @@ final class CardButton: FlippedView {
   required init?(coder: NSCoder) { fatalError() }
   func apply(_ p: Palette) {
     if primary {
-      fill = p.primaryButton  // #3139FB
+      fill = p.primaryButton  // the theme accent (tokens)
       hoverFill = p.primaryButton.blended(withFraction: 0.12, of: .black) ?? p.primaryButton
-      label.textColor = .white
-      icon.tint = .white
+      label.textColor = p.onAccent
+      icon.tint = p.onAccent
     } else {
       fill = NSColor(white: p.dark ? 1 : 0, alpha: p.dark ? 0.1 : 0.06)
       hoverFill = NSColor(white: p.dark ? 1 : 0, alpha: p.dark ? 0.15 : 0.1)

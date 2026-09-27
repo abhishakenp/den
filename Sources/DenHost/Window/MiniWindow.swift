@@ -174,8 +174,9 @@ final class OpenInButton: FlippedView, Themable {
     // PX (dark): button (5,6,39), keycap (23,24,52): BrandBlue deepened toward black. Light: estimate.
     fill = p.dark ? p.primaryButton.blended(withFraction: 0.86, of: .black)! : p.primaryButton.withAlphaComponent(0.1)
     prefix.textColor = p.secondaryText
-    name.textColor = p.dark ? .white : p.text
-    keycap.fill = p.dark ? NSColor(srgbRed: 23 / 255, green: 24 / 255, blue: 52 / 255, alpha: 1) : p.primaryButton.withAlphaComponent(0.1)
+    name.textColor = p.dark ? NSColor(white: 1, alpha: 0.95) : p.text
+    // PX (dark) keycap (23,24,52) = the accent deepened a little less than the button.
+    keycap.fill = p.dark ? p.primaryButton.blended(withFraction: 0.72, of: .black)! : p.primaryButton.withAlphaComponent(0.1)
     keycap.fg = p.dark ? NSColor(white: 1, alpha: 0.7) : p.primaryButton
     needsDisplay = true
   }

@@ -145,12 +145,20 @@ public final class UIService: HostService {
     return .ok
   }
 
+  /// Called after the palette (theme tokens) changed: Settings and other windows re-theme.
+  public var onPalette: ((Palette) -> Void)?
+
+  /// Re-themes every surface, but only when the tokens actually changed (a space switch between
+  /// two identical themes, or a repeated setTheme, redraws nothing).
   public func refreshPalette() {
-    renderer.palette = Palette(theme: wc.currentTheme, dark: wc.isDark)
+    let np = Palette(theme: wc.currentTheme, dark: wc.isDark)
+    guard np != renderer.palette else { return }
+    renderer.palette = np
     content?.accent = renderer.palette.accentStrong
     sidebarView.applyPaletteRecursively(renderer.palette)
     wc.overlays.applyPaletteRecursively(renderer.palette)
     hoverCard.applyPalette(renderer.palette)
+    onPalette?(renderer.palette)
   }
 
   // MARK: Overlays

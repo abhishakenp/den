@@ -59,8 +59,48 @@ final class PeekCore {
     if let v = s["littleArcArchiveMs"].int { littleArcArchiveMs = v }
     bindKeys()
     subscribe()
+    registerSettings()
     syncPolicy()
     env.timer(Self.tickMs, true) { [self] in tick() }
+  }
+
+  // MARK: - Settings window
+
+  /// Settings > Tabs > Links (host `settings` service; values in storage ns `peek`, `prefs`).
+  func registerSettings() {
+    let ages: [(Int64, String)] = [(0, "Never"), (3_600_000, "After 1 hour"), (6 * 3_600_000, "After 6 hours"), (24 * 3_600_000, "After 24 hours")]
+    var options: [Value] = ages.map { ["value": .int($0.0), "title": .string($0.1)] }
+    if !ages.contains(where: { $0.0 == littleArcArchiveMs }) { options.append(["value": .int(littleArcArchiveMs), "title": .string("After " + String(littleArcArchiveMs / 60_000) + " minutes")]) }
+    let r = env.call("settings", "register", [
+      "id": .string(Self.ns), "section": "tabs", "title": "Links", "order": 20,
+      "controls": [
+        ["key": "peekLinks", "type": "toggle", "title": "Peek at links from pinned tabs and favorites",
+         "subtitle": "Links to other sites open in a Peek over the page, so your pinned apps stay where they are. Shift-click peeks from any tab.",
+         "default": .bool(peekLinks)],
+        ["key": "littleArc", "type": "toggle", "title": "Open links from other apps in a mini window",
+         "subtitle": "Otherwise they open as a new tab in the current space.", "default": .bool(littleArcEnabled)],
+        ["key": "littleArcArchiveMs", "type": "choice", "title": "Archive unused mini windows",
+         "subtitle": "Their pages go to the Library.", "options": .array(options), "default": .int(littleArcArchiveMs)],
+      ],
+    ])
+    guard !r.isErr else { return }
+    let v = env.call("settings", "get", ["id": .string(Self.ns)])
+    var args: [(String, Value)] = []
+    for k in ["peekLinks", "littleArc", "littleArcArchiveMs"] where !v[k].isNull { args.append((k, v[k])) }
+    if !args.isEmpty { applySettings(.object(args)) }
+    env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { applySettings(.object([(v.s("key"), v["value"])])) } }
+  }
+
+  /// Applies Settings values through the same path as `peek.settings` (without echoing them back).
+  func applySettings(_ args: Value) {
+    let before: Value = ["peekLinks": .bool(peekLinks), "littleArc": .bool(littleArcEnabled), "littleArcArchiveMs": .int(littleArcArchiveMs)]
+    if let v = args["peekLinks"].bool { peekLinks = v }
+    if let v = args["littleArc"].bool { littleArcEnabled = v }
+    if let v = args["littleArcArchiveMs"].int { littleArcArchiveMs = max(0, v) }
+    let after: Value = ["peekLinks": .bool(peekLinks), "littleArc": .bool(littleArcEnabled), "littleArcArchiveMs": .int(littleArcArchiveMs)]
+    guard after != before else { return }
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": "settings", "value": after])
+    syncPolicy()
   }
 
   func stop() {
@@ -114,6 +154,7 @@ final class PeekCore {
       if !args.isNull {
         env.call("storage", "set", ["ns": .string(Self.ns), "key": "settings", "value": v])
         syncPolicy()
+        for k in ["peekLinks", "littleArc", "littleArcArchiveMs"] { env.call("settings", "set", ["id": .string(Self.ns), "key": .string(k), "value": v[k]]) }
       }
       return v
     case "get":

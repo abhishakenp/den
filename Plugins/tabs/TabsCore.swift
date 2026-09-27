@@ -81,7 +81,8 @@ final class TabsCore {
   static let ns = "tabs"
   static let maxFavorites = 12
   static let maxPanes = 4
-  static let defaultArchiveAfterMs: Int64 = 12 * 3_600_000  // Arc's default: 12 hours
+  /// 24 hours (Arc: 12). A tab opened late in the day is still there the next morning; see docs/defaults.md.
+  static let defaultArchiveAfterMs: Int64 = 24 * 3_600_000
   static let defaultSuspendAfterMs: Int64 = 30 * 60_000  // den's choice: 30 minutes
   static let tickMs: UInt64 = 60_000
 
@@ -122,6 +123,7 @@ final class TabsCore {
     for t in tabs.values { ensureWebview(t.id) }
     bindKeys()
     subscribe()
+    registerSettings()
     renderAll()
     showSelected()
     tick()
@@ -481,7 +483,12 @@ final class TabsCore {
       if let a = args["archiveAfterMs"].int { archiveAfterMs = max(0, a) }
       if let s = args["suspendAfterMs"].int { suspendAfterMs = max(0, s) }
       let v: Value = ["archiveAfterMs": .int(archiveAfterMs), "suspendAfterMs": .int(suspendAfterMs)]
-      if !args.isNull { env.call("storage", "set", ["ns": .string(Self.ns), "key": "settings", "value": v]) }
+      if !args.isNull {
+        env.call("storage", "set", ["ns": .string(Self.ns), "key": "settings", "value": v])
+        // Keep the Settings window in step (a no-op when the change came from it).
+        env.call("settings", "set", ["id": .string(Self.ns), "key": "archiveAfterMs", "value": .int(archiveAfterMs)])
+        env.call("settings", "set", ["id": .string(Self.ns), "key": "suspendAfterMinutes", "value": .int(suspendAfterMs / 60_000)])
+      }
       return v
     default:
       return .err("tabs: unknown method " + method)
@@ -988,6 +995,50 @@ final class TabsCore {
     if let sid { renderPage(sid) }
     renderGlobal()
     env.emit("tabs.changed", ["spaceId": .str(sid)])
+  }
+
+  // MARK: - Settings window
+
+  /// The Tabs section of Settings (host `settings` service). Values live in storage ns `tabs`
+  /// (`prefs`, kept by the host) and mirror `settings` here; changes arrive as settings.changed.
+  static let archiveChoices: [(Int64, String)] = [
+    (0, "Never"), (3_600_000, "After 1 hour"), (6 * 3_600_000, "After 6 hours"), (12 * 3_600_000, "After 12 hours"),
+    (24 * 3_600_000, "After 24 hours"), (7 * 86_400_000, "After 7 days"), (30 * 86_400_000, "After 30 days"),
+  ]
+
+  func registerSettings() {
+    var options: [Value] = Self.archiveChoices.map { ["value": .int($0.0), "title": .string($0.1)] }
+    if !Self.archiveChoices.contains(where: { $0.0 == archiveAfterMs }) {
+      options.append(["value": .int(archiveAfterMs), "title": .string("After " + String(archiveAfterMs / 60_000) + " minutes")])
+    }
+    let r = env.call("settings", "register", [
+      "id": .string(Self.ns), "title": "Tabs", "icon": "sf:square.on.square", "order": 10,
+      "controls": [
+        ["key": "archiveAfterMs", "type": "choice", "title": "Archive Today tabs",
+         "subtitle": "Today tabs you haven't used for this long move to the Library. Pinned tabs and favorites stay. Shift-Command-T brings the last one back.",
+         "options": .array(options), "default": .int(archiveAfterMs)],
+        ["key": "suspendAfterMinutes", "type": "number", "title": "Unload idle tabs",
+         "subtitle": "Background tabs unused for this long free their memory and reload when you come back. Tabs playing audio never unload.",
+         "min": 0, "max": 240, "step": 5, "unit": "min", "labels": [["value": 0, "title": "Never"]], "default": .int(suspendAfterMs / 60_000)],
+      ],
+    ])
+    guard !r.isErr else { return }  // an older host without Settings
+    let v = env.call("settings", "get", ["id": .string(Self.ns)])
+    applySetting("archiveAfterMs", v["archiveAfterMs"])
+    applySetting("suspendAfterMinutes", v["suspendAfterMinutes"])
+    env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { applySetting(v.s("key"), v["value"]) } }
+  }
+
+  func applySetting(_ key: String, _ v: Value) {
+    guard let n = v.int ?? v.double.map({ Int64($0) }) else { return }
+    let before = (archiveAfterMs, suspendAfterMs)
+    switch key {
+    case "archiveAfterMs": archiveAfterMs = max(0, n)
+    case "suspendAfterMinutes": suspendAfterMs = max(0, n) * 60_000
+    default: return
+    }
+    guard before != (archiveAfterMs, suspendAfterMs) else { return }
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": "settings", "value": ["archiveAfterMs": .int(archiveAfterMs), "suspendAfterMs": .int(suspendAfterMs)]])
   }
 
   // MARK: - Idle: auto-archive and suspension

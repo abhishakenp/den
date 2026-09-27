@@ -61,7 +61,53 @@ final class ConnectionsCore {
         render()
       }
     }
+    env.on("settings.action") { [self] v in
+      guard v.s("id") == Self.ns, v.s("key") == "accounts" else { return }
+      let pid = v.s("item")
+      switch v.s("button") {
+      case "connect": _ = connect(pid, url: nil, profile: nil)
+      case "disconnect": _ = disconnect(pid)
+      case "cancel":
+        pending[pid] = nil
+        render()
+      case "workspaces": _ = handle("open", .null)
+      default: break
+      }
+    }
     registerCommands()
+    syncSettings()
+  }
+
+  // MARK: Settings window
+
+  /// Settings > Connections: the providers with Connect / Disconnect (host `settings` service).
+  /// Re-registered whenever a provider, account or sign-in changes; the window refreshes itself.
+  func syncSettings() {
+    var items: [Value] = []
+    for p in providers {
+      var sub = "Sign in to " + p.domain + " in den to connect"
+      var buttons: [Value] = [["id": "connect", "title": "Connect", "style": "primary"]]
+      if let a = account(p.id) {
+        sub = "Connected"
+        if !a.s("account").isEmpty { sub += " as " + a.s("account") }
+        let teams = a.a("teams").count
+        if teams > 1 { sub += " · " + String(teams) + " workspaces" }
+        buttons = [["id": "disconnect", "title": "Disconnect"]]
+        if teams > 1 { buttons.insert(["id": "workspaces", "title": "Workspaces…"], at: 0) }
+      } else if pending[p.id] != nil {
+        sub = "Waiting for you to sign in to " + p.domain + "…"
+        buttons = [["id": "cancel", "title": "Cancel"]]
+      }
+      items.append(["id": .string(p.id), "title": .string(p.title), "subtitle": .string(sub), "icon": .string(p.icon), "buttons": .array(buttons)])
+    }
+    env.call("settings", "register", [
+      "id": .string(Self.ns), "title": "Connections", "icon": "sf:link", "order": 30,
+      "controls": [
+        ["key": "accounts", "type": "list", "title": "Accounts",
+         "subtitle": "den reads these through the sessions you sign in to inside den. Nothing leaves this Mac except requests to the service itself.",
+         "items": .array(items), "empty": "No connection plugins are loaded."],
+      ],
+    ])
   }
 
   // MARK: Service
@@ -231,6 +277,7 @@ final class ConnectionsCore {
 
   func changed() {
     registerCommands()
+    syncSettings()
     env.emit("connections.changed", ["connections": list()])
   }
 
@@ -289,6 +336,7 @@ final class ConnectionsCore {
   }
 
   func render() {
+    syncSettings()
     guard sheetOpen else { return }
     env.call("ui", "set", ["slot": .string(Self.sheetSlot), "tree": sheetTree()])
   }

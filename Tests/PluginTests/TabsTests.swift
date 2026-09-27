@@ -278,8 +278,8 @@ struct TabsTests {
     core.tick()
     #expect(await h.waitUnloaded(today[1]))
     #expect(h.rt.call("webviews", "get", ["id": .string(today[0])])["live"] == true)
-    // 13 hours idle: every today tab but the selected one is archived, with a toast.
-    h.clock += 13 * 3_600_000
+    // 25 hours idle (the default is 24 h, docs/defaults.md): every today tab but the selected one is archived, with a toast.
+    h.clock += 25 * 3_600_000
     h.fireTimers()
     #expect(h.ids("today") == [today[0]])
     #expect(h.tabs("archive").array?.filter { $0.s("spaceId") == h.spaceIds[0] }.count == 3)

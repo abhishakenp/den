@@ -67,6 +67,17 @@ public enum Tokens {
   public static let footerHeight: CGFloat = 50  // spec §1: switcher strip 144x50 at y 750 of 800
   public static let spaceIconSize: CGFloat = 26  // spec §1 (space title icon 26x26)
   public static let spaceDotSize: CGFloat = 6  // estimate
+  /// Footer icon drag-reorder: the lifted icon's scale and the slide of its neighbours. Arc's
+  /// values were never measured (spec §12); Dia's (0.2, 0.8, 0.2, 1) curve is used.
+  public static let spaceIconLiftScale: CGFloat = 1.15  // estimate
+  public static let spaceIconReorderDuration: CFTimeInterval = 0.2  // estimate
+
+  // MARK: Icon picker (the space's "Change Space Icon…")
+  public static let iconPickerWidth: CGFloat = 300  // den's own
+  public static let iconPickerPadding: CGFloat = 14  // den's own
+  public static let iconPickerCell: CGFloat = 32  // den's own (the 32 pt buttons of the theme picker, spec §4)
+  public static let iconPickerColumns = 8
+  public static let iconPickerRadius: CGFloat = 20  // matches the theme picker (spec §4)
 
   // MARK: Overlays
   public static let commandBarWidth: CGFloat = 766  // spec §2

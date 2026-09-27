@@ -144,10 +144,19 @@ final class SpacesCore {
     case "move":
       guard let i = index(of: args.s("id")) else { return .err("spaces: no space '" + args.s("id") + "'") }
       let to = max(0, min(Int(args.i("index")), spaces.count - 1))
+      guard to != i else { return .okay }
       let s = spaces.remove(at: i)
       spaces.insert(s, at: to)
       commit(themes: true, showCurrent: true)
       return .okay
+    case "duplicate":
+      // A new space right after the original, with its icon, theme and profile ("Work Copy").
+      guard let i = index(of: args.s("id")) else { return .err("spaces: no space '" + args.s("id") + "'") }
+      let src = spaces[i]
+      let id = newId()
+      spaces.insert(Space(id: id, name: src.name + " Copy", icon: src.icon, theme: src.theme, profile: src.profile), at: i + 1)
+      commit(themes: true, showCurrent: true)
+      return ["id": .string(id)]
     default:
       return .err("spaces: unknown method " + method)
     }
@@ -231,22 +240,46 @@ final class SpacesCore {
     renderFooter()
   }
 
+  /// Profiles offered in a space's Profile submenu: "default", then every other profile a space
+  /// uses, in first-use order.
+  var profiles: [String] {
+    var out = ["default"]
+    for s in spaces where !out.contains(s.profile) { out.append(s.profile) }
+    return out
+  }
+
+  static func profileTitle(_ p: String) -> String { p == "default" ? "Default" : p }
+
+  /// The space context menu, the same from the space title and its footer icon (Arc's
+  /// SpaceMenu: Rename, Change Space Icon, Edit Theme Color, Profile, … Delete; den's wording).
+  func menu(_ i: Int) -> [Value] {
+    let s = spaces[i]
+    var profileItems: [Value] = profiles.map {
+      ["id": .string("profile:" + $0), "title": .string(Self.profileTitle($0)), "checked": .bool($0 == s.profile)]
+    }
+    profileItems.append(["separator": true])
+    profileItems.append(["id": "profile.new", "title": "New Profile", "icon": "sf:plus"])
+    return [
+      ["id": "rename", "title": "Rename Space", "icon": "sf:pencil"],
+      ["id": "icon", "title": "Change Space Icon…", "icon": "sf:face.smiling"],
+      ["id": "theme", "title": "Edit Theme Color…", "icon": "sf:paintpalette"],
+      ["id": "profile", "title": "Profile", "icon": "sf:person.crop.circle", "items": .array(profileItems)],
+      ["separator": true],
+      ["id": "duplicate", "title": "Duplicate Space", "icon": "sf:plus.square.on.square"],
+      ["id": "moveLeft", "title": "Move Left", "icon": "sf:arrow.left", "enabled": .bool(i > 0)],
+      ["id": "moveRight", "title": "Move Right", "icon": "sf:arrow.right", "enabled": .bool(i < spaces.count - 1)],
+      ["separator": true],
+      ["id": "new", "title": "New Space", "icon": "sf:plus"],
+      ["separator": true],
+      ["id": "delete", "title": "Delete Space…", "icon": "sf:trash", "destructive": true, "enabled": .bool(spaces.count > 1)],
+    ]
+  }
+
   func renderHeader(_ i: Int) {
     let s = spaces[i]
-    var menu: [Value] = [
-      ["id": "theme", "title": "Edit Theme…", "icon": "sf:paintpalette"],
-      ["id": "new", "title": "New Space", "icon": "sf:plus"],
-    ]
-    if i > 0 { menu.append(["id": "moveLeft", "title": "Move Left", "icon": "sf:arrow.left"]) }
-    if i < spaces.count - 1 { menu.append(["id": "moveRight", "title": "Move Right", "icon": "sf:arrow.right"]) }
-    if spaces.count > 1 {
-      menu.append(["separator": true])
-      menu.append(["id": "delete", "title": "Delete Space…", "icon": "sf:trash"])
-    }
-    env.call("ui", "set", [
-      "slot": "sidebar.spaceHeader", "page": .int(Int64(i)),
-      "tree": ["type": "spaceTitle", "id": .string("spaces.title:" + s.id), "title": .string(s.name), "icon": .string(s.icon), "menu": .array(menu)],
-    ])
+    var tree: Value = ["type": "spaceTitle", "id": .string("spaces.title:" + s.id), "title": .string(s.name), "icon": .string(s.icon), "menu": .array(menu(i))]
+    if editing == s.id { tree.put("editing", true) }
+    env.call("ui", "set", ["slot": "sidebar.spaceHeader", "page": .int(Int64(i)), "tree": tree])
   }
 
   func renderFooter() {
@@ -254,9 +287,9 @@ final class SpacesCore {
       ["type": "button", "id": "spaces.library", "icon": "sf:tray.full", "tooltip": "Library", "size": 32],
       ["type": "spacer"],
     ]
-    for s in spaces {
+    for (i, s) in spaces.enumerated() {
       row.append(["type": "spaceIcon", "id": .string("spaces.icon:" + s.id), "icon": .string(s.icon), "title": .string(s.name), "selected": .bool(s.id == current),
-                  "spaceId": .string(s.id)])
+                  "spaceId": .string(s.id), "reorderable": true, "menu": .array(menu(i))])
     }
     row.append(["type": "spacer"])
     row.append(["type": "button", "id": "spaces.new", "icon": "sf:plus", "tooltip": "New Space", "size": 32])
@@ -270,6 +303,84 @@ final class SpacesCore {
     }
     env.call("keys", "bind", ["chord": "cmd+opt+right", "event": "spaces.key.next", "title": "Next Space", "menu": "Spaces"])
     env.call("keys", "bind", ["chord": "cmd+opt+left", "event": "spaces.key.prev", "title": "Previous Space", "menu": "Spaces"])
+  }
+
+  // MARK: Space menu
+
+  static let iconPickerId = "spaces.iconPicker"
+  /// The space whose title is being renamed in place.
+  var editing: String?
+  /// The space whose icon picker is open.
+  var iconEditing: String?
+
+  func menuPicked(_ sid: String, _ item: String, from: String) {
+    guard let i = index(of: sid) else { return }
+    switch item {
+    case "rename":
+      if sid != current { switchTo(i, direction: "jump", animated: true) }
+      beginRename(sid)
+    case "icon": openIconPicker(sid, anchor: (from == "icon" ? "spaces.icon:" : "spaces.title:") + sid)
+    case "theme":
+      if sid != current { switchTo(i, direction: "jump", animated: true) }
+      env.emit("spaces.editTheme", ["id": .string(sid)])
+    case "duplicate":
+      let r = handle("duplicate", ["id": .string(sid)])
+      if let nid = r["id"].string, let j = index(of: nid) { switchTo(j, direction: "jump", animated: true) }
+    case "moveLeft", "moveRight":
+      _ = handle("move", ["id": .string(sid), "index": .int(Int64(i + (item == "moveLeft" ? -1 : 1)))])
+    case "new": newSpace()
+    case "delete": confirmDelete(sid)
+    case "profile.new":
+      // A new profile named after the space ("Work", or "Work 2" if taken): its own cookies and site data.
+      var name = spaces[i].name, n = 2
+      while profiles.contains(where: { Text.lower($0) == Text.lower(name) }) || Text.lower(name) == "default" {
+        name = spaces[i].name + " " + String(n)
+        n += 1
+      }
+      setProfile(sid, name)
+    default:
+      if Text.hasPrefix(item, "profile:") { setProfile(sid, Text.dropPrefix(item, "profile:")) }
+    }
+  }
+
+  func setProfile(_ sid: String, _ p: String) {
+    guard let i = index(of: sid), spaces[i].profile != p else { return }
+    _ = handle("update", ["id": .string(sid), "profile": .string(p)])
+    env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(spaces[i].name + " now uses the " + Self.profileTitle(p) + " profile"), "icon": "sf:person.crop.circle"]])
+  }
+
+  func newSpace() {
+    let nid = create(name: nil, icon: nil, theme: .null, profile: nil)
+    if let i = index(of: nid) { switchTo(i, direction: "jump", animated: true) }
+    env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "New Space Created", "icon": "sf:checkmark.circle.fill"]])
+  }
+
+  func beginRename(_ sid: String) {
+    guard let i = index(of: sid) else { return }
+    editing = sid
+    renderHeader(i)
+  }
+
+  func openIconPicker(_ sid: String, anchor: String) {
+    guard let i = index(of: sid) else { return }
+    iconEditing = sid
+    env.call("ui", "set", ["slot": "popover", "tree": [
+      "type": "iconPicker", "id": .string(Self.iconPickerId), "anchor": .string(anchor),
+      "title": .string(spaces[i].name + " Icon"), "selected": .string(spaces[i].icon),
+    ]])
+  }
+
+  func closeIconPicker() {
+    guard iconEditing != nil else { return }
+    iconEditing = nil
+    env.call("ui", "set", ["slot": "popover", "tree": nil])
+  }
+
+  func trimmed(_ s: String) -> String {
+    var b = Array(s.utf8)
+    while let f = b.first, f == 32 || f == 9 || f == 10 || f == 13 { b.removeFirst() }
+    while let l = b.last, l == 32 || l == 9 || l == 10 || l == 13 { b.removeLast() }
+    return String(decoding: b, as: UTF8.self)
   }
 
   func confirmDelete(_ id: String) {
@@ -290,23 +401,38 @@ final class SpacesCore {
       didChange(to: p, direction: p > from ? "next" : "prev")
       return
     }
-    if Text.hasPrefix(id, "spaces.icon:"), action == "click" {
-      if let i = index(of: Text.dropPrefix(id, "spaces.icon:")) { switchTo(i, direction: "jump", animated: true) }
+    if Text.hasPrefix(id, "spaces.icon:") {
+      let sid = Text.dropPrefix(id, "spaces.icon:")
+      switch action {
+      case "click": if let i = index(of: sid) { switchTo(i, direction: "jump", animated: true) }
+      case "move": _ = handle("move", ["id": .string(sid), "index": .int(value.i("index"))])  // footer drag-reorder
+      case "menu": menuPicked(sid, value.string ?? "", from: "icon")
+      default: break
+      }
     } else if id == "spaces.new", action == "click" {
-      let nid = create(name: nil, icon: nil, theme: .null, profile: nil)
-      if let i = index(of: nid) { switchTo(i, direction: "jump", animated: true) }
-      env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "New Space Created", "icon": "sf:checkmark.circle.fill"]])
+      newSpace()
     } else if id == "spaces.library", action == "click" {
       env.emit("spaces.library", .null)
+    } else if id == Self.iconPickerId {
+      if action == "pick", let sid = iconEditing {
+        _ = handle("update", ["id": .string(sid), "icon": .string(value.s("icon"))])
+        closeIconPicker()
+      } else if action == "dismiss" {
+        closeIconPicker()
+      }
     } else if Text.hasPrefix(id, "spaces.title:") {
       let sid = Text.dropPrefix(id, "spaces.title:")
-      let item = action == "menu" ? (value.string ?? "") : action
-      switch item {
-      case "more", "theme": env.emit("spaces.editTheme", ["id": .string(sid)])
-      case "new": _ = handle("create", .null)
-      case "delete": confirmDelete(sid)
-      case "moveLeft", "moveRight":
-        if let i = index(of: sid) { _ = handle("move", ["id": .string(sid), "index": .int(Int64(i + (item == "moveLeft" ? -1 : 1)))]) }
+      switch action {
+      case "menu": menuPicked(sid, value.string ?? "", from: "title")
+      case "more": env.emit("spaces.editTheme", ["id": .string(sid)])
+      case "doubleClick": beginRename(sid)
+      case "rename":
+        editing = nil
+        let t = trimmed(value.s("title"))
+        if !t.isEmpty, let i = index(of: sid), spaces[i].name != t { _ = handle("update", ["id": .string(sid), "name": .string(t)]) } else if let i = index(of: sid) { renderHeader(i) }
+      case "renameCancel":
+        editing = nil
+        if let i = index(of: sid) { renderHeader(i) }
       default: break
       }
     } else if Text.hasPrefix(id, "spaces.delete:"), action == "button" {

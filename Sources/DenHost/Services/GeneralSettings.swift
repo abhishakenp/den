@@ -1,0 +1,90 @@
+import AppKit
+import CordisValue
+
+/// The host's own Settings section, "General": the default browser and where `~/.den` and
+/// `config.toml` live. Built when the pane is shown (it asks macOS for the default browser then,
+/// never at launch). Plugins join it with `settings.register {section: "general"}` (e.g. `quit`).
+@MainActor
+enum GeneralSettings {
+  static func install(_ rt: DenRuntime) {
+    let s = rt.settings
+    s.builtins["general"] = { [unowned rt] in
+      SettingsService.Entry(id: "general", section: "general", title: "General", icon: "sf:gearshape", order: 0, controls: controls(rt))
+    }
+    s.builtinActions["general"] = { [unowned rt] key, _, button in
+      switch key {
+      case "defaultBrowser": rt.call("app", "setDefaultBrowser")
+      case "config", "home":
+        let paths = rt.call("config", "paths")
+        let path = key == "config" ? paths.str("config") : paths.str("root")
+        guard !path.isEmpty else { return }
+        let url = URL(fileURLWithPath: path)
+        if button == "open" {
+          if !FileManager.default.fileExists(atPath: path) { FileManager.default.createFile(atPath: path, contents: Data(starter.utf8)) }
+          NSWorkspace.shared.open(url)
+        } else {
+          NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
+      default: break
+      }
+    }
+    // macOS answers the default-browser change asynchronously.
+    rt.host.on("app.defaultBrowser") { [weak s] _ in s?.window?.reload() }
+    // Accent color: the space's colors (default) or the system accent. Read before the first
+    // frame (one small storage read) so the window never flashes the other accent.
+    if s.stored("general").first(where: { $0.0 == "accent" })?.1.string == "system" { Palette.accentSource = .system }
+    rt.host.on("settings.changed") { [unowned rt] v in
+      guard v.str("id") == "general", v.str("key") == "accent" else { return }
+      Palette.accentSource = v["value"].string == "system" ? .system : .theme
+      rt.ui.refreshPalette()
+    }
+    // The system accent changing while it's in use.
+    NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main) { [weak rt] _ in
+      MainActor.assumeIsolated { if Palette.accentSource == .system { rt?.ui.refreshPalette() } }
+    }
+  }
+
+  static let starter = """
+    # den configuration (docs/den-home.md). Changes apply as soon as you save.
+    #
+    # [plugins]
+    # disabled = ["peek"]
+    #
+    # [shortcuts]
+    # "cmd+shift+y" = "den.copyMarkdown"
+    #
+    # [search.keywords]
+    # mdn = { name = "MDN", url = "https://developer.mozilla.org/search?q=%s" }
+
+    """
+
+  static func controls(_ rt: DenRuntime) -> [Value] {
+    var out: [Value] = [
+      ["key": "accent", "type": "choice", "title": "Accent color",
+       "subtitle": "Buttons, selection and toggles take their color from the current space, or from macOS.",
+       "options": [["value": "theme", "title": "Space colors"], ["value": "system", "title": "System accent"]], "default": "theme"],
+    ]
+    let b = rt.call("app", "defaultBrowser")
+    if b.flag("isDefault") {
+      out.append(["key": "defaultBrowser", "type": "info", "title": "Default browser", "subtitle": "Links from other apps open in den.", "value": "den"])
+    } else {
+      let name = b.str("name").isEmpty ? "another browser" : b.str("name")
+      out.append(["key": "defaultBrowser", "type": "button", "title": "Default browser",
+                  "subtitle": .string("Links from other apps open in \(name)."), "button": ["title": "Make den Default", "style": "primary"]])
+    }
+    let paths = rt.call("config", "paths")
+    if paths.isError || paths.str("config").isEmpty {
+      out.append(["key": "config", "type": "info", "title": "Configuration", "subtitle": "~/.den is off for this run (--no-den-home).", "value": "~/.den/config.toml"])
+    } else {
+      let home = NSHomeDirectory()
+      func tilde(_ p: String) -> String { p.hasPrefix(home) ? "~" + p.dropFirst(home.count) : p }
+      let errors = rt.call("config", "errors").array?.compactMap(\.string) ?? []
+      let sub = errors.first.map { "Problem: \($0)" } ?? "Plugins, themes, shortcuts and search keywords. Saved changes apply at once."
+      out.append(["key": "config", "type": "info", "title": "config.toml", "subtitle": .string(sub), "value": .string(tilde(paths.str("config"))),
+                  "buttons": [["id": "open", "title": "Open"], ["id": "reveal", "title": "Show in Finder"]]])
+      out.append(["key": "home", "type": "info", "title": "den folder", "subtitle": "Drop plugins and themes here; den picks them up live.", "value": .string(tilde(paths.str("root"))),
+                  "buttons": [["id": "reveal", "title": "Show in Finder"]]])
+    }
+    return out
+  }
+}

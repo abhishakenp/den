@@ -113,8 +113,8 @@ final class CommandBarCore {
   /// the rows and headers of one bar share `maxRows` rows of height.
   static let rowCost = 50
   static let headerCost = 28
-  /// Default-browser banner: "×" hides it for 14 days (den choice); "Try for a week" asks after 7.
-  static let bannerSnoozeMs: Int64 = 14 * 86_400_000
+  /// Default-browser banner: "×" hides it for good (Settings > Search brings it back; see
+  /// docs/defaults.md); "Try for a week" asks after 7 days.
   static let trialMs: Int64 = 7 * 86_400_000
   static let trialDialog = "commandbar.trial"
   static let dayMs: Int64 = 86_400_000
@@ -184,7 +184,86 @@ final class CommandBarCore {
       indexValid = false
       if isOpen { render() }
     }
+    env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { settingChanged(v.s("key"), v["value"]) } }
+    env.on("settings.action") { [self] v in if v.s("id") == Self.ns { settingAction(v) } }
     checkTrial()
+    syncSettings()
+  }
+
+  // MARK: - Settings window
+
+  /// Settings > Search (host `settings` service): the default engine, the site-search keywords,
+  /// adding one, and the default-browser banner. Re-registered when the engines change.
+  func syncSettings() {
+    let options: [Value] = engines.map { ["value": .string($0.keyword), "title": .string($0.name)] }
+    let items: [Value] = engines.enumerated().map { i, e in
+      var v: Value = ["id": .string(e.keyword), "title": .string(e.name), "subtitle": .string(e.keyword + " · " + URLs.host(e.url)), "icon": "sf:magnifyingglass"]
+      if i > 0 { v.put("buttons", [["id": "remove", "title": "Remove"]]) }
+      return v
+    }
+    env.call("settings", "register", [
+      "id": .string(Self.ns), "title": "Search", "icon": "sf:magnifyingglass", "order": 20,
+      "controls": [
+        ["key": "defaultEngine", "type": "choice", "title": "Search engine",
+         "subtitle": "What the command bar searches when you type something that isn't a web address.",
+         "options": .array(options), "default": .string(engines[0].keyword)],
+        ["key": "engines", "type": "list", "title": "Site search",
+         "subtitle": "Type a keyword and press Tab in the command bar to search that site.", "items": .array(items)],
+        ["key": "addEngine", "type": "text", "submit": true, "title": "Add a site search",
+         "subtitle": "A keyword, then a URL with %s where the search goes, e.g. mdn https://developer.mozilla.org/search?q=%s",
+         "placeholder": "keyword  https://…?q=%s"],
+        ["key": "banner", "type": "toggle", "title": "Offer to make den your default browser",
+         "subtitle": "A small banner in the command bar while another browser opens your links.", "default": true],
+      ],
+    ])
+    // The stored choice always reflects the current first engine.
+    env.call("settings", "set", ["id": .string(Self.ns), "key": "defaultEngine", "value": .string(engines[0].keyword)])
+  }
+
+  func settingChanged(_ key: String, _ v: Value) {
+    switch key {
+    case "defaultEngine":
+      guard let k = v.string, let i = engines.firstIndex(where: { $0.keyword == k }), i > 0 else { return }
+      var list = engines
+      let e = list.remove(at: i)
+      list.insert(e, at: 0)
+      _ = handle("engines", ["engines": .array(list.map { $0.value })])
+    case "banner":
+      store("bannerDismissed", .bool(v.bool == false))
+      if isOpen { render() }
+    default: break
+    }
+  }
+
+  func settingAction(_ v: Value) {
+    switch v.s("key") {
+    case "engines":
+      guard v.s("button") == "remove", engines.count > 1 else { return }
+      let list = engines.filter { $0.keyword != v.s("item") }
+      _ = handle("engines", ["engines": .array(list.map { $0.value })])
+    case "addEngine":
+      // "kw url" or "kw Name words url": the last word with %s is the URL.
+      var words: [String] = []
+      var cur: [UInt8] = []
+      for c in v.s("value").utf8 {
+        if c == 32 || c == 9 { if !cur.isEmpty { words.append(String(decoding: cur, as: UTF8.self)); cur = [] } } else { cur.append(c) }
+      }
+      if !cur.isEmpty { words.append(String(decoding: cur, as: UTF8.self)) }
+      guard words.count >= 2, Text.contains(words[words.count - 1], "%s") else {
+        env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Add a keyword, then a URL with %s", "icon": "sf:exclamationmark.triangle.fill"]])
+        return
+      }
+      let kw = Text.lower(words[0]), url = words[words.count - 1]
+      var name = URLs.host(url)
+      if words.count > 2 {
+        name = words[1]
+        for w in words[2..<(words.count - 1)] { name += " " + w }
+      }
+      var list = engines.filter { $0.keyword != kw }
+      list.append(Engine(kw, name, url))
+      _ = handle("engines", ["engines": .array(list.map { $0.value })])
+    default: break
+    }
   }
 
   func stop() {
@@ -266,6 +345,7 @@ final class CommandBarCore {
         guard !parsed.isEmpty else { return .err("commands: engines needs at least one {keyword, name, url}") }
         engines = parsed
         env.call("storage", "set", ["ns": .string(Self.ns), "key": "engines", "value": .array(engines.map { $0.value })])
+        syncSettings()
       }
       return .array(engines.map { $0.value })
     case "state":
@@ -1155,7 +1235,7 @@ final class CommandBarCore {
       currentBrowser = r.s("bundleId")
       currentBrowserName = r.s("name")
     }
-    return !isDefaultBrowser && env.now() >= stored("bannerSnoozedUntil").i("t")
+    return !isDefaultBrowser && stored("bannerDismissed").bool != true
   }
 
   func bannerButton(_ b: String) {
@@ -1168,7 +1248,8 @@ final class CommandBarCore {
       env.call("app", "setDefaultBrowser")
       checkTrial()
     case "close":
-      store("bannerSnoozedUntil", ["t": .int(env.now() + Self.bannerSnoozeMs)])
+      store("bannerDismissed", true)
+      env.call("settings", "set", ["id": .string(Self.ns), "key": "banner", "value": false])
       render()
     default:
       break

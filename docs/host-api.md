@@ -127,8 +127,9 @@ Web views that aren't shown are detached from the window, which lets WebKit susp
 | `urlPill` | `id`, `text`, `progress?`, `loading?`, `placeholder?` | `click`, `copy` |
 | `grid` | `columns?`, `children` | – |
 | `favoriteTile` | `id`, `icon`, `title`, `selected`, `audio` | `click`, `doubleClick`, `reorder` |
-| `spaceTitle` | `id`, `title`, `icon?` | `click`, `more` |
-| `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected`, `spaceId?` (makes it a drop target for dragged rows) | `click` |
+| `spaceTitle` | `id`, `title`, `icon?`, `editing?`, `editText?` | `click`, `doubleClick`, `more`, `rename {title}`, `renameCancel` |
+| `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected`, `spaceId?` (makes it a drop target for dragged rows), `reorderable?` | `click`, `move {index}` (after a drag-reorder, see [Space icon reorder](#space-icon-reorder)) |
+| `iconPicker` | `id`, `anchor?`, `title?`, `selected?` (popover slot) | `pick {icon}` (`sf:<name>`, an emoji, or "" to remove), `dismiss {reason?}` |
 | `tabRow` | `id`, `title`, `icon`, `selected`, `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `indent?`, `draggable=true`, `editing?`, `editText?`, `hover=true` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel`, `hover` (see [Hover card](#hover-card)) |
 | `splitRow` | `id`, `selected` (the split is shown), `layout?`, `panes: [{id, title, icon, selected}]` (`selected` = focused pane), `closable=true`, `indent?` | `click {pane}`, `close` (hover X), `reorder` (as target, a tab row can drop `into` it), `dropOnSpace` |
 | `folder` | `id`, `title`, `icon?`, `open`, `children`, `editing?` | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel` |
@@ -165,6 +166,14 @@ ui.set {slot: "popover", tree: {type: "themePicker", id: "theme", anchor: "space
 - **Live preview.** Every drag step emits `change`, whose value has the same shape as `window.setTheme` args, so the plugin can pass it straight through. `commit` follows when a drag ends or after a click.
 - **Haptics.** A tick when a dot is grabbed, when it crosses each 4-dot cell, at each 10% of intensity and at each grain step.
 - **Dismiss.** Esc emits `dismiss {reason: "escape"}` (the `theme` plugin reverts); a click outside emits `dismiss` with no value (it saves). The plugin clears the slot (`tree: null`).
+
+### Space icon reorder
+
+A `spaceIcon` with `reorderable: true` can be dragged along the footer strip (`SpaceIconReorder` in Rows.swift). Picking it up lifts it (scale 1.15, a haptic), it follows the pointer clamped to the strip, and the other reorderable icons glide into their new slots as it passes their midpoints (0.2 s, Dia's (0.2, 0.8, 0.2, 1) curve; Reduce Motion snaps), with a haptic tick per slot. On drop it settles into its slot and, if the slot changed, emits `move {index}` (the index among the row's reorderable icons). Nothing is emitted while dragging; the owner re-sends the tree in the new order. Arc's reorder timing was never measured, so the values are estimates (`Tokens.spaceIconLift*`, `spaceIconReorderDuration`).
+
+### Icon picker
+
+`iconPicker` in the `popover` slot: a 300 pt panel (20 pt continuous radius, like the theme picker) placed like it (13 pt right of the sidebar, top level with `anchor`, clamped to the window). A field takes any emoji (typed, pasted or from the Character Viewer) and picks it at once, then grids of 32 SF Symbols and 32 emoji (32 pt cells, 8 columns). "Remove" (shown when `selected` isn't empty) picks "". Esc emits `dismiss {reason: "escape"}`, a click outside `dismiss`. This is den's own design (Arc's icon editor was never measured).
 
 ### Archive / Library sheet
 
@@ -242,6 +251,71 @@ Every variant uses Arc's quit-sheet layout (spec §5): 450 wide, 26.5 pt continu
 | Clear Archive | same, `icon: "sf:archivebox"` |
 
 Arc has no close-window confirmation (spec §5: Shift-Cmd-W closes a window with tabs silently), so den has none either.
+
+## Theming
+
+Every den surface takes its colors from one token layer, derived from the current space's theme (colors, intensity, grain), the effective appearance (light, dark, or auto following macOS) and, optionally, the macOS accent color. No surface hardcodes a white card or a fixed brand blue. The code: `ThemeTokens` (Sources/DenHost/Core/ThemeTokens.swift, AppKit-free) wrapped by `Palette` (Toolkit/Primitives.swift).
+
+| Token (`Palette`) | Use | Derivation |
+|---|---|---|
+| `surface` (= `popover`, `panel`) | dialogs, command bar, popovers, sheets, hover cards, Settings pane | Arc's PopoverBackground (#FAFBFF / #151C30, spec §3) pulled toward the space's colors by intensity. Light surfaces stay at relative luminance ≥ 0.72, dark ones ≤ 0.035 |
+| `elevatedSurface` | a layer on a surface: sheet cards, the command bar banner | light: surface → white 55%; dark: surface → white 7% |
+| `textPrimary` / `textSecondary` / `textTertiary` (= `panelText`, `panelSecondaryText`) | text on a surface | ForegroundPrimary/Secondary/Tertiary composited on the surface, then pushed to ≥ 7:1 / 4.5:1 / 3:1 |
+| `text` / `secondaryText` | text on the sidebar (the window gradient) | checked against every gradient stop: ≥ 4.5:1 / 3:1 |
+| `primaryButton` (= `accentStrong`), `onAccent` | primary buttons, selection, focus, toggles, drop zones | the space's first color at saturation ≥ 0.55 (or the system accent), adjusted so its label is ≥ 4.5:1 and it stands ≥ 3:1 off the surface |
+| `destructive`, `onDestructive` | destructive buttons | DestructiveButtonFace #F53714, darkened just enough for a white label (4.5:1) |
+| `toast`, `onToast` | toasts | a deep blend of the theme (Arc's theme-tinted toasts, spec §6), white text ≥ 4.5:1 |
+| `hairline`, `rowHover`, `pressed` | dividers, hover and pressed fills | ink/white at α .08/.05/.09 (light) or .10/.07/.12 (dark) |
+| `shadowColor`, `shadowOpacity` | panel shadows | PopoverShadow #151C32 α0.30 (light), black α0.60 (dark) |
+| `dialogDim`, `sheetDim` | backdrops | black α0.55 (spec §3) / α0.35 |
+| `tokens.grain` | grain on surfaces (`SurfaceGrain`) | half the window's grain, the same noise tile |
+
+- **Contrast.** WCAG 2.x relative luminance; targets are AAA (7:1) for primary text, AA (4.5:1) for secondary text and button labels, 3:1 for tertiary text and UI components. `ThemeTokens.ensure(color, on:, target)` moves a color toward black or white until it meets the target, so very light (white, pastel, yellow) and very dark (near-black) themes stay legible. `ThemeTokenTests` checks every token pair for sandy, deep purple, near-black, pastel, white, yellow and no theme, in light and dark.
+- **Accent.** Settings > General > Accent color: "Space colors" (default, Arc) or "System accent" (`Palette.accentSource`, stored as `settings` id `general`, key `accent`). A change of the macOS accent re-themes live while it's in use.
+- **Live and cheap.** Tokens are computed once per (theme, appearance, accent) and cached. `UIService.refreshPalette()` rebuilds the palette on a theme change or space switch and re-applies it (`Themable.apply`, recursively over the sidebar and `wc.overlays`, plus the hover card and the Settings window) only when the tokens changed; identical themes redraw nothing.
+- **Adopting it.** A surface view conforms to `Themable` and reads colors in `apply(_ p: Palette)`: backgrounds from `p.surface` / `p.elevatedSurface`, text from `p.textPrimary`/`textSecondary`/`textTertiary`, primary actions `p.primaryButton` + `p.onAccent`, destructive `p.destructive` + `p.onDestructive`, dividers `p.hairline`, shadows `p.shadowColor`. Views added under `wc.overlays` (or `PanelView` subclasses) are re-themed automatically. For a colored fill with custom text, call `ThemeTokens.ensure(text, on: fill, ThemeTokens.bodyContrast)`. For an HTML surface (error pages), inject `p.tokens.surface.hex`, `textPrimary.hex` and `accent.hex` as CSS variables.
+- Native menus follow the window's appearance (light/dark); AppKit doesn't let them take theme colors.
+- Snapshot: `docs/screenshots/theming-grid.png` (scenario `themeSample`, see scripts/snapshots.sh).
+
+## settings
+
+The Settings window (⌘,, "Settings…" in the den menu). Plugins contribute sections as typed controls; the host persists values per plugin and emits changes, so plugins react live. The window and its panes are built the first time Settings opens; until then, registering a section only stores it.
+
+| Method | Args | Returns |
+|---|---|---|
+| `register` | `id`, `title`, `icon?`, `section?`, `order?`, `controls: [control]` | ok. Replaces an earlier registration. With `section`, the controls join that section as a group titled `title`; otherwise `id` is a sidebar section |
+| `unregister` | `id` | ok |
+| `list` | – | `[{id, title, icon, order}]`: the sidebar |
+| `get` | `id`, `key?` | the stored values over the controls' defaults (`{key: value}`), or one value |
+| `set` | `id`, `key`, `value` | ok. Stores (storage ns `id`, key `prefs`) and emits `settings.changed` when the value changed |
+| `open` | `section?` | ok. Shows the window at that section |
+| `close`, `state` | – | ok / `{open, section}` |
+
+Events: `settings.changed {id, key, value}`; `settings.action {id, key, item?, button?, value?}` (list and button rows, and `submit` text fields); `settings.opened {section}`.
+
+Controls are `{key, type, title, subtitle?, default?}`:
+
+| `type` | Extra fields | Control |
+|---|---|---|
+| `toggle` | – | a switch (Bool) |
+| `choice` | `options: [{value, title}]` | a pop-up menu (any value) |
+| `text` | `placeholder?`, `submit?` | a text field. Normally the value is set when editing ends; with `submit: true` Return emits `settings.action {value}` and clears the field (an "add" field) |
+| `shortcut` | – | a shortcut recorder: click, press a chord (Esc cancels, Delete clears). The value is a `keys` chord (`cmd+shift+b`) |
+| `number` | `min`, `max`, `step?`, `unit?`, `labels?: [{value, title}]` | a slider with its value ("30 min", or a label such as "Never" for 0). Set when the drag ends |
+| `list` | `items: [{id, title, subtitle?, icon?, buttons?: [{id, title, style?}]}]`, `empty?` | plugin-provided rows, e.g. connections. Buttons emit `settings.action {item, button}`; re-`register` to update the rows |
+| `button` | `button: {title, style?}` | a row with one button (`settings.action`) |
+| `info` | `value`, `buttons?: [{id, title}]` | read-only text, e.g. a path, with buttons |
+
+`style` is `primary`, `destructive` or plain. The window: a 196 pt sidebar of sections (icon + title; the selected one like a selected tab) on a tint of the space's background, and a pane of rounded cards with hairlines between rows, native controls on the right. It follows the theme tokens and re-themes live. It's den's own design (Arc's Settings window was never measured; spec §11 has its copy).
+
+Sections today:
+- **General** (host): accent color, default browser (status + "Make den Default"), `config.toml` and `~/.den` with Open / Show in Finder (a missing `config.toml` is created with commented examples on Open), and problems found in them; plus **Quitting** from `quit` ("Ask before quitting").
+- **Tabs** (`tabs`): archive Today tabs after (Never … 30 days), unload idle tabs (0–240 min slider); plus **Links** from `peek` (peek at links from pinned tabs, "Open links from other apps in a mini window", archive unused mini windows).
+- **Search** (`commandbar`): search engine, site-search keywords (remove), add a keyword (`kw [Name] url-with-%s`), the default-browser banner.
+- **Connections** (`connections`): each provider with Connect / Cancel / Workspaces… / Disconnect.
+- **Briefing** (`briefing`): morning briefing on/off, its time, the shortcut that opens it.
+
+Snapshots: `--scenario settings` / `settingsTabs` / `settingsSearch` / `settingsConnections` / `settingsBriefing` (`docs/screenshots/settings-*.png`). Every default and why: [defaults.md](defaults.md).
 
 ## keys
 

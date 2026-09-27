@@ -309,11 +309,13 @@ final class FavoriteTileNode: HoverNode {
 
 // MARK: - Space
 
-/// {type:"spaceTitle", id, title, icon?}  actions: click, menu (the "…" button), toggle (collapse pinned)
+/// {type:"spaceTitle", id, title, icon?, editing?, editText?}
+/// actions: click, doubleClick, more (the "…" button), menu (right-click), rename {title} / renameCancel (while `editing`)
 final class SpaceTitleNode: HoverNode {
   let label = makeLabel(size: 13.5, weight: .semibold)  // spec §1
   let icon = IconView()
   lazy var more = IconButton(symbol: "ellipsis", size: 22) { [weak self] in self?.emit("more") }
+  lazy var rename = RenameSupport(owner: self, label: label)
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
     addSubview(icon)
@@ -323,15 +325,17 @@ final class SpaceTitleNode: HoverNode {
   }
   required init?(coder: NSCoder) { fatalError() }
   override var fillRect: NSRect { .zero }
-  override func hoverChanged() { more.isHidden = !hovering }
+  override func hoverChanged() { more.isHidden = !hovering || rename.active }
   override func update(_ v: Value) {
     super.update(v)
     label.stringValue = v.str("title")
     icon.spec = v.str("icon")
     icon.isHidden = icon.spec.isEmpty
+    rename.update(v)
+    more.isHidden = !hovering || rename.active
     needsLayout = true
   }
-  override func apply(_ p: Palette) { label.textColor = p.text; icon.tint = p.text; more.apply(p) }
+  override func apply(_ p: Palette) { label.textColor = p.text; rename.editor?.textColor = p.text; icon.tint = p.text; more.apply(p) }
   override func height(for w: CGFloat) -> CGFloat { Tokens.spaceTitleHeight }
   override func layout() {
     // Spec §1 (sidebar coords): icon 26x26 at x 13, name at x 41, "More" at x 213.
@@ -339,15 +343,40 @@ final class SpaceTitleNode: HoverNode {
     icon.frame = NSRect(x: 13 - pad + 6, y: (h - 14) / 2, width: 14, height: 14)  // glyph drawn inside the 26 pt icon box
     label.frame = NSRect(x: 41 - pad, y: (h - 18) / 2, width: bounds.width - (41 - pad) - 30, height: 18)
     more.frame = NSRect(x: bounds.width - 24, y: (h - 22) / 2, width: 22, height: 22)
+    rename.layout()
   }
 }
 
-/// Footer space switcher item. {type:"spaceIcon", id, icon?, title, selected, spaceId?}  (empty icon = dot)
+/// Footer space switcher item. {type:"spaceIcon", id, icon?, title, selected, spaceId?, reorderable?}  (empty icon = dot)
 /// With `spaceId`, a tab row dragged over the icon highlights it and drops as `dropOnSpace`.
+/// With `reorderable`, dragging the icon sideways reorders the strip live (siblings slide aside,
+/// a haptic tick per slot) and a drop that changed the slot emits `move {index}` (index among the
+/// row's reorderable space icons).
 final class SpaceIconNode: HoverNode {
   let icon = IconView()
   /// A dragged tab is over this icon.
   var dropTarget = false { didSet { if dropTarget != oldValue { apply(r.palette) } } }
+  private var reorder: SpaceIconReorder?
+  private var pressAt: NSPoint?
+
+  override func mouseDown(with event: NSEvent) {
+    pressAt = node.flag("reorderable") && event.clickCount == 1 ? event.locationInWindow : nil
+    super.mouseDown(with: event)
+  }
+  override func mouseDragged(with event: NSEvent) {
+    if let r = reorder { r.move(event); return }
+    guard let d = pressAt, abs(event.locationInWindow.x - d.x) > 3 else { return }
+    reorder = SpaceIconReorder(self, event: event)
+  }
+  override func mouseUp(with event: NSEvent) {
+    pressAt = nil
+    if let r = reorder {
+      reorder = nil
+      if let to = r.end() { emit("move", ["index": .int(Int64(to))]) }
+      return
+    }
+    super.mouseUp(with: event)
+  }
   override var cornerRadius: CGFloat { 6 }
   override var fillRect: NSRect { hovering || dropTarget ? bounds : .zero }
   override var hoverColor: NSColor { dropTarget ? palette.selectedFill : palette.hoverFill }
@@ -386,6 +415,90 @@ final class SpaceIconNode: HoverNode {
     let d = Tokens.spaceDotSize * (node.flag("selected") ? 1.25 : 1)
     (node.flag("selected") || dropTarget ? palette.text : palette.secondaryText.withAlphaComponent(0.4)).setFill()
     NSBezierPath(ovalIn: NSRect(x: bounds.midX - d / 2, y: bounds.midY - d / 2, width: d, height: d)).fill()
+  }
+}
+
+/// Live drag-reorder of the footer's space icons (Arc: rearrange Spaces by dragging their icons).
+/// The dragged icon follows the pointer along the strip; the others glide into their new slots as
+/// it passes their midpoints, with a haptic tick per slot. Nothing is emitted until the drop.
+@MainActor
+final class SpaceIconReorder {
+  let icon: SpaceIconNode
+  let icons: [SpaceIconNode]  // strip order at pick-up
+  let slots: [NSRect]
+  let start: Int
+  private(set) var target: Int
+  private let grabX: CGFloat
+  private let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+
+  init(_ icon: SpaceIconNode, event: NSEvent) {
+    self.icon = icon
+    let row = icon.superview
+    icons = (row?.subviews ?? []).compactMap { $0 as? SpaceIconNode }.filter { $0.node.flag("reorderable") && !$0.isHidden }.sorted { $0.frame.minX < $1.frame.minX }
+    slots = icons.map(\.frame)
+    start = icons.firstIndex { $0 === icon } ?? 0
+    target = start
+    grabX = (row.map { $0.convert(event.locationInWindow, from: nil).x } ?? 0) - icon.frame.minX
+    // Lift: above its siblings, slightly larger (a pick-up haptic, like Arc's tab reordering).
+    if let row { row.addSubview(icon, positioned: .above, relativeTo: nil) }
+    icon.wantsLayer = true
+    icon.layer?.zPosition = 1
+    setLift(true)
+    NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+  }
+
+  private func setLift(_ on: Bool) {
+    guard let l = icon.layer else { return }
+    let t = on ? CATransform3DMakeScale(Tokens.spaceIconLiftScale, Tokens.spaceIconLiftScale, 1) : CATransform3DIdentity
+    // Scale around the center (layer-backed NSViews anchor at the origin).
+    let b = icon.bounds
+    let centered = CATransform3DConcat(CATransform3DConcat(CATransform3DMakeTranslation(-b.midX, -b.midY, 0), t), CATransform3DMakeTranslation(b.midX, b.midY, 0))
+    if reduceMotion { l.transform = on ? centered : CATransform3DIdentity; return }
+    let a = CABasicAnimation(keyPath: "transform")
+    a.fromValue = l.presentation()?.transform ?? l.transform
+    a.toValue = on ? centered : CATransform3DIdentity
+    a.duration = Tokens.spaceIconReorderDuration
+    a.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+    l.transform = on ? centered : CATransform3DIdentity
+    l.add(a, forKey: "lift")
+  }
+
+  func move(_ event: NSEvent) {
+    guard let row = icon.superview, slots.count > 1 else { return }
+    let x = row.convert(event.locationInWindow, from: nil).x - grabX
+    let minX = slots.first!.minX, maxX = slots.last!.minX
+    icon.setFrameOrigin(NSPoint(x: min(max(x, minX), maxX), y: icon.frame.minY))
+    let mid = icon.frame.midX
+    let t = slots.indices.min { abs(slots[$0].midX - mid) < abs(slots[$1].midX - mid) } ?? start
+    guard t != target else { return }
+    target = t
+    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+    var order = icons.filter { $0 !== icon }
+    order.insert(icon, at: t)
+    animate {
+      for (k, v) in order.enumerated() where v !== self.icon { self.frame(v, self.slots[k]) }
+    }
+  }
+
+  /// Settles the icon in its slot; returns the new index when it changed.
+  func end() -> Int? {
+    let slot = target < slots.count ? slots[target] : icon.frame
+    animate { self.frame(self.icon, slot) }
+    setLift(false)
+    icon.layer?.zPosition = 0
+    if target != start { NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now) }
+    return target != start ? target : nil
+  }
+
+  private func frame(_ v: NSView, _ f: NSRect) { if reduceMotion { v.frame = f } else { v.animator().frame = f } }
+  private func animate(_ body: @escaping () -> Void) {
+    if reduceMotion { body(); return }
+    NSAnimationContext.runAnimationGroup { c in
+      c.duration = Tokens.spaceIconReorderDuration
+      c.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)
+      c.allowsImplicitAnimation = true
+      body()
+    }
   }
 }
 
