@@ -58,7 +58,7 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
   var restoreSidebarAfterFullScreen = false
 
   public override init() {
-    window = NSWindow(
+    window = DenNSWindow(
       contentRect: NSRect(origin: .zero, size: Tokens.windowDefaultSize),
       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
       backing: .buffered, defer: true)
@@ -71,8 +71,13 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     window.tabbingMode = .disallowed
     window.collectionBehavior.insert(.fullScreenPrimary)
     window.delegate = self
-    window.setFrameAutosaveName("den.main")
-    if window.frame.origin == .zero { window.center() }
+    if Presentation.invisible {
+      // Automation: off every display, and the user's saved window frame is neither read nor written.
+      Presentation.park(window)
+    } else {
+      window.setFrameAutosaveName("den.main")
+      if window.frame.origin == .zero { window.center() }
+    }
     TestMode.hide(window)
 
     root.wantsLayer = true

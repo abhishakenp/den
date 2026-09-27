@@ -19,7 +19,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
 
   init(service: SettingsService) {
     self.service = service
-    window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: SettingsMetrics.windowSize.width, height: SettingsMetrics.windowSize.height),
+    window = DenNSWindow(contentRect: NSRect(x: 0, y: 0, width: SettingsMetrics.windowSize.width, height: SettingsMetrics.windowSize.height),
                       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: true)
     super.init()
     window.title = "Settings"
@@ -42,8 +42,10 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     sidebar.onSelect = { [weak self] id in self?.select(id) }
     pane.service = service
     root.onLayout = { [weak self] in self?.layout() }
-    window.center()
-    window.setFrameAutosaveName("den.settings")
+    if Presentation.invisible { Presentation.park(window) } else {
+      window.center()
+      window.setFrameAutosaveName("den.settings")
+    }
   }
 
   var dark: Bool { service.dark() }
@@ -54,10 +56,10 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     if let id, service.sections.contains(where: { $0.id == id }) { select(id) } else if section.isEmpty || !service.sections.contains(where: { $0.id == section }) {
       select(service.sections.first?.id ?? "")
     }
-    window.makeKeyAndOrderFront(nil)
+    Presentation.show(window)
     root.needsLayout = true
     root.layoutSubtreeIfNeeded()
-    NSApp.activate()
+    Presentation.activate()
   }
 
   func applyAppearance() {

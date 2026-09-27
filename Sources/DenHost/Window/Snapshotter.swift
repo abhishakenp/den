@@ -32,9 +32,34 @@ public enum Snapshotter {
     return (try? data.write(to: URL(fileURLWithPath: path))) != nil
   }
 
+  /// Longest wait for one web view's `takeSnapshot`. WebKit never calls back for a page it
+  /// doesn't paint (a suspended or occluded one), so this is bounded rather than a hang.
+  public static var webTimeout: TimeInterval = 10
+
   static func snapshot(_ web: WKWebView) async -> NSImage? {
-    await withCheckedContinuation { cont in
-      web.takeSnapshot(with: nil) { img, _ in cont.resume(returning: img) }
+    let timeout = webTimeout
+    return await withCheckedContinuation { cont in
+      let once = Once(cont)
+      web.takeSnapshot(with: nil) { img, _ in MainActor.assumeIsolated { once.resume(img) } }
+      DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+        MainActor.assumeIsolated {
+          guard !once.done else { return }
+          print("snapshot: web view \(web.url?.absoluteString ?? "(no url)") gave no image within \(Int(timeout)) s; its area is left as drawn")
+          once.resume(nil)
+        }
+      }
+    }
+  }
+
+  /// Resumes a continuation at most once (the snapshot or the timeout, whichever comes first).
+  @MainActor final class Once {
+    let cont: CheckedContinuation<NSImage?, Never>
+    var done = false
+    init(_ cont: CheckedContinuation<NSImage?, Never>) { self.cont = cont }
+    func resume(_ img: NSImage?) {
+      guard !done else { return }
+      done = true
+      cont.resume(returning: img)
     }
   }
 

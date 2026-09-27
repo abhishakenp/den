@@ -357,7 +357,7 @@ public final class AboutPanel: NSObject {
     if !credits.isEmpty {
       options[.credits] = NSAttributedString(string: credits, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
     }
-    NSApp.activate()
+    Presentation.activate()
     NSApp.orderFrontStandardAboutPanel(options: options)
   }
 }

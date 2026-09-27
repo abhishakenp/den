@@ -14,6 +14,9 @@
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
+  <!-- den checks in as a UI element and makes itself a regular (Dock) app in main.swift, unless
+       launched with --background (automation), which must never show a Dock tile. -->
+  <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticTermination</key><false/>
   <!-- Host updates (Sparkle). The updates plugin schedules checks; Sparkle never checks on its own. -->

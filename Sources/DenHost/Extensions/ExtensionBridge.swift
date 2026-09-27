@@ -92,8 +92,8 @@ final class ExtWindow: NSObject, WKWebExtensionWindow {
     completionHandler(nil)
   }
   func focus(for context: WKWebExtensionContext, completionHandler: @escaping (Error?) -> Void) {
-    NSApp.activate()
-    nsWindow.makeKeyAndOrderFront(nil)
+    Presentation.activate()
+    Presentation.show(nsWindow)
     completionHandler(nil)
   }
 }

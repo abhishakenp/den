@@ -13,6 +13,8 @@ cd "$(dirname "$0")/.."
 scenario=${1:-main}
 wait=${2:-15}
 app=${APP:-build/den.app}
+source scripts/lib/launch.zsh
+den_check_app $app
 [[ -x build/denprocs && build/denprocs -nt scripts/lib/denprocs.swift ]] || swiftc -O scripts/lib/denprocs.swift -o build/denprocs
 store=$(mktemp -d)
 [[ -n ${DEN_EXTENSIONS_FROM:-} ]] && cp -R "$DEN_EXTENSIONS_FROM" "$store/extensions"

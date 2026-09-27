@@ -1,13 +1,20 @@
 #!/bin/zsh
 # Renders den's own UI (demo data) to docs/screenshots/ with --snapshot (no Screen Recording needed).
+# Every run is --background: no Dock icon, never activated, windows off every display, and it quits
+# by itself (den_bounded kills it if not). Only the native-menu shots need a window on screen:
+# MENUS=1 adds them. The app is build/den.app built with the Scenarios trait (DEN_SCENARIOS=1).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[[ -x build/den.app/Contents/MacOS/den ]] || scripts/bundle.sh
+source scripts/lib/launch.zsh
+[[ $(plutil -extract DenScenarios raw -o - build/den.app/Contents/Info.plist 2>/dev/null) == true ]] || DEN_SCENARIOS=1 scripts/bundle.sh
+den_check_app build/den.app
+trap 'den_leftovers build/den.app' EXIT
+den=(den_bounded 120 build/den.app/Contents/MacOS/den --background)
 out=docs/screenshots
 mkdir -p $out
 store=$(mktemp -d)
 shot() { # name scenario appearance — a fresh store each time, so the plugins' first-run seed shows
-  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
+  $den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
 }
 # ONLY=new scripts/snapshots.sh: just the space menu, Settings and theming shots.
 if [[ -z ${ONLY:-} ]]; then
@@ -33,7 +40,7 @@ if [[ -f build/den.app/Contents/PlugIns/theme.dylib ]]; then shot theme-picker-l
 if [[ -f build/den.app/Contents/PlugIns/quit.dylib ]]; then shot quit-dialog dialog light; shot quit-dialog-dark dialog dark; fi
 # Host components (self-contained scenarios, no --demo): see DenHost/Scenarios/HostScenarios.swift.
 host() { # name scenario appearance
-  build/den.app/Contents/MacOS/den --no-den-home --storage "$store" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay 3
+  $den --no-den-home --storage "$store" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay 3
 }
 host theme-picker themePicker light
 host theme-picker-dark themePicker dark
@@ -83,13 +90,15 @@ if [[ -f build/den.app/Contents/PlugIns/briefing.dylib ]]; then
   shot briefing briefing light 30; shot briefing-dark briefing dark 30; shot briefing-feed briefingFeed light 32
 fi
 fi  # ONLY=new
-# Native menus are separate windows: open one and capture it through its own window id.
+# Native menus are separate windows AppKit puts on a display: open one and capture it through its
+# own window id. These are the only shots with a window on screen, so they run only with MENUS=1.
 menu() { # name appearance [scenario] — the space menu needs the plugins' first-run seed, so a fresh store
-  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$2" --scenario "${3:-contextMenu}" --stay &
+  [[ -n ${MENUS:-} ]] || return 0
+  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$2" --scenario "${3:-contextMenu}" --exit-after 8 &
   local pid=$!; sleep 3.5
   local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; for w in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where w[kCGWindowOwnerPID as String] as? Int32 == p && w[kCGWindowLayer as String] as? Int == 101 { print(w[kCGWindowNumber as String]!) }' $pid | head -1)
   [[ -n $id ]] && screencapture -o -x -l$id "$out/$1.png"
-  kill $pid
+  kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null || true
 }
 if [[ -z ${ONLY:-} ]]; then menu context-menu light; menu context-menu-dark dark; fi
 menu space-menu light spaceMenu
@@ -101,13 +110,13 @@ for sc in IconPicker Rename Reorder; do
   shot space-$n-dark space$sc dark 3
 done
 # Settings (⌘,): each section, from the real plugins. The Settings window draws blank through
-# cacheDisplay, so it's captured on screen by its window id (den's own window only).
+# cacheDisplay, so it's captured by its window id (den's own window only; off-display works too).
 win() { # name scenario appearance width
-  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --stay &
+  build/den.app/Contents/MacOS/den --background --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --exit-after 10 &
   local pid=$!; sleep 5
   local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; let w = Double(CommandLine.arguments[2])!; for x in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where x[kCGWindowOwnerPID as String] as? Int32 == p { let b = x[kCGWindowBounds as String] as! [String: Any]; if abs((b["Width"] as! Double) - w) < 2 { print(x[kCGWindowNumber as String]!) } }' $pid $4 | head -1)
   [[ -n $id ]] && screencapture -o -x -l$id "$out/$1.png"
-  kill $pid
+  kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null || true
 }
 for sc in "" Tabs Search Connections Briefing; do
   if [[ -n $sc ]]; then n=settings-${(L)sc}; else n=settings; fi

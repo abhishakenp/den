@@ -23,7 +23,7 @@ final class MiniWindowController: NSObject, NSWindowDelegate {
   init(id: String, webview: String, web: WKWebView?, theme: Theme, dark: Bool, space: String, frame: NSRect) {
     self.id = id
     self.webview = webview
-    panel = NSPanel(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+    panel = DenNSPanel(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     super.init()
     panel.titlebarAppearsTransparent = true
     panel.titleVisibility = .hidden
@@ -228,7 +228,7 @@ final class MiniWindows {
     guard let webviews, webviews.record(wid) != nil else { return .error("window: unknown webview '\(wid)'") }
     let id = "mini\(next)"
     next += 1
-    let visible = (wc.window.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1470, height: 920)
+    let visible = Presentation.visibleFrame(near: wc.window)
     let size = CGSize(width: args.num("width", Double(Tokens.miniDefaultSize.width)), height: args.num("height", Double(Tokens.miniDefaultSize.height)))
     let web = webviews.materialize(wid)
     let m = MiniWindowController(id: id, webview: wid, web: web, theme: wc.currentTheme, dark: wc.isDark, space: args.str("space", "Space"),
@@ -238,7 +238,7 @@ final class MiniWindows {
     m.onEvent = { [weak host] e, v in host?.emit(e, v) }
     m.onClose = { [weak self] in self?.windows[id] = nil }
     windows[id] = m
-    m.panel.makeKeyAndOrderFront(nil)
+    Presentation.show(m.panel)
     return ["id": .string(id)]
   }
 
@@ -257,7 +257,7 @@ final class MiniWindows {
   /// Brings a Little Arc window to the front and makes it key (the command bar's Windows rows).
   func focus(_ args: Value) -> Value {
     guard let m = windows[args.str("id")] else { return .error("window: unknown mini window '\(args.str("id"))'") }
-    m.panel.makeKeyAndOrderFront(nil)
+    Presentation.show(m.panel)
     return .ok
   }
 

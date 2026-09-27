@@ -20,6 +20,8 @@ app=${1:-build/den.app}
 runs=${PERF_RUNS:-10}
 budgets=docs/perf/budgets.json
 [[ -d $app ]] || { echo "no app at $app (run scripts/bundle.sh)"; exit 2; }
+source scripts/lib/launch.zsh
+den_refuse_installed $app || exit 2
 
 mkdir -p build/perf
 for tool in perfprobe denstore; do
@@ -41,7 +43,7 @@ done
 echo "load average at start: $(sysctl -n vm.loadavg)"
 
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp"; den_leftovers $app || true' EXIT
 log=$tmp/log
 # Store templates: "seeded" = den's first-run store (created by one throwaway launch), "empty" = the
 # same with zero tabs, "tabs200" = 200 never-loaded tabs and nothing selected (metadata only).
