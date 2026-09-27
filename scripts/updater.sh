@@ -21,6 +21,7 @@
 # The agent runs as ProcessType=Background with nice 10 and low-priority I/O.
 set -uo pipefail
 
+SELF=${0:A}
 LABEL=io.github.abhishakenp.den.updater
 DEN=${DEN_HOME:-$HOME/.den}
 SRC=$DEN/src
@@ -42,15 +43,20 @@ short() { print -r -- ${1[1,7]}; }
 
 # state.json (read with plutil, written atomically so den never sees half a file).
 state_get() { [[ -f $STATE ]] && plutil -extract "$1" raw -o - $STATE 2>/dev/null || true; }
-state_write() { # key=value ... (strings; keys ending in HostAPI are integers)
+state_write() { # key=value ... (strings)
   mkdir -p $UPD
-  local tmp=$UPD/.state.json.tmp kv k v
-  [[ -f $STATE ]] && cp $STATE $tmp || print '{}' > $tmp
-  for kv in "$@"; do
-    k=${kv%%=*}; v=${kv#*=}
-    if [[ $k == *HostAPI ]]; then plutil -replace $k -integer ${v:-0} $tmp; else plutil -replace $k -string "$v" $tmp; fi
-  done
-  plutil -convert json $tmp && mv -f $tmp $STATE
+  /usr/bin/python3 - $STATE "$@" <<'PY'
+import json, os, sys
+path, pairs = sys.argv[1], sys.argv[2:]
+try: d = json.load(open(path))
+except Exception: d = {}
+for kv in pairs:
+    k, _, v = kv.partition("=")
+    d[k] = v
+tmp = os.path.join(os.path.dirname(path), ".state.json.tmp")
+json.dump(d, open(tmp, "w"), indent=1, sort_keys=True)
+os.replace(tmp, path)
+PY
 }
 
 channel() { # [updates] channel in config.toml, if set
@@ -59,12 +65,12 @@ channel() { # [updates] channel in config.toml, if set
 }
 
 cmd_install() {
-  local repo=${1:-$(git -C "${0:A:h}/.." remote get-url origin 2>/dev/null || echo https://github.com/abhishakenp/den.git)}
+  local repo=${1:-$(git -C "${SELF:h}/.." remote get-url origin 2>/dev/null || echo https://github.com/abhishakenp/den.git)}
   mkdir -p $UPD $BIN $STAGE $MANAGED ${LOG:h} ${PLIST:h}
   if [[ ! -d $SRC/.git ]]; then
     git clone -q "$repo" $SRC || { print "clone of $repo failed"; return 1; }
   fi
-  cp "${0:A}" $BIN/updater.sh && chmod +x $BIN/updater.sh
+  cp "$SELF" $BIN/updater.sh && chmod +x $BIN/updater.sh
   # Start from what /Applications/den.app was built from (a clean commit), so the next check
   # deploys only what came after it. Otherwise the first check does a full host install.
   local built=$(plutil -extract DenCommit raw -o - $APP/Contents/Info.plist 2>/dev/null || true)
@@ -258,5 +264,5 @@ case ${1:-} in
   uninstall) cmd_uninstall ;;
   check) cmd_check ;;
   status) cmd_status ;;
-  *) sed -n '2,20p' "${0:A}"; exit 2 ;;
+  *) sed -n '2,20p' "$SELF"; exit 2 ;;
 esac
