@@ -182,6 +182,8 @@ A single press of Cmd-Q shows this dialog. It is **not** hold-to-quit.
 | Icon | App icon 62x62 at (38, 38) inside the dialog (AX) |
 | Title | **"Quit Arc?"** at (38, 117). No message text (LIVE) |
 | Buttons, left to right | **"Quit, and don’t ask again"** (176x37, secondary: fill (48,47,99) with a border); **"Cancel"** with an ESC keycap (110x40, the cancel button); **"Quit"** with a ↩ keycap (86x38, primary #3139FB, the default button). Cancel and Quit sit 7 pt apart (AX/PX) |
+| Button styling (PX, dark) | Secondary and Cancel: fill (48,47,99) with a 1 pt (99,98,174) border. Keycaps are white α≈0.12 over their button: (78,76,122) on Cancel, (70,77,251) on Quit. Corner radius about 6 pt. Labels are SF 13 regular ("Quit, and don’t ask again" is 150 pt of ink); "ESC" is about 10 pt bold. Side padding 12.5 pt, 8 pt from label to keycap. The row sits 27.5 pt from the sides and bottom; the secondary button is left-aligned |
+| Title (PX) | "Quit Arc?" has a 13 pt cap height, so about SF 18 medium |
 | Suppression | Offered as a **button**, not a checkbox. It is controlled by the "Warn before quitting" setting (STR) |
 | Dim | Card behind it darkened to black α≈0.55 (PX) |
 | Downloads variant | Title "Downloads in progress"; message "There are downloads in progress. Closing the application will cancel them."; buttons cancel + confirm (STR) |

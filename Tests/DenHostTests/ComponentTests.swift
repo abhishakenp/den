@@ -251,3 +251,28 @@ extension ComponentTests {
     #expect(rt.ui.drag.dropZone.superview == nil)
   }
 }
+
+extension ComponentTests {
+  @Test func peekCardButtonsAndAnimation() async throws {
+    let rt = Self.runtime()
+    var got: [Value] = []
+    rt.host.on("content.peekAction") { got.append($0) }
+    let id = rt.call("webviews", "create")["id"]
+    _ = rt.call("content", "peek", ["webview": id, "title": "swift.org"])
+    let p = rt.content.peek
+    p.layoutSubtreeIfNeeded()
+    #expect(!p.isHidden && rt.call("content", "get")["peek"] == id)
+    // Card inset in the content area; button column (34x33) just right of the card's top.
+    #expect(p.card.frame == p.bounds.insetBy(dx: Tokens.peekInsetX, dy: Tokens.peekInsetY).integral)
+    #expect(p.buttons.map(\.frame.size) == Array(repeating: CGSize(width: 34, height: 33), count: 3))
+    #expect(p.buttons[0].frame.minX == p.card.frame.maxX + Tokens.peekButtonGap && p.buttons[0].frame.minY == p.card.frame.minY)
+    #expect(p.card.layer?.animation(forKey: "peekIn") != nil || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    for (i, action) in ["close", "expand", "split"].enumerated() {
+      p.buttons[i].action()
+      #expect(got.last?["action"] == .string(action) && got.last?["webview"] == id)
+    }
+    _ = rt.call("content", "peek", [:])
+    for _ in 0..<40 where !p.isHidden { try await Task.sleep(for: .milliseconds(25)) }
+    #expect(p.isHidden && rt.call("content", "get")["peek"] == .null)
+  }
+}

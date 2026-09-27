@@ -79,6 +79,8 @@ The link policy is declarative because `WKNavigationDelegate` decisions are sync
 
 Events: `content.focus {id}`, `content.peekAction {action: close|expand|split, webview}` and `content.paneAction {id, action: close|separate}`.
 
+**Peek** (`content.peek {webview, title?}`) floats the web view in a card over the content area: 56 pt from the sides and 40 from the top and bottom, 10 pt radius, a deep shadow and a black α0.25 dim. The `title` shows in a small pill above the card. A column of round 34x33 buttons (the Little Arc side-control size, spec §8) sits right of the card's top edge: close, expand (open as a tab) and split. Each emits `content.peekAction`, and so does a click on the dim (`close`). It opens with a 0.28 s scale-from-94% and fade using Dia's (0.2, 0.8, 0.2, 1) curve, and closes with a 0.16 s fade. Reduce Motion turns both off. Arc's Peek was never measured (spec §12), so these values are estimates.
+
 **Split view chrome** (Arc's split geometry is UNVERIFIED, spec §12, so these are estimates):
 - Panes sit 8 pt apart, each in its own 6 pt-radius card.
 - The focused pane gets a 2 pt ring in the space accent, drawn in the gap just outside the card.

@@ -172,17 +172,24 @@ public final class ContentService: HostService {
   }
 }
 
-/// Floating peek card over the content area: dimmed backdrop, rounded card, buttons on top.
+/// Floating peek card over the content area: dimmed backdrop, rounded card, and a column of round
+/// buttons (close, expand to a tab, open in split) just right of the card's top edge, the same
+/// side-control placement as Little Arc (spec §8: 34x33 side buttons). Opens with a quick scale-and-
+/// fade; every size and timing here is an estimate (Peek is UNVERIFIED, spec §12).
 public final class PeekOverlayView: FlippedView {
   let backdrop = NSView()
   let card = CardView()
-  let bar = FlippedView()
   let titleLabel = NSTextField(labelWithString: "")
+  let titlePill = FlippedView()
+  var buttons: [IconButton] = []
   var onAction: ((String) -> Void)?
   var title: String {
     get { titleLabel.stringValue }
-    set { titleLabel.stringValue = newValue }
+    set { titleLabel.stringValue = newValue; needsLayout = true }
   }
+  static let actions: [(String, String, String)] = [
+    ("xmark", "close", "Close (Esc)"), ("arrow.up.left.and.arrow.down.right", "expand", "Open as Tab"), ("rectangle.split.2x1", "split", "Open in Split View"),
+  ]
 
   public override init(frame: NSRect) {
     super.init(frame: frame)
@@ -192,24 +199,29 @@ public final class PeekOverlayView: FlippedView {
     backdrop.layer?.cornerRadius = Tokens.cardCornerRadius
     addSubview(backdrop)
     card.cornerRadius = Tokens.peekCornerRadius
-    card.layer?.shadowRadius = 18
-    card.layer?.shadowOpacity = 0.3
+    card.layer?.shadowRadius = Tokens.peekShadowRadius
+    card.layer?.shadowOpacity = Tokens.peekShadowOpacity
+    card.layer?.shadowOffset = CGSize(width: 0, height: -10)
     addSubview(card)
+    titlePill.wantsLayer = true
+    titlePill.layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.72).cgColor
+    titlePill.layer?.cornerRadius = 11
+    titlePill.layer?.cornerCurve = .continuous
     titleLabel.font = .systemFont(ofSize: 12, weight: .medium)
-    titleLabel.textColor = .white
+    titleLabel.textColor = NSColor(white: 1, alpha: 0.9)
     titleLabel.lineBreakMode = .byTruncatingMiddle
-    bar.addSubview(titleLabel)
-    for (i, (sym, action)) in [("xmark", "close"), ("rectangle.split.2x1", "split"), ("arrow.up.left.and.arrow.down.right", "expand")].enumerated() {
-      let b = IconButton(symbol: sym, size: 24) { [weak self] in self?.onAction?(action) }
+    titlePill.addSubview(titleLabel)
+    addSubview(titlePill)
+    for (sym, action, tip) in Self.actions {
+      let b = IconButton(symbol: sym, size: Tokens.peekButtonSize.height) { [weak self] in self?.onAction?(action) }
       b.fixedTint = .white
-      b.tag = i
-      bar.addSubview(b)
+      b.toolTip = tip
+      b.wantsLayer = true
+      b.layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.72).cgColor  // estimate
+      b.layer?.cornerRadius = Tokens.peekButtonSize.height / 2
+      buttons.append(b)
+      addSubview(b)
     }
-    bar.wantsLayer = true
-    bar.layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.72).cgColor  // estimate
-    bar.layer?.cornerRadius = 8
-    bar.layer?.cornerCurve = .continuous
-    addSubview(bar)
   }
   required init?(coder: NSCoder) { fatalError() }
 
@@ -219,38 +231,73 @@ public final class PeekOverlayView: FlippedView {
   }
 
   public override func mouseDown(with event: NSEvent) {
-    // Click outside the card closes the peek.
+    // Click outside the card (and its buttons) closes the peek.
     if !card.frame.contains(convert(event.locationInWindow, from: nil)) { onAction?("close") }
+  }
+
+  var cardFrame: NSRect {
+    let x = Tokens.peekInsetX, y = Tokens.peekInsetY
+    return NSRect(x: x, y: y, width: max(0, bounds.width - 2 * x), height: max(0, bounds.height - 2 * y)).integral
   }
 
   public override func layout() {
     super.layout()
     backdrop.frame = bounds
-    let i = Tokens.peekInset
-    card.frame = bounds.insetBy(dx: i, dy: i).offsetBy(dx: 0, dy: 10)
-    let bw = min(card.frame.width, max(200, ceil(titleLabel.textWidth) + 110))
-    bar.frame = NSRect(x: card.frame.maxX - bw, y: card.frame.minY - 34, width: bw, height: 28)
-    var x = bar.bounds.width
-    for v in bar.subviews.compactMap({ $0 as? IconButton }).sorted(by: { $0.tag < $1.tag }) {
-      x -= 28
-      v.frame = NSRect(x: x, y: 2, width: 24, height: 24)
+    card.frame = cardFrame
+    let bs = Tokens.peekButtonSize
+    for (i, b) in buttons.enumerated() {
+      b.frame = NSRect(x: card.frame.maxX + Tokens.peekButtonGap, y: card.frame.minY + CGFloat(i) * (bs.height + 6), width: bs.width, height: bs.height)
     }
-    titleLabel.frame = NSRect(x: 10, y: 5, width: max(0, x - 12), height: 18)
+    let tw = min(card.frame.width - 40, ceil(titleLabel.textWidth) + 22)
+    titlePill.isHidden = title.isEmpty
+    titlePill.frame = NSRect(x: (card.frame.midX - tw / 2).rounded(), y: card.frame.minY - 28, width: tw, height: 22)
+    titleLabel.frame = titlePill.bounds.insetBy(dx: 10, dy: 3)
+  }
+
+  /// Transform that scales a layer about its center (layers are anchored at their origin here).
+  static func scale(_ s: CGFloat, size: CGSize) -> CATransform3D {
+    var t = CATransform3DMakeTranslation(size.width / 2, size.height / 2, 0)
+    t = CATransform3DScale(t, s, s, 1)
+    return CATransform3DTranslate(t, -size.width / 2, -size.height / 2, 0)
   }
 
   func animateIn() {
-    guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { alphaValue = 1; return }
-    alphaValue = 0
-    NSAnimationContext.runAnimationGroup { c in
-      c.duration = Tokens.animationDuration
-      animator().alphaValue = 1
+    alphaValue = 1
+    guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+    layoutSubtreeIfNeeded()
+    let curve = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)  // estimate: Dia's web easing (spec §13)
+    for v in [backdrop, titlePill] + buttons {
+      let f = CABasicAnimation(keyPath: "opacity")
+      f.fromValue = 0
+      f.toValue = 1
+      f.duration = Tokens.peekOpenDuration
+      f.timingFunction = curve
+      v.layer?.add(f, forKey: "peekIn")
+    }
+    if let l = card.layer {
+      let g = CAAnimationGroup()
+      let sc = CABasicAnimation(keyPath: "transform")
+      sc.fromValue = Self.scale(Tokens.peekOpenScale, size: card.bounds.size)
+      sc.toValue = CATransform3DIdentity
+      let op = CABasicAnimation(keyPath: "opacity")
+      op.fromValue = 0
+      op.toValue = 1
+      g.animations = [sc, op]
+      g.duration = Tokens.peekOpenDuration
+      g.timingFunction = curve
+      l.add(g, forKey: "peekIn")
     }
   }
 
   func animateOut(_ done: @escaping @MainActor () -> Void) {
+    guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { done(); return }
     NSAnimationContext.runAnimationGroup({ c in
-      c.duration = Tokens.animationDuration * 0.8
+      c.duration = Tokens.peekCloseDuration
+      c.timingFunction = CAMediaTimingFunction(name: .easeIn)
       animator().alphaValue = 0
-    }, completionHandler: { MainActor.assumeIsolated { done() } })
+    }, completionHandler: { MainActor.assumeIsolated {
+      self.alphaValue = 1
+      done()
+    } })
   }
 }

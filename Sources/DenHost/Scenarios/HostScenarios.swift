@@ -8,7 +8,7 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear", "splitView", "dropIndicator"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -23,6 +23,11 @@ public enum HostScenarios {
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
       rt.call("ui", "set", ["slot": "dialog", "tree": dialogs[name]!])
+    case "peekCard":
+      seedSidebar(rt, appearance: appearance)
+      showContent(rt)
+      let id = page(rt, id: "peeked", title: "Swift.org", host: "swift.org", body: "A cross-site link from a pinned tab opens in Peek. Expand it into a tab, open it in a split, or press Esc.", tint: "#fff7f2")
+      rt.call("content", "peek", ["webview": .string(id), "title": "swift.org"])
     case "splitView":
       seedSidebar(rt, appearance: appearance)
       let a = page(rt, id: "t1", title: "Example Domain", body: "Left pane.")
