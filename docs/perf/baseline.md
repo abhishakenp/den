@@ -252,5 +252,8 @@ is unchanged.
 **Power assertions.** `pmset -g assertions` taken while den idled with example.com, with uBOL, and
 with the first-run store listed none from den or its WebKit processes.
 
-**Not measured:** launch time with `MallocLargeCache=0` in isolation (the CI job's launch numbers
-moved with the runner's load: 214–507 ms), energy (`powermetrics` needs root), a real 2x display.
+**Launch with `MallocLargeCache=0`:** no difference the runner can resolve. Alternating blocks of
+12 warm launches (reqMs median, min): off 337.3 / 259.7, on 263.0 / 248.2, off 462.2 / 273.6,
+on 488.6 / 299.6 ms ([36394683462](https://github.com/abhishakenp/den/actions/runs/36394683462));
+the same run confirmed the Info.plist value is what matters (`emptycompile@MallocLargeCache=1`
+71.3 MB). **Not measured:** energy (`powermetrics` needs root), a real 2x display.
