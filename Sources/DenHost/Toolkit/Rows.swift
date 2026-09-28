@@ -320,11 +320,15 @@ final class GridNode: NodeView {
     var i = 0, row = 0
     while i < count {
       let n = min(columns, count - i)
-      let w = ((width - sp * CGFloat(n - 1)) / CGFloat(n)).rounded(.down)
+      let avail = width - sp * CGFloat(n - 1)
+      let w = (avail / CGFloat(n)).rounded(.down)
+      // Whole points, the leftover spread one point per tile from the left: widths differ by ≤ 1.
+      let extra = Int((avail - w * CGFloat(n)).rounded(.down))
+      var x: CGFloat = 0
       for c in 0..<n {
-        let x = CGFloat(c) * (w + sp)
-        let cw = c == n - 1 ? width - x : w
+        let cw = c == n - 1 ? width - x : w + (c < extra ? 1 : 0)
         out.append(NSRect(x: x, y: CGFloat(row) * (h + sp), width: max(0, cw), height: h))
+        x += cw + sp
       }
       i += n
       row += 1
