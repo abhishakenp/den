@@ -24,10 +24,13 @@ for tool in perfprobe denstore; do swiftc -O $here/$tool.swift -o $bin/$tool; do
 probe=$bin/perfprobe denstore=$bin/denstore
 
 ent=$bin/ent.plist
-codesign -d --entitlements :- $app > $ent 2>/dev/null
-plutil -replace com.apple.security.get-task-allow -bool true $ent
-codesign --force --deep --options runtime --entitlements $ent --sign - $app 2>/dev/null
-codesign -d --entitlements :- $app 2>/dev/null | grep -q get-task-allow && echo "re-signed with get-task-allow"
+codesign -d --entitlements - --xml $app > $ent 2>/dev/null || true
+plutil -lint -s $ent >/dev/null 2>&1 || plutil -create xml1 $ent
+# PlistBuddy: plutil reads the dots in the key as a key path.
+/usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" $ent >/dev/null 2>&1 || true
+/usr/libexec/PlistBuddy -c "Add :com.apple.security.get-task-allow bool true" $ent
+codesign --force --deep --options runtime --entitlements $ent --sign - $app
+codesign -d --entitlements - --xml $app 2>/dev/null | grep -q get-task-allow && echo "re-signed with get-task-allow"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp" "$bin"' EXIT
