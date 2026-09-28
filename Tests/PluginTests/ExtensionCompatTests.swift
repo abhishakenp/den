@@ -96,6 +96,13 @@ struct ExtensionCompatTests {
     out.setZoom = typeof chrome.tabs?.setZoom;
     out.getBrowserInfo = typeof chrome.runtime?.getBrowserInfo;
     out.setAccessLevelNative = String(chrome.storage?.session?.setAccessLevel).includes('[native code]');
+    const events = {webNavigation: ['onHistoryStateUpdated', 'onReferenceFragmentUpdated', 'onCommitted', 'onCompleted', 'onBeforeNavigate', 'onDOMContentLoaded'],
+      tabs: ['onRemoved', 'onActivated', 'onReplaced', 'onUpdated', 'onCreated'], windows: ['onFocusChanged', 'onRemoved', 'onCreated'],
+      runtime: ['onInstalled', 'onStartup', 'onMessage', 'onConnect'], storage: ['onChanged']};
+    out.missingEvents = Object.entries(events).flatMap(([ns, es]) => es.filter(e => !chrome[ns] || !chrome[ns][e]).map(e => ns + '.' + e)).join(',');
+    out.windowIdNone = String(chrome.windows?.WINDOW_ID_NONE);
+    // Vimium's background as a module here: the error that stops it, if any.
+    try { await import('/background_scripts/main.js'); out.mainImport = 'ok'; } catch (e) { out.mainImport = 'error ' + e + ' ' + (e && e.stack || '').slice(0, 300); }
     out.browser = typeof browser;
     out.baseURL = chrome.runtime.getURL('');
     const d = Object.getOwnPropertyDescriptor(chrome.storage, 'session');
@@ -135,9 +142,16 @@ struct ExtensionCompatTests {
       send({tab: sender.tab ? {id: sender.tab.id, url: sender.tab.url, title: sender.tab.title} : null, url: sender.url, frameId: sender.frameId, origin: sender.origin, id: sender.id});
       return false;
     });
+    chrome.runtime.onMessage.addListener((m, sender, send) => {
+      if (!m || !m.denEchoAsync) return false;
+      setTimeout(() => send({late: true}), 50);
+      return true;
+    });
     try {
       const [e] = await chrome.scripting.executeScript({target: {tabId: t.id}, func: async () => JSON.stringify(await chrome.runtime.sendMessage({denEcho: 1}))});
       out.echo = e && e.result;
+      const [a] = await chrome.scripting.executeScript({target: {tabId: t.id}, func: async () => JSON.stringify(await chrome.runtime.sendMessage({denEchoAsync: 1}))});
+      out.echoAsync = a && a.result;
     } catch (e) { out.echo = 'error ' + e; }
     try {
       const [a] = await chrome.scripting.executeScript({target: {tabId: t.id}, func: async () => {
