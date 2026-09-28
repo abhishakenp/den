@@ -57,8 +57,8 @@ public final class Permissions {
   nonisolated static func parse(_ p: String) -> (kind: String, domain: String)? {
     let parts = p.split(separator: ":", maxSplits: 1).map(String.init)
     guard parts.count == 2, ["session", "net", "pages"].contains(parts[0]), !parts[1].isEmpty else { return nil }
-    // Only plain fetches may name every site (`net:*`); never cookies or page scripts.
-    if parts[0] != "net" && parts[1] == "*" { return nil }
+    // Cookies are never granted for every site (`net:*` and `pages:*` are).
+    if parts[0] == "session" && parts[1] == "*" { return nil }
     return (parts[0], parts[1].lowercased())
   }
 
