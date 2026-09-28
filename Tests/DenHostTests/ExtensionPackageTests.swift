@@ -131,10 +131,11 @@ struct ExtensionPackageTests {
     // WebKit rejects some patterns Chrome takes: that entry goes, the others stay.
     #expect(try ExtensionShim.apply(to: d, validPattern: { $0 != "file:///*" }))
     let out = try Self.manifest(d)
-    #expect((out["background"] as? [String: Any])?["service_worker"] as? String == "__den/worker.js")
-    #expect((out["background"] as? [String: Any])?["type"] as? String == "module")
-    let worker = try String(contentsOf: d.appendingPathComponent("__den/worker.js"), encoding: .utf8)
-    #expect(worker == "import \"/__den/background.js\";\nimport \"/__den/shim.js\";\nimport \"/bg/main.js\";\n")
+    // A module service worker becomes module background scripts, shim first.
+    let bg = out["background"] as? [String: Any]
+    #expect(bg?["service_worker"] == nil)
+    #expect(bg?["scripts"] as? [String] == ["__den/background.js", "__den/shim.js", "bg/main.js"])
+    #expect(bg?["type"] as? String == "module")
     let cs = out["content_scripts"] as? [[String: Any]]
     #expect(cs?[0]["js"] as? [String] == ["__den/shim.js", "a.js", "b.js"])
     #expect(cs?.count == 1)

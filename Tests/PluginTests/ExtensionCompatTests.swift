@@ -95,6 +95,7 @@ struct ExtensionCompatTests {
     out.getAllFrames = typeof chrome.webNavigation?.getAllFrames;
     out.setZoom = typeof chrome.tabs?.setZoom;
     out.getBrowserInfo = typeof chrome.runtime?.getBrowserInfo;
+    out.setAccessLevelNative = String(chrome.storage?.session?.setAccessLevel).includes('[native code]');
     out.browser = typeof browser;
     out.baseURL = chrome.runtime.getURL('');
     const d = Object.getOwnPropertyDescriptor(chrome.storage, 'session');
@@ -117,27 +118,61 @@ struct ExtensionCompatTests {
     }
   }
 
-  func vimiumOnPage(_ h: Harness, _ extId: String, mock: MockServices) async {
+  /// Vimium's iframes (vomnibar, HUD, help), which live in open shadow roots: class:display.
+  static let vimiumFrames = """
+    JSON.stringify([...document.querySelectorAll('div.vimium-reset')].flatMap(d => d.shadowRoot ? [...d.shadowRoot.querySelectorAll('iframe')] : [])
+      .map(f => f.className + ':' + getComputedStyle(f).display))
+    """
+
+  /// Vimium's keys on a real page: link hints (f), scrolling (j, G, gg), the vomnibar (o), find
+  /// (/) and tab switching (K). Returns what worked.
+  @discardableResult
+  func vimiumOnPage(_ h: Harness, _ extId: String, mock: MockServices) async -> [String: Bool] {
+    var ok: [String: Bool] = [:]
+    let other = h.tabs("open", ["url": .string(mock.base + "/links#other")]).s("id")
     let tab = h.tabs("open", ["url": .string(mock.base + "/links")]).s("id")
     h.tabs("select", ["id": .string(tab)])
     #expect(await wait { h.rt.webviews.record(tab)?.loading == false && h.rt.webviews.record(tab)?.webView != nil })
-    guard let w = h.rt.webviews.record(tab)?.webView else { return }
+    guard let w = h.rt.webviews.record(tab)?.webView else { return ok }
     TestMode.keepActive(w)
-    let css = await Wait.js(w, "getComputedStyle(document.documentElement).getPropertyValue('--vimium-background-color')") as? String ?? "?"
-    print("compat vimium css injected=\(css)")
+    ok["content script"] = await wait(20) { (await Wait.js(w, "getComputedStyle(document.documentElement).getPropertyValue('--vimium-background-color')") as? String ?? "") != "" }
     h.rt.window.window.makeFirstResponder(w)
-    print("compat firstResponder=\(String(describing: h.rt.window.window.firstResponder)) key=\(h.rt.window.window.isKeyWindow)")
     try? await Task.sleep(for: .seconds(2))
+    func y() async -> Double { await Wait.js(w, "window.scrollY") as? Double ?? -1 }
+
     press(w, "f", 3)
-    let hints = await wait(10) { (await Wait.js(w, "document.querySelectorAll('.vimiumHintMarker').length") as? Int ?? 0) > 0 }
-    let n = await Wait.js(w, "document.querySelectorAll('.vimiumHintMarker').length") as? Int ?? -1
-    let keys = await Wait.js(w, "JSON.stringify(window.__keys)") as? String ?? "?"
-    print("compat vimium f: hints=\(hints) markers=\(n) pageKeys=\(keys)")
+    ok["f link hints"] = await wait(10) { (await Wait.js(w, "document.querySelectorAll('.vimiumHintMarker').length") as? Int ?? 0) > 0 }
+    let markers = await Wait.js(w, "[...document.querySelectorAll('.vimiumHintMarker')].map(m => m.textContent).join(',')") ?? "?"
     press(w, "\u{1b}", 53)
-    try? await Task.sleep(for: .milliseconds(300))
+    try? await Task.sleep(for: .milliseconds(400))
     press(w, "j", 38)
-    let scrolled = await wait(10) { (await Wait.js(w, "window.scrollY") as? Double ?? 0) > 0 }
-    print("compat vimium j: scrolled=\(scrolled) y=\(await Wait.js(w, "window.scrollY") ?? "?") pageKeys=\(await Wait.js(w, "JSON.stringify(window.__keys)") ?? "?")")
+    ok["j scroll"] = await wait(10) { await y() > 0 }
+    press(w, "G", 5, shift: true)
+    ok["G bottom"] = await wait(10) { await y() > 2000 }
+    press(w, "g", 5)
+    press(w, "g", 5)
+    ok["gg top"] = await wait(10) { await y() == 0 }
+    press(w, "o", 31)
+    ok["o vomnibar"] = await wait(10) { (await Wait.js(w, Self.vimiumFrames) as? String ?? "").contains("vomnibar-frame:block") }
+    let framesAfterO = await Wait.js(w, Self.vimiumFrames) ?? "?"
+    press(w, "\u{1b}", 53)
+    try? await Task.sleep(for: .milliseconds(400))
+    h.rt.window.window.makeFirstResponder(w)
+    press(w, "/", 44)
+    ok["/ find"] = await wait(10) { (await Wait.js(w, Self.vimiumFrames) as? String ?? "").contains("hud:block") || (await Wait.js(w, Self.vimiumFrames) as? String ?? "").contains("hud-frame:block") }
+    let framesAfterFind = await Wait.js(w, Self.vimiumFrames) ?? "?"
+    press(w, "\u{1b}", 53)
+    try? await Task.sleep(for: .milliseconds(400))
+    h.rt.window.window.makeFirstResponder(w)
+    press(w, "K", 40, shift: true)
+    press(w, "J", 38, shift: true)
+    let before = h.selected
+    press(w, "K", 40, shift: true)
+    ok["K next tab"] = await wait(10) { h.selected != before }
+    let keys = await Wait.js(w, "JSON.stringify(window.__keys)") ?? "?"
+    print("compat vimium \(extId) results=\(ok.sorted { $0.key < $1.key }) markers=\(markers) framesAfterO=\(framesAfterO) framesAfterFind=\(framesAfterFind) selected=\(String(describing: h.selected)) other=\(other) pageKeys=\(keys)")
+    if let ctx = h.rt.extensions.contexts[extId] { print("compat vimium ctx errors=\(ctx.errors.map(\.localizedDescription))") }
+    return ok
   }
 
   static func pill(_ v: NSView) -> URLPillNode? {
@@ -198,7 +233,8 @@ struct ExtensionCompatTests {
     let id = try #require(viaPill)
     await report(h, id)
     _ = await probe(h, id, page: "pages/options.html", Self.apiProbe)
-    await vimiumOnPage(h, id, mock: mock)
+    let ok = await vimiumOnPage(h, id, mock: mock)
+    #expect(ok["content script"] == true && ok["f link hints"] == true && ok["j scroll"] == true)
   }
 
   @Test func vimiumFromFirefoxAddons() async throws {
@@ -212,7 +248,8 @@ struct ExtensionCompatTests {
     let id = try #require(await install(h, source: "firefox", id: "vimium-ff"))
     await report(h, id)
     _ = await probe(h, id, page: "pages/options.html", Self.apiProbe)
-    await vimiumOnPage(h, id, mock: mock)
+    let ok = await vimiumOnPage(h, id, mock: mock)
+    #expect(ok["content script"] == true && ok["f link hints"] == true && ok["j scroll"] == true)
   }
 
   @Test func otherPopularExtensions() async throws {

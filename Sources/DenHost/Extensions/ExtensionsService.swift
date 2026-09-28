@@ -336,7 +336,10 @@ public final class ExtensionsService: NSObject, HostService {
     // ~/.den/extensions is the developer's and stays as it is.
     if e.sourceKind != .home {
       do {
-        try ExtensionShim.apply(to: dir) { (try? WKWebExtension.MatchPattern(string: $0)) != nil }
+        // WebKit's content script parser takes no file: patterns (MatchPattern does): an entry
+        // with one fails to load with "has no specified `matches` entry", and with it every
+        // content script of the extension (Vimium on macOS 26.6).
+        try ExtensionShim.apply(to: dir) { !$0.lowercased().hasPrefix("file:") && (try? WKWebExtension.MatchPattern(string: $0)) != nil }
       } catch {
         record("shim \(e.id) \(e.name): \(error)")
       }
