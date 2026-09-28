@@ -46,6 +46,27 @@ macOS jobs** on the Free, Pro and Team plans (50 on Enterprise), 20 concurrent j
 Free. den is public, so standard runners cost nothing. A `ci-check.sh` run uses one macOS job, or
 two with `--snapshots`; more agents than that queue rather than fail.
 
+### Perf lab (memory A/B and bisection)
+
+A laptop that other agents are compiling on can't measure memory (loads of 5–800 moved den's idle
+footprint by megabytes). `.github/workflows/perf-lab.yml` measures on the runner instead:
+
+1. List what to measure in `scripts/perf/lab-refs`: one `<ref> <label> [scenario...]` per line
+   (`HEAD` is the pushed commit; put experiment variants on `lab/<name>` branches), and
+   `darkbench: yes|no`.
+2. Push the branch to `perf/<anything>`. Each ref builds on its own runner (a matrix job) and
+   `scripts/perf/lab.sh` runs every scenario 5 times from a fresh store copy: `empty`, `tabs200`,
+   `seeded`, `page`, `ubo` (uBlock Origin Lite from the Chrome Web Store), `emptycompile` (a launch
+   that compiles the Shields rule lists), `emptyload` (launched while busy loops load every core).
+   `<scenario>@K=V,K2=V2` runs den with that environment (malloc experiments).
+3. The job summary has the medians; the `perf-lab-<label>` artifact has the logs plus `heap`,
+   `vmmap -summary`, `footprint` and `pmset -g assertions` of the live den from each scenario's
+   first run (the lab copy is re-signed with `get-task-allow` so the tools can read it).
+   `scripts/perf/darkbench.swift` (the `darkbench` job) measures dark-mode stylesheet variants
+   on a generated 300-image page and captures each one.
+
+`ci/**` pruning doesn't cover `perf/**` and `lab/**`: delete those branches when done.
+
 ### Dev builds from CI
 
 Every green push to `main` uploads `den-<commit>.zip` (the `den-app` artifact, kept 14 days).

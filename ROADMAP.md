@@ -311,16 +311,19 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 - 🟡 Zero-resource inactive tabs: aggressive discard, snapshot on disk, instant restore; never discard audio/video/PiP tabs
   - ✅ idle tabs discarded after 5 min of den-frontmost time (configurable), tabs playing audio and on-screen tabs never discarded
-  - 🟡 near-zero per-tab cost (80 KB measured today against an 8 KB budget), snapshot on disk
+  - 🟡 near-zero per-tab cost: 85 → 17.5 KB per discarded tab on the CI runner (virtualized sidebar rows, menus built on right-click; [baseline](docs/perf/baseline.md#energy-lane-2026-09-28)), against an 8 KB budget
 - ✅ Protect recently used tabs from discard (the last 5); idle time counts only while den is frontmost
-- ⏳ Battery saver: sooner discards, pause background media and autoplay when unplugged or in Low Power Mode
-- ⏳ Never discard tabs with unsaved input, camera/mic in use, or on an "always keep active" list
+- ✅ Battery saver: on battery or in Low Power Mode, idle tabs unload after 1 minute, background video pauses, new pages don't autoplay (Settings ▸ Tabs, on by default)
+- ✅ Never discard tabs with unsaved input, camera/mic in use, or on an "always keep active" list ("Keep Site Active" in the tab menu)
 - ⏳ Dimmed icon on discarded tabs
-- ⏳ Unload a whole space or profile, by hand or automatically
+- 🟡 Unload a whole space or profile, by hand or automatically
+  - ✅ Unload Space (⌃⌘U, the space's menu)
+  - ⏳ a profile; automatically
 - ⏳ Per-tab memory view
-- ⏳ Never keep the Mac awake while idle
-- ⏳ Blank new tabs close when you switch apps
-- ⏳ Dark mode memory: +136 MB on a 300-image page from the root filter; find a cheaper approach
+- ✅ Never keep the Mac awake while idle: den holds no power assertion (`pmset -g assertions` with a page open, idle); media you can't see or hear pauses after 5 min without input
+- ✅ Blank new tabs close when you switch apps
+- 🟡 Dark mode memory: on the CI runner (1x) the sheet costs +3.9 MB 2.5 s after load and +17 MB at the scroll peak on a 300-image page, nothing once settled; the root filter itself costs nothing, the media re-invert does. No cheaper variant found yet (near-viewport re-invert, compositing layers: same or worse); the +136 MB was measured at 2x on a loaded Mac
+- ✅ Content rule list compiles no longer leave memory behind: a launch that compiles the Shields lists 74.3 → 18.6 MB, a page with uBlock Origin Lite 99.1 → 36.1 MB in den's process (`MallocLargeCache=0`)
 
 ## Performance
 
@@ -328,6 +331,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
   - ✅ den-wide budgets in [`docs/perf/budgets.json`](docs/perf/budgets.json) (launch, idle memory, one page, idle CPU and wakeups, per-discarded-tab), checked by `scripts/perf.sh`
   - ⏳ per-feature budgets; energy (needs `powermetrics`)
   - ⏳ enforce the budgets on every change; meet the aspirational ones (idle CPU, 8 KB per discarded tab)
+  - ✅ perf lab on the CI runner: repeated memory medians per scenario, heap/vmmap of the live app, A/B across refs ([docs/dev.md](docs/dev.md#perf-lab-memory-ab-and-bisection))
 - 🟡 Benchmarks against Safari, Arc, Dia, Zen (measured, published). WebKit alone isn't proof of efficiency: the one careful independent test found Chrome used less battery than Safari
   - ✅ launch, memory and idle CPU against Arc and Dia ([baseline](docs/perf/baseline.md)), measured on a loaded machine
   - ⏳ re-run on a quiet machine; add Safari and Zen

@@ -17,7 +17,7 @@
     "noTabsTotalMB": "as above.",
     "idleCpuPct": "target 0% with no active media; 0.1% is the measurement floor. Measured median 0.2%, max 0.3% (n=4, under load 200-580) - fails today (aspirational). top reported 0.0% CPU for the same process.",
     "idleWakeupsPerSec": "measured median 0.1/s, max 0.4/s (kernel pkg-idle + interrupt wakeups via proc_pid_rusage; top IDLEW showed 0 over 30 s).",
-    "perDiscardedTabKB": "target ~0 (metadata only). Measured (host with 200 never-loaded tabs 35.7 MB - host with none 20.0 MB) / 200 = 80 KB per tab - fails today (aspirational). A tab's stored record is ~170 bytes.",
+    "perDiscardedTabKB": "target ~0 (metadata only). M3 (2026-09-27): 80 KB per tab - fails (aspirational). CI runner perf lab after virtualized sidebar rows and on-demand tab menus (2026-09-28): 17.5 KB ((21.7 - 18.2 MB) / 200, n=5 medians; was 85 KB); scripts/perf.sh in CI: 15.9 KB. Still fails.",
     "onePageTotalMB": "den (empty store) + https://example.com opened at launch: total median 79.8 MB, max 81.1 MB (n=3), host 28.3 MB."
   },
   "reference": {
@@ -29,5 +29,19 @@
     "arcOnePageTotalMB": 366.8,
     "diaIdleCpuPct": 4.1,
     "arcIdleCpuPct": 1.3
+  },
+  "ciRunner": {
+    "note": "Measured on GitHub's macos-26 runner (Apple M1 (Virtual), 3 cores, 7 GB, macOS 26.6) by scripts/perf/lab.sh, n=5 medians of den's own process, 2026-09-28 (docs/perf/baseline.md 'Energy lane'). Reference for the report-only CI perf step; budgets above stay the M3 ones.",
+    "noTabsHostMB": 18.2,
+    "tabs200HostMB": 21.7,
+    "perDiscardedTabKB": 17.5,
+    "compileLaunchHostMB": 18.6,
+    "onePageHostMB": 23.3,
+    "onePageUBOLHostMB": 36.1,
+    "runs": [
+      "https://github.com/abhishakenp/den/actions/runs/36392006343",
+      "https://github.com/abhishakenp/den/actions/runs/36381480029",
+      "https://github.com/abhishakenp/den/actions/runs/36388177155"
+    ]
   }
 }

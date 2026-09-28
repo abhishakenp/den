@@ -162,7 +162,9 @@ Binary (`ls -l`, `otool -L`, `nm`): `den` 4,938,624 → 5,049,360 B (+110 KB: th
 the commits that landed on main in between: media, mini player, page tools). Network.framework and
 the 143 `MockServices` symbols are gone from the release binary. The bundle is 12.3 → 13.1 MB (`du`).
 
-**Open regression: no-tabs memory.** The same perf.sh run measured noTabs host 19.1 MB (before) and
+**No-tabs memory (resolved, see "Energy lane" below).** On the CI runner the lazy-plugin launch
+costs nothing at idle, and neither suspect does; what made den's idle memory jump was a launch that
+compiles content rule lists. The same perf.sh run measured noTabs host 19.1 MB (before) and
 23.5 MB (after), which fails the 21.5 MB budget. An interleaved recheck (`perfprobe mem`, seeded store,
 10 s settle, n=3 each, load 3–27) gave before 31.0/30.3/30.2 MB and after 36.0/32.9/32.6 MB. So
 "after" costs about +2.5–5 MB at idle. Suspects, not yet bisected: the symbol prewarm (catalog
@@ -180,3 +182,75 @@ Measured by `CloseLatencyTests` and `FlashTests` (`scripts/test.sh --filter …`
 | White pixels in the content card while a dark page loads (6 window snapshots, dark appearance) | 0.000 then 1.000 ×5 (white until WebKit's first paint) | 0.000 ×6 |
 
 Close time is dominated by creating the next tab's `WKWebView`; what the change removed is one extra sidebar render (≈3 ms measured per `renderPage` with this sidebar) and the second snapshot of the closed page (asynchronous, so it doesn't show in the key-to-screen time). Launch and memory weren't re-measured with `scripts/perf.sh`: the load average stayed above 6 throughout.
+
+## Energy lane, 2026-09-28
+
+All numbers from the **perf lab** on GitHub's `macos-26` runner (Apple M1 (Virtual), 3 cores,
+7 GB, macOS 26.6; [docs/dev.md](../dev.md#perf-lab-memory-ab-and-bisection)): `scripts/perf/lab.sh`,
+5 launches per scenario from a fresh copy of the store, medians, den's own process
+(`phys_footprint`, "host"). The runner is a different machine from the M3 above, so compare
+before/after within a row only. The template store is made by a first launch that runs 20 s,
+so its Shields rule lists are compiled, like any launch after the first.
+
+| den process, MB (n=5 medians) | before (`main` 3308f1e) | after | runs |
+|---|---:|---:|---|
+| no tabs | 20.2 | **18.2** | [before/after](https://github.com/abhishakenp/den/actions/runs/36381480029), [final](https://github.com/abhishakenp/den/actions/runs/36392006343) |
+| 200 discarded (never-loaded) tabs | 37.2 | **21.7** | same |
+| **per discarded tab** ((200 tabs − none) / 200) | **85 KB** | **17.5 KB** | same |
+| a launch that compiles the Shields lists (first launch, or after a list update), 40 s after | 74.3 | **18.6** | [36385726026](https://github.com/abhishakenp/den/actions/runs/36385726026), [final](https://github.com/abhishakenp/den/actions/runs/36392006343) |
+| one page (example.com), 45 s after | 25.7 | **23.3** | same |
+| one page + uBlock Origin Lite, 45 s (before) / 90 s (after) | 99.1 | **36.1** | same |
+
+`scripts/perf.sh` in the CI job agrees: `discardedTab.KB` 84.5 on `main` before
+([36371902598](https://github.com/abhishakenp/den/actions/runs/36371902598)) and 15.9 after
+([36392020597](https://github.com/abhishakenp/den/actions/runs/36392020597)).
+
+**The no-tabs regression.** On the runner, neither suspect moves idle memory: no tabs 18.8 MB
+without the SF Symbols prewarm ([36373724566](https://github.com/abhishakenp/den/actions/runs/36373724566)),
+19.0 MB with every plugin loaded before the first frame (`lab/eager`) and 18.8 MB with the prewarm
+([36378297538](https://github.com/abhishakenp/den/actions/runs/36378297538)). What does move it is a
+launch that compiles content rule lists: WebKit's compiler peaked at 282–351 MB in den's process and
+malloc then kept 32–38 MB of freed large blocks (`MALLOC_LARGE (empty)` in `vmmap`) dirty for the
+whole session. The lab caught it whenever the store had no compiled lists (46–57 MB "empty" runs).
+`malloc_zone_pressure_relief` did not release those blocks (72.1 vs 74.2 MB); turning malloc's
+large cache off did: `emptycompile` 71.1 MB, `@MallocLargeCache=0` 18.5 MB,
+`@MallocDeferredReclaim=0` 71.8, `@MallocAggressiveMadvise=1` 72.6
+([36388177155](https://github.com/abhishakenp/den/actions/runs/36388177155)). den now ships
+`MallocLargeCache=0` in Info.plist's `LSEnvironment`.
+
+**uBlock Origin Lite** (+73 MB in den's process). It isn't the controller or a live context: `heap`
+counted 10.3 MB allocated in the default zone. WebKit converts uBOL's declarativeNetRequest rules
+to content rule lists in den's process (peak 550–622 MB), and the same large-block cache kept
+39 MB plus fragmented small blocks. `ubo` 100.8 MB, `@MallocLargeCache=0` 35.8 MB
+(36388177155), and 36.1 MB with the Info.plist setting: uBOL now costs +12.8 MB over the same page.
+Whether a persistent controller (the real profile) recompiles at every launch was not measured.
+
+**Per discarded tab** (85 → 17.5 KB). `heap` of 200 tabs against none showed every tab owning a
+full row of views (≈8 NSViews with layers, labels, tracking areas) and a context menu carried in its
+row's node. Now the sidebar virtualizes `tabRow`/`splitRow` (views only within 200 pt of the visible
+area; 39 of 200 rows made in `ServiceTests.longListsAreVirtualized`) and tab menus are built on
+right-click (`ui.menu`). What's left per tab: the tabs plugin's record, the storage cache's copy,
+the host's `WebRecord` (256 B) and the row's node value, 2.26 MB of live heap for 200 tabs
+(11 KB each), plus malloc fragmentation.
+
+**Dark mode** (`darkbench`, a generated 300-image page, 1200×800 window, the page's WebContent
+process, n=5, [36381480029](https://github.com/abhishakenp/den/actions/runs/36381480029)):
+
+| sheet | 2.5 s after load | peak while scrolling | 3 s after |
+|---|---:|---:|---:|
+| none | 31.3 | 89.1 | 75.9 |
+| den's (root filter + media re-inverted) | 35.2 | 106.3 | 60.2 |
+| root filter only (photos inverted) | 31.0 | 86.3 | 60.7 |
+| media re-inverted only near the viewport (script) | 34.6 | 102.5 | 60.7 |
+
+The root filter costs nothing measurable; re-inverting media costs +3.9 MB after load and +17 MB
+at the scroll peak, and nothing once settled. Compositing layers for the media (`will-change`)
+measured worse (peak 151–158 MB, n=3). The runner draws at 1x; the +136 MB in
+`docs/research/dark-mode.md` was a 2x Mac under load, which the runner can't reproduce. The sheet
+is unchanged.
+
+**Power assertions.** `pmset -g assertions` taken while den idled with example.com, with uBOL, and
+with the first-run store listed none from den or its WebKit processes.
+
+**Not measured:** launch time with `MallocLargeCache=0` in isolation (the CI job's launch numbers
+moved with the runner's load: 214–507 ms), energy (`powermetrics` needs root), a real 2x display.
