@@ -20,6 +20,10 @@ extension Harness {
   /// Starts spaces, tabs and the command bar, like the real load order.
   @discardableResult
   func startCommandBar() -> CommandBarCore {
+    // A fresh fake per harness: a finished test's Harness can leave its entry behind under an
+    // ObjectIdentifier that a new Harness at the same address then reuses.
+    fakeBrowsers[ObjectIdentifier(self)] = FakeBrowsers()
+    pendingSuggest[ObjectIdentifier(self)] = nil
     if rt.plugins.serviceNames.contains("tabs") == false { startTabs() }
     // Offline: web suggestions never answer unless a test answers them (see `answerSuggestions`).
     suggest.fetch = { [weak self] q, done in
