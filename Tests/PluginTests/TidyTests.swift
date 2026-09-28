@@ -115,7 +115,7 @@ struct TidyTests {
     #expect(Set(f.map { $0.s("title") }) == ["Lisbon Trip", "Swift"])
     #expect(f.allSatisfy { $0["open"] == false && $0["auto"] == false })
     let tripFolder = f.first { $0.s("title") == "Lisbon Trip" } ?? .null
-    let trip = tripFolder.list("children").map { h.tabs("get", ["id": $0["id"]]).s("url") }
+    let trip = tripFolder.list("children").map { $0.s("url") }
     #expect(Set(trip) == ["https://www.visitlisboa.com/", "https://en.wikipedia.org/wiki/Lisbon"])
     // Rendered as Today groups; the rest stay loose.
     #expect(h.tree("sidebar.today", 0)["children"].array?.filter { $0["type"] == "folder" }.allSatisfy { $0["style"] == "group" } == true)
