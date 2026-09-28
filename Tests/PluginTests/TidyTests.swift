@@ -83,7 +83,7 @@ struct TidyTests {
     let (h, _) = setUp(ai)
     // No Tidy button on the divider; its menu names Clear's shortcut.
     #expect(divider(h)["secondary"].isNull && divider(h)["action"] == "Clear")
-    #expect(divider(h)["menu"] == [["id": "clear", "title": "Clear Today", "icon": "sf:arrow.down", "key": "cmd+shift+k"]])
+    #expect(divider(h)["menu"] == [["id": "clear", "title": "Clear Today", "icon": "sf:arrow.down", "key": "cmd+shift+k", "keyFor": "tabs.key.clear"]])
     let tabs = (h.rt.call("settings", "list").array ?? []).first { $0.s("id") == "tabs" }
     let schema = tabs?["schema"].array ?? []
     #expect(schema.first { $0.s("key") == "tabs.tidy" }?["value"] == false)
