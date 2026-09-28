@@ -49,6 +49,9 @@ struct TidyTests {
     let h = Harness()
     h.rt.ai.generator = ai
     let core = h.startTabs()
+    // Start from an empty Today (the first-run seed has a few tabs there).
+    let sid = core.currentSpace
+    for id in core.looseToday(sid) where id != core.selected[sid] { core.archiveTab(id, space: sid) }
     for u in urls { h.tabs("open", ["url": .string(u), "background": true]) }
     return (h, core)
   }
@@ -101,10 +104,12 @@ struct TidyTests {
     // On: Tidy on the divider (hover), and in its menu with ⌃⇧T.
     #expect(divider(h)["secondary"] == ["id": "tidy", "title": "Tidy", "icon": "sf:sparkles", "always": false])
     #expect(divider(h)["menu"].array?.first?["key"] == "ctrl+shift+t")
+    h.record(["ai.result"])
     h.action(divider(h).s("id"), "tidy")
     // Busy: the button stays up as "Tidying…".
     #expect(divider(h)["secondary"]["title"] == "Tidying…" && divider(h)["secondary"]["always"] == true)
-    #expect(await until { folders(h).count == 2 })
+    let done = await until { folders(h).count == 2 }
+    #expect(done, "ai.result: \(h.events.map { $0.1 }); prompts: \(ai.prompts); toasts: \(h.rt.ui.toasts.map { $0.label.stringValue })")
     let f = folders(h)
     #expect(Set(f.map { $0.s("title") }) == ["Lisbon Trip", "Swift"])
     #expect(f.allSatisfy { $0["open"] == false && $0["auto"] == false })
