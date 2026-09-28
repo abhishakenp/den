@@ -54,7 +54,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | [Searchable archive of closed tabs](guide/sidebar-and-tabs.md) | ✅ | ? | ❌ | ✅ | The Library (⌘Y / ⇧⌘L) |
 | [Folders, nested](guide/sidebar-and-tabs.md) | ✅ | tab groups | ✅ | ✅ | |
 | [Folder hover preview](guide/hover-previews.md) | ✅ | ✅ group flyout | ? | 🟡 | ✅ hover card listing the folder's tabs. Being built: a collapsed folder keeps its active tab visible, and a hover flyout with "+ New Tab" |
-| Live folders (GitHub PRs, RSS) | ✅ GitHub only | ✅ many services | ✅ GitHub + RSS | ⏳ | Fed by den's connections: unread pip, "N ✓" popover, PR stacks |
+| [Live folders (GitHub PRs, RSS)](guide/connections-and-briefing.md#live-folders) | ✅ GitHub only | ✅ many services | ✅ GitHub + RSS | 🟡 | ✅ GitHub, fed by the connection: unread dots, "N ✓" Recently Closed popover, PR stacks, a sign-in row. ⏳ RSS |
 | ⌘-click a link groups it with its source tab | ? | ✅ | ? | ⏳ | Dia-style: both go into a Today folder named after the site; dissolves at one tab |
 | Folder shortcuts: ⌃⌘N folder from selection, ⌥⌘T new tab in folder | ? | ✅ | ? | ⏳ | |
 | [Rename tabs](guide/sidebar-and-tabs.md) | ✅ | ? | ✅ | ✅ | Tabs ▸ Rename Tab |
@@ -139,7 +139,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | [Mini player when leaving a video tab](guide/media.md) | ✅ | ✅ | ? | ✅ | den's own player, on by default: frameless, on top, seek, volume/mute, ±10 s, speed, back to tab, resize/snap. Native PiP as the fallback |
 | Mini player extras: keep-on-top toggle, tuck off-screen, hostname chip, Firefox's PiP keys, subtitles | ? | ✅ | ? | ⏳ | |
 | [Audio controls in sidebar](guide/media.md) | ✅ | ✅ | ✅ | 🟡 | ✅ speaker and mute. ⏳ hover play/pause/skip for any tab playing audio |
-| Calendar countdown, Join button, meeting reminder | ✅ | ✅ meeting groups | ❌ | 🟡 | ✅ Join on the calendar hover card. ⏳ reminder card and pinned-calendar countdown |
+| [Calendar countdown, Join button, meeting reminder](guide/connections-and-briefing.md#google-calendar) | ✅ | ✅ meeting groups | ❌ | ✅ | Join on the calendar hover card, a reminder card with Join before each meeting, "in 8m" on the Calendar favorite. ⏳ dragging the card, meeting groups |
 | Camera, mic and screen-share badges on tabs | ✅ | ✅ | ? | ⏳ | |
 
 ## Page tools
@@ -161,7 +161,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | [Connections: Slack, GitHub](guide/connections-and-briefing.md) | ❌ | ✅ | ❌ | ✅ | Session-based: you sign in to the site inside den, and den reuses that session. No den account, no OAuth app, no den server. Multiple Slack workspaces |
 | Auto-connect when you're already signed in | ❌ | ✅ | ❌ | ⏳ | A cookie-store observer, no polling, with a "GitHub connected · Undo" toast |
 | Important Slack channels and GitHub repos | ❌ | ? | ❌ | ⏳ | Ranked higher in the briefing and feed |
-| More connections: Gmail, Calendar, Notion, Linear, Jira, … | ❌ | ✅ | ❌ | ⏳ | Each one a plugin, in that order |
+| [More connections: Gmail, Calendar, Notion, Linear, Jira, …](guide/connections-and-briefing.md) | ❌ | ✅ | ❌ | 🟡 | ✅ Gmail, Google Calendar, Notion, each its own plugin (session reuse; tested against local fakes). ⏳ Linear, Jira |
 | [No tokens stored](guide/connections-and-briefing.md) | — | ❌ on Dia's servers | — | ✅ | Session tokens are read on demand and kept in memory only; nothing is written to disk or the Keychain |
 | Official OAuth sign-in option | — | ? | — | ⏳ | Optional, for people who don't want session reuse |
 | [Daily briefing / todo list](guide/connections-and-briefing.md) | ❌ | ✅ $100/mo | ❌ | ✅ | 8:00 by default; todos link to their source and can be checked off |

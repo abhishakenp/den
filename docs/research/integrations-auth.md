@@ -4,6 +4,8 @@
 
 > **Decision (2026-09-27, by the user, after reading the risks below):** den ships session reuse ("Option B") for Slack and GitHub: no OAuth apps, nothing to register. You sign in to the site inside den and den reads that session from its own WebKit data store. This goes against this document's recommendation for Slack (§1 "Session reuse", §10): `xoxc` web-client tokens are unsupported and arguably fall under the API ToS circumvention clause. Mitigations in the build: requests only go to the service itself, volume stays near a normal web client (~~8–10~~ → at most about 20 *(corrected 2026-09-28: Plugins/slack/SlackCore.swift:11–15)* Slack requests per workspace and 4 GitHub requests per refresh, only when a connection exists), tokens stay in memory, and no message data is persisted beyond the todo titles you keep. See docs/plugin-services.md (`connections`, `slack`, `github`).
 
+> **Update (2026-09-28):** Gmail, Google Calendar and Notion ship the same way (session reuse, each its own plugin). Their feasibility and terms risks are in [§11](#11-session-reuse-for-gmail-google-calendar-and-notion-2026-09-28). Short version: Calendar low risk, Gmail medium, Notion high (its terms ban automated access in so many words).
+
 Researched 2026-09-27 from official docs, fetched this session. Anything not confirmed on an official page is marked **UNVERIFIED**.
 
 Goal: a local-first macOS browser where tokens live in the Keychain, API calls go directly from the Mac, there is ideally no den-operated server, and any shipped secret is public. We don't reuse other apps' client credentials. The data feeds on-device Foundation Models, which build the briefing, todos and feed.
@@ -306,3 +308,41 @@ Minimal token-exchange proxy, e.g. one Cloudflare Worker:
 | Atlassian | User-created scoped API token (secretless, avoids 3LO points limits), or 3LO via proxy | No (API token) / **Yes** (3LO) | Low; unreviewed-app warning for 3LO | Medium; tokens expire ≤1 yr; third-party collection of API tokens not addressed (UNVERIFIED) |
 
 **Session reuse** (cookies or `xoxc` against internal web APIs): don't. For Slack it is unsupported and arguably breaches the API ToS circumvention clause. For the other providers it wasn't researched: **UNVERIFIED**, treat it as the same risk class.
+
+## 11. Session reuse for Gmail, Google Calendar and Notion (2026-09-28)
+
+What den builds (by the user's decision, as for Slack and GitHub): each service reads through the session you signed in to inside den. Nothing is registered with Google or Notion, requests go only to the service, and nothing is kept beyond memory (except what you type into Settings). Sources were fetched on 2026-09-28; anything not confirmed is marked **UNVERIFIED**. None of this has been exercised against a signed-in real account: every flow is tested against local fakes (`MockServices`).
+
+### Gmail: medium risk
+
+- **Route.** Gmail's Atom feed, `GET https://mail.google.com/mail/u/<n>/feed/atom`, with the profile's Google cookies. One request per account per refresh (15 min while connected), plus up to 4 when connecting (one per signed-in account, found by walking `u/0`, `u/1`, …).
+- **It's documented.** Google documents the feed at https://developers.google.com/workspace/gmail/gmail_inbox_feed ("Last updated 2026-09-03"): `GET https://mail.google.com/mail/feed/atom`, and "OAuth 2.0 is the preferred authentication method. Use the scope `https://mail.google.com/mail/feed/atom`". It says nothing about cookies. No deprecation notice on that page; elsewhere **UNVERIFIED**.
+- **Caveat that matters.** The same page says: "This feed is only available for Gmail accounts on Google Workspace domains." Whether personal @gmail.com accounts still get it is **UNVERIFIED** (den's Gmail hover card has used the same feed since before this lane). If they don't, a personal account simply won't connect ("Sign in to Gmail…" stays).
+- **The `/u/<n>/` form** for several signed-in accounts isn't on that page (**UNVERIFIED**); it is what Gmail's own URLs use.
+- **What the feed can't say.** It lists unread inbox threads only: sender, subject, snippet, time. "Awaiting your reply" is therefore a heuristic: unread mail from a person, not from an automated sender. Whether the feed covers only the Primary tab when inbox categories are on is **UNVERIFIED**.
+- **Terms.** Google's Terms (https://policies.google.com/terms, effective July 30, 2026) ban "using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)", and "bypassing our systems or protective measures". den fetches one documented feed for the signed-in user, at a person's pace, bypassing nothing; the cookie route rather than the documented OAuth scope is the gap. Verdict: **medium**.
+- **Session signal.** The `SID` cookie (Google's cookie policy names `SID`/`HSID` as sign-in cookies, see dia-shortlist §1). Google rotates other cookies on most page loads, so while connected den only re-reads the cookie on a change, and a session whose feed failed once isn't probed again until `SID` changes.
+
+### Google Calendar: low risk
+
+- **Route, without any Calendar request.** den reads today's events from the calendar.google.com page you already have open (a favorite or pinned Calendar tab is the usual case): when it finishes loading, and on each briefing refresh while it's live, a script in an isolated world reads the event chips Google rendered (`[data-eventid]`, their aria-label: time range, title, date, a Meet/Zoom/Teams link). The page's own time zone and locale apply; events stay in memory for the day, so the tab may unload afterwards. Google's markup can change at any time: that is the fragility, not the terms.
+- **Why not a request.** Checked 2026-09-28: `calendar/embed` renders events client-side (the HTML has no event data), and `calendar/htmlembed` now redirects to the marketing page. Google's internal calendar JSON endpoints are **UNVERIFIED** (no source found). The Calendar API needs OAuth.
+- **Documented fallback: the secret iCal address.** Settings ▸ Connections ▸ Google Calendar takes the calendar's "Secret address in iCal format" (https://support.google.com/calendar/answer/37648): "Only you should know the Secret Address for your calendar. Do not share this address with other people", and "If you accidentally shared your calendar's Secret Address, click Reset". den stores it in its local settings (storage ns `calendar`) and sends it only to that address. For work accounts, "your admin might've changed the sharing settings for your calendar. If you can't find the Secret Address, ask your admin". Whether admins can switch it off entirely is **UNVERIFIED**. A public holiday calendar's `/public/basic.ics` was fetched to confirm the format (RFC 5545 from "Google Calendar 70.9054").
+- **Limits of the fallback.** `TZID=` times are read in the Mac's zone (plugins have no time zone database); recurring rules cover what calendars write in practice (see `Plugins/calendar/ICS.swift`).
+- **Verdict: low.** Reading a page the user has open adds no traffic; the address is an official feature.
+
+### Notion: high risk
+
+- **Route.** Notion's internal web API, the one its own app calls: `POST https://www.notion.so/api/v3/getSpaces {}` (workspaces and the account), then `POST /api/v3/getNotificationLogV2 {spaceId, size: 20, type: "unread_and_read", variant: "no_grouping"}` per enabled workspace and refresh, with the `token_v2` cookie and `x-notion-active-user-header`. Shapes come from open-source clients (notification-aggregator, opentabs, notion-py, acapela, NotionKeeper), not from Notion.
+- **Checked against a live response (unauthenticated, public page).** `POST /api/v3/loadPageChunk` for Notion's public "Terms and Privacy" page (2026-09-28) returned records nested as `{spaceId, value: {value, role}}`: the newer nesting, which den unwraps (as well as the older `{value, role}`). The notification endpoint itself was not called (it needs an account).
+- **No official alternative.** Notion's public API (https://developers.notion.com/reference/intro) has no notifications or mentions endpoint, and its OAuth needs a client secret and a reviewed public integration (§5).
+- **Terms.** Notion's Personal Use Terms of Service (the "Terms and Privacy" page on notion.so, read 2026-09-28; notion.com/terms now redirects to a JavaScript-only app.notion.com page) list, among things you may not do: "use any robot, spider, crawlers or other automatic device, process, software or queries that intercepts, “mines,” scrapes or otherwise accesses the Service to monitor, extract, copy or collect information or data from or through the Service", and "duplicate, decompile, reverse engineer, disassemble or decode the Service". den's background read of your notifications is automated access to monitor and extract data, through an API learned by reverse engineering. Business workspaces fall under the Master Subscription Agreement instead (its full restriction list wasn't read: **UNVERIFIED**).
+- **Verdict: high.** Unlike Slack (where a ban is arguable) this is a plain conflict with the text. Mitigations in the build: requests only to Notion, at most 1 + (workspaces) requests per 15 min, unread notifications only, nothing stored. **Decide before a release** whether Notion stays, stays opt-in only (no auto-connect), or waits for an official notifications API.
+
+### Summary
+
+| Service | Route | Requests (while connected) | Documented? | Terms risk |
+|---|---|---|---|---|
+| Gmail | Atom feed with the session | 1 per account per 15 min | Feed yes (OAuth preferred; "Workspace domains" only) | Medium |
+| Google Calendar | The open Calendar page's DOM; secret iCal address as fallback | 0 (page) / 1 per 15 min (address) | Address yes; DOM no | Low |
+| Notion | Internal `/api/v3` with `token_v2` | 1 + 1 per workspace per 15 min | No | **High** |

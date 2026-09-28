@@ -14,7 +14,7 @@ import Testing
 struct LiveFoldersTests {
   func item(_ repo: String, _ n: Int, _ kind: String, head: String = "", base: String = "") -> Value {
     var v: Value = ["id": .string("github:" + repo + "#" + String(n)), "key": .string(repo + "#" + String(n)), "source": "github", "kind": .string(kind),
-                    "title": .string("PR " + String(n)), "url": .string("https://github.com/" + repo + "/pull/" + String(n)), "where": .string(repo)]
+                    "title": .string("PR " + String(n)), "url": .string("https://gh.example/" + repo + "/pull/" + String(n)), "where": .string(repo)]
     if !head.isEmpty { v.put("head", .string(head)); v.put("base", .string(base)) }
     return v
   }
@@ -33,6 +33,11 @@ struct LiveFoldersTests {
   /// The live folder node in the current space's pinned slot.
   func folder(_ h: Harness, _ fid: String) -> Value {
     h.tree("sidebar.pinned", 0).list("children").first { $0.s("id") == fid } ?? .null
+  }
+
+  /// Whether any node in the tree carries `unread: true`.
+  func anyUnread(_ node: Value) -> Bool {
+    node["unread"] == true || node.list("children").contains { anyUnread($0) }
   }
 
   func rowIds(_ node: Value) -> [String] {
@@ -74,7 +79,7 @@ struct LiveFoldersTests {
     #expect(stackNode.s("title") == "den · 3 PRs")
     #expect(stackNode.list("children").map { $0.s("id") } == ["live:" + fid + ":github:denhq/den#209", "live:" + fid + ":github:denhq/den#218",
                                                                 "live:" + fid + ":github:denhq/den#219"])
-    #expect(!ValueJSON.string(node).contains("\"unread\":true"))
+    #expect(!anyUnread(node))
     #expect(node["badge"].isNull)
 
     // Next refresh: the review was given (gone: done), something new arrived (unread).
@@ -100,8 +105,8 @@ struct LiveFoldersTests {
     h.action("live:" + fid + ":github:acme/web#2", "click")
     #expect(tabs.tabs.count == base + 1)
     opened = tabs.tabs.values.map(\.url)
-    #expect(opened.contains("https://github.com/acme/web/pull/2"))
-    #expect(!ValueJSON.string(folder(h, fid)).contains("\"unread\":true"))
+    #expect(opened.contains("https://gh.example/acme/web/pull/2"))
+    #expect(!anyUnread(folder(h, fid)))
     // A second click goes to that tab instead of opening another.
     h.action("live:" + fid + ":github:acme/web#2", "click")
     #expect(tabs.tabs.count == base + 1)
@@ -119,7 +124,7 @@ struct LiveFoldersTests {
     h.action("live.done:" + fid + ":github:acme/api#7", "click", ["button": "restore"])
     #expect(folder(h, fid).s("badge") == "1 ✓")
     #expect(rowIds(folder(h, fid)).contains("live:" + fid + ":github:acme/api#7"))
-    #expect(tabs.tabs.values.contains { $0.url == "https://github.com/acme/api/pull/7" })
+    #expect(tabs.tabs.values.contains { $0.url == "https://gh.example/acme/api/pull/7" })
 
     // Stacks collapse and stay collapsed.
     h.action("livestack:" + fid + ":github:denhq/den#209", "toggle")
@@ -144,7 +149,7 @@ struct LiveFoldersTests {
   @Test func favoriteCountdownChip() {
     let h = Harness()
     let tabs = h.startTabs()
-    let id = h.tabs("open", ["url": "https://calendar.google.com/calendar/u/0/r", "kind": "favorite"]).s("id")
+    let id = h.tabs("open", ["url": "https://calendar.google.com/calendar/u/0/r", "kind": "favorite", "background": true]).s("id")
     func tile() -> Value { h.rt.ui.sidebarView.slot("sidebar.favorites", page: 0)?.root?.node.list("children").first { $0.s("id") == id } ?? .null }
     #expect(tile()["badge"].isNull)
     #expect(h.tabs("badge", ["owner": "calendar", "host": "calendar.google.com", "text": "in 8m"]) == ["ok": true])

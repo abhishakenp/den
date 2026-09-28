@@ -118,7 +118,8 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ Drag and drop: reorder, into folders, onto a space icon, onto the page to split, onto a split row
 - 🟡 Folders, including live folders fed by GitHub or RSS (from Zen)
   - ✅ nested folders: create, rename, delete (archives the tabs), collapse, hover card listing their tabs
-  - ⏳ live folders: unread pip, done items into an "N ✓" recently-closed popover, PR stacks, reauth cue
+  - ✅ GitHub live folders ("New GitHub Live Folder"): rows from the GitHub connection's feed, unread dots (and a dot on a collapsed folder), done items into an "N ✓" chip with a Recently Closed popover, PR stacks from head/base branches, a sign-in row when signed out; no polling of their own
+  - ⏳ RSS live folders; two-line rows ("author • state") and the PR peek's actions on live rows
   - ✅ folders in Today (groups), with Dia's panel look
   - ✅ a collapsed folder keeps its active tab visible; its hover card switches to a tab and has "New Tab"
   - ✅ folder shortcuts: ⌃⌘N folder from selection (⌘/⇧-click to pick), ⌥⌘T new tab in folder, drag onto folder, rename on create, undo
@@ -195,7 +196,8 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ AutoPiP like Safari, on by default: den's own mini player opens when leaving a tab or app while a video plays
 - ✅ Tabs playing audio are never archived or unloaded, and updates never relaunch during playback
 - ⏳ Camera, mic and screen-share badges on tabs, click to turn off
-- ⏳ Meeting reminder card with Join, snapping to corners, plus a pinned-calendar countdown
+- ✅ Meeting reminder card with Join, View and Dismiss (window's top-right corner, 2 minutes before by default), plus an "in 8m" countdown on the Calendar favorite
+- ⏳ Reminder card you can drag and that snaps to corners; Meeting Tab Groups on join
 
 ## Extensions
 
@@ -217,18 +219,22 @@ Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 
 Details and sources: [Dia notes](docs/research/dia.md), [Dia shortlist](docs/research/dia-shortlist.md).
 
-How it connects (user decision, see [auth research](docs/research/integrations-auth.md)): no OAuth apps. You sign in to slack.com or github.com inside den like any site, and den reuses that session from its own WebKit data store (`session` + `net` host services, gated per plugin by declared `session:<domain>` permissions). Shipped items are verified end to end against a local fake Slack/GitHub (`MockServices`); a first real sign-in has not been verified.
+How it connects (user decision, see [auth research](docs/research/integrations-auth.md)): no OAuth apps. You sign in to slack.com, github.com, Google or Notion inside den like any site, and den reuses that session from its own WebKit data store (`session` + `net` host services, gated per plugin by declared `session:<domain>` permissions). Shipped items are verified end to end against local fakes of all five services (`MockServices`); a first real sign-in has not been verified.
 
 - ✅ Connection plugins: Slack (unread DMs, mentions, threads awaiting your reply; workspace picker) and GitHub (review requests, mentions, assigned issues, failing CI on your PRs)
 - ✅ Multiple Slack workspaces at once, each switchable in Settings ▸ Connections
 - ✅ "Connect X": opens the sign-in page in a tab, detects the session, toasts "X connected"; disconnect; sign-out detected
 - ✅ Auto-connect like Dia: already signed in to github.com/Slack in den, or signing in later, connects automatically (a `WKHTTPCookieStore` observer, event-driven, zero polling) with a "GitHub connected · Undo" toast; the same for every connection plugin
 - ✅ Important Slack channels (across workspaces) and important GitHub repos: ranked higher in the briefing and feed, never dropped from the summary; picker in Settings and via the command bar
-- ⏳ More connections as plugins, in this order: Gmail (per-account switching) and Google Calendar (choose calendars; from the session, without an iCal paste if feasible), then Notion, then Linear and Jira/Confluence, then Outlook's calendar from a loaded tab. Drive/Docs activity via Gmail. Skipped: Teams, SharePoint, Zoom, Figma, YouTube, LinkedIn, Sheets
+- ✅ Gmail (every signed-in account, switchable; unread mail, "waiting for your reply" from people, Google Docs activity from its notification mail) and Google Calendar (today's events read from the open Calendar page, no requests; the secret iCal address as a documented fallback), each its own lazy plugin with auto-connect. Risks: [auth research §11](docs/research/integrations-auth.md#11-session-reuse-for-gmail-google-calendar-and-notion-2026-09-28)
+- ✅ Notion (mentions, comments, pages shared with you, per workspace) through its internal web API. Its terms forbid automated access: decide before a release whether it stays, becomes connect-only, or waits for an official API
+- ⏳ Choose which calendars show; Calendar data without an open tab or pasted address (no verified session route yet)
+- ⏳ More connections as plugins: Linear and Jira/Confluence, then Outlook's calendar from a loaded tab. Skipped: Teams, SharePoint, Zoom, Figma, YouTube, LinkedIn, Sheets
 - ✅ No tokens stored: session tokens are read on demand and kept in memory only; connections run locally
 - ⏳ Official OAuth option (Slack PKCE / GitHub device flow) for users who don't want session reuse
 - ✅ Daily briefing (Slack + GitHub) summarized with a todo list, prepared at a set time (8:00 by default, catches up after sleep or launch)
-- ⏳ Briefing sources beyond Slack and GitHub: today's calendar, emails awaiting a reply
+- ✅ Briefing sources beyond Slack and GitHub: today's calendar (a Today section), emails awaiting a reply, Notion mentions and comments
+- ✅ Settings ▸ Connections: every connection with its status, account and workspace pickers, Important…, Disconnect
 - ✅ Briefing todos can be checked off (persisted) and link back to the exact message, PR or thread
 - ✅ Personalized feed: one stream across connections, ranked by kind, recency and what you open
 - ✅ Connections load and sync only when used: nothing polls until a connection exists, then a 15-minute refresh and on wake
