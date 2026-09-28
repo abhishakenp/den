@@ -1,14 +1,12 @@
 import type { Release } from "@/lib/release";
 import { REPO_URL } from "@/lib/site";
-import { Shot } from "@/components/ui/Shot";
-import { HeroStats } from "@/components/HeroStats";
 import { ArrowIcon, DownloadIcon } from "@/components/ui/Icons";
 
 type Props = { release: Release };
 
 export const Hero = ({ release }: Props) => (
-  <section id="top" className="relative overflow-hidden px-4 pt-16 sm:px-6 sm:pt-24">
-    <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[900px]">
+  <section id="top" className="relative overflow-clip px-4 pb-10 pt-16 sm:px-6 sm:pb-14 sm:pt-24">
+    <div aria-hidden className="hero-parallax pointer-events-none absolute inset-x-0 top-0 -z-10 h-[900px]">
       <div className="hearth absolute left-1/2 top-[260px] h-[620px] w-[1100px] -translate-x-1/2 animate-glow" />
       <div className="arch-ring absolute left-1/2 top-[120px] h-[760px] w-[760px] -translate-x-1/2" />
       <div className="arch-ring absolute left-1/2 top-[200px] h-[680px] w-[560px] -translate-x-1/2 opacity-70" />
@@ -24,15 +22,21 @@ export const Hero = ({ release }: Props) => (
         <ArrowIcon className="size-3.5" />
       </a>
 
-      <h1 className="animate-rise mt-7 text-balance text-5xl font-semibold leading-[0.98] tracking-[-0.035em] [animation-delay:80ms] sm:text-7xl">
-        <span className="text-gradient">Arc&rsquo;s feel.</span>{" "}
-        <span className="font-serif font-normal italic tracking-[-0.01em] ember-text">A fraction</span>{" "}
-        <span className="text-gradient">of the weight.</span>
+      <h1 className="mt-7 text-balance text-5xl font-semibold leading-[0.98] tracking-[-0.035em] sm:text-7xl">
+        {/* Fixed line breaks on phones, so the web fonts swapping in can't reflow the hero. */}
+        <span className="text-gradient">Arc&rsquo;s feel.</span>
+        <br className="sm:hidden" />{" "}
+        <span className="whitespace-nowrap">
+          <span className="font-serif font-normal italic tracking-[-0.01em] ember-text">A fraction</span>{" "}
+          <span className="text-gradient">of</span>
+        </span>
+        <br />
+        <span className="text-gradient">the weight.</span>
       </h1>
 
-      <p className="animate-rise mx-auto mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-ink-soft [animation-delay:160ms] sm:text-xl">
-        den is an open-source macOS browser on the system&rsquo;s WebKit, built from Embedded Swift plugins you can
-        hot-swap while it runs. It idles at <span className="text-ink">20&nbsp;MB</span>.
+      <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-ink-soft sm:text-xl">
+        den is an open-source macOS browser built on WebKit, the engine behind Safari, and made of plugins you can
+        swap while it runs. It idles at <span className="text-ink">20&nbsp;MB</span>.
       </p>
 
       <div className="animate-rise mt-9 flex flex-col items-center justify-center gap-3 [animation-delay:240ms] sm:flex-row">
@@ -56,12 +60,5 @@ export const Hero = ({ release }: Props) => (
       </p>
     </div>
 
-    <div className="relative mx-auto mt-16 max-w-6xl sm:mt-20">
-      <Shot src="/shots/main-dark.png" alt="den's main window in dark mode: sidebar with favorites, pinned tabs, a Reading folder and Today tabs" priority sizes="(min-width: 1200px) 1152px, 100vw" />
-    </div>
-    <HeroStats />
-    <p className="mt-3 text-center font-mono text-[11px] text-ink-mute">
-      Measured on a busy M3 MacBook Air, macOS 26.5. <a href="#numbers" className="underline decoration-line-2 underline-offset-4 hover:text-ink-soft">Conditions and comparisons</a>
-    </p>
   </section>
 );

@@ -6,7 +6,9 @@ export const Nav = () => (
   <nav className="sticky top-0 z-50 border-b border-line/60 bg-ground/70 backdrop-blur-xl">
     <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
       <a href="#top" className="flex items-center gap-2.5 font-semibold tracking-tight">
-        <Image src="/den-icon.png" alt="" width={28} height={28} className="rounded-[7px] shadow-[0_0_0_1px_rgb(255_255_255/0.08)]" />
+        <span className="doorway doorway-live inline-flex">
+          <Image src="/den-icon.png" alt="" width={28} height={28} className="rounded-[7px] shadow-[0_0_0_1px_rgb(255_255_255/0.08)]" />
+        </span>
         <span className="text-lg">den</span>
       </a>
       <ul className="hidden items-center gap-1 text-sm text-ink-soft md:flex">

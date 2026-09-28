@@ -1,0 +1,329 @@
+/*
+ * Page-wide touches. Everything animated here is transform, opacity or filter,
+ * driven by scroll timelines where supported; without them (or with reduced
+ * motion) every element simply shows its final state.
+ */
+
+/* ---------- backdrop: den's theme gradients, drifting with the page ---------- */
+
+.aurora {
+  position: fixed;
+  inset: -20vh 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.aurora i {
+  position: absolute;
+  inset: 0;
+}
+.aurora i:nth-child(1) {
+  background:
+    radial-gradient(40% 35% at 18% 30%, rgb(98 70 100 / 0.32), transparent 70%),
+    radial-gradient(35% 30% at 85% 60%, rgb(217 105 47 / 0.12), transparent 70%);
+}
+.aurora i:nth-child(2) {
+  opacity: 0;
+  background:
+    radial-gradient(40% 35% at 80% 25%, rgb(52 104 120 / 0.28), transparent 70%),
+    radial-gradient(35% 35% at 15% 75%, rgb(104 84 200 / 0.18), transparent 70%);
+}
+
+@keyframes aurora-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(0, -14vh, 0) scale(1.15); }
+}
+@keyframes aurora-b {
+  0% { opacity: 0; transform: translate3d(0, 10vh, 0); }
+  35%, 65% { opacity: 1; }
+  100% { opacity: 0.3; transform: translate3d(0, -10vh, 0); }
+}
+
+/* ---------- section reveals ---------- */
+
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- keycaps ---------- */
+
+.keycap {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.55rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--color-line-2);
+  border-bottom-width: 3px;
+  background: linear-gradient(180deg, var(--color-panel-2), var(--color-panel));
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: var(--color-ink);
+}
+.keycap::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 1px rgb(244 162 76 / 0.6), 0 0 18px rgb(244 162 76 / 0.45);
+  opacity: 0;
+}
+@keyframes key-press {
+  0%, 100% { transform: none; }
+  40%, 60% { transform: translateY(2px); }
+}
+@keyframes key-lit {
+  0% { opacity: 0; }
+  40%, 70% { opacity: 1; }
+  100% { opacity: 0.35; }
+}
+
+/* ---------- cursor-reactive glow (ScrollFx sets --gx/--gy on hover) ---------- */
+
+/* overflow: clip, not hidden: a hidden box is a scroll container, and view()
+   timelines inside it would track it instead of the page. */
+[data-glow] {
+  position: relative;
+  overflow: clip;
+}
+[data-glow]::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: -200px;
+  top: -200px;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(244 162 76 / 0.1), transparent);
+  opacity: 0;
+  transform: translate(var(--gx, -999px), var(--gy, -999px));
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+[data-glow]:hover::before {
+  opacity: 1;
+}
+
+/* ---------- counters ---------- */
+
+/* <number>, rounded where it's used: WebKit doesn't round <integer> mid-animation. */
+@property --n {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+@property --k {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+@counter-style pad3 {
+  system: extends decimal;
+  pad: 3 "0";
+}
+.count-anim {
+  display: none;
+}
+@keyframes count {
+  from { --n: 0; --k: 0; }
+  to { --n: var(--to); --k: var(--tok); }
+}
+
+/* ---------- plugin hot-swap ---------- */
+
+.swap {
+  view-timeline: --swap block;
+}
+.swap-tile {
+  backface-visibility: hidden;
+}
+
+@keyframes swap-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-60%) rotateX(70deg); }
+}
+@keyframes swap-in {
+  from { opacity: 0; transform: translateY(60%) rotateX(-70deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pulse {
+  0% { opacity: 0; transform: scale(0.6); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+@keyframes chip {
+  0% { opacity: 0; transform: translateY(6px); }
+  30%, 100% { opacity: 1; transform: none; }
+}
+
+/* ---------- den's doorway ---------- */
+
+.doorway {
+  position: relative;
+  isolation: isolate;
+}
+.doorway::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 20% 10% -30%;
+  border-radius: 50% 50% 0 0;
+  background: radial-gradient(60% 70% at 50% 60%, rgb(255 196 122 / 0.55), rgb(244 162 76 / 0.2) 50%, transparent 75%);
+  filter: blur(24px);
+  opacity: 0.5;
+  transform: scale(0.85);
+}
+@keyframes door {
+  from { opacity: 0.2; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1.15); }
+}
+@keyframes door-breathe {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
+/* ---------- metric bars ---------- */
+
+.bar-fill {
+  transform-origin: left;
+}
+@keyframes grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .aurora i:nth-child(1) {
+      animation: aurora-a linear both;
+      animation-timeline: scroll(root);
+    }
+    .aurora i:nth-child(2) {
+      animation: aurora-b linear both;
+      animation-timeline: scroll(root);
+    }
+    .reveal {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 55%;
+    }
+    .keycap {
+      animation: key-press linear both;
+      animation-timeline: view();
+      animation-range: cover calc(40% + var(--k, 0) * 4%) cover calc(48% + var(--k, 0) * 4%);
+    }
+    .keycap::after {
+      animation: key-lit linear both;
+      animation-timeline: view();
+      animation-range: cover calc(40% + var(--k, 0) * 4%) cover calc(60% + var(--k, 0) * 4%);
+    }
+    .bar-fill {
+      animation: grow linear both;
+      animation-timeline: view();
+      animation-range: entry 20% cover 40%;
+    }
+    .count-anim {
+      display: inline-block;
+      min-width: calc(var(--w) * 1ch);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      animation: count linear both;
+      animation-timeline: view();
+      animation-range: entry 20% cover 40%;
+      counter-reset: n round(down, var(--n), 1) k round(down, var(--k), 1);
+    }
+    .count-anim::before {
+      content: counter(n);
+    }
+    .count-anim[data-thousands]::before {
+      content: counter(k) "," counter(n, pad3);
+    }
+    .count-static {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .doorway::before {
+      animation: door linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 50%;
+    }
+    .swap-old {
+      animation: swap-out linear both;
+      animation-timeline: --swap;
+      animation-range: cover 38% cover 46%;
+    }
+    .swap-new {
+      animation: swap-in linear both;
+      animation-timeline: --swap;
+      animation-range: cover 44% cover 52%;
+    }
+    .swap-ui-old {
+      animation: st-out linear both;
+      animation-timeline: --swap;
+      animation-range: cover 46% cover 52%;
+    }
+    .swap-ui-new {
+      animation: st-in linear both;
+      animation-timeline: --swap;
+      animation-range: cover 46% cover 52%;
+    }
+    .swap-pulse {
+      animation: pulse linear both;
+      animation-timeline: --swap;
+      animation-range: cover 46% cover 58%;
+    }
+    .swap-chip {
+      animation: chip linear both;
+      animation-timeline: --swap;
+      animation-range: cover 48% cover 56%;
+    }
+  }
+}
+
+/* Without scroll timelines: final states. */
+@supports not (animation-timeline: view()) {
+  .swap-old,
+  .swap-ui-old,
+  .swap-pulse {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .swap-old,
+  .swap-ui-old,
+  .swap-pulse {
+    opacity: 0;
+  }
+}
+
+/* The hero icon: a lit doorway, breathing slowly. */
+.doorway-live::before {
+  opacity: 0.85;
+  transform: scale(1.1);
+}
+
+@keyframes hero-drift {
+  to { transform: translateY(18%) scale(1.08); opacity: 0.35; }
+}
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-parallax {
+      animation: hero-drift linear both;
+      animation-timeline: scroll(root);
+      animation-range: 0 100svh;
+    }
+  }
+}
+
+/* Below-the-fold sections skip rendering until they come near the viewport. */
+main > section:nth-of-type(n + 3) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1000px;
+}

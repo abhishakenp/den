@@ -11,7 +11,7 @@ type Props = {
 };
 
 export const Shot = ({ src, alt, width = 1280, height = 803, priority, sizes, className = "" }: Props) => (
-  <div className={`shot-frame overflow-hidden rounded-[14px] bg-panel ${className}`}>
+  <div className={`shot-frame overflow-clip rounded-[14px] bg-panel ${className}`}>
     <Image
       src={src}
       alt={alt}

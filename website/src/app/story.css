@@ -1,0 +1,781 @@
+/*
+ * The pinned den window.
+ *
+ * Layout is in the 1280×803 space of the real screenshots: --u is one
+ * screenshot pixel, derived from the window's width with container units.
+ *
+ * Scenes are CSS scroll-driven animations keyed to each beat's view timeline
+ * (--b1…--b8), so they run on the compositor with no JS per frame. Only
+ * transform, opacity and filter are animated. The base styles below are the
+ * opening state; browsers without scroll-driven animations, or with reduced
+ * motion, get stepped states from ScrollFx (data-mode="steps").
+ */
+
+.story {
+  timeline-scope: --b1, --b2, --b3, --b4, --b5, --b6, --b7, --b8;
+}
+[data-beat="1"] { view-timeline: --b1 block; }
+[data-beat="2"] { view-timeline: --b2 block; }
+[data-beat="3"] { view-timeline: --b3 block; }
+[data-beat="4"] { view-timeline: --b4 block; }
+[data-beat="5"] { view-timeline: --b5 block; }
+[data-beat="6"] { view-timeline: --b6 block; }
+[data-beat="7"] { view-timeline: --b7 block; }
+[data-beat="8"] { view-timeline: --b8 block; }
+
+/* ---------- layout ---------- */
+
+.st-stage-col {
+  display: contents;
+}
+.st-pin {
+  pointer-events: none;
+  position: sticky;
+  top: 4rem;
+  z-index: 10;
+  padding: 0.75rem 0 1rem;
+  background: linear-gradient(var(--color-ground) 88%, transparent);
+}
+.st-persp {
+  perspective: 2000px;
+}
+.st-beat {
+  min-height: 72svh;
+}
+.st-beat-text {
+  position: sticky;
+  /* just under the pinned window on phones */
+  top: calc(4.75rem + (100vw - 2rem) * 0.6273 + 1.5rem);
+  padding-bottom: 2rem;
+}
+.st-beats {
+  padding-bottom: 30svh;
+}
+@media (min-width: 640px) {
+  .st-beat-text {
+    top: calc(4.75rem + (100vw - 3rem) * 0.6273 + 1.5rem);
+  }
+}
+@media (min-width: 1024px) {
+  .st-stage-col {
+    display: block;
+  }
+  .st-pin {
+    top: 4rem;
+    height: calc(100svh - 4rem);
+    display: flex;
+    align-items: center;
+    padding: 0;
+    background: none;
+  }
+  .st-persp {
+    width: 100%;
+  }
+  .st-beat {
+    min-height: 100svh;
+  }
+  .st-beat-text {
+    top: calc(50svh - 5rem);
+    padding-bottom: 0;
+  }
+  .st-beats {
+    padding-top: 30svh;
+    padding-bottom: 40svh;
+  }
+}
+
+/* ---------- window ---------- */
+
+.st-window {
+  position: relative;
+  container-type: inline-size;
+  aspect-ratio: 1280 / 803;
+  border-radius: 0.94% / 1.5%;
+  transform-origin: 50% 100%;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.08),
+    0 40px 100px -30px rgb(0 0 0 / 0.9),
+    0 60px 160px -50px rgb(217 105 47 / 0.35);
+}
+.st-ui {
+  --u: calc(100cqw / 1280);
+  position: absolute;
+  inset: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-sans);
+  color: #f4eef4;
+  user-select: none;
+}
+.st-theme {
+  position: absolute;
+  inset: 0;
+  border-radius: calc(12 * var(--u));
+}
+.st-theme-a {
+  background:
+    radial-gradient(90% 60% at 0% 0%, rgb(118 97 122 / 0.55), transparent 70%),
+    linear-gradient(165deg, #4d404f 0%, #3f3342 55%, #4b3b46 100%);
+}
+.st-theme-b {
+  opacity: 0;
+  background:
+    radial-gradient(90% 60% at 0% 0%, rgb(84 146 160 / 0.5), transparent 70%),
+    radial-gradient(70% 50% at 100% 100%, rgb(120 96 220 / 0.35), transparent 70%),
+    linear-gradient(165deg, #2d4b5b 0%, #273a50 55%, #36325c 100%);
+}
+
+/* ---------- sidebar ---------- */
+
+.st-sidebar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(199 * var(--u));
+  height: 100%;
+  font-size: calc(13 * var(--u));
+}
+.st-lights {
+  position: absolute;
+  left: calc(14 * var(--u));
+  top: calc(14 * var(--u));
+  display: flex;
+  gap: calc(8 * var(--u));
+}
+.st-lights i {
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  border-radius: 50%;
+  background: #ff5f57;
+}
+.st-lights i:nth-child(2) { background: #febc2e; }
+.st-lights i:nth-child(3) { background: #28c840; }
+.st-tool {
+  position: absolute;
+  top: calc(12 * var(--u));
+  width: calc(16 * var(--u));
+  height: calc(16 * var(--u));
+  opacity: 0.8;
+}
+.st-tool-dim { opacity: 0.35; }
+.st-url {
+  position: absolute;
+  left: calc(8 * var(--u));
+  top: calc(40 * var(--u));
+  width: calc(183 * var(--u));
+  height: calc(31 * var(--u));
+  padding-left: calc(11 * var(--u));
+  line-height: calc(31 * var(--u));
+  border-radius: calc(8 * var(--u));
+  background: rgb(255 255 255 / 0.1);
+  font-weight: 600;
+}
+.st-favs {
+  position: absolute;
+  left: calc(8 * var(--u));
+  top: calc(80 * var(--u));
+  display: flex;
+  gap: calc(7 * var(--u));
+}
+.st-tile {
+  display: grid;
+  place-items: center;
+  width: calc(41 * var(--u));
+  height: calc(41 * var(--u));
+  border-radius: calc(9 * var(--u));
+  background: rgb(255 255 255 / 0.1);
+}
+.st-fav {
+  flex: none;
+  width: calc(16 * var(--u));
+  height: calc(16 * var(--u));
+  background: url("/story/favicons.webp") no-repeat;
+  background-size: calc(14 * 16 * var(--u)) calc(16 * var(--u));
+  background-position: calc(var(--i) * -16 * var(--u)) 0;
+}
+.st-tile .st-fav {
+  width: calc(20 * var(--u));
+  height: calc(20 * var(--u));
+  background-size: calc(14 * 20 * var(--u)) calc(20 * var(--u));
+  background-position: calc(var(--i) * -20 * var(--u)) 0;
+}
+.st-lists {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: calc(768 * var(--u));
+  overflow: hidden;
+}
+.st-list {
+  position: absolute;
+  inset: 0;
+}
+.st-list-b {
+  transform: translateX(100%);
+}
+.st-space {
+  position: absolute;
+  left: calc(16 * var(--u));
+  height: calc(24 * var(--u));
+  display: flex;
+  align-items: center;
+  gap: calc(9 * var(--u));
+  font-weight: 700;
+}
+.st-glyph {
+  flex: none;
+  width: calc(15 * var(--u));
+  height: calc(15 * var(--u));
+  opacity: 0.85;
+}
+.st-row {
+  position: absolute;
+  left: calc(8 * var(--u));
+  width: calc(183 * var(--u));
+  height: calc(32 * var(--u));
+  display: flex;
+  align-items: center;
+  gap: calc(9 * var(--u));
+  padding-left: calc(7 * var(--u));
+  border-radius: calc(8 * var(--u));
+  font-weight: 500;
+  white-space: nowrap;
+}
+.st-row-indent { padding-left: calc(19 * var(--u)); }
+.st-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-chev {
+  margin-left: auto;
+  margin-right: calc(10 * var(--u));
+  opacity: 0.6;
+}
+.st-divider {
+  position: absolute;
+  left: calc(16 * var(--u));
+  width: calc(167 * var(--u));
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  transform: translateY(-50%);
+  font-size: calc(10.5 * var(--u));
+  font-weight: 600;
+  opacity: 0.75;
+}
+.st-divider-line {
+  flex: 1;
+  height: 1px;
+  background: rgb(255 255 255 / 0.18);
+}
+.st-newtab {
+  position: absolute;
+  left: calc(16 * var(--u));
+  height: calc(32 * var(--u));
+  display: flex;
+  align-items: center;
+  gap: calc(10 * var(--u));
+  opacity: 0.75;
+}
+.st-plus {
+  font-size: calc(17 * var(--u));
+  font-weight: 300;
+  line-height: 1;
+}
+.st-sel,
+.st-hover {
+  position: absolute;
+  left: calc(8 * var(--u));
+  width: calc(183 * var(--u));
+  height: calc(32 * var(--u));
+  border-radius: calc(8 * var(--u));
+  background: rgb(255 255 255 / 0.17);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+}
+.st-hover {
+  background: rgb(255 255 255 / 0.09);
+  box-shadow: none;
+  opacity: 0;
+}
+.st-bottom {
+  position: absolute;
+  left: 0;
+  top: calc(772 * var(--u));
+  width: 100%;
+  height: calc(18 * var(--u));
+}
+.st-bottom .st-tool { top: 0; }
+.st-dot {
+  position: absolute;
+  top: calc(5 * var(--u));
+  width: calc(8 * var(--u));
+  height: calc(8 * var(--u));
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.3);
+}
+.st-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #fff;
+}
+.st-dot-work::after { opacity: 0; }
+.st-bottom-plus {
+  position: absolute;
+  left: calc(172 * var(--u));
+  top: calc(-2 * var(--u));
+  opacity: 0.8;
+}
+
+/* ---------- content card ---------- */
+
+.st-card {
+  position: absolute;
+  overflow: hidden;
+  border-radius: calc(10 * var(--u));
+  background: #000;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.35),
+    0 calc(4 * var(--u)) calc(20 * var(--u)) rgb(0 0 0 / 0.25);
+}
+.st-card > * {
+  position: absolute;
+}
+.st-fill {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.st-split {
+  inset: 0;
+}
+.st-pane {
+  position: absolute;
+  overflow: hidden;
+  border-radius: calc(6 * var(--u));
+  opacity: 0;
+}
+.st-split-r::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: calc(2.5 * var(--u)) solid #8a70f0;
+  border-radius: inherit;
+}
+.st-drop {
+  border-radius: calc(8 * var(--u));
+  background: rgb(122 98 230 / 0.22);
+  box-shadow: inset 0 0 0 calc(2 * var(--u)) rgb(160 135 255 / 0.85);
+  opacity: 0;
+}
+.st-videobg,
+.st-dim,
+.st-brief {
+  inset: 0;
+  opacity: 0;
+}
+.st-videobg { background: #050505; }
+.st-dim { background: rgb(12 9 16 / 0.55); }
+.st-brief { background: #1c1b22; }
+.st-cmd {
+  overflow: hidden;
+  border-radius: calc(12 * var(--u));
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.1),
+    0 calc(24 * var(--u)) calc(70 * var(--u)) rgb(0 0 0 / 0.7);
+  opacity: 0;
+}
+.st-cmd-field {
+  position: absolute;
+  inset: 0 0 auto;
+  height: calc(52 * var(--u));
+  display: flex;
+  align-items: center;
+  padding-left: calc(21 * var(--u));
+  background: #1c1b22;
+  font-size: calc(17 * var(--u));
+  color: #f2f1f6;
+}
+.st-cmd-icon {
+  width: calc(14 * var(--u));
+  height: calc(14 * var(--u));
+  margin-right: calc(12 * var(--u));
+  opacity: 0.55;
+}
+.st-ch { opacity: 0; }
+.st-cmd-cover {
+  position: absolute;
+  inset: calc(52 * var(--u)) 0 0;
+  background: #1c1b22;
+  transform-origin: 50% 100%;
+}
+.st-peek {
+  overflow: hidden;
+  border-radius: calc(12 * var(--u));
+  box-shadow: 0 calc(30 * var(--u)) calc(80 * var(--u)) rgb(0 0 0 / 0.55);
+  transform-origin: 51.6% 29.3%;
+  opacity: 0;
+}
+.st-peek-chrome {
+  inset: 0;
+  opacity: 0;
+}
+.st-pill {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgb(38 36 44 / 0.92);
+  font-size: calc(11 * var(--u));
+  font-weight: 600;
+}
+.st-peek-btns {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: calc(4 * var(--u));
+}
+.st-peek-btns i {
+  display: grid;
+  place-items: center;
+  width: calc(34 * var(--u));
+  height: calc(34 * var(--u));
+  border-radius: 50%;
+  background: rgb(38 36 44 / 0.92);
+  font-size: calc(15 * var(--u));
+  font-style: normal;
+}
+
+/* ---------- window overlays ---------- */
+
+.st-track {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.st-ghost { opacity: 0; }
+.st-ghost-row {
+  font-size: calc(13 * var(--u));
+  background: rgb(58 78 100 / 0.94);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.22),
+    0 calc(10 * var(--u)) calc(28 * var(--u)) rgb(0 0 0 / 0.5);
+  transform: rotate(-2deg) scale(1.04);
+}
+.st-pr {
+  position: absolute;
+  overflow: hidden;
+  border-radius: calc(12 * var(--u));
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.08),
+    0 calc(18 * var(--u)) calc(50 * var(--u)) rgb(0 0 0 / 0.6);
+  transform-origin: 0 0;
+  opacity: 0;
+}
+.st-mini {
+  position: absolute;
+  overflow: hidden;
+  border-radius: calc(12 * var(--u));
+  transform-origin: 100% 100%;
+  box-shadow: 0 calc(24 * var(--u)) calc(60 * var(--u)) rgb(0 0 0 / 0.6);
+  opacity: 0;
+}
+.st-cursor {
+  opacity: 0;
+  transform: translate(59.4%, 64.8%);
+}
+.st-arrow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(17 * var(--u));
+  height: calc(21 * var(--u));
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5));
+}
+.st-ring {
+  position: absolute;
+  left: calc(-14 * var(--u));
+  top: calc(-14 * var(--u));
+  width: calc(28 * var(--u));
+  height: calc(28 * var(--u));
+  border-radius: 50%;
+  border: calc(2 * var(--u)) solid rgb(255 255 255 / 0.9);
+  opacity: 0;
+}
+
+/* ---------- keyframes ---------- */
+
+@keyframes st-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes st-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes st-beat {
+  0% { filter: brightness(0.25); transform: translateY(1.5rem); }
+  25%, 75% { filter: none; transform: none; }
+  100% { filter: brightness(0.25); transform: translateY(-1rem); }
+}
+@keyframes st-tilt {
+  from { transform: rotateX(24deg) scale(0.86) translateY(6%); }
+  to { transform: none; }
+}
+@keyframes st-slide {
+  from { opacity: 0; transform: translateX(-14%); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes st-swipe-out { from { transform: none; } to { transform: translateX(-100%); } }
+@keyframes st-swipe-in { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes st-pop {
+  from { opacity: 0; transform: translateY(-3%) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes st-unroll { from { transform: scaleY(1); } to { transform: scaleY(0); } }
+@keyframes st-peek-in {
+  from { opacity: 0; transform: scale(0.06); }
+  35% { opacity: 1; }
+  to { opacity: 1; transform: none; }
+}
+@keyframes st-shrink {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(0.92); }
+}
+@keyframes st-split-in {
+  from { opacity: 0; transform: translateX(14%); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes st-drag {
+  0% { opacity: 0; transform: none; }
+  12% { opacity: 1; transform: none; }
+  100% { opacity: 1; transform: translate(56.25%, -7.35%); }
+}
+@keyframes st-card-in {
+  from { opacity: 0; transform: translateY(3%) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes st-sel-down { from { transform: none; } to { transform: translateY(calc(71.2 * var(--u))); } }
+@keyframes st-sel-up { from { transform: translateY(calc(71.2 * var(--u))); } to { transform: none; } }
+@keyframes st-float {
+  from { transform: none; }
+  to { transform: translate(6.1%, 26.3%) scale(0.27); }
+}
+@keyframes st-rise {
+  from { opacity: 0; transform: translateY(5%); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes st-ring {
+  0% { opacity: 0; transform: scale(0.3); }
+  25% { opacity: 0.9; }
+  100% { opacity: 0; transform: scale(1.6); }
+}
+/* cursor path, in % of the window */
+@keyframes st-c1 { from { transform: translate(59.4%, 64.8%); } to { transform: translate(57.4%, 33.4%); } }
+@keyframes st-c2 { from { transform: translate(57.4%, 33.4%); } to { transform: translate(7.8%, 57.2%); } }
+@keyframes st-c3 { from { transform: translate(7.8%, 57.2%); } to { transform: translate(64.1%, 49.8%); } }
+@keyframes st-c4 { from { transform: translate(64.1%, 49.8%); } to { transform: translate(8.6%, 48.3%); } }
+@keyframes st-c5 { from { transform: translate(8.6%, 48.3%); } to { transform: translate(7.8%, 61.6%); } }
+@keyframes st-c6 { from { transform: translate(7.8%, 61.6%); } to { transform: translate(7.8%, 52.8%); } }
+
+/* ---------- scroll-driven scenes ---------- */
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .st-beat-text {
+      animation: st-beat linear both;
+      animation-timeline: view();
+      animation-range: cover 10% cover 90%;
+    }
+    .st-window {
+      animation: st-tilt linear both;
+      animation-timeline: --b1;
+      animation-range: cover 0% cover 30%;
+    }
+
+    /* 1 · tabs appear */
+    .st-tabx {
+      animation: st-slide linear both;
+      animation-timeline: --b1;
+      animation-range: cover calc(24% + var(--n) * 5%) cover calc(34% + var(--n) * 5%);
+    }
+
+    /* 2 · swipe to Work, the theme morphs */
+    .st-list-a {
+      animation: st-swipe-out linear both;
+      animation-timeline: --b2;
+      animation-range: cover 24% cover 38%;
+    }
+    .st-list-b {
+      animation: st-swipe-in linear both;
+      animation-timeline: --b2;
+      animation-range: cover 24% cover 38%;
+    }
+    .st-theme-b,
+    .st-dot-work::after {
+      animation: st-in linear both;
+      animation-timeline: --b2;
+      animation-range: cover 22% cover 40%;
+    }
+    .st-dot-home::after {
+      animation: st-out linear both;
+      animation-timeline: --b2;
+      animation-range: cover 22% cover 40%;
+    }
+
+    /* 3 · the command bar opens and types */
+    .st-dim {
+      animation: st-in linear both, st-out linear forwards;
+      animation-timeline: --b3, --b5;
+      animation-range: cover 22% cover 30%, cover 20% cover 30%;
+    }
+    .st-cmd {
+      animation: st-pop linear both, st-out linear forwards;
+      animation-timeline: --b3, --b4;
+      animation-range: cover 22% cover 30%, cover 16% cover 24%;
+    }
+    .st-ch {
+      animation: st-in linear both;
+      animation-timeline: --b3;
+      animation-range: cover calc(30% + var(--n) * 3%) cover calc(31% + var(--n) * 3%);
+    }
+    .st-cmd-cover {
+      animation: st-unroll linear both;
+      animation-timeline: --b3;
+      animation-range: cover 38% cover 46%;
+    }
+
+    /* 4 · a link opens as a Peek */
+    .st-peek {
+      animation: st-peek-in linear both, st-shrink linear forwards;
+      animation-timeline: --b4, --b5;
+      animation-range: cover 31% cover 42%, cover 14% cover 22%;
+    }
+    .st-peek-chrome {
+      animation: st-in linear both, st-out linear forwards;
+      animation-timeline: --b4, --b5;
+      animation-range: cover 40% cover 45%, cover 14% cover 20%;
+    }
+
+    /* 5 · a tab drags into split view */
+    .st-ghost {
+      animation: st-drag linear both, st-out linear forwards;
+      animation-timeline: --b5, --b5;
+      animation-range: cover 22% cover 40%, cover 42% cover 46%;
+    }
+    .st-drop {
+      animation: st-in linear both, st-out linear forwards;
+      animation-timeline: --b5, --b5;
+      animation-range: cover 32% cover 37%, cover 42% cover 47%;
+    }
+    .st-page {
+      animation: st-out linear both, st-in linear forwards;
+      animation-timeline: --b5, --b7;
+      animation-range: cover 42% cover 50%, cover 44% cover 52%;
+    }
+    .st-split-l {
+      animation: st-in linear both, st-out linear forwards;
+      animation-timeline: --b5, --b7;
+      animation-range: cover 42% cover 50%, cover 20% cover 28%;
+    }
+    .st-split-r {
+      animation: st-split-in linear both, st-out linear forwards;
+      animation-timeline: --b5, --b7;
+      animation-range: cover 42% cover 52%, cover 20% cover 28%;
+    }
+
+    /* 6 · hover shows the pull request */
+    .st-hover {
+      animation: st-in linear both, st-out linear forwards;
+      animation-timeline: --b6, --b7;
+      animation-range: cover 24% cover 28%, cover 16% cover 22%;
+    }
+    .st-pr {
+      animation: st-card-in linear both, st-out linear forwards;
+      animation-timeline: --b6, --b7;
+      animation-range: cover 28% cover 38%, cover 16% cover 22%;
+    }
+
+    /* 7 · the video floats off into the mini player */
+    .st-list-b-sel {
+      animation: st-sel-down linear both, st-sel-up linear forwards;
+      animation-timeline: --b7, --b7;
+      animation-range: cover 22% cover 27%, cover 42% cover 47%;
+    }
+    .st-videobg {
+      animation: st-in linear both, st-out linear forwards;
+      animation-timeline: --b7, --b7;
+      animation-range: cover 22% cover 28%, cover 44% cover 52%;
+    }
+    .st-mini {
+      animation: st-in linear both, st-float linear forwards;
+      animation-timeline: --b7, --b7;
+      animation-range: cover 22% cover 28%, cover 44% cover 58%;
+    }
+
+    /* 8 · the briefing */
+    .st-brief {
+      animation: st-rise linear both;
+      animation-timeline: --b8;
+      animation-range: cover 22% cover 38%;
+    }
+
+    /* the pointer */
+    .st-cursor {
+      animation:
+        st-in linear both,
+        st-c1 linear both,
+        st-c2 linear forwards,
+        st-c3 linear forwards,
+        st-c4 linear forwards,
+        st-c5 linear forwards,
+        st-c6 linear forwards,
+        st-out linear forwards;
+      animation-timeline: --b4, --b4, --b5, --b5, --b6, --b7, --b7, --b8;
+      animation-range:
+        cover 16% cover 22%,
+        cover 18% cover 30%,
+        cover 10% cover 22%,
+        cover 22% cover 40%,
+        cover 10% cover 24%,
+        cover 10% cover 21%,
+        cover 32% cover 42%,
+        cover 12% cover 20%;
+    }
+    .st-ring {
+      animation: st-ring linear none, st-ring linear none, st-ring linear none, st-ring linear none;
+      animation-timeline: --b4, --b5, --b7, --b7;
+      animation-range: cover 30% cover 36%, cover 22% cover 27%, cover 21% cover 26%, cover 42% cover 47%;
+    }
+  }
+}
+
+/* ---------- stepped fallback (no scroll timelines, or reduced motion) ---------- */
+
+.story[data-mode="steps"] :is(.st-tabx, .st-list-a, .st-list-b, .st-theme-b, .st-dot::after, .st-dim, .st-cmd, .st-ch, .st-cmd-cover, .st-peek, .st-peek-chrome, .st-page, .st-pane, .st-hover, .st-pr, .st-list-b-sel, .st-videobg, .st-mini, .st-brief) {
+  transition:
+    opacity 0.45s cubic-bezier(0.2, 0.7, 0.1, 1),
+    transform 0.6s cubic-bezier(0.2, 0.7, 0.1, 1);
+}
+.story[data-mode="steps"] .st-tabx { opacity: 0; transform: translateX(-14%); }
+.story.s1 .st-tabx { opacity: 1; transform: none; }
+
+.story.s2 .st-list-a { transform: translateX(-100%); }
+.story.s2 .st-list-b { transform: none; }
+.story.s2 .st-theme-b,
+.story.s2 .st-dot-work::after { opacity: 1; }
+.story.s2 .st-dot-home::after { opacity: 0; }
+
+.story.s3:not(.s5) .st-dim { opacity: 1; }
+.story.s3:not(.s4) .st-cmd,
+.story.s3 .st-ch { opacity: 1; }
+.story.s3 .st-cmd-cover { transform: scaleY(0); }
+
+.story.s4:not(.s5) :is(.st-peek, .st-peek-chrome) { opacity: 1; }
+
+.story.s5:not(.s7) .st-page { opacity: 0; }
+.story.s5:not(.s7) .st-pane { opacity: 1; }
+
+.story.s6:not(.s7) :is(.st-hover, .st-pr) { opacity: 1; }
+
+.story.s7 .st-mini {
+  opacity: 1;
+  transform: translate(6.1%, 26.3%) scale(0.27);
+}
+
+.story.s8 .st-brief { opacity: 1; }

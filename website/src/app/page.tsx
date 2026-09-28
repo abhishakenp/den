@@ -5,6 +5,8 @@ import { Download } from "@/components/Download";
 import { Principles } from "@/components/Principles";
 import { Numbers } from "@/components/Numbers";
 import { Tour } from "@/components/Tour";
+import { Story } from "@/components/story/Story";
+import { Proof } from "@/components/Proof";
 import { Agents } from "@/components/Agents";
 import { Docs } from "@/components/Docs";
 import { OpenSource } from "@/components/OpenSource";
@@ -19,6 +21,8 @@ const Home = async () => {
       <Nav />
       <main>
         <Hero release={release} />
+        <Story />
+        <Proof />
         <Download release={release} />
         <Principles />
         <Numbers />

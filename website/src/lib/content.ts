@@ -5,12 +5,12 @@ export type Principle = { title: string; body: string; glyph: "plug" | "swap" | 
 export const PRINCIPLES: Principle[] = [
   {
     title: "Plugins, all the way down",
-    body: "The core is a small host. Tabs, the sidebar, split view, the command bar and connections are Embedded Swift plugins, each a few hundred KB.",
+    body: "The core is a small host. Tabs, the sidebar, split view, the command bar and connections are plugins you can swap while den runs.",
     glyph: "plug",
   },
   {
     title: "Hot-swappable",
-    body: "Load, unload, update or replace any plugin while den runs. Your tabs stay put. Plugin updates swap in live; only the host needs a relaunch.",
+    body: "Load, unload, update or replace any plugin while den runs. Your tabs stay put. Plugin updates swap in live; only den's small core needs a relaunch.",
     glyph: "swap",
   },
   {
@@ -20,7 +20,7 @@ export const PRINCIPLES: Principle[] = [
   },
   {
     title: "Minimal footprint",
-    body: "Idle tabs are discarded and cost kilobytes, not a process. Memory and energy regressions are treated as bugs, with budgets checked by a script.",
+    body: "Idle tabs are unloaded and cost kilobytes, not a whole page in memory. Memory and energy regressions are treated as bugs, with budgets checked by a script.",
     glyph: "feather",
   },
 ];
@@ -32,9 +32,9 @@ export const METRICS: Metric[] = [
   {
     title: "Memory, idle",
     unit: "MB",
-    caption: "phys_footprint summed over the app and every helper it owns, 10 s after the first window.",
+    caption: "Total memory of the app and all its helper processes, 10 s after the first window.",
     bars: [
-      { app: "den", value: 20.0, label: "20.0 MB", note: "no tabs, no WebKit process running", den: true },
+      { app: "den", value: 20.0, label: "20.0 MB", note: "no tabs open", den: true },
       { app: "Arc 1.166", value: 189.0, label: "189 MB", note: "empty space" },
       { app: "Dia 1.50", value: 614.7, label: "615 MB", note: "fresh launch" },
     ],
@@ -51,7 +51,7 @@ export const METRICS: Metric[] = [
   {
     title: "Launch to first window",
     unit: "ms",
-    caption: "Warm launch, median of the 6 least-loaded interleaved rounds.",
+    caption: "Warm launch: the median of the 6 quietest rounds, with the apps launched in turn.",
     bars: [
       { app: "den", value: 209, label: "209 ms", den: true },
       { app: "Dia 1.50", value: 653, label: "653 ms" },
@@ -61,14 +61,14 @@ export const METRICS: Metric[] = [
 ];
 
 export const FACTS = [
-  { value: "0", label: "web processes per sleeping tab", note: "its WebKit process exits; the page returns on click" },
-  { value: "0.2%", label: "idle CPU, no tabs", note: "median, 0.1 wakeups/s" },
+  { value: "0", label: "page processes per unloaded tab", note: "the page comes back when you click it" },
+  { value: "0.2%", label: "idle CPU, no tabs", note: "median; about one wakeup every 10 s" },
   { value: "31×", label: "Dia idle, vs den idle", note: "Dia on a fresh launch" },
   { value: "9.5×", label: "Arc idle, vs den idle", note: "Arc with an empty space" },
 ];
 
 export const CONDITIONS =
-  "Measured 2026-09-27 on a MacBook Air (M3, 16 GB), macOS 26.5, on AC power. Other builds were running the whole time (1-minute load never below 4), so absolute launch times are inflated; all three browsers were launched in turn under the same load. Memory depends much less on load.";
+  "Measured 2026-09-27 on a MacBook Air (M3, 16 GB), macOS 26.5, on AC power. Other builds were running the whole time, so absolute launch times are inflated; all three browsers were launched in turn under the same load. Memory depends much less on load.";
 
 export type Feature = {
   id: string;
@@ -136,8 +136,8 @@ export const FEATURES: Feature[] = [
     id: "extensions",
     tab: "Extensions",
     title: "Chrome and Firefox extensions, on WebKit.",
-    body: "Open an extension on the Chrome Web Store or Firefox Add-ons and click ＋ Add to den. Manifest v2 and v3, popups, badges and per-site access.",
-    points: ["uBlock Origin Lite and Dark Reader verified", "den shows what WebKit can't give an extension, up front", "Unpacked folders in ~/.den/extensions for development"],
+    body: "Open an extension on the Chrome Web Store or Firefox Add-ons and click ＋ Add to den. Older and newer extension formats, popups, badges and per-site access.",
+    points: ["uBlock Origin Lite and Dark Reader verified", "den shows what WebKit can't give an extension, up front", "Load your own extension from a folder while you build it"],
     shot: "/shots/extensions-page-dark.png",
     alt: "The Extensions page listing uBlock Origin Lite, ColorPick and Dark Reader",
     href: doc("docs/guide/extensions.md"),
@@ -146,7 +146,7 @@ export const FEATURES: Feature[] = [
     id: "privacy",
     tab: "Privacy",
     title: "No servers, no accounts, no analytics.",
-    body: "Dark mode for every website with a user stylesheet: no script, no white flash. Passwords live in your Keychain and fill after Touch ID.",
+    body: "Dark mode for every website, with no white flash. Passwords live in your Keychain and fill after Touch ID.",
     points: ["Per-site dark mode from the command bar", "Strong passwords on sign-up forms", "Clipboard cleared 60 s after copying a password"],
     shot: "/shots/launcher-dark-mode-dark.png",
     alt: "Flipping dark mode for websites from the command bar",

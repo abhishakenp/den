@@ -1,11 +1,12 @@
 import type { Metric } from "@/lib/content";
+import { Count } from "@/components/ui/Count";
 
 type Props = { metric: Metric };
 
 export const MetricChart = ({ metric }: Props) => {
   const max = Math.max(...metric.bars.map((b) => b.value));
   return (
-    <figure className="flex flex-col rounded-2xl border border-line bg-ground-2 p-6">
+    <figure data-glow className="flex flex-col rounded-2xl border border-line bg-ground-2 p-6">
       <figcaption className="flex items-baseline justify-between gap-3">
         <span className="font-medium">{metric.title}</span>
         <span className="font-mono text-[11px] text-ink-mute">lower is better</span>
@@ -15,9 +16,11 @@ export const MetricChart = ({ metric }: Props) => {
           <li key={b.app}>
             <div className="flex items-baseline justify-between gap-3 text-sm">
               <span className={b.den ? "font-semibold text-ink" : "text-ink-soft"}>{b.app}</span>
-              <span className={`font-mono ${b.den ? "text-ember-hi" : "text-ink-soft"}`}>{b.label}</span>
+              <span className={`font-mono ${b.den ? "text-ember-hi" : "text-ink-soft"}`}>
+                <Count label={b.label} />
+              </span>
             </div>
-            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-panel-2">
+            <div className="mt-2 h-2.5 overflow-clip rounded-full bg-panel-2">
               <div
                 className={`bar-fill h-full rounded-full ${b.den ? "bg-gradient-to-r from-ember-deep to-ember-hi" : "bg-ink-mute/50"}`}
                 style={{ width: `${Math.max((b.value / max) * 100, 1.5)}%` }}

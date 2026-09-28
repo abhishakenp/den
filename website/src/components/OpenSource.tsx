@@ -5,7 +5,7 @@ import { GitHubIcon } from "@/components/ui/Icons";
 
 export const OpenSource = () => (
   <section id="source" className="px-4 pb-24 sm:px-6 sm:pb-32">
-    <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl border border-line bg-ground-2 px-6 py-14 sm:px-14 sm:py-20">
+    <div className="relative mx-auto max-w-6xl overflow-clip rounded-3xl border border-line bg-ground-2 px-6 py-14 sm:px-14 sm:py-20">
       <div aria-hidden className="hearth pointer-events-none absolute inset-x-0 bottom-[-240px] mx-auto h-[520px] w-[900px]" />
       <div className="relative grid items-center gap-12 lg:grid-cols-[1fr_auto]">
         <div className="max-w-xl">
@@ -42,13 +42,15 @@ export const OpenSource = () => (
             </a>
           </div>
         </div>
-        <Image
-          src="/den-icon.png"
-          alt="den app icon"
-          width={220}
-          height={220}
-          className="mx-auto hidden rounded-[52px] shadow-[0_0_0_1px_rgb(255_255_255/0.08),0_30px_80px_-10px_rgb(217_105_47/0.45)] lg:block"
-        />
+        <div className="doorway mx-auto">
+          <Image
+            src="/den-icon.png"
+            alt="den app icon"
+            width={220}
+            height={220}
+            className="size-32 rounded-[30px] shadow-[0_0_0_1px_rgb(255_255_255/0.08),0_30px_80px_-10px_rgb(217_105_47/0.45)] lg:size-[220px] lg:rounded-[52px]"
+          />
+        </div>
       </div>
     </div>
   </section>

@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "./story.css";
+@import "./fx.css";
 
 @theme {
   --color-ground: #0f0a0f;
@@ -52,6 +54,7 @@
 }
 
 html {
+  overflow-x: clip;
   scroll-behavior: smooth;
   scroll-padding-top: 5rem;
   -webkit-text-size-adjust: 100%;
@@ -63,7 +66,7 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 ::selection {
@@ -130,22 +133,6 @@ body {
 .hairline {
   background: linear-gradient(90deg, transparent, var(--color-line-2), transparent);
   height: 1px;
-}
-
-.bar-fill {
-  transform-origin: left;
-  animation: grow 1.1s cubic-bezier(0.2, 0.7, 0.1, 1) both;
-  animation-timeline: view();
-  animation-range: entry 10% cover 35%;
-}
-
-@keyframes grow {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
