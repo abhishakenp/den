@@ -17,9 +17,9 @@ shot() { # name scenario appearance — a fresh store each time, so the plugins'
   $den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
 }
 # ONLY=cards scripts/snapshots.sh: hover cards, the PR peek, the ⇧-hover link card and the
-# auto-connect toast (PreviewScenarios, ConnectionScenarios), light and dark, rendered off screen.
+# auto-connect toast (PreviewScenarios, ConnectionScenarios), light and dark, invisible (--background).
 card() { # name scenario appearance [delay]
-  build/den.app/Contents/MacOS/den --no-den-home --offscreen --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
+  build/den.app/Contents/MacOS/den --no-den-home --background --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
 }
 if [[ ${ONLY:-} == cards ]]; then
   for pair in card-tab:previewTab card-pinned:previewPinned card-split:previewSplit card-playing:previewPlaying \
