@@ -46,7 +46,9 @@ enum KeyLayoutFallback {
         if let s = mi.submenu, let hit = walk(s) { return hit }
         guard !mi.keyEquivalent.isEmpty, !mi.isHidden || mi.allowsKeyEquivalentWhenHidden else { continue }
         let mask = mi.keyEquivalentModifierMask.intersection(relevant)
-        for (k, f) in candidates where mi.keyEquivalent.lowercased() == k && mask == f { return mi }
+        // (No `mi` inside the loop's where clause: Swift 6.3 flags returning it as a data race.)
+        let key = mi.keyEquivalent.lowercased()
+        if candidates.contains(where: { $0.0 == key && $0.1 == mask }) { return mi }
       }
       return nil
     }
