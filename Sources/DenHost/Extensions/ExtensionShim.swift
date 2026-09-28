@@ -16,7 +16,7 @@ public enum ExtensionShim {
   /// Marks the background context, where the shim records visits and closed tabs.
   static let backgroundFlag = "__den/background.js"
   /// Bumped when `source` changes, so installed copies get the new one on their next load.
-  static let version = 1
+  static let version = 2
 
   /// Adds the shim to an unpacked extension. Idempotent; returns whether anything changed.
   /// `validPattern` says whether WebKit takes a match pattern: content script entries lose the
@@ -41,16 +41,20 @@ public enum ExtensionShim {
     }
     var backgroundPage: String?
 
-    // Background: a service worker gets a wrapper that loads the shim first; scripts and pages
-    // get it prepended.
+    // Background: a classic service worker gets a wrapper that loads the shim first. A module
+    // service worker never finishes starting in WebKit (seen with Vimium on macOS 26.6: the same
+    // code runs as Firefox's module background scripts), so it becomes module background
+    // scripts, which WebKit runs for Manifest V3 too. Scripts and pages get the shim prepended.
     if var bg = m["background"] as? [String: Any] {
       if let sw = bg["service_worker"] as? String, sw != worker {
-        let module = (bg["type"] as? String) == "module"
-        let path = "/" + sw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let wrapper = module ? "import \"/\(backgroundFlag)\";\nimport \"/\(script)\";\nimport \"\(path)\";\n"
-          : "importScripts(\"/\(backgroundFlag)\", \"/\(script)\", \"\(path)\");\n"
-        try wrapper.write(to: root.appendingPathComponent(worker), atomically: true, encoding: .utf8)
-        bg["service_worker"] = worker
+        let path = sw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if (bg["type"] as? String) == "module" {
+          bg["service_worker"] = nil
+          bg["scripts"] = [path]
+        } else {
+          try "importScripts(\"/\(backgroundFlag)\", \"/\(script)\", \"/\(path)\");\n".write(to: root.appendingPathComponent(worker), atomically: true, encoding: .utf8)
+          bg["service_worker"] = worker
+        }
         changed = true
       }
       if var scripts = bg["scripts"] as? [String], scripts.first != backgroundFlag {
@@ -139,7 +143,11 @@ public enum ExtensionShim {
       };
       const save = (key, value) => { try { local.set({[key]: value}); } catch (e) {} };
 
-      // storage.session.setAccessLevel: WebKit shares session storage as it is.
+      if (inContent) return;
+      const inBackground = g.__denBackground === true;
+
+      // storage.session.setAccessLevel (background and pages only: content scripts keep their
+      // own fallbacks for a missing one).
       try {
         const s = api.storage && api.storage.session;
         if (s && typeof s.setAccessLevel !== 'function') {
@@ -147,8 +155,22 @@ public enum ExtensionShim {
         }
       } catch (e) {}
 
-      if (inContent) return;
-      const inBackground = g.__denBackground === true;
+      // idle, sidePanel, offscreen: answered so start-up code that touches them carries on.
+      if (perms.includes('idle')) {
+        define('idle', {queryState: fn(() => 'active'), setDetectionInterval: () => {}, getAutoLockDelay: fn(() => 0), onStateChanged: event()});
+      }
+      if (perms.includes('sidePanel')) {
+        define('sidePanel', {
+          setOptions: fn(() => undefined), getOptions: fn(() => ({enabled: false})), setPanelBehavior: fn(() => undefined),
+          getPanelBehavior: fn(() => ({openPanelOnActionClick: false})), open: fn(() => { throw unavailable('The side panel'); }),
+        });
+      }
+      if (perms.includes('offscreen')) {
+        define('offscreen', {
+          createDocument: fn(() => { throw unavailable('Offscreen documents'); }), closeDocument: fn(() => undefined),
+          hasDocument: fn(() => false), Reason: {CLIPBOARD: 'CLIPBOARD', DOM_PARSER: 'DOM_PARSER', BLOBS: 'BLOBS', LOCAL_STORAGE: 'LOCAL_STORAGE'},
+        });
+      }
 
       // bookmarks: den keeps none an extension can read.
       if (perms.includes('bookmarks')) {
