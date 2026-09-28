@@ -240,9 +240,6 @@ public final class SitePolicyService: HostService {
     let ms = (Date().timeIntervalSince(t0) * 1000).rounded()
     listInfo[n] = ["name": .string(n), "id": .string(id), "cached": .bool(cached), "ms": .double(ms)]
     host.emit("sitepolicy.loaded", ["name": .string(n), "ok": true, "cached": .bool(cached), "ms": .double(ms)])
-    // A compile's working memory (hundreds of MB at its peak for the shields lists) is freed but
-    // stays dirty in den's footprint until relieved.
-    if !cached { MemoryRelief.soon() }
     applyAll()
     // Older compiled versions of this list only take disk space.
     store?.getAvailableContentRuleListIdentifiers { ids in

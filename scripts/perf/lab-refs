@@ -1,5 +1,4 @@
 # Refs .github/workflows/perf-lab.yml measures on a push to perf/**: "<ref> <label> [scenario...]"
 # (HEAD = the pushed commit; lab/<name> branches hold experiment variants). Scenarios: scripts/perf/lab.sh.
 darkbench: no
-HEAD compile emptycompile emptycompile@MallocLargeCache=0 emptycompile@MallocDeferredReclaim=0 emptycompile@MallocAggressiveMadvise=1
-HEAD extension ubo ubo@MallocLargeCache=0 ubo@MallocDeferredReclaim=0
+HEAD after empty emptycompile tabs200 page ubo

@@ -17,6 +17,15 @@
   <!-- den checks in as a UI element and makes itself a regular (Dock) app in main.swift, unless
        launched with --background (automation), which must never show a Dock tile. -->
   <key>LSUIElement</key><true/>
+  <!-- malloc keeps freed large blocks cached and dirty. Compiling content rule lists (Shields'
+       lists on a first launch, an extension's declarativeNetRequest rules) peaks at 300-600 MB in
+       den's process and left 35-40 MB of those blocks behind for the whole session; with the cache
+       off den is back at its idle 18.5 MB afterwards (perf lab, docs/perf/baseline.md).
+       malloc_zone_pressure_relief doesn't release them. -->
+  <key>LSEnvironment</key>
+  <dict>
+    <key>MallocLargeCache</key><string>0</string>
+  </dict>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticTermination</key><false/>
   <!-- Host updates (Sparkle). The updates plugin schedules checks; Sparkle never checks on its own. -->
