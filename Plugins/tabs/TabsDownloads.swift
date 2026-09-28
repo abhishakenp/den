@@ -55,7 +55,7 @@ extension TabsCore {
     let r = env.call("settings", "register", [
       "id": .string(Self.downloadsSettingsId), "section": .string(Self.ns), "title": "Downloads", "order": 20,
       "controls": [["key": "archiveAfterMs", "type": "choice", "title": "Archive finished downloads",
-                    "subtitle": "Finished downloads older than this move under Archived in Library ▸ Downloads (Option-Command-L). The files stay where they are.",
+                    "subtitle": "Finished downloads older than this move under Archived in Library ▸ Downloads (⌥⌘L). The files stay where they are.",
                     "options": .array(options),
                     "default": .int(Self.defaultDownloadsArchiveMs)]],
     ])

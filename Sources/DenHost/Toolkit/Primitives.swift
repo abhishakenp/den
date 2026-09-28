@@ -482,6 +482,14 @@ public final class IconButton: NSView, Themable, Hoverable {
     super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
     icon.spec = symbol.hasPrefix("sf:") ? symbol : "sf:" + symbol
     addSubview(icon)
+    // VoiceOver and Full Keyboard Access see a button (named by `setTip`).
+    setAccessibilityElement(true)
+    setAccessibilityRole(.button)
+  }
+  public override func accessibilityPerformPress() -> Bool {
+    guard enabled else { return false }
+    action()
+    return true
   }
   required init?(coder: NSCoder) { fatalError() }
 
@@ -516,8 +524,29 @@ public final class IconButton: NSView, Themable, Hoverable {
     trackingAreas.forEach(removeTrackingArea)
     addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
   }
-  public override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  public override func mouseEntered(with event: NSEvent) {
+    refreshTip()
+    HoverTracker.refresh(window)
+  }
   public override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
+
+  // Tooltip with the action's shortcut ("Back  ⌘["), read from the menu bar on hover so a
+  // `[shortcuts]` remap shows up (`Shortcuts`). Icon-only buttons are the one place den uses
+  // native tooltips.
+  private var tipTitle: String?
+  private var tipRef = ""
+  private var tipFallback = ""
+  /// Names the button (tooltip and accessibility) and the action whose shortcut it shows.
+  func setTip(_ title: String, shortcut ref: String = "", fallback: String = "") {
+    (tipTitle, tipRef, tipFallback) = (title, ref, fallback)
+    setAccessibilityLabel(title.isEmpty ? nil : title)
+    refreshTip()
+  }
+  func refreshTip() {
+    guard let t = tipTitle else { return }
+    let tip = Shortcuts.tip(t, tipRef, fallback: tipFallback)
+    if toolTip != tip { toolTip = tip.isEmpty ? nil : tip }
+  }
   /// Acts on the click that also focuses its window (the mini player, which never activates den).
   var firstMouse = false
   public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { firstMouse }

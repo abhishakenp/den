@@ -358,6 +358,7 @@ final class Keycap: NSView {
   var border: NSColor?
   var fill: NSColor = NSColor(white: 0, alpha: 0.05)
   var fg: NSColor = .secondaryLabelColor
+  var radius: CGFloat = 5
   func apply(_ p: Palette, onAccent: Bool) {
     fill = onAccent ? p.onAccent.withAlphaComponent(0.2) : p.rowHover  // AccessoryBackground (spec §2)
     fg = onAccent ? p.onAccent.withAlphaComponent(0.9) : p.panelSecondaryText
@@ -366,7 +367,7 @@ final class Keycap: NSView {
   var preferredWidth: CGFloat { max(21, ceil((text as NSString).size(withAttributes: [.font: font]).width) + 10) }
   override func draw(_ dirtyRect: NSRect) {
     fill.setFill()
-    let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
+    let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
     path.fill()
     if let border { border.setStroke(); path.lineWidth = 1; path.stroke() }
     let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: fg]

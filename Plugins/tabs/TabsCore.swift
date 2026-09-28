@@ -1536,13 +1536,13 @@ final class TabsCore {
       "id": .string(Self.ns), "title": "Tabs", "icon": "sf:square.on.square", "order": 10,
       "controls": .array(([
         ["key": "archiveAfterMs", "type": "choice", "title": "Archive Today tabs",
-         "subtitle": "Today tabs you haven't used for this long move to the Library. Pinned tabs and favorites stay. Shift-Command-T brings the last one back.",
+         "subtitle": "Today tabs you haven't used for this long move to the Library. Pinned tabs and favorites stay. ⇧⌘T brings the last one back.",
          "options": .array(options), "default": .int(archiveAfterMs)],
         ["key": "suspendAfterMinutes", "type": "number", "title": "Unload idle tabs",
          "subtitle": "Background tabs unused for this long free their memory and reload when you come back. Tabs playing audio never unload.",
          "min": 0, "max": 240, "step": 5, "unit": "min", "labels": [["value": 0, "title": "Never"]], "default": .int(suspendAfterMs / 60_000)],
         ["key": "groupLinks", "type": "toggle", "title": "Group ⌘-clicked links",
-         "subtitle": "Command-clicking a link opens it in the background, in a group with the tab it came from. Off: a plain background tab.",
+         "subtitle": "⌘-clicking a link opens it in the background, in a group with the tab it came from. Off: a plain background tab.",
          "default": .bool(groupLinks)],
         ["key": "batterySaver", "type": "toggle", "title": "Battery saver",
          "subtitle": "On battery or in Low Power Mode, idle tabs unload after 1 minute, videos in background tabs pause, and new pages don't play videos by themselves. Music keeps playing.",
@@ -1717,7 +1717,7 @@ final class TabsCore {
       var menu: [Value] = [["id": "renameFolder", "title": group ? "Rename Group…" : "Rename Folder…", "icon": "sf:pencil"]]
       menu += iconMenuItems(hasIcon: f.icon != nil)
       if !group { menu.append(["id": "newFolder", "title": "New Folder Inside", "icon": "sf:folder.badge.plus"]) }
-      if group { menu.append(["id": "newTabInFolder", "title": "New Tab in Group", "icon": "sf:plus", "key": .string(Self.chord("tabs.key.newTabInFolder"))]) }
+      if group { menu.append(["id": "newTabInFolder", "title": "New Tab in Group", "icon": "sf:plus", "key": .string(Self.chord("tabs.key.newTabInFolder")), "keyFor": "tabs.key.newTabInFolder"]) }
       menu.append(["separator": true])
       if group { menu.append(["id": "ungroup", "title": "Ungroup Tabs", "icon": "sf:rectangle.stack.badge.minus"]) }
       menu.append(["id": "deleteFolder", "title": group ? "Close Group…" : "Delete Folder…", "icon": "sf:trash"])
@@ -1790,6 +1790,8 @@ final class TabsCore {
     func item(_ id: String, _ title: String, _ icon: String, _ event: String? = nil) -> Value {
       var v: Value = ["id": .string(id), "title": .string(title), "icon": .string(icon)]
       if let e = event, !Self.chord(e).isEmpty { v.put("key", .string(Self.chord(e))) }
+      // The menu bar's current chord (a [shortcuts] remap included) wins over the default.
+      if let e = event { v.put("keyFor", .string(Self.menuRef(e))) }
       return v
     }
     func alt(_ v: Value) -> Value {
@@ -1799,10 +1801,10 @@ final class TabsCore {
     }
     let k = kind(of: box)
     var m: [Value] = [item("copy", "Copy Link", "sf:link", "tabs.key.copy"), alt(item("copyMarkdown", "Copy Link as Markdown", "sf:link", "copyMarkdown")),
-                      item("duplicate", "Duplicate", "sf:plus.square.on.square")]
-    if URLs.isWeb(t.url) { m.insert(item("share", "Share…", "sf:square.and.arrow.up"), at: 2) }
+                      item("duplicate", "Duplicate", "sf:plus.square.on.square", "duplicate")]
+    if URLs.isWeb(t.url) { m.insert(item("share", "Share…", "sf:square.and.arrow.up", "share"), at: 2) }
     // Favorites are icon tiles with no title to edit in place.
-    if box != .favorites { m.append(item("rename", "Rename…", "sf:pencil")) }
+    if box != .favorites { m.append(item("rename", "Rename…", "sf:pencil", "rename")) }
     m += iconMenuItems(hasIcon: t.customIcon != nil)
     if t.audio || t.muted {
       m.append(t.muted ? item("unmute", "Unmute Tab", "sf:speaker.wave.2") : item("mute", "Mute Tab", "sf:speaker.slash"))
@@ -1839,6 +1841,17 @@ final class TabsCore {
       m.append(alt(item("closeAbove", "Close Tabs Above", "sf:arrow.up.to.line")))
     }
     return m
+  }
+
+  /// Menu bar items (docs/shortcuts.md ids) for tab-menu actions that aren't `keys.bind` events.
+  static func menuRef(_ event: String) -> String {
+    switch event {
+    case "copyMarkdown": return "edit.copyMarkdown"
+    case "duplicate": return "tabs.duplicate"
+    case "rename": return "tabs.rename"
+    case "share": return "file.share"
+    default: return event
+    }
   }
 
   /// The chord each tab action is bound to, for menus (the same table `bindKeys` binds).

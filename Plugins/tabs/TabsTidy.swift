@@ -107,9 +107,9 @@ extension TabsCore {
     if tidyEnabled {
       let busy = tidying == sid
       v.put("secondary", ["id": "tidy", "title": .string(busy ? "Tidying…" : "Tidy"), "icon": "sf:sparkles", "always": .bool(busy)])
-      menu.append(["id": "tidy", "title": "Tidy Tabs", "icon": "sf:sparkles", "key": .string(Self.chord("tabs.key.tidy"))])
+      menu.append(["id": "tidy", "title": "Tidy Tabs", "icon": "sf:sparkles", "key": .string(Self.chord("tabs.key.tidy")), "keyFor": "tabs.key.tidy"])
     }
-    menu.append(["id": "clear", "title": "Clear Today", "icon": "sf:arrow.down", "key": .string(Self.chord("tabs.key.clear"))])
+    menu.append(["id": "clear", "title": "Clear Today", "icon": "sf:arrow.down", "key": .string(Self.chord("tabs.key.clear")), "keyFor": "tabs.key.clear"])
     v.put("menu", .array(menu))
     return v
   }

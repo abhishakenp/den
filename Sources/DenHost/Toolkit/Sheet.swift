@@ -71,7 +71,7 @@ final class SheetView: PanelView {
       headerButtons = v.list("headerButtons").map { b in
         let id = b.str("id")
         let btn = IconButton(symbol: b.str("icon", "sf:circle"), size: 28) { [weak self] in self?.emit(id, "click", .null) }
-        btn.toolTip = b["tooltip"].string
+        btn.setTip(b.str("tooltip"), shortcut: b.str("shortcutFor"), fallback: b.str("shortcut"))
         surface.addSubview(btn)
         return btn
       }

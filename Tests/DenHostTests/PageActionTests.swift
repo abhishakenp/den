@@ -207,6 +207,22 @@ struct PageActionTests {
     let m2 = menu(["OpenLinkInNewWindow", "DownloadLinkedFile", "OpenImageInNewWindow"])
     DenWebView.customize(m2, hit: .init(), peek: false, engine: "Google", target: nil)
     #expect(m2.items.map(\.title) == ["Open Link in New Tab", "Open Image in New Tab"])
+    // Page and text items show their menu bar chord (docs/guide/_in-app-tips.md §2), remaps included.
+    NSApp.mainMenu = NSMenu()
+    MainMenu.install()
+    if let back = MainMenu.item("history.back") { MainMenu.setKey(back, "cmd+[") }  // what the tabs plugin's keys.bind does
+    let m3 = menu(["GoBack", "Reload", "Copy", "InspectElement", "CopyLink"])
+    DenWebView.customize(m3, hit: .init(), peek: false, engine: "Google", target: nil)
+    #expect(m3.items[0].keyEquivalent == "[" && m3.items[0].keyEquivalentModifierMask == .command)
+    #expect(m3.items[1].keyEquivalent == "")  // Reload isn't bound in this test: no hint
+    #expect(m3.items[2].keyEquivalent == "c" && m3.items[2].keyEquivalentModifierMask == .command)
+    #expect(m3.items[3].keyEquivalent == "c" && m3.items[3].keyEquivalentModifierMask == [.command, .option])
+    #expect(m3.items[4].keyEquivalent == "")
+    if let copy = MainMenu.item("edit.copy") { MainMenu.setKey(copy, "cmd+shift+x") }
+    let m4 = menu(["Copy"])
+    DenWebView.customize(m4, hit: .init(), peek: false, engine: "Google", target: nil)
+    #expect(m4.items[0].keyEquivalent == "x" && m4.items[0].keyEquivalentModifierMask == [.command, .shift])
+    if let copy = MainMenu.item("edit.copy") { MainMenu.setKey(copy, "cmd+c") }
     // The page reports what was right-clicked (the DOM contextmenu event).
     #expect(DenWebView.contextScript.contains("denContext"))
   }

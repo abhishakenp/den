@@ -182,10 +182,10 @@ public final class PaneControlsView: NSView {
     layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.72).cgColor  // estimate (same as the peek bar)
     layer?.cornerRadius = Tokens.splitControlsHeight / 2
     layer?.cornerCurve = .continuous
-    for (sym, action, tip) in [("xmark", "close", "Close Split Pane"), ("rectangle.portrait.and.arrow.right", "separate", "Separate Page from Split View")] {
+    for (sym, action, tip, ref) in [("xmark", "close", "Close Split Pane", "view.closePane"), ("rectangle.portrait.and.arrow.right", "separate", "Separate Page from Split View", "")] {
       let b = IconButton(symbol: sym, size: 24) { [weak self] in self?.onAction?(action) }
       b.fixedTint = .white
-      b.toolTip = tip
+      b.setTip(tip, shortcut: ref)
       buttons.append(b)
       addSubview(b)
     }

@@ -91,6 +91,7 @@ public final class KeysService: NSObject, HostService, NSMenuItemValidation {
   public init(host: ServiceHost) {
     self.host = host
     super.init()
+    Shortcuts.keys = self
     // Non-US keyboards: keys a layout can't type as the shortcut's character run by their US
     // position (KeyLayoutFallback). Costs one dictionary lookup per ⌘/⌃ key press.
     layoutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in

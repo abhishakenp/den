@@ -14,6 +14,9 @@ import CordisValue
 /// - `icon`: `sf:<symbol>` (tinted red when destructive).
 /// - `key`: a chord hint shown on the right (`cmd+w`, `ctrl+shift+=`); display only, the real
 ///   binding lives in the `keys` service.
+/// - `keyFor`: the action's menu bar item id or bound event (`tabs.pin`, `tabs.key.pin`): the hint
+///   is read from the menu bar when the menu opens, so a `[shortcuts]` remap shows here too
+///   (`Shortcuts`). Falls back to `key`.
 /// Picking an item emits `menu` with the item's id (submenu items too).
 @MainActor
 enum ContextMenu {
@@ -48,7 +51,9 @@ enum ContextMenu {
       if destructive {
         mi.attributedTitle = NSAttributedString(string: mi.title, attributes: [.foregroundColor: destructiveColor, .font: NSFont.menuFont(ofSize: 0)])
       }
-      if let chord = Chord.parse(it.str("key")) {
+      if Shortcuts.apply(it.str("keyFor"), to: mi) {
+        // Read from the menu bar (remaps included).
+      } else if let chord = Chord.parse(it.str("key")) {
         mi.keyEquivalent = chord.key
         var mask: NSEvent.ModifierFlags = []
         if chord.mods.contains(.cmd) { mask.insert(.command) }
@@ -61,7 +66,10 @@ enum ContextMenu {
         mi.keyEquivalentModifierMask = it.flag("alternate") ? [.option] : []
       }
       // `alternate`: replaces the item above it while ⌥ is held (same key, ⌥ added to its mask).
-      if it.flag("alternate") {
+      // A remap can leave the two with different keys; AppKit would then show both anyway, so
+      // they stay two plain items with their real chords.
+      if it.flag("alternate"), let above = m.items.last, !above.isSeparatorItem, above.keyEquivalent == mi.keyEquivalent,
+         above.keyEquivalentModifierMask.union(.option) == mi.keyEquivalentModifierMask.union(.option) {
         mi.isAlternate = true
         mi.keyEquivalentModifierMask.insert(.option)
       }
