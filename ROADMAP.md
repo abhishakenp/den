@@ -372,7 +372,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 ## Decided 2026-09-28
 
 - ⏳ Link status pill: a bottom pill with the hovered link's URL, moving away from the cursor (Arc)
-- ⏳ Emoji tab and folder icons, from rename and the right-click menu (Arc)
+- ✅ Emoji tab and folder icons, from rename and the right-click menu (Arc): "Change Icon…" / "Remove Icon", click the icon while renaming, or type an emoji first; on rows, favorites tiles and hover cards; undoable, saved
 - ✅ Same tab in multiple windows: opt-in (Settings ▸ Tabs), Arc's model: the tab loads once and moves to the window you pick it in; the other window shows "Open in another window · Show Here" and takes it back when it's in front
 - ⏳ AI tab tidying: Apple on-device model, off by default, enable in Settings, never automatic unless enabled
 - ✅ Web panels: optional plugin, normal priority (chat, AI chat sites like claude.ai/Gemini, reference, dashboards beside any tab; slides out from the sidebar edge; sleeps when hidden). Zen removed theirs for a Firefox-specific sandbox issue (Mozilla bug 1935985, per Zen discussion #7314) that doesn't apply to WebKit, where a panel is an ordinary sandboxed web view
