@@ -19,11 +19,12 @@ import WebKit
 /// closed by the user earlier in this session. One mini player at a time.
 ///
 /// Methods:
-///   get                      -> {open, webview?, fromWindow?, settings: {autoMiniPlayer}}
-///   settings {autoMiniPlayer?} -> {autoMiniPlayer}   (persisted; on by default)
+///   get                      -> {open, webview?, fromWindow?, stashed?, settings: {autoMiniPlayer, keepOnTop}}
+///   settings {autoMiniPlayer?, keepOnTop?} -> {autoMiniPlayer, keepOnTop}   (persisted; both on by default)
 ///   open {webview}           -> ok, or {error} when it has no playing video
-///   control {action, value?} -> ok. Drives the open player like its buttons: play, pause, toggle,
-///                               seek (s), skip (±s), volume (0–1), mute (0/1), rate, pip, back, close
+///   control {action, value?} -> ok. Drives the open player like its buttons and keys: play, pause, toggle,
+///                               seek (s), skip (±s), seekpct (± fraction of the video), start, end, volume (0–1),
+///                               mute (0/1), rate, cc (subtitles on/off), keepOnTop (0/1), unstash, pip, back, close
 ///   close                    -> ok (pauses the video)
 /// Events: media.miniPlayer {webview, open}, media.backToTab {webview} (the tabs plugin selects it),
 ///   media.playback {webview, t, dur, paused, muted, vol, rate} (only while the player shows)
@@ -37,6 +38,8 @@ public final class MediaService: HostService {
   let storage: StorageService
 
   public private(set) var autoMiniPlayer = true
+  /// The player floats over other apps' windows (its pin button, T). Off, it's a normal window.
+  public private(set) var keepOnTop = true
   public private(set) var panel: MiniPlayerPanel?
   /// The web view the mini player shows.
   public private(set) var playerId: String?
@@ -64,6 +67,7 @@ public final class MediaService: HostService {
     self.storage = storage
     let s = storage.handle(method: "get", args: ["ns": .string(Self.ns), "key": "settings"])
     autoMiniPlayer = s.flag("autoMiniPlayer", true)
+    keepOnTop = s.flag("keepOnTop", true)
     corner = MiniPlayerPanel.Corner(rawValue: s.str("corner")) ?? .bottomRight
     width = CGFloat(s.num("width", Double(MiniPlayerPanel.defaultWidth)))
     content.adoptLeaving = { [weak self] id in self?.adoptLeaving(id) ?? false }
@@ -77,8 +81,9 @@ public final class MediaService: HostService {
   public func handle(method: String, args: Value) -> Value {
     switch method {
     case "get":
-      var v: Value = ["open": .bool(playerId != nil), "settings": ["autoMiniPlayer": .bool(autoMiniPlayer)]]
+      var v: Value = ["open": .bool(playerId != nil), "settings": ["autoMiniPlayer": .bool(autoMiniPlayer), "keepOnTop": .bool(keepOnTop)]]
       if let id = playerId { v = v.with("webview", .string(id)).with("fromWindow", .bool(fromWindow)) }
+      if let side = panel?.stashed { v = v.with("stashed", .string(side.rawValue)) }
       if let p = panel, p.isVisible { v = v.with("frame", [.double(p.frame.minX), .double(p.frame.minY), .double(p.frame.width), .double(p.frame.height)]) }
       return v
     case "settings":
@@ -86,7 +91,8 @@ public final class MediaService: HostService {
         autoMiniPlayer = on
         save()
       }
-      return ["autoMiniPlayer": .bool(autoMiniPlayer)]
+      if let on = args["keepOnTop"].bool { setKeepOnTop(on) }
+      return ["autoMiniPlayer": .bool(autoMiniPlayer), "keepOnTop": .bool(keepOnTop)]
     case "open":
       let id = args.str("webview")
       guard let r = webviews.record(id), r.webView != nil, r.videoFrame != nil else { return .error("media: '\(id)' has no playing video") }
@@ -105,8 +111,20 @@ public final class MediaService: HostService {
 
   func save() {
     _ = storage.handle(method: "set", args: ["ns": .string(Self.ns), "key": "settings", "value": [
-      "autoMiniPlayer": .bool(autoMiniPlayer), "corner": .string(corner.rawValue), "width": .double(Double(width)),
+      "autoMiniPlayer": .bool(autoMiniPlayer), "keepOnTop": .bool(keepOnTop), "corner": .string(corner.rawValue), "width": .double(Double(width)),
     ]])
+  }
+
+  func setKeepOnTop(_ on: Bool) {
+    keepOnTop = on
+    panel?.keepOnTop = on
+    save()
+  }
+
+  /// The chip's text: the page's host without "www." ("youtube.com").
+  static func hostLabel(_ url: String) -> String {
+    guard let h = URL(string: url)?.host, !h.isEmpty else { return "" }
+    return h.hasPrefix("www.") ? String(h.dropFirst(4)) : h
   }
 
   // MARK: Eligibility
@@ -222,6 +240,8 @@ public final class MediaService: HostService {
     playerId = id
     self.fromWindow = fromWindow
     p.player.controls.update(v)
+    p.player.controls.setHost(Self.hostLabel(r?.url ?? ""))
+    p.keepOnTop = keepOnTop
     p.present(w, videoSize: CGSize(width: v.num("vw", 16), height: v.num("vh", 9)), corner: corner, width: width, on: wc.window.screen)
     p.player.showControls(false, animated: false)
     webviews.runPageScript(id, "return window.__denMedia.isolate(true) && window.__denMedia.live(true)", frame: frame) { [weak self] res in
@@ -260,6 +280,10 @@ public final class MediaService: HostService {
       if content.panes.contains(id) { content.reattach(id) }
     case "close":
       dismiss(pause: true, remember: true)
+    case "keepOnTop":
+      setKeepOnTop(value != 0)
+    case "unstash":
+      panel?.unstash()
     case "pip":
       webviews.runPageScript(id, "return await window.__denMedia.pip()", frame: frame) { [weak self] res in
         guard let self, self.playerId == id else { return }

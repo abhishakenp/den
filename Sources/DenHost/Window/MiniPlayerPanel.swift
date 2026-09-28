@@ -29,6 +29,17 @@ public final class MiniPlayerPanel: NSPanel {
   /// The panel came to rest at a corner with a width.
   var onPlaced: ((Corner, CGFloat) -> Void)?
   var aspect: CGFloat = 16 / 9
+  /// Tucked off the left or right screen edge (Dia's stash): only `stashPeek` pt stay on screen.
+  public enum Side: String { case left, right }
+  public private(set) var stashed: Side?
+  static let stashPeek: CGFloat = 28
+  /// "Keep on top": floats over other apps' windows (the default). Off, it's a normal window.
+  public var keepOnTop = true {
+    didSet {
+      level = keepOnTop ? .floating : .normal
+      player.controls.setKeepOnTop(keepOnTop)
+    }
+  }
 
   public init() {
     super.init(contentRect: NSRect(x: 0, y: 0, width: Self.defaultWidth, height: Self.defaultWidth * 9 / 16),
@@ -54,6 +65,7 @@ public final class MiniPlayerPanel: NSPanel {
   /// Shows `web` in the panel, sized for a video of `videoSize` (pixels), at `corner`.
   func present(_ web: WKWebView, videoSize: CGSize, corner: Corner, width: CGFloat, on screen: NSScreen?) {
     aspect = videoSize.width > 0 && videoSize.height > 0 ? min(3, max(0.5, videoSize.width / videoSize.height)) : 16 / 9
+    setStashed(nil)
     player.setWeb(web)
     let vf = (screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     let w = clampWidth(width, in: vf)
@@ -80,19 +92,72 @@ public final class MiniPlayerPanel: NSPanel {
     return bottom ? (left ? .bottomLeft : .bottomRight) : (left ? .topLeft : .topRight)
   }
 
+  /// Dropped with more than half of it past the left or right screen edge: tuck it there.
+  static func stashSide(_ frame: NSRect, in vf: NSRect) -> Side? {
+    if frame.midX < vf.minX { return .left }
+    if frame.midX > vf.maxX { return .right }
+    return nil
+  }
+
+  /// The tucked frame: `stashPeek` pt of the player left on screen at that edge, kept on screen
+  /// vertically.
+  static func stashFrame(_ frame: NSRect, side: Side, in vf: NSRect) -> NSRect {
+    let y = min(max(frame.minY, vf.minY + margin), vf.maxY - margin - frame.height)
+    let x = side == .left ? vf.minX - frame.width + stashPeek : vf.maxX - stashPeek
+    return NSRect(x: x, y: y, width: frame.width, height: frame.height)
+  }
+
+  func setStashed(_ side: Side?) {
+    stashed = side
+    player.setStashed(side)
+  }
+
   // MARK: Move and resize
 
   private var dragStart: (mouse: NSPoint, frame: NSRect)?
+  private var dragged = false
 
   func drag(_ e: NSEvent) {
     switch e.type {
-    case .leftMouseDown: dragStart = (NSEvent.mouseLocation, frame)
+    case .leftMouseDown:
+      dragStart = (NSEvent.mouseLocation, frame)
+      dragged = false
     case .leftMouseDragged:
       guard let s = dragStart else { return }
       let p = NSEvent.mouseLocation
+      if hypot(p.x - s.mouse.x, p.y - s.mouse.y) > 3 { dragged = true }
       setFrameOrigin(NSPoint(x: s.frame.minX + p.x - s.mouse.x, y: s.frame.minY + p.y - s.mouse.y))
     default:
-      if dragStart != nil { dragStart = nil; snap() }
+      guard dragStart != nil else { return }
+      dragStart = nil
+      // A click on a tucked player brings it back.
+      if stashed != nil, !dragged { unstash(); return }
+      snap()
+    }
+  }
+
+  /// Back from the edge, to the nearest corner on that side.
+  public func unstash() {
+    guard let side = stashed else { return }
+    let vf = screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? frame
+    setStashed(nil)
+    let bottom = frame.midY < vf.midY
+    let corner: Corner = side == .left ? (bottom ? .bottomLeft : .topLeft) : (bottom ? .bottomRight : .topRight)
+    let target = Self.frame(corner: corner, size: frame.size, in: vf)
+    glide(to: target)
+    onPlaced?(corner, target.width)
+  }
+
+  /// Moves to `target` with Dia's easing (at once with Reduce Motion).
+  func glide(to target: NSRect) {
+    if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+      setFrame(target, display: true)
+    } else {
+      NSAnimationContext.runAnimationGroup { c in
+        c.duration = 0.22
+        c.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)  // estimate: Dia's easing (spec §13)
+        animator().setFrame(target, display: true)
+      }
     }
   }
 
@@ -115,37 +180,60 @@ public final class MiniPlayerPanel: NSPanel {
     }
   }
 
-  /// Glides to the nearest screen corner and reports where it rests.
+  /// Glides to the nearest screen corner and reports where it rests; dropped more than half past
+  /// the left or right screen edge, it tucks there instead (the corner isn't saved).
   func snap() {
     let vf = screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? frame
+    if let side = Self.stashSide(frame, in: vf) {
+      setStashed(side)
+      glide(to: Self.stashFrame(frame, side: side, in: vf))
+      return
+    }
+    setStashed(nil)
     let corner = Self.nearestCorner(frame, in: vf)
     let target = Self.frame(corner: corner, size: frame.size, in: vf)
-    if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-      setFrame(target, display: true)
-    } else {
-      NSAnimationContext.runAnimationGroup { c in
-        c.duration = 0.22
-        c.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)  // estimate: Dia's easing (spec §13)
-        animator().setFrame(target, display: true)
-      }
-    }
+    glide(to: target)
     onPlaced?(corner, target.width)
   }
 
   // MARK: Keys
 
+  /// The player's keys, and Firefox's picture-in-picture keys: ⌘← / ⌘→ a tenth of the video,
+  /// Home / End its start and end, ⌘↓ / ⌘↑ mute and unmute, ⌘W close. Plus C (subtitles) and
+  /// T (keep on top).
   public override func keyDown(with e: NSEvent) {
     let v = player.volume
-    switch e.keyCode {
-    case 49: onControl?("toggle", 0)  // space
-    case 123: onControl?("skip", -5)  // ←
-    case 124: onControl?("skip", 5)  // →
-    case 126: onControl?("volume", min(1, v + 0.1))  // ↑
-    case 125: onControl?("volume", max(0, v - 0.1))  // ↓
-    case 46: onControl?("mute", player.muted ? 0 : 1)  // M
-    case 53: onControl?("back", 0)  // Esc: back to the tab
+    let cmd = e.modifierFlags.contains(.command)
+    switch (e.keyCode, cmd) {
+    case (49, false): onControl?("toggle", 0)  // space
+    case (123, false): onControl?("skip", -5)  // ←
+    case (124, false): onControl?("skip", 5)  // →
+    case (123, true): onControl?("seekpct", -0.1)  // ⌘←
+    case (124, true): onControl?("seekpct", 0.1)  // ⌘→
+    case (115, _): onControl?("start", 0)  // Home
+    case (119, _): onControl?("end", 0)  // End
+    case (126, false): onControl?("volume", min(1, v + 0.1))  // ↑
+    case (125, false): onControl?("volume", max(0, v - 0.1))  // ↓
+    case (126, true): onControl?("mute", 0)  // ⌘↑
+    case (125, true): onControl?("mute", 1)  // ⌘↓
+    case (46, false): onControl?("mute", player.muted ? 0 : 1)  // M
+    case (8, false): if player.controls.captionState > 0 { onControl?("cc", 0) }  // C
+    case (17, false): onControl?("keepOnTop", keepOnTop ? 0 : 1)  // T
+    case (13, true): onControl?("close", 0)  // ⌘W
+    case (53, _): onControl?("back", 0)  // Esc: back to the tab
     default: super.keyDown(with: e)
     }
+  }
+
+  /// ⌘W and ⌘-arrows reach `keyDown` (not the main menu's Close Tab, Back or Forward) while the
+  /// player is key.
+  public override func performKeyEquivalent(with e: NSEvent) -> Bool {
+    let flags = e.modifierFlags.intersection([.command, .shift, .option, .control])
+    if flags == .command, [13, 123, 124, 125, 126].contains(e.keyCode) {
+      keyDown(with: e)
+      return true
+    }
+    return super.performKeyEquivalent(with: e)
   }
 }
 
@@ -170,6 +258,9 @@ public final class MiniPlayerView: NSView {
   var volume: Double { controls.volume }
   var muted: Bool { controls.muted }
   private var hideWork: DispatchWorkItem?
+  /// While tucked off an edge: a dark strip with a chevron pointing back on screen.
+  let stashTab = StashTabView()
+  public private(set) var stashed: MiniPlayerPanel.Side?
 
   public override var isFlipped: Bool { true }
 
@@ -183,9 +274,25 @@ public final class MiniPlayerView: NSView {
     webBox.wantsLayer = true
     addSubview(webBox)
     addSubview(controls)
+    addSubview(stashTab)
+    stashTab.isHidden = true
     controls.alphaValue = 0
   }
   required init?(coder: NSCoder) { fatalError() }
+
+  /// Tucked: the controls fade out, the strip shows, and every click drags or brings it back.
+  func setStashed(_ side: MiniPlayerPanel.Side?) {
+    stashed = side
+    stashTab.side = side
+    stashTab.isHidden = side == nil
+    showControls(false, animated: false)
+    needsLayout = true
+  }
+
+  public override func hitTest(_ point: NSPoint) -> NSView? {
+    if stashed != nil { return frame.contains(point) ? controls : nil }
+    return super.hitTest(point)
+  }
 
   func setWeb(_ w: WKWebView?) {
     webBox.subviews.forEach { $0.removeFromSuperview() }
@@ -199,6 +306,10 @@ public final class MiniPlayerView: NSView {
     webBox.frame = bounds
     web?.frame = webBox.bounds
     controls.frame = bounds
+    // The strip is the part left on screen: the right edge when tucked left, and vice versa.
+    let peek = MiniPlayerPanel.stashPeek
+    stashTab.frame = stashed == .left ? NSRect(x: bounds.width - peek, y: 0, width: peek, height: bounds.height)
+      : NSRect(x: 0, y: 0, width: peek, height: bounds.height)
   }
 
   public override func updateTrackingAreas() {
@@ -214,7 +325,7 @@ public final class MiniPlayerView: NSView {
   /// Fades the controls in (or out, unless paused or scrubbing).
   public func showControls(_ on: Bool, animated: Bool = true) {
     hideWork?.cancel()
-    let visible = on || controls.paused || controls.scrubbing
+    let visible = stashed == nil && (on || controls.paused || controls.scrubbing)
     let target: CGFloat = visible ? 1 : 0
     guard controls.alphaValue != target else { return }
     if !animated || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -246,6 +357,14 @@ public final class MiniControlsView: NSView {
     self.onControl?("mute", self.muted ? 0 : 1)
   }
   lazy var speed = TextButton(title: "1×", tooltip: "Playback Speed") { [weak self] in self?.cycleSpeed() }
+  lazy var keepOnTop = button("pin.fill", "Keep on Top: On (T)") { [weak self] in
+    guard let self else { return }
+    self.onControl?("keepOnTop", self.onTop ? 0 : 1)
+  }
+  /// The page's host ("youtube.com") in a chip at the top: back to the tab.
+  lazy var host = TextButton(title: "", tooltip: "Back to Tab (Esc)") { [weak self] in self?.onControl?("back", 0) }
+  /// Shown when the video has subtitle or caption tracks; filled while they show.
+  lazy var captions = TextButton(title: "CC", tooltip: "Show Subtitles (C)") { [weak self] in self?.onControl?("cc", 0) }
   let seek = MiniSlider()
   let volumeSlider = MiniSlider()
   let elapsed = MiniControlsView.timeLabel(.left)
@@ -257,6 +376,9 @@ public final class MiniControlsView: NSView {
   private(set) var rate: Double = 1
   private(set) var time: Double = 0
   private(set) var duration: Double = 0
+  /// The video's text tracks: 0 none, 1 available, 2 showing.
+  private(set) var captionState = 0
+  private(set) var onTop = true
   var scrubbing: Bool { seek.tracking || volumeSlider.tracking }
   static let rates: [Double] = [1, 1.25, 1.5, 2, 0.5, 0.75]
 
@@ -275,6 +397,11 @@ public final class MiniControlsView: NSView {
       b.round = true
     }
     addSubview(speed)
+    addSubview(keepOnTop)
+    addSubview(host)
+    addSubview(captions)
+    host.isHidden = true
+    captions.isHidden = true
     for v in [seek, volumeSlider] { addSubview(v) }
     addSubview(elapsed)
     addSubview(remaining)
@@ -296,6 +423,19 @@ public final class MiniControlsView: NSView {
   required init?(coder: NSCoder) { fatalError() }
 
   func superviewShowControls() { (superview as? MiniPlayerView)?.showControls(true) }
+
+  func setKeepOnTop(_ on: Bool) {
+    onTop = on
+    keepOnTop.icon.spec = on ? "sf:pin.fill" : "sf:pin.slash"
+    keepOnTop.toolTip = on ? "Keep on Top: On (T)" : "Keep on Top: Off (T)"
+  }
+
+  /// The page's host on the chip; empty hides it.
+  func setHost(_ h: String) {
+    host.title = h
+    host.isHidden = h.isEmpty
+    needsLayout = true
+  }
 
   func button(_ symbol: String, _ tip: String, _ action: @escaping () -> Void) -> IconButton {
     let b = IconButton(symbol: symbol, size: 28, action: action)
@@ -326,6 +466,13 @@ public final class MiniControlsView: NSView {
     muted = v.flag("muted", muted)
     if let vol = v["vol"].double, !volumeSlider.tracking { volume = vol }
     if let r = v["rate"].double { rate = r }
+    if let c = v["cc"].double {
+      captionState = Int(c)
+      captions.isHidden = captionState == 0
+      captions.selected = captionState == 2
+      captions.toolTip = captionState == 2 ? "Hide Subtitles (C)" : "Show Subtitles (C)"
+      needsLayout = true
+    }
     play.icon.spec = paused ? "sf:play.fill" : "sf:pause.fill"
     play.toolTip = paused ? "Play (Space)" : "Pause (Space)"
     mute.icon.spec = muted || volume == 0 ? "sf:speaker.slash.fill" : volume < 0.5 ? "sf:speaker.wave.1.fill" : "sf:speaker.wave.2.fill"
@@ -372,6 +519,10 @@ public final class MiniControlsView: NSView {
     back.frame = NSRect(x: 8, y: 8, width: 28, height: 28)
     pip.frame = NSRect(x: 38, y: 8, width: 28, height: 28)
     close.frame = NSRect(x: w - 36, y: 8, width: 28, height: 28)
+    keepOnTop.frame = NSRect(x: w - 66, y: 8, width: 28, height: 28)
+    // The host chip, centred between the two button groups, as wide as the name.
+    let hw = min(max(0, w - 2 * 76), naturalWidth(host.label) + 20)
+    host.frame = NSRect(x: ((w - hw) / 2).rounded(), y: 12, width: hw, height: 20)
     let big: CGFloat = 44
     play.frame = NSRect(x: (w - big) / 2, y: (h - big) / 2, width: big, height: big)
     rewind.frame = NSRect(x: play.frame.minX - 50, y: (h - 34) / 2, width: 34, height: 34)
@@ -381,6 +532,7 @@ public final class MiniControlsView: NSView {
     mute.frame = NSRect(x: 8, y: row1, width: 24, height: 24)
     volumeSlider.frame = NSRect(x: 34, y: row1 + 4, width: 60, height: 16)
     speed.frame = NSRect(x: w - 44, y: row1 + 2, width: 36, height: 20)
+    captions.frame = NSRect(x: w - 84, y: row1 + 2, width: 36, height: 20)
     let row2 = h - 20
     elapsed.frame = NSRect(x: 10, y: row2 - 1, width: 44, height: 14)
     remaining.frame = NSRect(x: w - 54, y: row2 - 1, width: 44, height: 14)
@@ -417,7 +569,9 @@ public final class MiniControlsView: NSView {
   public override func mouseDown(with e: NSEvent) {
     window?.makeKey()
     if e.clickCount == 2 { onControl?("back", 0); return }
-    resizing = corner(at: convert(e.locationInWindow, from: nil))
+    // Tucked off an edge, a press only moves it (or brings it back): no resizing.
+    let tucked = (superview as? MiniPlayerView)?.stashed != nil
+    resizing = tucked ? nil : corner(at: convert(e.locationInWindow, from: nil))
     if let c = resizing { onResize?(c, e) } else { onMove?(e) }
   }
   public override func mouseDragged(with e: NSEvent) {
@@ -505,12 +659,19 @@ final class MiniSlider: NSView {
   }
 }
 
-/// A small text pill button (the playback speed).
+/// A small text pill button (the playback speed, subtitles, the host chip).
 @MainActor
 final class TextButton: NSView {
   let label = NSTextField(labelWithString: "")
   let action: () -> Void
   private var hovering = false { didSet { needsDisplay = true } }
+  /// A toggle that's on (subtitles showing): filled white with dark text.
+  var selected = false {
+    didSet {
+      label.textColor = selected ? .black : .white
+      needsDisplay = true
+    }
+  }
   var title: String {
     get { label.stringValue }
     set { label.stringValue = newValue }
@@ -535,7 +696,7 @@ final class TextButton: NSView {
     label.frame = NSRect(x: 0, y: (bounds.height - 15) / 2, width: bounds.width, height: 15)
   }
   override func draw(_ dirtyRect: NSRect) {
-    NSColor(white: 1, alpha: hovering ? 0.28 : 0.16).setFill()
+    NSColor(white: 1, alpha: selected ? (hovering ? 1 : 0.9) : (hovering ? 0.28 : 0.16)).setFill()
     NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
   }
   override func updateTrackingAreas() {
@@ -547,4 +708,26 @@ final class TextButton: NSView {
   override func mouseExited(with event: NSEvent) { hovering = false }
   override func mouseDown(with event: NSEvent) {}
   override func mouseUp(with e: NSEvent) { if bounds.contains(convert(e.locationInWindow, from: nil)) { action() } }
+}
+
+/// The strip left on screen while the mini player is tucked off an edge: dark, with a chevron
+/// pointing back. A click on the player (its drag handler) brings it back.
+@MainActor
+final class StashTabView: NSView {
+  var side: MiniPlayerPanel.Side? { didSet { chevron.spec = side == .left ? "sf:chevron.right" : "sf:chevron.left" } }
+  let chevron = IconView()
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.backgroundColor = NSColor(white: 0, alpha: 0.55).cgColor
+    chevron.tint = .white
+    addSubview(chevron)
+  }
+  required init?(coder: NSCoder) { fatalError() }
+  override var isFlipped: Bool { true }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+  override func layout() {
+    super.layout()
+    chevron.frame = NSRect(x: (bounds.width - 14) / 2, y: (bounds.height - 14) / 2, width: 14, height: 14)
+  }
 }

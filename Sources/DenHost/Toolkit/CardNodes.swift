@@ -71,11 +71,49 @@ func naturalWidth(_ l: NSTextField) -> CGFloat {
 
 final class CardStackNode: NodeView {
   var kids: [NodeView] = []
+  var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
   override func update(_ v: Value) {
     super.update(v)
     kids = r.reconcile(v.list("children"), existing: kids, in: self)
     needsLayout = true
+    needsDisplay = true
+    updateTrackingAreas()
   }
+
+  // `fill` (a surface behind the stack: `panel` = the sidebar's selected-tab fill, `card` =
+  // the card surface, `hover` = the card hover fill) with `radius`; `clickable` with an `id`
+  // emits `click {value}` for clicks that no child button takes, with the row hover fill.
+  var clickable: Bool { !nodeId.isEmpty && node.flag("clickable") }
+  func fillColor(_ name: String) -> NSColor? {
+    switch name {
+    case "panel": return palette.selectedFill
+    case "card": return palette.tokens.card.fill.ns
+    case "hover": return palette.tokens.card.hover.ns
+    default: return nil
+    }
+  }
+  override func draw(_ dirtyRect: NSRect) {
+    var fill = fillColor(node.str("fill"))
+    if hovering, clickable { fill = fill.map { $0.blended(withFraction: 0.08, of: palette.dark ? .white : .black) ?? $0 } ?? palette.hoverFill }
+    guard let fill else { return }
+    let r = CGFloat(node.num("radius", 8))
+    fill.setFill()
+    NSBezierPath(roundedRect: bounds, xRadius: r, yRadius: r).fill()
+  }
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    trackingAreas.forEach(removeTrackingArea)
+    guard clickable else { hovering = false; return }
+    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+  override func mouseEntered(with event: NSEvent) { hovering = true }
+  override func mouseExited(with event: NSEvent) { hovering = false }
+  override func mouseDown(with event: NSEvent) { if !clickable { super.mouseDown(with: event) } }
+  override func mouseUp(with event: NSEvent) {
+    guard clickable else { return super.mouseUp(with: event) }
+    if bounds.contains(convert(event.locationInWindow, from: nil)) { emit("click", node["value"]) }
+  }
+  override func apply(_ p: Palette) { needsDisplay = true }
   var horizontal: Bool { node.str("axis", "v") == "h" }
   var spacing: CGFloat { CGFloat(node.num("spacing", 0)) }
   var pad: NSEdgeInsets { CardTone.insets(node["padding"]) }

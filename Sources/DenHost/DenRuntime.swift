@@ -17,6 +17,8 @@ public final class DenRuntime {
   public let storage: StorageService
   public let app: AppService
   public let media: MediaService
+  /// Control Center's Now Playing and the media keys (the `media` plugin drives it).
+  public let nowPlaying: NowPlayingService
   // Connections, briefing and feed (docs/host-api.md: permissions, session, net, ai, schedule).
   public let permissions = Permissions()
   public let session: SessionService
@@ -56,6 +58,7 @@ public final class DenRuntime {
     storage = StorageService(root: storageRoot)
     app = AppService(host: host, window: window)
     media = MediaService(host: host, webviews: webviews, content: content, window: window, storage: storage)
+    nowPlaying = NowPlayingService(host: host)
     session = SessionService(host: host, webviews: webviews, permissions: permissions)
     net = NetService(host: host, webviews: webviews, permissions: permissions)
     ai = AIService(host: host)
@@ -109,7 +112,7 @@ public final class DenRuntime {
     sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
     sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
     sitePolicy.resource = { [permissions] p, f in permissions.resource(p, f) }
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, speech, translate] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, nowPlaying, speech, translate] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

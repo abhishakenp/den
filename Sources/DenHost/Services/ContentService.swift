@@ -10,7 +10,11 @@ import WebKit
 ///        window (WebKit then suspends them); they are created on first show.
 ///   focus {id}                          -> highlight + first responder
 ///   peek {webview, title?}  / peek {}   -> show / hide the peek overlay card
-///   get                                 -> {panes, orientation, focus, peek}
+///   side {webview, width?} / side {}    -> show / hide a web view in the side column: a narrow card at the
+///                                          content's left edge, beside whatever the panes show, sliding out
+///                                          from the sidebar edge. Its header is the `side.header` ui slot.
+///                                          Hidden, the web view leaves the window (the caller may discard it)
+///   get                                 -> {panes, orientation, focus, peek, side, sideWidth}
 /// Events: content.focus {id}   content.peekAction {action: close|expand|split, webview}
 ///         content.paneAction {id, action: close|separate}   (split pane hover controls)
 @MainActor
@@ -51,6 +55,21 @@ public final class ContentService: HostService {
   public private(set) var held: String?
   /// Longest the previous page is held.
   public var holdTimeout: TimeInterval = Tokens.paintHoldTimeout
+  /// The side column (`side`): one web view docked left of the panes (the `panels` plugin's web
+  /// panels). Nothing is created until the first `side`.
+  private var sideView: SideColumnView?
+  /// The side column if it was ever used (re-theming skips it otherwise).
+  public var sideIfLoaded: SideColumnView? { sideView }
+  public var side: SideColumnView {
+    if let s = sideView { return s }
+    let s = SideColumnView()
+    s.isHidden = true
+    sideView = s
+    return s
+  }
+  public private(set) var sideId: String?
+  public private(set) var sideWidth: CGFloat = 360
+  static let sideWidths: ClosedRange<CGFloat> = 280...520
 
   public init(host: ServiceHost, webviews: WebViewsService, window: DenWindowController) {
     self.host = host
@@ -64,8 +83,14 @@ public final class ContentService: HostService {
     peek.onAction = { [weak self] action in self?.peekAction(action) }
     let prev = wc.onLayout
     wc.onLayout = { [weak self] in prev?(); self?.layout() }
-    host.on("webviews.closed") { [weak self] v in self?.forget(v.str("id")) }
-    host.on("webviews.detached") { [weak self] v in self?.cards[v.str("id")]?.clip.subviews.forEach { $0.removeFromSuperview() } }
+    host.on("webviews.closed") { [weak self] v in
+      if v.str("id") == self?.sideId { self?.setSide(nil, width: nil) }
+      self?.forget(v.str("id"))
+    }
+    host.on("webviews.detached") { [weak self] v in
+      self?.cards[v.str("id")]?.clip.subviews.forEach { $0.removeFromSuperview() }
+      if v.str("id") == self?.sideId { self?.sideView?.card.clip.subviews.forEach { $0.removeFromSuperview() } }
+    }
     let prevFinish = webviews.onFinish
     webviews.onFinish = { [weak self] id in prevFinish?(id); self?.uncover(id) }
     let prevPainted = webviews.onPainted
@@ -89,9 +114,14 @@ public final class ContentService: HostService {
     case "peek":
       let id = args.str("webview")
       if id.isEmpty { hidePeek() } else { showPeek(id, title: args.str("title")) }
+    case "side":
+      let id = args.str("webview")
+      guard id.isEmpty || webviews.record(id) != nil else { return .error("content: no webview '\(id)'") }
+      setSide(id.isEmpty ? nil : id, width: args["width"].double.map { CGFloat($0) })
     case "get":
       return ["panes": .array(panes.map { .string($0) }), "orientation": .string(orientation.rawValue),
-              "focus": focused.map { .string($0) } ?? .null, "peek": peekId.map { .string($0) } ?? .null]
+              "focus": focused.map { .string($0) } ?? .null, "peek": peekId.map { .string($0) } ?? .null,
+              "side": sideId.map { .string($0) } ?? .null, "sideWidth": .double(Double(sideWidth))]
     default:
       return .error("content: unknown method '\(method)'")
     }
@@ -242,8 +272,55 @@ public final class ContentService: HostService {
   /// The card showing a pane (snapshots, tests).
   public func card(_ id: String) -> CardView? { cards[id] }
 
+  /// Shows `id` in the side column (nil hides it), sliding it out from (or back into) the sidebar
+  /// edge while the panes make room. The previous side web view leaves the window.
+  func setSide(_ id: String?, width: CGFloat?) {
+    if let width { sideWidth = min(max(width, Self.sideWidths.lowerBound), Self.sideWidths.upperBound) }
+    let old = sideId
+    if old == id, id == nil { return }
+    if side.superview !== wc.contentArea { wc.contentArea.addSubview(side) }
+    if let old, old != id, let w = webviews.record(old)?.webView, w.superview === side.card.clip { w.removeFromSuperview() }
+    sideId = id
+    if let id, let w = webviews.materialize(id), w.superview !== side.card.clip {
+      side.card.clip.subviews.forEach { $0.removeFromSuperview() }
+      side.card.clip.addSubview(w)
+      side.card.needsLayout = true
+    }
+    let appearing = old == nil && id != nil
+    if appearing {
+      // Start closed at the sidebar edge, then open.
+      side.isHidden = false
+      side.frame = NSRect(x: 0, y: 0, width: 0, height: wc.contentArea.bounds.height)
+      side.layoutSubtreeIfNeeded()
+    }
+    let animate = old == nil || id == nil
+    if animate, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, wc.window.isVisible {
+      NSAnimationContext.runAnimationGroup({ c in
+        c.duration = Tokens.sidebarShowDuration
+        c.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)  // estimate: Dia's easing (spec §13)
+        c.allowsImplicitAnimation = true
+        self.layout()
+        self.wc.contentArea.layoutSubtreeIfNeeded()
+      }, completionHandler: { MainActor.assumeIsolated { if self.sideId == nil { self.side.isHidden = true } } })
+    } else {
+      layout()
+      if sideId == nil { side.isHidden = true }
+    }
+    if let id, let w = webviews.record(id)?.webView, appearing { wc.window.makeFirstResponder(w) }
+  }
+
+  /// The side column's frame (width 0 while closed) and the area left for the panes.
+  func sideSplit(_ b: NSRect) -> (side: NSRect, panes: NSRect) {
+    guard sideId != nil else { return (NSRect(x: b.minX, y: b.minY, width: 0, height: b.height), b) }
+    let w = min(sideWidth, max(0, b.width - 320))
+    sideView?.openWidth = w
+    let gap = Tokens.splitGap
+    return (NSRect(x: b.minX, y: b.minY, width: w, height: b.height), NSRect(x: b.minX + w + gap, y: b.minY, width: max(0, b.width - w - gap), height: b.height))
+  }
+
   func layout() {
-    let b = wc.contentArea.bounds
+    let (sf, b) = sideSplit(wc.contentArea.bounds)
+    if let s = sideView, s.superview != nil { s.frame = sf }
     emptyCard.frame = b
     let frames = SplitLayout.frames(count: panes.count, orientation: orientation, in: b, gap: Tokens.splitGap, ratios: ratios)
     for (id, f) in zip(panes, frames) {
@@ -470,5 +547,33 @@ public final class PeekOverlayView: FlippedView {
       self.alphaValue = 1
       done()
     } })
+  }
+}
+
+/// The side column: an optional header (the `side.header` ui slot) over a card holding one web
+/// view. The card keeps its full width while the column opens or closes, anchored to the column's
+/// right edge, so it slides out from (and back under) the sidebar edge instead of squeezing.
+public final class SideColumnView: FlippedView {
+  let header = SlotView()
+  let card = CardView()
+  /// The width the card is laid out at (the column's open width).
+  var openWidth: CGFloat = 360
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.masksToBounds = true
+    addSubview(card)
+    addSubview(header)
+  }
+  required init?(coder: NSCoder) { fatalError() }
+
+  public override func layout() {
+    super.layout()
+    let w = max(bounds.width, openWidth)
+    let hh = header.height(for: w)
+    let x = bounds.width - w
+    header.frame = NSRect(x: x, y: 0, width: w, height: hh)
+    card.frame = NSRect(x: x, y: hh > 0 ? hh + 6 : 0, width: w, height: max(0, bounds.height - (hh > 0 ? hh + 6 : 0)))
   }
 }

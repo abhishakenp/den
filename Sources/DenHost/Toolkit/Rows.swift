@@ -814,16 +814,23 @@ final class RenameSupport {
 
 // MARK: - Tabs
 
-/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, editing?, editText?, unread?}
+/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, editing?, editText?, unread?,
+///  media?: {paused, next, previous}}
 /// `unread`: an accent dot on the right (a live folder's new item).
 /// actions: click {modifiers?}, doubleClick, close, reset (favicon click while drifted), mute, contextMenu/menu, reorder,
-/// dropOnContent, rename {title} / renameCancel (while `editing`)
+/// dropOnContent, rename {title} / renameCancel (while `editing`), media {action: toggle|next|previous} (the hover
+/// playback buttons of a tab with `media`)
 final class TabRowNode: HoverNode {
   let icon = IconView()
   let label = makeLabel()
   let drift = makeLabel("/", size: Tokens.tabRowFontSize, weight: .medium)
   lazy var audio = SpeakerBadge(badge: false) { [weak self] in self?.emit("mute") }
   lazy var close = IconButton(symbol: "xmark", size: 22) { [weak self] in self?.emit("close") }
+  // Hover playback buttons for a tab with media (`media`): previous, play/pause, next.
+  lazy var previous = IconButton(symbol: "backward.fill", size: 22) { [weak self] in self?.emit("media", ["action": "previous"]) }
+  lazy var playPause = IconButton(symbol: "pause.fill", size: 22) { [weak self] in self?.emit("media", ["action": "toggle"]) }
+  lazy var next = IconButton(symbol: "forward.fill", size: 22) { [weak self] in self?.emit("media", ["action": "next"]) }
+  var mediaButtons: [IconButton] { [previous, playPause, next] }
   lazy var rename = RenameSupport(owner: self, label: label)
   let dot = UnreadDot()
   override var draggable: Bool { node.flag("draggable", true) && !rename.active }
@@ -831,14 +838,33 @@ final class TabRowNode: HoverNode {
   override var busy: Bool { super.busy || rename.active }
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
-    [icon, drift, label, audio, dot, close].forEach { addSubview($0) }
+    [icon, drift, label, audio, dot, previous, playPause, next, close].forEach { addSubview($0) }
     close.isHidden = true
     dot.isHidden = true
+    mediaButtons.forEach { $0.isHidden = true }
   }
   required init?(coder: NSCoder) { fatalError() }
   var indent: CGFloat { CGFloat(node.num("indent", 0)) * Tokens.folderIndent }
   override var fillRect: NSRect { bounds.insetBy(dx: 0, dy: (bounds.height - 36) / 2) }  // spec §1: 212x36 highlight
-  override func hoverChanged() { close.isHidden = !(hovering && node.flag("closable", true)) ; needsLayout = true }
+  override func hoverChanged() {
+    close.isHidden = !(hovering && node.flag("closable", true))
+    updateMediaButtons()
+    needsLayout = true
+  }
+  /// Shown while the row is hovered (or `forceMedia`, for snapshots) and the tab has media.
+  var forceMedia = false { didSet { updateMediaButtons(); needsLayout = true } }
+  func updateMediaButtons() {
+    let m = node["media"]
+    let show = (hovering || forceMedia) && !m.isNull && !rename.active
+    let paused = m.flag("paused")
+    playPause.icon.spec = paused ? "sf:play.fill" : "sf:pause.fill"
+    playPause.toolTip = paused ? "Play" : "Pause"
+    previous.toolTip = "Previous Track"
+    next.toolTip = "Next Track"
+    playPause.isHidden = !show
+    previous.isHidden = !show || !m.flag("previous")
+    next.isHidden = !show || !m.flag("next")
+  }
   override func update(_ v: Value) {
     super.update(v)
     label.stringValue = v.str("title", "Untitled")
@@ -851,6 +877,7 @@ final class TabRowNode: HoverNode {
     dot.isHidden = !v.flag("unread")
     apply(r.palette)
     rename.update(v)
+    updateMediaButtons()
     needsLayout = true
   }
   override func apply(_ p: Palette) {
@@ -863,6 +890,10 @@ final class TabRowNode: HoverNode {
     dot.apply(p)
     close.apply(p)
     close.hoverFill = p.controlHoverFill
+    for b in mediaButtons {
+      b.apply(p)
+      b.hoverFill = p.controlHoverFill
+    }
     needsDisplay = true
   }
   override func height(for w: CGFloat) -> CGFloat { Tokens.tabRowHeight }
@@ -880,6 +911,7 @@ final class TabRowNode: HoverNode {
     if !close.isHidden { close.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 26 }
     if !audio.isHidden { audio.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 24 }
     if !dot.isHidden { dot.frame = NSRect(x: right - 10, y: (h - 6) / 2, width: 6, height: 6); right -= 14 }
+    for b in mediaButtons.reversed() where !b.isHidden { b.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 22 }
     label.frame = NSRect(x: x, y: (h - 18) / 2, width: max(0, right - x), height: 18)
     rename.layout()
   }

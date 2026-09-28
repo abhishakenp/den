@@ -5,7 +5,8 @@ import CordisValue
 ///
 /// Methods:
 ///   set {slot, tree, page?}      slots: sidebar.header, sidebar.favorites, sidebar.spaceHeader*, sidebar.pinned*,
-///                                sidebar.today*, sidebar.footer, overlay.commandBar, overlay.peek, dialog, toast
+///                                sidebar.today*, sidebar.dock, sidebar.footer, side.header (over content.side),
+///                                overlay.commandBar, overlay.peek, dialog, toast
 ///                                (* = per space page; `page` defaults to the current page). tree null clears.
 ///   setPages {count, current?}   number of space pages in the swipeable sidebar pager
 ///   showPage {page, animated?}   slide to a page (also blends the window theme)
@@ -180,6 +181,11 @@ public final class UIService: HostService {
     case _ where Self.sheetSlots.contains(slot): setSheet(slot, tree)
     case "overlay.peek":
       _ = content?.handle(method: "peek", args: tree.isNull ? .null : ["webview": tree["webview"], "title": tree["title"]])
+    case "side.header":
+      // The header over the side column's web view (content.side).
+      guard let side = content?.side else { return .error("ui: no content service") }
+      side.header.set(tree, renderer: renderer)
+      side.needsLayout = true
     default:
       guard slot.hasPrefix("sidebar."), let s = sidebarView.slot(slot, page: page ?? sidebarView.pager.current) else {
         return .error("ui: unknown slot '\(slot)'")
@@ -204,6 +210,7 @@ public final class UIService: HostService {
     content?.accent = renderer.palette.accentStrong
     sidebarView.applyPaletteRecursively(renderer.palette)
     wc.overlays.applyPaletteRecursively(renderer.palette)
+    content?.sideIfLoaded?.header.applyPaletteRecursively(renderer.palette)
     cards.applyPalette(renderer.palette)
     onPalette?(renderer.palette)
   }
