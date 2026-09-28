@@ -509,7 +509,7 @@ public final class UIService: HostService {
 
   /// The page a status pill sits on: its web view's frame (a split pane, the peek) or the content area.
   func statusArea() -> NSRect {
-    if !statusPill.webview.isEmpty, let w = content?.webviews.record(statusPill.webview)?.webView, w.window === wc.window, !w.isHiddenOrHasHiddenAncestor {
+    if !statusPill.webview.isEmpty, let w = content?.webviews.record(statusPill.webview)?.webView, w.window === wc.window, !w.isHiddenOrHasHiddenAncestor, w.bounds.width > 80 {
       return wc.overlays.convert(w.bounds, from: w)
     }
     return wc.overlays.convert(wc.contentArea.frame, from: wc.contentArea.superview)
