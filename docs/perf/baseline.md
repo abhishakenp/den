@@ -169,3 +169,14 @@ the 143 `MockServices` symbols are gone from the release binary. The bundle is 1
 mapped on a second thread), all 13 deferred plugins loading at first frame together with the webviews,
 and main's new features between the two builds. discardedTab.KB (84.5 → 87.6) and onePage.totalMB
 (84.5 → 89.0) fail in both builds.
+
+## Tab close (⌘W) and white flash, 2026-09-28
+
+Measured by `CloseLatencyTests` and `FlashTests` (`scripts/test.sh --filter …`), debug build, load average 15–30 (a busy machine; compare only runs taken together).
+
+| Check | Before (origin/main `13f2863`) | After |
+|---|---|---|
+| ⌘W, key to next tab in the content area (60 Today tabs, 400 archived; median / p90 of 25) | 27.6 / 29.0 ms | 28.9–29.7 / 31.8–33.1 ms (three runs) |
+| White pixels in the content card while a dark page loads (6 window snapshots, dark appearance) | 0.000 then 1.000 ×5 (white until WebKit's first paint) | 0.000 ×6 |
+
+Close time is dominated by creating the next tab's `WKWebView`; what the change removed is one extra sidebar render (≈3 ms measured per `renderPage` with this sidebar) and the second snapshot of the closed page (asynchronous, so it doesn't show in the key-to-screen time). Launch and memory weren't re-measured with `scripts/perf.sh`: the load average stayed above 6 throughout.
