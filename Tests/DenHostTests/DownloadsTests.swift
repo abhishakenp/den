@@ -227,7 +227,7 @@ struct DownloadsTests {
     FileManager.default.createFile(atPath: pdf.path, contents: Data("%PDF".utf8))
     let ms = now.timeIntervalSince1970 * 1000
     rt.call("storage", "set", ["ns": "downloads", "key": "items", "value": [
-      ["id": "d2", "url": "https://a.test/invoice.pdf", "name": "invoice.pdf", "path": .string(pdf.path), "state": "done", "started": .double(ms - 60_000), "finished": .double(ms - 60_000)],
+      ["id": "d2", "url": "https://a.test/invoice.pdf", "name": "invoice.pdf", "path": .string(pdf.path), "state": "done", "started": .double(ms - 90_000), "finished": .double(ms - 90_000)],
       ["id": "d1", "url": "https://a.test/old.pdf", "name": "old.pdf", "path": .string(pdf.path), "state": "done", "started": 1, "finished": 1],
     ]])
     // Screenshots in the screenshot folder: a fresh one, a week-old one, and a file that isn't one.
