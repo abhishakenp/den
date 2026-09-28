@@ -33,7 +33,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | [Hide sidebar, reveal on screen-edge hover](guide/sidebar-and-tabs.md) | ✅ Cmd-S | ✅ | ✅ compact mode | ✅ | ⌘S |
 | Optional classic top toolbar with full URL | ✅ Cmd-Shift-D | ✅ | ✅ | — | |
 | Simplified URL (domain only) in sidebar | ✅ | ? | ? | ✅ | The URL pill |
-| Link-hover status pill that moves away from cursor | ✅ | ? | ? | — | |
+| [Link-hover status pill that moves away from cursor](guide/hover-previews.md#link-addresses-at-the-bottom-of-the-page) | ✅ | ? | ? | ✅ | Full address after 1.5 s |
 | Drag window from empty sidebar | ✅ | ? | ? | ✅ | Dragging from the top strip of the page: (unverified) |
 | Horizontal tab strip | ❌ | ✅ | ❌ rejected | **Skip** | |
 | Developer Mode (full URL, dev tools, colored outline, auto on localhost) | ✅ | ? | ❌ requested | — | Web Inspector, console and view source ship in the View ▸ Developer menu |
