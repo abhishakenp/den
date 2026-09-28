@@ -10,7 +10,7 @@ import CordisValue
 @MainActor
 public enum PreviewScenarios {
   public static let names = ["previewTab", "previewPinned", "previewSplit", "previewPlaying", "prPassing", "prFailing", "prConflicts",
-                             "prPrivate", "linkCard", "previewCalendar", "previewFolder", "libraryFooter"]
+                             "prPrivate", "linkCard", "linkStatus", "previewCalendar", "previewFolder", "libraryFooter"]
   static var mock: MockServices?
 
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -84,6 +84,19 @@ public enum PreviewScenarios {
       let id = rt.call("tabs", "open", ["url": .string(m.base + "/reading")]).str("id")
       rt.call("tabs", "select", ["id": .string(id)])
       after(2.5) { shiftHover(rt, id, selector: "#l") }
+    case "linkStatus":
+      // Arc's status pill: a plain hover over a link shows its address at the bottom of the page;
+      // after 1.5 s on the same link, the whole address (the snapshot is taken after that).
+      m.page("/notes", """
+        <html><head><title>Notes</title><style>
+        body{font:16px -apple-system;margin:48px 56px;color:#222} a{color:#0a5bd8} h1{font-size:26px}
+        </style></head><body><h1>Rendering notes</h1>
+        <p>Start with <a id="l" href="https://webkit.org/blog/16301/how-a-frame-renders/?ref=notes#paint">how a frame renders</a>,
+        then read about compositing.</p></body></html>
+        """)
+      let id = rt.call("tabs", "open", ["url": .string(m.base + "/notes")]).str("id")
+      rt.call("tabs", "select", ["id": .string(id)])
+      after(2.5) { plainHover(rt, id, selector: "#l") }
     case "previewCalendar":
       guard let cal = tabIds(rt).first(where: { $0.1.contains("calendar.google.com") }) else { return rt.window.window }
       after(0.8) { hover(rt, cal.0) }
@@ -147,6 +160,13 @@ public enum PreviewScenarios {
       """
     rt.webviews.record(id)?.webView?.evaluateJavaScript(js) { _, e in if let e { print("scenario.linkCard js error \(e)") } }
     rt.plugins.on("webviews.linkHover") { v in print("scenario.linkHover url=\(v.str("url")) rect=\(v["rect"])") }
+  }
+
+  /// A plain mouseover on the link `selector` in tab `id`'s page (the status pill's trigger).
+  static func plainHover(_ rt: DenRuntime, _ id: String, selector: String) {
+    let js = "document.querySelector('\(selector)').dispatchEvent(new MouseEvent('mouseover', {bubbles: true}))"
+    rt.webviews.record(id)?.webView?.evaluateJavaScript(js) { _, e in if let e { print("scenario.linkStatus js error \(e)") } }
+    rt.plugins.on("webviews.linkStatus") { v in print("scenario.linkStatus url=\(v.str("url"))") }
   }
 
   /// A small picture for the OpenGraph card, written to a temporary file.

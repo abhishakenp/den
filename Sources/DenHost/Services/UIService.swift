@@ -5,7 +5,8 @@ import CordisValue
 ///
 /// Methods:
 ///   set {slot, tree, page?}      slots: sidebar.header, sidebar.favorites, sidebar.spaceHeader*, sidebar.pinned*,
-///                                sidebar.today*, sidebar.footer, overlay.commandBar, overlay.peek, dialog, toast
+///                                sidebar.today*, sidebar.footer, overlay.commandBar, overlay.peek, dialog, toast,
+///                                status ({webview?, lead, text}: the link status pill, StatusPill.swift)
 ///                                (* = per space page; `page` defaults to the current page). tree null clears.
 ///   setPages {count, current?}   number of space pages in the swipeable sidebar pager
 ///   showPage {page, animated?}   slide to a page (also blends the window theme)
@@ -31,6 +32,8 @@ public final class UIService: HostService {
   let commandBackdrop = BackdropView()
   let dialogBackdrop = ModalBackdrop(dim: Tokens.dialogBackdropAlpha)
   var toasts: [ToastView] = []
+  /// `status` slot: the link status pill at the bottom of the page.
+  let statusPill = StatusPillView()
   lazy var library = LibraryView(emit: { [weak self] in self?.emit($0, $1, $2) })
   let libraryBackdrop = BackdropView()
   var libraryOpen = false
@@ -80,6 +83,18 @@ public final class UIService: HostService {
       return wc.overlays.convert(base, from: nil)
     }
     renderer.hover = cards
+    wc.overlays.addSubview(statusPill)
+    statusPill.area = { [weak self] in self?.statusArea() }
+    statusPill.pointer = { [weak wc] in
+      guard let wc, wc.window.isVisible else { return nil }
+      return wc.overlays.convert(wc.window.mouseLocationOutsideOfEventStream, from: nil)
+    }
+    for e in ["webviews.detached", "webviews.closed"] {
+      host.on(e) { [weak self] v in
+        guard let self, !self.statusPill.webview.isEmpty, self.statusPill.webview == v.str("id") else { return }
+        self.statusPill.hide()
+      }
+    }
 
     wc.sidebar.body.addSubview(sidebarView)
     sidebarView.frame = wc.sidebar.body.bounds
@@ -129,6 +144,7 @@ public final class UIService: HostService {
       if dialogOpen { overlays.append("dialog") }
       if popoverOpen { overlays.append("popover") }
       if libraryOpen { overlays.append("overlay.library") }
+      if statusPill.showing { overlays.append("status") }
       for s in Self.sheetSlots where sheets[s] != nil { overlays.append(.string(s)) }
       let shown = cards.cards.filter { $0.value.superview != nil && !$0.value.leaving }.map(\.key).sorted().map { Value.string($0) }
       return ["page": .int(Int64(sidebarView.pager.current)), "pages": .int(Int64(sidebarView.pager.pages.count)), "overlays": .array(overlays),
@@ -147,8 +163,13 @@ public final class UIService: HostService {
 
   func set(_ slot: String, _ tree: Value, page: Int?) -> Value {
     // Anything modal (command bar, dialogs, sheets, popovers) closes the hover card.
-    if !tree.isNull, slot.hasPrefix("overlay.") || slot == "dialog" || slot == "popover" { cards.hideAll() }
+    if !tree.isNull, slot.hasPrefix("overlay.") || slot == "dialog" || slot == "popover" { cards.hideAll(); statusPill.hide() }
     switch slot {
+    case "status":
+      // Nothing modal is covered by a link address.
+      let modal = commandBarOpen || dialogOpen || popoverOpen || libraryOpen || !sheets.isEmpty
+      statusPill.update(modal ? .null : tree, palette: renderer.palette)
+      return .ok
     case "overlay.commandBar": setCommandBar(tree)
     case "dialog": setDialog(tree)
     case "toast": if !tree.isNull { showToast(tree) }
@@ -434,8 +455,17 @@ public final class UIService: HostService {
     popover.frame = NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
   }
 
+  /// The page a status pill sits on: its web view's frame (a split pane, the peek) or the content area.
+  func statusArea() -> NSRect {
+    if !statusPill.webview.isEmpty, let w = content?.webviews.record(statusPill.webview)?.webView, w.window === wc.window, !w.isHiddenOrHasHiddenAncestor {
+      return wc.overlays.convert(w.bounds, from: w)
+    }
+    return wc.overlays.convert(wc.contentArea.frame, from: wc.contentArea.superview)
+  }
+
   func layoutOverlays() {
     let b = wc.overlays.bounds
+    statusPill.layoutPill(animated: false)
     popoverBackdrop.frame = b
     layoutPopover(in: b)
     libraryBackdrop.frame = b

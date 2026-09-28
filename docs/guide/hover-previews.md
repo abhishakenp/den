@@ -80,6 +80,16 @@ On any web page, **hold ⇧ and rest on a link** for a card with the target page
 - Nothing runs until you hold ⇧ over a link.
 - **Settings ▸ Previews ▸ Link previews** lets you choose **Hold ⇧ and hover** (the default), **Hover** (no ⇧; the card waits 0.7 s, like a tab) or **Off**.
 
+## Link addresses at the bottom of the page
+
+**Point at any link** and its address shows in a small pill at the bottom-left of the page: the site in bold, then the path. Stay on the link for a moment (1.5 s) and the pill shows the whole address, query and all. If the pointer heads toward the pill, it slides to the bottom-right corner, out of your way. Tabbing to a link with the keyboard shows its address too.
+
+<p align="center">
+  <img src="../screenshots/link-status-dark.png" alt="A page with a link hovered and its address in a pill at the bottom-left corner" width="640">
+</p>
+
+Turn it off in **Settings ▸ Previews ▸ Show link addresses**.
+
 ## What the cards show
 
 | Tab | Card |
@@ -106,6 +116,7 @@ The Gmail, Calendar and Slack cards read from your own signed-in session in den.
 | | Default |
 |---|---|
 | Link previews | Hold ⇧ and hover (or Hover, or Off) |
+| Show link addresses | on: the pill at the bottom of the page |
 | Wait before switching tab cards | off: the card switches at once |
 
 Page snapshots are taken only when you hover, and kept for 30 s. To turn hover cards off entirely, disable the plugin in `~/.den/config.toml`:

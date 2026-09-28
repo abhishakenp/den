@@ -116,6 +116,8 @@ for sc in Calendar Folder; do  # tab cards and the PR peek: ONLY=cards
   shot preview-$n-dark preview$sc dark 5
 done
 shot library-footer libraryFooter light 4
+# The link status pill (Arc): a plain hover over a link, after the full address shows.
+soft shot link-status linkStatus light 6
 shot library-footer-dark libraryFooter dark 4
 # Web page prompts and error pages (PromptScenarios.swift).
 for sc in jsAlert jsPrompt httpAuth permissionCamera errorHost errorOffline errorSecure; do

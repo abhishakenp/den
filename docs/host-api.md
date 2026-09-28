@@ -66,6 +66,7 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 | `list` | – | `[id]` |
 | `setLinkPolicy` | `id` (or `"*"` for the default), `rules: [{when: crossSite\|sameSite\|any, hosts?: [suffix], modifiers?: [cmd,shift,opt,ctrl], event}]` | ok |
 | `watchLinks` | `modifier: shift\|none\|off`, `yieldTo?: [css selector]` | ok. For every web view, now and later: reports the link under the pointer (`webviews.linkHover` / `webviews.linkHoverEnd`). `shift` reports only while Shift is held, `none` on plain hover, `off` removes the script and handler. Nothing is installed until a plugin calls it |
+| `watchStatus` | `enabled` | ok. The link *status* report, independent of `watchLinks` (one shared script): `webviews.linkStatus {id, url}` for the link under the pointer on plain hover, or under keyboard focus. Any scheme except `javascript:` (`mailto:` counts). `url: ""` when there is none. Used by the status pill |
 
 Events:
 - `webviews.title {id,title}`
@@ -86,6 +87,7 @@ Events:
 - `webviews.injectResult {request, webview, plugin, ok, value | error}`, `webviews.message {webview, plugin, value}`, `webviews.menu {id, webview, plugin}`, `webviews.contentRules {plugin, ok, count, error?}`
 - One event per link rule, named by the rule's `event` field: `{id, url, source}`.
 - `webviews.linkHover {id, url, text, rect: {x, y, w, h}, yield}` and `webviews.linkHoverEnd {id}` (after `watchLinks`). `rect` is the link's box in window points with a top-left origin (page zoom and magnification applied). `yield` is true when an element matching one of `yieldTo` is visible, i.e. the site is showing its own preview (Wikipedia's `.mwe-popups`). The end event fires when the pointer leaves the link, Shift is released (shift mode), the page scrolls or the mouse goes down. The same link doesn't report twice in a row.
+- `webviews.linkStatus {id, url}` (after `watchStatus`): the link under the pointer changed. Moving straight from one link to the next sends only the new one (no `""` in between, so a pill doesn't flicker); `""` when the pointer leaves the links, the page loses focus or unloads.
 
 **Link hover.** A few passive listeners in an isolated content world (`den-links`), main frame only: no timers and no network. Only http(s) links count; `javascript:` links and same-page `#fragment` links are ignored. The host fills in `id` from its own record of the sending web view and never takes one from the page. What to show, and when to defer to a site's own previews, is up to the plugin (`LinkHover.swift`).
 
@@ -200,6 +202,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 - `sidebar.header`, `sidebar.favorites`, `sidebar.footer`
 - Per space page: `sidebar.spaceHeader`, `sidebar.pinned`, `sidebar.today`
 - Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections`, `overlay.passwords`, `overlay.extensions` (see [Briefing page](#briefing-page-and-connections-sheet)). Cards: [`ui.card`](#uicard-popover-cards-and-hover-intent)
+- `status`: the link status pill (Arc). `{webview?, lead, text}`: a small pill at the bottom-left of that web view's page (a split pane, the Peek; else the content area), `lead` in the primary text colour (the host) followed by `text` in the secondary colour, middle-truncated to the page's width. When the pointer comes within 16 pt it slides to the bottom-right, and back when the pointer nears that corner. Card tokens (light and dark, themed), a 0.1 s fade (none with Reduce Motion), no clicks. `null` hides it; it never shows over the command bar, a dialog, a sheet, the Library or a popover, and hides when its web view leaves the window. While hidden: no mouse monitor, nothing running (`StatusPill.swift`)
 
 **Event:** `ui.action {id, action, value}`
 

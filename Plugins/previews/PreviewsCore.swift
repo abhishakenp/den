@@ -5,7 +5,9 @@
 /// Hover previews: the tab card (sidebar rows, tiles, folders, splits), the GitHub PR peek, and
 /// ⇧-hover link cards on any page. The host gives generic pieces (hover intent on nodes,
 /// `ui.card`, `webviews.watchLinks`, `net.fetch`); this plugin decides what a card shows and does.
-/// Nothing is fetched, timed or captured until something is hovered.
+/// Nothing is fetched, timed or captured until something is hovered. It also owns the link status
+/// pill (Arc): the hovered link's address at the bottom of the page (`webviews.watchStatus`, the
+/// `ui` `status` slot); after `statusFullMs` on one link it shows the whole address.
 final class PreviewsCore {
   static let ns = "previews"
   static let snapshotTTL: Int64 = 30_000
@@ -19,6 +21,10 @@ final class PreviewsCore {
   static let yieldTo: [Value] = [".mwe-popups", ".mw-mmv-overlay", "[data-testid=\"hoverCardParent\"]", ".Popover-message", ".hovercard"]
   /// `<head>` only: stop reading there (or at 256 KB).
   static let headBytes: Int64 = 262_144
+  /// Arc: the status pill shows the full address after 1.5 s on the same link (docs/research/arc.md).
+  static let statusFullMs: UInt64 = 1500
+  /// Short form: the path is cut to this many bytes (plus "…").
+  static let statusPathMax = 48
 
   struct Provider {
     var id: String
@@ -89,6 +95,10 @@ final class PreviewsCore {
   /// swapping to another tab's card (Dia) instead of swapping at once (Arc, default).
   var linkMode = "shift"
   var redwell = false
+  /// Settings: "Show link addresses" (the status pill), on by default.
+  var showStatus = true
+  var statusURL: String?
+  var statusGen = 0
 
   init(env: PluginEnv) {
     self.env = env
@@ -105,6 +115,7 @@ final class PreviewsCore {
     env.on("tabs.closed") { [self] v in snapshots[v.s("id")] = nil }
     env.on("webviews.linkHover") { [self] v in linkHover(v) }
     env.on("webviews.linkHoverEnd") { [self] v in if link?.webview == v.s("id") { hideLink() } }
+    env.on("webviews.linkStatus") { [self] v in linkStatus(v) }
     env.on("connections.changed") { [self] _ in connectionsChanged() }
     env.on("settings.changed") { [self] v in
       guard v.s("id") == Self.ns else { return }
@@ -114,9 +125,11 @@ final class PreviewsCore {
     if !saved.isErr, !saved.isNull {
       if let m = saved.sOpt("links") { linkMode = m }
       if let r = saved["redwell"].bool { redwell = r }
+      if let st = saved["status"].bool { showStatus = st }
     }
     registerSettings()
     applyLinkMode()
+    applyStatus()
   }
 
   // MARK: Settings
@@ -128,6 +141,8 @@ final class PreviewsCore {
         ["key": "links", "type": "choice", "title": "Link previews", "default": "shift",
          "subtitle": "A card with the link's picture, title and summary. den reads only the page's head, and only when you ask.",
          "options": [["value": "shift", "title": "Hold ⇧ and hover"], ["value": "hover", "title": "Hover"], ["value": "off", "title": "Off"]]],
+        ["key": "status", "type": "toggle", "title": "Show link addresses", "default": true,
+         "subtitle": "Hovering a link shows where it goes at the bottom of the page. Stay on it to see the whole address."],
         ["key": "redwell", "type": "toggle", "title": "Wait before switching tab cards", "default": false,
          "subtitle": "With a card open, moving to another tab waits for its own delay instead of switching at once."],
       ],
@@ -141,6 +156,9 @@ final class PreviewsCore {
       applyLinkMode()
     case "redwell":
       redwell = v.bool ?? false
+    case "status":
+      showStatus = v.bool ?? true
+      applyStatus()
     default: break
     }
   }
@@ -149,6 +167,77 @@ final class PreviewsCore {
     let modifier = linkMode == "hover" ? "none" : linkMode == "off" ? "off" : "shift"
     env.call("webviews", "watchLinks", ["modifier": .string(modifier), "yieldTo": .array(Self.yieldTo)])
     if linkMode == "off" { hideLink() }
+  }
+
+  // MARK: Link status pill
+
+  func applyStatus() {
+    env.call("webviews", "watchStatus", ["enabled": .bool(showStatus)])
+    if !showStatus { hideStatus() }
+  }
+
+  func linkStatus(_ v: Value) {
+    guard showStatus else { return }
+    let url = v.s("url"), id = v.s("id")
+    statusGen += 1
+    guard !url.isEmpty else { hideStatus(); return }
+    statusURL = url
+    setStatus(id, url, full: false)
+    // Staying on one link shows the whole address (only when there's more to show).
+    let short = Self.statusParts(url, full: false), long = Self.statusParts(url, full: true)
+    guard short.lead != long.lead || short.text != long.text else { return }
+    let gen = statusGen
+    env.timer(Self.statusFullMs, false) { [self] in
+      if statusGen == gen, statusURL == url { setStatus(id, url, full: true) }
+    }
+  }
+
+  func setStatus(_ webview: String, _ url: String, full: Bool) {
+    let p = Self.statusParts(url, full: full)
+    env.call("ui", "set", ["slot": "status", "tree": ["webview": .string(webview), "lead": .string(p.lead), "text": .string(p.text), "url": .string(url)]])
+  }
+
+  func hideStatus() {
+    guard statusURL != nil else { return }
+    statusURL = nil
+    statusGen += 1
+    env.call("ui", "set", ["slot": "status", "tree": .null])
+  }
+
+  /// The pill's words for a link: `lead` (the host, emphasized) and `text` (the rest). Short form:
+  /// no scheme, no "www.", just the path, cut at `statusPathMax` bytes. Full form: everything after
+  /// the host (query and fragment too). Non-web links (mailto:, tel:) show as they are.
+  static func statusParts(_ url: String, full: Bool) -> (lead: String, text: String) {
+    let b = Array(url.utf8)
+    let l = Text.lower(url)
+    var start = 0
+    if Text.hasPrefix(l, "https://") { start = 8 } else if Text.hasPrefix(l, "http://") { start = 7 }
+    guard start > 0 else { return ("", full ? url : cut(url, statusPathMax + 16)) }
+    var end = start
+    while end < b.count, b[end] != 47, b[end] != 63, b[end] != 35 { end += 1 }  // / ? #
+    var host = Array(b[start..<end])
+    if let at = host.lastIndex(of: 64) { host = Array(host[(at + 1)...]) }  // user@
+    var h = Text.lower(String(decoding: host, as: UTF8.self))
+    h = Text.dropPrefix(h, "www.")
+    h = IDN.display(h)
+    var rest = Array(b[end...])
+    if !full {
+      var p = 0
+      while p < rest.count, rest[p] != 63, rest[p] != 35 { p += 1 }
+      rest = Array(rest[..<p])
+      if rest == [47] { rest = [] }
+    }
+    let text = URLs.percentDecode(rest)
+    return (h, full ? text : cut(text, statusPathMax))
+  }
+
+  /// At most `max` bytes, cut on a character boundary, with "…".
+  static func cut(_ s: String, _ max: Int) -> String {
+    let b = Array(s.utf8)
+    guard b.count > max else { return s }
+    var n = max
+    while n > 0, b[n] & 0xC0 == 0x80 { n -= 1 }
+    return String(decoding: b[..<n], as: UTF8.self) + "…"
   }
 
   // MARK: Service
