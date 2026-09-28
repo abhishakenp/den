@@ -41,12 +41,14 @@ enum KeyLayoutFallback {
   static func find(_ key: String, _ flags: NSEvent.ModifierFlags, in menu: NSMenu) -> NSMenuItem? {
     var candidates = [(key, flags)]
     if flags.contains(.shift), let shifted = Chord.shiftedPunctuation[key] { candidates.append((shifted, flags.subtracting(.shift))) }
-    func walk(_ m: NSMenu) -> NSMenuItem? {
+    // No `mi` inside an autoclosure (`a || mi.x`) or a where clause: a clean Swift 6.3 build flags
+    // them as "sending 'mi' risks causing data races".
+    @MainActor func walk(_ m: NSMenu) -> NSMenuItem? {
       for mi in m.items {
         if let s = mi.submenu, let hit = walk(s) { return hit }
-        guard !mi.keyEquivalent.isEmpty, !mi.isHidden || mi.allowsKeyEquivalentWhenHidden else { continue }
+        let hiddenOK = mi.allowsKeyEquivalentWhenHidden
+        guard !mi.keyEquivalent.isEmpty, !mi.isHidden || hiddenOK else { continue }
         let mask = mi.keyEquivalentModifierMask.intersection(relevant)
-        // (No `mi` inside the loop's where clause: Swift 6.3 flags returning it as a data race.)
         let key = mi.keyEquivalent.lowercased()
         if candidates.contains(where: { $0.0 == key && $0.1 == mask }) { return mi }
       }
