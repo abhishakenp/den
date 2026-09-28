@@ -17,6 +17,47 @@ struct ComponentTests {
                        context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
   }
 
+  /// Arc's favorites grid: every row's tiles fill the width with no gap, rows of up to 4,
+  /// fixed height; 5 = a row of 4 and one full-width tile.
+  @Test func favoritesGridFillsEachRow() {
+    let W: CGFloat = 230, sp = Tokens.favoriteTileSpacing, h = Tokens.favoriteTileHeight
+    for n in 1...12 {
+      let fs = GridNode.frames(count: n, width: W, columns: 4)
+      #expect(fs.count == n)
+      let rows = Dictionary(grouping: fs, by: { $0.minY })
+      #expect(rows.count == (n + 3) / 4)
+      for (_, row) in rows {
+        let r = row.sorted { $0.minX < $1.minX }
+        #expect(r.first!.minX == 0 && r.last!.maxX == W, "row must span the width (n=\(n))")
+        for (a, b) in zip(r, r.dropFirst()) { #expect(b.minX - a.maxX == sp, "gap between tiles (n=\(n))") }
+        #expect(r.allSatisfy { $0.height == h })
+        #expect(r.map(\.width).max()! - r.map(\.width).min()! <= 1, "tiles in a row are equal width (n=\(n))")
+        #expect(r.count <= 4)
+      }
+    }
+    #expect(GridNode.frames(count: 1, width: W, columns: 4)[0].width == W)
+    #expect(GridNode.frames(count: 5, width: W, columns: 4).map(\.minY) == [0, 0, 0, 0, h + sp])
+    #expect(GridNode.frames(count: 5, width: W, columns: 4)[4].width == W)
+
+    // Through the renderer: 2 tiles in a 230 pt grid are halves, and a resize relayouts.
+    let rt = Self.runtime()
+    rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "favs", "children": [
+      ["type": "favoriteTile", "id": "a", "icon": "sf:star", "title": "A"],
+      ["type": "favoriteTile", "id": "b", "icon": "sf:star", "title": "B"],
+    ]]])
+    let grid = rt.ui.sidebarView.favorites.root as? GridNode
+    #expect(grid != nil)
+    if let g = grid {
+      g.frame = NSRect(x: 0, y: 0, width: W, height: g.height(for: W))
+      g.layout()
+      #expect(g.kids.count == 2 && g.kids[0].frame.width == ((W - sp) / 2).rounded(.down))
+      #expect(g.kids.last!.frame.maxX == W && g.kids[1].frame.minX - g.kids[0].frame.maxX == sp)
+      g.frame.size.width = 300
+      g.layout()
+      #expect(g.kids.last!.frame.maxX == 300 && g.kids[0].frame.width == ((300 - sp) / 2).rounded(.down))
+    }
+  }
+
   @Test func themePickerMathRoundTrips() {
     for p in [CGPoint(x: 0.9, y: 0.5), CGPoint(x: 0.3, y: 0.2), CGPoint(x: 0.55, y: 0.85)] {
       let c = ThemePickerMath.color(at: p)
