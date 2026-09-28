@@ -70,7 +70,10 @@ overloaded() {
 }
 
 failed_at() { # sha deployed
-  if overloaded; then
+  if (( ${CI_PENDING:-0} )); then
+    state_write deferred=$1 deferredAt=$(date +%s) lastCheck=$(now_iso) lastResult="Waiting for CI on $(short $1)"
+    log "NOT deployed $(short $1) yet: waiting for CI; will retry at the next check"
+  elif overloaded; then
     state_write deferred=$1 deferredAt=$(date +%s) lastCheck=$(now_iso) lastResult="Tests failed at $(short $1) under load $(sysctl -n vm.loadavg | awk '{print $2}'); retrying"
     log "NOT deployed $(short $1) (load $(sysctl -n vm.loadavg | awk '{print $2}')): will retry at the next check"
   else
@@ -141,7 +144,24 @@ cmd_status() {
 # one `swift test` runs at a time (concurrent runs starve each other's timing-sensitive tests).
 swift_test() { if [[ -x $SRC/scripts/test.sh ]]; then $SRC/scripts/test.sh "$@"; else swift test "$@"; fi; }
 
+# Remote build mode (docs/dev.md): a green GitHub CI run on the commit being deployed replaces
+# the local test run (local runs depend on this Mac's power state, appearance and load). A run
+# still in progress defers the deploy to the next check; a failed one blocks it.
+GH=$(command -v gh 2>/dev/null || print /opt/homebrew/bin/gh)
+ci_state() { # sha -> success | pending | failure | none
+  [[ -x $GH ]] || { print none; return; }
+  $GH run list -R abhishakenp/den --commit $1 --workflow CI --json status,conclusion \
+    -q 'if length == 0 then "none" elif any(.[]; .conclusion == "success") then "success" elif any(.[]; .status != "completed") then "pending" elif any(.[]; .conclusion == "failure") then "failure" else "none" end' 2>/dev/null || print none
+}
+
 run_tests() {
+  if [[ -n ${DEPLOY_SHA:-} ]]; then
+    case $(ci_state $DEPLOY_SHA) in
+      success) log "CI green on $(short $DEPLOY_SHA): local tests skipped"; return 0 ;;
+      pending|none) log "CI not finished on $(short $DEPLOY_SHA)"; CI_PENDING=1; return 1 ;;
+      *) log "CI failed on $(short $DEPLOY_SHA)"; return 1 ;;
+    esac
+  fi
   local out=$STAGE/test.log filter=${1:-} args=()
   [[ -n $filter ]] && args=(--filter "$filter")
   mkdir -p $STAGE
@@ -171,6 +191,7 @@ suites_for() {
 
 deploy_plugins() { # sha ids...
   local sha=$1; shift
+  DEPLOY_SHA=$sha CI_PENDING=0
   local id cb=$SRC/.build/checkouts/cordis-swift/Scripts/cordis-build filter=() gen
   [[ -x $cb ]] || (cd $SRC && swift package resolve >> $LOG 2>&1) || return 1
   rm -rf $STAGE && mkdir -p $STAGE
@@ -201,6 +222,7 @@ deploy_plugins() { # sha ids...
 
 deploy_host() { # sha
   local sha=$1
+  DEPLOY_SHA=$sha CI_PENDING=0
   run_tests || { log "swift test failed"; return 1; }
   log "swift test passed"
   (cd $SRC && scripts/bundle.sh >> $LOG 2>&1) || { log "bundle.sh failed"; return 1; }
