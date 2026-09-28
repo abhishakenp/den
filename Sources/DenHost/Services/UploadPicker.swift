@@ -169,7 +169,8 @@ public final class UploadPicker {
   }
 
   static func ago(_ d: Date, now: Date) -> String {
-    let s = max(0, now.timeIntervalSince(d))
+    // Whole seconds: a time stored in milliseconds comes back a hair off (59.9999 s is a minute).
+    let s = max(0, now.timeIntervalSince(d).rounded())
     if s < 60 { return "just now" }
     if s < 3600 { return "\(Int(s / 60)) min ago" }
     if s < 86_400 { let h = Int(s / 3600); return h == 1 ? "1 hour ago" : "\(h) hours ago" }
