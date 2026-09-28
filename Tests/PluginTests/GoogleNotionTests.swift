@@ -249,15 +249,11 @@ struct GoogleNotionTests {
     cal.tick()
     #expect(rec.cards.last == .null)
     // Disconnect: countdown and card go away.
-    h.record(["connections.changed"])
-    let r = h.rt.call("connections", "disconnect", ["id": "calendar"])
-    let cleared = await ct.until(5) { rec.badges.last == "" }
-    if !cleared {
-      print("calendar.diag disconnect=\(r) changed=\(h.events.filter { $0.0 == "connections.changed" }.count) badges=\(rec.badges)",
-            "toasts=\(rec.toasts.map { $0.s("text") }) get=\(h.rt.call("connections", "get", ["id": "calendar"])) connection=\(String(describing: cal.connection()))",
-            "badge=\(cal.badge) day=\(cal.eventsDay)")
-    }
-    #expect(cleared)
+    // (Nothing signed it out earlier: the launch-time probe's late cookie read sees the address.)
+    #expect(!rec.toasts.contains { $0.s("text").hasPrefix("Signed out") })
+    h.rt.call("connections", "disconnect", ["id": "calendar"])
+    #expect(cal.connection() == nil)
+    #expect(await ct.until { rec.badges.last == "" })
     #expect(cal.events.isEmpty)
     // A disconnect sticks: the next Google cookie change doesn't connect it again.
     #expect(h.rt.call("connections", "get", ["id": "calendar"]).b("declined"))

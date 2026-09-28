@@ -141,7 +141,9 @@ final class CalendarCore {
 
   func connection() -> Value? {
     let c = env.call("connections", "get", ["id": .string(Self.id)])
-    return c.b("connected") ? c : nil
+    // Not a bare `nil`: Value is ExpressibleByNilLiteral, so it became Optional(.null) and a
+    // disconnected provider still looked connected to `guard let c = connection()`.
+    return c.b("connected") ? c : Optional<Value>.none
   }
 
   // MARK: Connection
@@ -155,7 +157,8 @@ final class CalendarCore {
   func probe(profile: String, auto: Bool) {
     if !address.isEmpty { return report(true, profile: profile, auto: auto) }
     requests.call("session", "cookies", ["plugin": .string(Self.id), "domain": .string(domain), "profile": .string(profile)]) { [self] r in
-      report(!GmailSid.of(r.a("cookies")).isEmpty, profile: profile, auto: auto)
+      // An address pasted while the cookies were being read still connects it.
+      report(!GmailSid.of(r.a("cookies")).isEmpty || !address.isEmpty, profile: profile, auto: auto)
     }
   }
 

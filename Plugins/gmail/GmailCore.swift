@@ -70,7 +70,9 @@ final class GmailCore {
 
   func connection() -> Value? {
     let c = env.call("connections", "get", ["id": .string(Self.id)])
-    return c.b("connected") ? c : nil
+    // Not a bare `nil`: Value is ExpressibleByNilLiteral, so it became Optional(.null) and a
+    // disconnected provider still looked connected to `guard let c = connection()`.
+    return c.b("connected") ? c : Optional<Value>.none
   }
 
   static func sid(_ cookies: [Value]) -> String {
