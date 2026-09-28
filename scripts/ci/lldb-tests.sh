@@ -17,6 +17,6 @@ lldb --batch \
   -o 'process handle SIGPIPE -n true -p true -s false' \
   -o run \
   -k 'thread backtrace all' -k 'register read' -k 'quit 1' \
-  -- "$helper" --test-bundle-path "$bundle" "$bundle" --testing-library swift-testing "$@" 2>&1 | tee "$out"
+  -- "$helper" --test-bundle-path "$bundle" "$bundle" --testing-library swift-testing --no-parallel "$@" 2>&1 | tee "$out"
 # lldb's own status says nothing about the tests: pass only if the process exited 0.
 grep -q 'exited with status = 0 ' "$out"
