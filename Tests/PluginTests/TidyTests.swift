@@ -72,6 +72,7 @@ struct TidyTests {
     #expect(await until { results.count == 1 })
     #expect(results[0]["groups"] == [["name": "A", "items": ["a", "b"]], ["name": "B", "items": ["c"]]])
     #expect(ai.prompts.first == "1. one\n2. two\n3. three\n4. four")
+    #expect(TabsCore.tidyAddress("https://www.en.wikipedia.org/wiki/Lisbon/") == "en.wikipedia.org/wiki/Lisbon")
     // Generators without guided generation answer in text lines.
     let parsed = AIService.parseGroups("1. Travel: 1, 3\n- **Work**: 2,4\nnothing here\n“Misc”: none")
     #expect(parsed.map(\.name) == ["Travel", "Work"] && parsed.map(\.items) == [[1, 3], [2, 4]])
