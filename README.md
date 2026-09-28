@@ -82,7 +82,7 @@ Each item is covered by `swift test` or a `--scenario` run of the real app. The 
 
 <p align="center">
   <img src="docs/screenshots/command-bar-dark.png" alt="Command bar" width="410">
-  <img src="docs/screenshots/split-view.png" alt="Split view" width="410">
+  <img src="docs/screenshots/split-view-dark.png" alt="Split view" width="410">
 </p>
 <p align="center">
   <img src="docs/screenshots/theme-picker-live-dark.png" alt="Theme picker" width="410">

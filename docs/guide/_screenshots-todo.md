@@ -49,36 +49,17 @@ Screenshots of features that aren't merged (⇧-hover link previews) wait for th
 
 ## Dark variants needed
 
-The docs and README use dark screenshots only. These are still light-only; render each with `--appearance dark` (preferably on the CI snapshot job) and swap the reference:
+The docs and README use dark screenshots only. 25 dark variants came from the CI snapshot job
+([run 36372975170](https://github.com/abhishakenp/den/actions/runs/36372975170), 2026-09-28) and
+are committed, with every guide and README reference swapped (light/dark pairs now show the dark
+shot only). Still missing, or rendered wrong and not committed:
 
-- `briefing-feed-dark.png`
-- `command-bar-edit-dark.png`
-- `command-bar-keyword-dark.png`
-- `command-bar-settings-dark.png`
-- `command-bar-shortcuts-dark.png`
-- `connect-toast-dark.png`
-- `dark-mode-site-dark.png`
-- `extensions-add-to-den-dark.png`
-- `extensions-add-to-den-amo-dark.png`
-- `extensions-permission-prompt-dark.png`
-- `extensions-popup-dark.png`
-- `file-upload-dark.png`
-- `js-confirm-dark.png`
-- `little-arc-cmd-o-dark.png`
-- `little-arc-link-dark.png`
-- `pagetools-highlight-link-dark.png`
-- `pagetools-reader-dark.png`
-- `pagetools-translated-dark.png`
-- `pagetools-zap-dark.png`
-- `sidebar-hidden-dark.png`
-- `sidebar-hover-reveal-dark.png`
-- `space-2-dark.png`
-- `space-swipe-dark.png`
-- `split-grid-dark.png`
-- `split-view-dark.png`
-- `theming-grid-dark.png`
-- `vault-fill-dark.png`
-- `vault-generate-dark.png`
-- `vault-save-dark.png`
-- `vault-sheet-dark.png`
-- `vault-suggest-dark.png`
+| File | Problem in the CI render | Fix |
+|---|---|---|
+| `connect-toast-dark.png` | empty page: no toast and no Connections sheet (the mock sign-in didn't finish in time) | a longer `--snapshot-delay`, or wait for `session.cookies` in the scenario |
+| `file-upload-dark.png` | only the page's "Choose Files" control: the native open panel doesn't draw through `--snapshot` | capture with `--stay` + `screencapture -l`, like `menu()` |
+| `little-arc-cmd-o-dark.png` | not rendered (the `littleArcCmdO` line is missing from the dark run) | add it to `scripts/snapshots.sh` |
+| `little-arc-link-dark.png` | shows the main window, not the Little Arc window | snapshot the mini window (`littleArcLink` light does) |
+| `pagetools-zap-dark.png` | the Zap panel is caught mid-fade (the page shows through it) | a longer delay |
+| `vault-suggest-dark.png` | shows the saved-login list, not "Use Strong Password" (`vault-generate-dark.png` shows it, and the guide uses that one) | point `vaultSuggest` at the sign-up form |
+| `js-confirm-dark.png`, `command-bar-shortcuts-dark.png` | rendered fine, committed; no guide section shows them yet | — |

@@ -7,13 +7,13 @@ den runs Chrome and Firefox extensions on WebKit, through Apple's `WKWebExtensio
 **From the store.** Open an extension's page on the [Chrome Web Store](https://chromewebstore.google.com) or [Firefox Add-ons](https://addons.mozilla.org). den swaps the store's install button for **＋ Add to den**. Click it.
 
 <p align="center">
-  <img src="../screenshots/extensions-add-to-den.png" alt="Add to den on the Chrome Web Store" width="400">
-  <img src="../screenshots/extensions-add-to-den-amo.png" alt="Add to den on Firefox Add-ons" width="400">
+  <img src="../screenshots/extensions-add-to-den-dark.png" alt="Add to den on the Chrome Web Store" width="400">
+  <img src="../screenshots/extensions-add-to-den-amo-dark.png" alt="Add to den on Firefox Add-ons" width="400">
 </p>
 
 den shows what the extension can do, and what WebKit can't give it, before you confirm with **Add Extension**:
 
-<p align="center"><img src="../screenshots/extensions-permission-prompt.png" alt="Add extension prompt listing permissions" width="520"></p>
+<p align="center"><img src="../screenshots/extensions-permission-prompt-dark.png" alt="Add extension prompt listing permissions" width="520"></p>
 
 If an installed extension later asks for more access, den asks again ("wants more access" ▸ **Allow**).
 
@@ -27,7 +27,7 @@ Hover the URL pill at the top of the sidebar: pinned extensions show there, with
 
 <p align="center">
   <img src="../screenshots/extensions-menu-dark.png" alt="The extensions menu in the URL pill" width="400">
-  <img src="../screenshots/extensions-popup.png" alt="An extension popup" width="400">
+  <img src="../screenshots/extensions-popup-dark.png" alt="An extension popup" width="400">
 </p>
 
 ## The Extensions page

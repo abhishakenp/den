@@ -46,13 +46,15 @@ Results you pick often and recently rank higher.
 
 ### Editing the address (⌘L)
 
-<p align="center"><img src="../screenshots/command-bar-edit.png" alt="Editing the URL with ⌘L" width="620"></p>
+<p align="center"><img src="../screenshots/command-bar-edit-dark.png" alt="Editing the URL with ⌘L" width="620"></p>
 
 Return on the unchanged address reloads. Type a new one and Return goes there, in the same tab.
 
 ## Site search keywords
 
 Type a keyword, then **Tab**, then your search:
+
+<p align="center"><img src="../screenshots/command-bar-keyword-dark.png" alt="Typing yt: Search YouTube, Press Tab" width="620"></p>
 
 | Keyword | Searches |
 |---|---|
@@ -105,6 +107,8 @@ You don't need the Settings window for most things. Type a setting's name:
 - A **switch** shows its state. Return flips it, and a toast confirms (e.g. "Search suggestions: Off").
 - A **choice** (like the archive time) shows its value. Return, Tab or → lists the options.
 - A **section** ("Tabs — Settings") opens its settings inside the bar.
+
+<p align="center"><img src="../screenshots/command-bar-settings-dark.png" alt="Typing search suggestions: the real setting with its switch, above web search" width="620"></p>
 
 <p align="center"><img src="../screenshots/launcher-extensions-dark.png" alt="Typing extensions: the Extensions page as the top hit" width="620"></p>
 

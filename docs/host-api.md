@@ -440,7 +440,7 @@ Every den surface takes its colors from one token layer, derived from the curren
 - **Live and cheap.** Tokens are computed once per (theme, appearance, accent) and cached. `UIService.refreshPalette()` rebuilds the palette on a theme change or space switch and re-applies it (`Themable.apply`, recursively over the sidebar and `wc.overlays`, plus the hover card and the Settings window) only when the tokens changed; identical themes redraw nothing.
 - **Adopting it.** A surface view conforms to `Themable` and reads colors in `apply(_ p: Palette)`: backgrounds from `p.surface` / `p.elevatedSurface`, text from `p.textPrimary`/`textSecondary`/`textTertiary`, primary actions `p.primaryButton` + `p.onAccent`, destructive `p.destructive` + `p.onDestructive`, dividers `p.hairline`, shadows `p.shadowColor`. Views added under `wc.overlays` (or `PanelView` subclasses) are re-themed automatically. For a colored fill with custom text, call `ThemeTokens.ensure(text, on: fill, ThemeTokens.bodyContrast)`. For an HTML surface (error pages), inject `p.tokens.surface.hex`, `textPrimary.hex` and `accent.hex` as CSS variables.
 - Native menus follow the window's appearance (light/dark); AppKit doesn't let them take theme colors.
-- Snapshot: `docs/screenshots/theming-grid.png` (scenario `themeSample`, see scripts/snapshots.sh).
+- Snapshot: `docs/screenshots/theming-grid-dark.png` (scenario `themeSample`, see scripts/snapshots.sh).
 
 ## downloads
 

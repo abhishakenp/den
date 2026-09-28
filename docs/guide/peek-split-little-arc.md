@@ -31,7 +31,7 @@ Don't want pinned tabs to Peek? Turn off Settings ▸ Tabs ▸ **Peek at links f
 
 Up to four pages side by side, saved as one row in the sidebar.
 
-<p align="center"><img src="../screenshots/split-view.png" alt="Two pages side by side" width="720"></p>
+<p align="center"><img src="../screenshots/split-view-dark.png" alt="Two pages side by side" width="720"></p>
 
 **Make a split:**
 
@@ -54,7 +54,7 @@ Up to four pages side by side, saved as one row in the sidebar.
 
 Grid with three panes is one tall pane on the left and two stacked on the right; with four it's 2 × 2. A split that's down to one tab turns back into a plain tab.
 
-<p align="center"><img src="../screenshots/split-grid.png" alt="Three panes in a grid" width="720"></p>
+<p align="center"><img src="../screenshots/split-grid-dark.png" alt="Three panes in a grid" width="720"></p>
 
 Panes can't be resized by dragging yet.
 

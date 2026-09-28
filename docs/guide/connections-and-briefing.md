@@ -32,8 +32,7 @@ Connect uses the current space's [profile](spaces-and-themes.md#profiles-separat
 You don't have to press Connect. **Sign in to github.com, Slack, Google or Notion in den, now or any time later, and the connection turns itself on**, with a toast: **"GitHub connected · Undo"**. One Google sign-in connects Gmail and Google Calendar together (**"Gmail and Google Calendar connected · Undo"**; Undo undoes both). If you'd rather not, press **Undo**: den disconnects and stops doing it for that service until you press Connect yourself.
 
 <p align="center">
-  <img src="../screenshots/connected-toast.png" alt="Toast in the window's top-right corner: GitHub connected, with an Undo button" width="360">
-  <img src="../screenshots/connected-toast-dark.png" alt="The same toast in a dark space" width="360">
+  <img src="../screenshots/connected-toast-dark.png" alt="The toast after connecting an account" width="360">
 </p>
 
 A pull request card for a private repository has a **Connect GitHub** button of its own, and fills in as soon as you're signed in ([Hover previews](hover-previews.md#the-github-pr-peek)).
@@ -83,7 +82,7 @@ Open it with **⇧⌘B** or **Daily Briefing** in the command bar.
 - **Todos**: one per thing that needs you. Click one to jump to the exact message, PR or thread. Check it off; checked todos disappear after a day. They're kept across launches.
 - **For you**: a feed of up to 25 items across connections, ranked by kind, then how recent it is, then how often you open things from that person or place.
 
-<p align="center"><img src="../screenshots/briefing-feed.png" alt="The For you feed" width="620"></p>
+<p align="center"><img src="../screenshots/briefing-feed-dark.png" alt="The For you feed" width="620"></p>
 
 ### When it runs
 
