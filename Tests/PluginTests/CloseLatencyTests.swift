@@ -10,7 +10,7 @@ import Testing
 /// with a realistic sidebar (60 Today tabs) and archive (400 entries). Prints the median so a
 /// change can be compared before and after (docs/perf/baseline.md).
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct CloseLatencyTests {
   @Test func closeLatency() {
     let h = Harness()

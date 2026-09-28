@@ -12,7 +12,7 @@ import WebKit
 /// right after a dark page is put on screen and while it loads, in dark appearance. Prints the
 /// share of near-white pixels in the content card per snapshot.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct FlashTests {
   static let dark = "<html style='background:#121212'><title>Dark</title><body style='color:#eee;font:16px -apple-system'>A dark page</body></html>"
 

@@ -12,7 +12,7 @@ import WebKit
 /// nothing is fetched. Run with DEN_DOC_SNAPSHOTS=<dir>:
 ///   DEN_DOC_SNAPSHOTS=$PWD/docs/screenshots scripts/test.sh --filter DocSnapshotTests
 @MainActor
-@Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["DEN_DOC_SNAPSHOTS"] != nil))
+@Suite(.serialized, .watchdog, .enabled(if: ProcessInfo.processInfo.environment["DEN_DOC_SNAPSHOTS"] != nil))
 struct DocSnapshotTests {
   static var dir: String { ProcessInfo.processInfo.environment["DEN_DOC_SNAPSHOTS"] ?? NSTemporaryDirectory() }
 

@@ -11,7 +11,7 @@ import WebKit
 /// Crashed pages, dialog loops, CJK input in the command bar and shortcuts on non-US keyboards
 /// (docs/research/dia-shortlist.md §2.4, §2.7).
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct PageSafetyTests {
   func until(_ seconds: Double = 15, _ cond: () -> Bool) async -> Bool {
     let end = Date().addingTimeInterval(seconds)

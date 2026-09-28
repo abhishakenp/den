@@ -9,7 +9,7 @@ import Testing
 /// ⌘-click groups, Today folders and their shortcuts, the tab menu's shortcuts and ⌥ alternates,
 /// split modifiers, and smarter idle discard (docs/research/dia-shortlist.md Top 15, dia-ui-spec §4, §6).
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct GroupTests {
   /// An on-device model stand-in: always available, answers with `reply`.
   final class FakeAI: AIGenerator {
