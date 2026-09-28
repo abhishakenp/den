@@ -800,6 +800,28 @@ final class RenameSupport {
 
   func layout() { editor?.frame = label.frame.insetBy(dx: -1, dy: 0) }
 
+  /// While renaming, the row's icon is a button for the icon picker (Arc): a soft rounded fill
+  /// marks it, and a click emits `pickIcon`. `iconPressed` swallows that click's mouse-up.
+  var iconPressed = false
+  func drawIconAffordance(_ icon: NSView, palette: Palette) {
+    guard active else { return }
+    let r = icon.frame.insetBy(dx: -4, dy: -4)
+    palette.controlHoverFill.setFill()
+    NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
+  }
+  /// True when the press hit the icon while renaming (and `pickIcon` was sent).
+  func iconDown(_ icon: NSView, at p: NSPoint) -> Bool {
+    guard active, icon.frame.insetBy(dx: -4, dy: -4).contains(p) else { return false }
+    iconPressed = true
+    owner.emit("pickIcon")
+    return true
+  }
+  /// True when this mouse-up ends an icon press (nothing else should happen).
+  func iconUp() -> Bool {
+    defer { iconPressed = false }
+    return iconPressed
+  }
+
   private func end() {
     guard let e = editor else { return }
     editor = nil
@@ -820,6 +842,7 @@ final class RenameSupport {
 /// actions: click {modifiers?}, doubleClick, close, reset (favicon click while drifted), mute, contextMenu/menu, reorder,
 /// dropOnContent, rename {title} / renameCancel (while `editing`), media {action: toggle|next|previous} (the hover
 /// playback buttons of a tab with `media`)
+/// dropOnContent, rename {title} / renameCancel / pickIcon (the icon clicked, while `editing`)
 final class TabRowNode: HoverNode {
   let icon = IconView()
   let label = makeLabel()
@@ -919,7 +942,16 @@ final class TabRowNode: HoverNode {
     if node.flag("drift"), icon.frame.insetBy(dx: -4, dy: -4).contains(p) { emit("reset"); return }
     super.clicked(at: p, event: event)
   }
+  override func draw(_ dirtyRect: NSRect) {
+    super.draw(dirtyRect)
+    rename.drawIconAffordance(icon, palette: palette)
+  }
+  override func mouseDown(with event: NSEvent) {
+    if rename.iconDown(icon, at: convert(event.locationInWindow, from: nil)) { return }
+    super.mouseDown(with: event)
+  }
   override func mouseUp(with event: NSEvent) {
+    if rename.iconUp() { return }
     // Middle-click / cmd-W style close is handled by keys; plain click here.
     super.mouseUp(with: event)
   }
@@ -1046,6 +1078,8 @@ final class SplitRowNode: HoverNode {
 /// - `pending`: a better name is on its way; a soft shimmer runs across the title (Reduce Motion:
 ///   the title dims instead). `reveal`: the new name just arrived; a colour sweep crosses it once.
 /// actions: toggle, click, reorder (as target: position "into"), rename {title} / renameCancel (while `editing`), badge
+/// actions: toggle, click, reorder (as target: position "into"), rename {title} / renameCancel / pickIcon (the icon
+/// clicked, while `editing`)
 final class FolderNode: NodeView {
   final class Header: HoverNode {
     let chevron = IconView()
@@ -1087,6 +1121,18 @@ final class FolderNode: NodeView {
     }
     override func height(for w: CGFloat) -> CGFloat { Tokens.tabRowHeight }
     override func clicked(at p: NSPoint, event: NSEvent) { emit("toggle") }
+    override func draw(_ dirtyRect: NSRect) {
+      super.draw(dirtyRect)
+      rename.drawIconAffordance(icon, palette: palette)
+    }
+    override func mouseDown(with event: NSEvent) {
+      if rename.iconDown(icon, at: convert(event.locationInWindow, from: nil)) { return }
+      super.mouseDown(with: event)
+    }
+    override func mouseUp(with event: NSEvent) {
+      if rename.iconUp() { return }
+      super.mouseUp(with: event)
+    }
     override func layout() {
       let h = bounds.height, s = Tokens.tabRowIconSize
       let x = Tokens.tabRowPaddingX + CGFloat(node.num("indent", 0)) * Tokens.folderIndent

@@ -7,7 +7,7 @@ import CordisValue
 /// live drag-reorder. They drive the real `spaces` plugin (run with the bundled plugins).
 @MainActor
 public enum SpaceScenarios {
-  public static let names = ["spaceMenu", "spaceIconPicker", "spaceRename", "spaceReorder"]
+  public static let names = ["spaceMenu", "spaceIconPicker", "spaceRename", "spaceReorder", "tabEmojiIcons", "tabIconPicker"]
 
   /// Settings window sections (with the bundled plugins): `settings` (General), `settingsTabs`, …
   public static let settingsNames = ["settings": "general", "settingsTabs": "tabs", "settingsSearch": "commandbar",
@@ -45,6 +45,20 @@ public enum SpaceScenarios {
       }
     case "spaceIconPicker":
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { rt.plugins.emit("ui.action", ["id": .string(icon), "action": "menu", "value": "icon"]) }
+    case "tabEmojiIcons", "tabIconPicker":
+      // Emoji icons on a Today tab, a pinned tab and the pinned folder (the `tabs` plugin's
+      // setIcon, the same path as the picker); `tabIconPicker` then opens the picker on a Today tab.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        let l = rt.call("tabs", "list")
+        let today = (l["today"].array ?? []).filter { $0["folder"].isNull && $0["split"].isNull }
+        let pinned = l["pinned"].array ?? []
+        if let t = today.first { rt.call("tabs", "setIcon", ["id": t["id"], "icon": "🚀"]) }
+        if let f = pinned.first(where: { $0["folder"] == true }) { rt.call("tabs", "setIcon", ["id": f["id"], "icon": "📚"]) }
+        if let p = pinned.first(where: { $0["folder"].isNull && $0["split"].isNull }) { rt.call("tabs", "setIcon", ["id": p["id"], "icon": "🎧"]) }
+        if name == "tabIconPicker", today.count > 1 {
+          rt.plugins.emit("ui.action", ["id": today[1]["id"], "action": "menu", "value": "changeIcon"])
+        }
+      }
     case "spaceRename":
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { rt.plugins.emit("ui.action", ["id": .string("spaces.title:" + sid), "action": "menu", "value": "rename"]) }
     case "spaceReorder":
