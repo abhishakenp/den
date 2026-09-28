@@ -144,8 +144,8 @@ jobs:
       - name: Set up Xcode 26, swift.org toolchain, caches
         uses: ./.github/actions/setup
 
-      - name: Bundle den.app
-        run: scripts/bundle.sh
+      - name: Bundle den.app (with the Scenarios trait)
+        run: DEN_SCENARIOS=1 scripts/bundle.sh
 
       - name: Render snapshot scenarios (scripts/snapshots.sh)
         env:

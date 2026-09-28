@@ -3,6 +3,10 @@
 # Every run is --background: no Dock icon, never activated, windows off every display, and it quits
 # by itself (den_bounded kills it if not). Only the native-menu shots need a window on screen:
 # MENUS=1 adds them. The app is build/den.app built with the Scenarios trait (DEN_SCENARIOS=1).
+# SNAPSHOT_APPEARANCE=dark: every shot renders dark as <name>-dark.png (a "-light" suffix is dropped
+# first; each output is rendered once), the theming grid as theming-grid-dark.png (dark rows only),
+# and a failed or hung shot warns instead of stopping the run. The CI snapshot job uses it
+# (docs/dev.md), so dark variants never need a local build.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/lib/launch.zsh
@@ -13,8 +17,35 @@ den=(den_bounded 120 build/den.app/Contents/MacOS/den --background)
 out=docs/screenshots
 mkdir -p $out
 store=$(mktemp -d)
-shot() { # name scenario appearance — a fresh store each time, so the plugins' first-run seed shows
-  $den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "${4:-6}"
+dark_only=0
+[[ ${SNAPSHOT_APPEARANCE:-} == dark ]] && dark_only=1
+typeset -A rendered
+made=()
+# Sets _n (output name) and _ap (appearance) for a call; returns 1 when dark mode already rendered it.
+resolve() { # name appearance
+  _n=$1 _ap=$2
+  (( dark_only )) || return 0
+  _n=${_n%-light}
+  [[ $_n == *-dark ]] || _n=$_n-dark
+  _ap=dark
+  [[ -z ${rendered[$_n]:-} ]] || return 1
+  rendered[$_n]=1
+  made+=("$out/$_n.png")
+}
+# One bounded launch, logged with the elapsed time. In dark mode a failure only warns.
+run() {
+  print -u2 "[$(( SECONDS / 60 ))m$(( SECONDS % 60 ))s] den ${(j: :)@}"
+  $den "$@" && return 0
+  local rc=$?
+  (( dark_only )) && { print -u2 "warning: den exited $rc: ${(j: :)@}"; return 0; }
+  return $rc
+}
+# Shots added for the guide (docs/guide/_screenshots-todo.md) warn instead of stopping the run:
+# several need the network, and a few are self-checks that exit on their own.
+soft() { "$@" || print -u2 "warning: snapshot failed: $*"; }
+shot() { # name scenario appearance [delay] — a fresh store each time, so the plugins' first-run seed shows
+  resolve "$1" "$3" || return 0
+  run --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario "$2" --snapshot "$out/$_n.png" --snapshot-delay "${4:-6}"
 }
 # ONLY=cards scripts/snapshots.sh: hover cards, the PR peek, the ⇧-hover link card and the
 # auto-connect toast (PreviewScenarios, ConnectionScenarios), light and dark, invisible (--background).
@@ -54,8 +85,9 @@ fi
 if [[ -f build/den.app/Contents/PlugIns/theme.dylib ]]; then shot theme-picker-live themeLive light; shot theme-picker-live-dark themeLive dark; fi
 if [[ -f build/den.app/Contents/PlugIns/quit.dylib ]]; then shot quit-dialog dialog light; shot quit-dialog-dark dialog dark; fi
 # Host components (self-contained scenarios, no --demo): see DenHost/Scenarios/HostScenarios.swift.
-host() { # name scenario appearance
-  $den --no-den-home --storage "$store" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay 3
+host() { # name scenario appearance [delay]
+  resolve "$1" "$3" || return 0
+  run --no-den-home --storage "$store" --appearance "$_ap" --scenario "$2" --snapshot "$out/$_n.png" --snapshot-delay "${4:-3}"
 }
 host theme-picker themePicker light
 host theme-picker-dark themePicker dark
@@ -117,16 +149,74 @@ if [[ -f build/den.app/Contents/PlugIns/briefing.dylib ]]; then
   shot connections-settings connectionsSettings light 6
   shot briefing briefing light 30; shot briefing-dark briefing dark 30; shot briefing-feed briefingFeed light 32
 fi
+# Shots for the user guide (docs/guide/_screenshots-todo.md), as light/dark pairs.
+# Password vault (VaultScenarios: MockServices login pages, in-memory store, scripted Touch ID).
+for v in Save Suggest Fill Generate Sheet; do
+  soft shot vault-${(L)v} vault$v light 6
+  soft shot vault-${(L)v}-dark vault$v dark 6
+done
+# Page prompts: fileUpload is a self-check that opens the real file panel as a sheet and exits
+# after ~4 s, so it is captured while the sheet is up.
+soft host js-confirm jsConfirm light
+soft host js-confirm-dark jsConfirm dark
+soft host file-upload fileUpload light 2.5
+soft host file-upload-dark fileUpload dark 2.5
+# The command bar with den's real settings, a site keyword and the shortcuts row.
+if [[ -f build/den.app/Contents/PlugIns/commandbar.dylib ]]; then
+  for q in "search suggestions:settings" "yt:keyword" "keyboard shortcuts:shortcuts"; do
+    soft shot command-bar-${q##*:} "commandBar:${q%:*}" light 3
+    soft shot command-bar-${q##*:}-dark "commandBar:${q%:*}" dark 3
+  done
+fi
+# Little Arc, then Cmd-O into the space. littleArcCmdO checks itself and exits ~2.3 s after the
+# first frame, so the snapshot is taken just before that (network: swift.org).
+if [[ -f build/den.app/Contents/PlugIns/peek.dylib ]]; then
+  soft shot little-arc-cmd-o littleArcCmdO light 2
+  soft shot little-arc-cmd-o-dark littleArcCmdO dark 2
+fi
+# Dark mode for websites: a normally light page (network: example.com), always in a dark space.
+page() { # name url appearance delay
+  resolve "$1" "$3" || return 0
+  run --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario page --url "$2" --snapshot "$out/$_n.png" --snapshot-delay "$4"
+}
+soft page dark-mode-site https://example.com dark 6
+# Page tools (PageToolsScenarios, network: Wikipedia, MDN). Translation needs macOS's on-device
+# language models; where they aren't installed the page stays untranslated.
+if [[ -f build/den.app/Contents/PlugIns/pagetools.dylib ]]; then
+  for p in reader:reader:12 translate:translated:40 zap:zap:10 highlightLink:highlight-link:14; do
+    sc=${p%%:*} rest=${p#*:}
+    soft shot pagetools-${rest%:*} $sc light ${rest##*:}
+    soft shot pagetools-${rest%:*}-dark $sc dark ${rest##*:}
+  done
+fi
+# Extensions (ExtensionScenarios.extensionsVerify, network: Chrome Web Store, Firefox Add-ons):
+# installs real extensions and writes its own PNGs to $DEN_SNAPSHOT_DIR, then exits; capped at 10 min.
+exts() { # appearance
+  local d=$(mktemp -d) f n
+  DEN_SNAPSHOT_DIR=$d den_bounded 600 build/den.app/Contents/MacOS/den --background --no-den-home --storage "$(mktemp -d)" --appearance $1 --scenario extensionsVerify ||
+    print -u2 "warning: extensionsVerify ($1) failed; some extensions-*.png may be missing"
+  for f in $d/*.png(N); do
+    n=${f:t:r}
+    [[ $1 == dark ]] && n=$n-dark
+    mv "$f" "$out/$n.png"
+    if (( dark_only )); then made+=("$out/$n.png"); fi
+  done
+}
+if [[ -f build/den.app/Contents/PlugIns/extensions.dylib ]]; then
+  (( dark_only )) || exts light
+  exts dark
+fi
 fi  # ONLY=new
 # Native menus are separate windows AppKit puts on a display: open one and capture it through its
 # own window id. These are the only shots with a window on screen, so they run only with MENUS=1.
 menu() { # name appearance [scenario] — the space menu needs the plugins' first-run seed, so a fresh store
   [[ -n ${MENUS:-} ]] || return 0
-  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$2" --scenario "${3:-contextMenu}" --exit-after 8 &
+  resolve "$1" "$2" || return 0
+  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario "${3:-contextMenu}" --exit-after 8 &
   local pid=$!; sleep 3.5
   local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; for w in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where w[kCGWindowOwnerPID as String] as? Int32 == p && w[kCGWindowLayer as String] as? Int == 101 { print(w[kCGWindowNumber as String]!) }' $pid | head -1)
-  [[ -n $id ]] && screencapture -o -x -l$id "$out/$1.png"
-  kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null || true
+  [[ -n $id ]] && screencapture -o -x -l$id "$out/$_n.png"
+  kill -9 $pid 2>/dev/null || true; wait $pid 2>/dev/null || true
 }
 if [[ -z ${ONLY:-} ]]; then menu context-menu light; menu context-menu-dark dark; fi
 menu space-menu light spaceMenu
@@ -140,11 +230,12 @@ done
 # Settings (⌘,): each section, from the real plugins. The Settings window draws blank through
 # cacheDisplay, so it's captured by its window id (den's own window only; off-display works too).
 win() { # name scenario appearance width
-  build/den.app/Contents/MacOS/den --background --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --exit-after 10 &
+  resolve "$1" "$3" || return 0
+  build/den.app/Contents/MacOS/den --background --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario "$2" --exit-after 10 &
   local pid=$!; sleep 5
   local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; let w = Double(CommandLine.arguments[2])!; for x in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where x[kCGWindowOwnerPID as String] as? Int32 == p { let b = x[kCGWindowBounds as String] as! [String: Any]; if abs((b["Width"] as! Double) - w) < 2 { print(x[kCGWindowNumber as String]!) } }' $pid $4 | head -1)
-  [[ -n $id ]] && screencapture -o -x -l$id "$out/$1.png"
-  kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null || true
+  [[ -n $id ]] && screencapture -o -x -l$id "$out/$_n.png"
+  kill -9 $pid 2>/dev/null || true; wait $pid 2>/dev/null || true
 }
 for sc in "" Tabs Search Connections Briefing; do
   if [[ -n $sc ]]; then n=settings-${(L)sc}; else n=settings; fi
@@ -153,13 +244,20 @@ for sc in "" Tabs Search Connections Briefing; do
 done
 # Theming: every surface follows the space. Four themes x light/dark x six surfaces, composed
 # into one grid (scripts/lib/grid.swift); each surface opens through its real path.
+# (Dark mode: only the dark rows, as theming-grid-dark.png.)
 tdir=$(mktemp -d)
 cells=()
+aps=(light dark) grid=theming-grid
+(( dark_only )) && aps=(dark) grid=theming-grid-dark
+tshot() { # name scenario appearance delay — the cells, named as is in either mode
+  $den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "$4"
+}
 for t in sandy purple nearBlack pastel; do
-  for ap in light dark; do
+  for ap in $aps; do
     cells+=("label:$t $ap")
     for sf in alert confirm quit command toast hover; do
-      shot _theme-$t-$ap-$sf "themeSample:$t:$sf" $ap 3 || shot _theme-$t-$ap-$sf "themeSample:$t:$sf" $ap 4  # retry once under load
+      tshot _theme-$t-$ap-$sf "themeSample:$t:$sf" $ap 3 || tshot _theme-$t-$ap-$sf "themeSample:$t:$sf" $ap 4 || true  # retry once under load
+      [[ -f $out/_theme-$t-$ap-$sf.png ]] || { print -u2 "warning: no _theme-$t-$ap-$sf.png"; continue; }
       mv "$out/_theme-$t-$ap-$sf.png" "$tdir/$t-$ap-$sf.png"
       case $sf in
         alert|confirm|quit) crop=0.3,0.28,0.7,0.68 ;;
@@ -171,8 +269,10 @@ for t in sandy purple nearBlack pastel; do
     done
   done
 done
-swift scripts/lib/grid.swift "$out/theming-grid.png" 6 300 190 "${cells[@]}"
+swift scripts/lib/grid.swift "$out/$grid.png" 6 300 190 "${cells[@]}"
+(( dark_only )) && made+=("$out/$grid.png")
 # Store at 1x (1280 pt wide) to keep the repo small.
 files=($out/*.png)
 [[ -n ${ONLY:-} ]] && files=($out/space-*.png $out/settings*.png $out/theming-grid.png)
+(( dark_only )) && files=(${^made}(N))
 for f in $files; do sips -Z 1280 "$f" --out "$f" >/dev/null; done
