@@ -10,7 +10,7 @@ import CordisValue
 @MainActor
 public enum PreviewScenarios {
   public static let names = ["previewTab", "previewPinned", "previewSplit", "previewPlaying", "prPassing", "prFailing", "prConflicts",
-                             "prPrivate", "linkCard", "previewCalendar", "previewFolder", "libraryFooter"]
+                             "prPrivate", "linkCard", "previewCalendar", "previewFolder", "previewGmail", "libraryFooter"]
   static var mock: MockServices?
 
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -90,6 +90,15 @@ public enum PreviewScenarios {
     case "previewFolder":
       guard let f = (rt.call("tabs", "list")["pinned"].array ?? []).first(where: { $0.flag("folder") }) else { return rt.window.window }
       after(0.8) { hover(rt, f.str("id")) }
+    case "previewGmail":
+      // A Gmail tab's card: the newest unread mail from the (fake) Atom feed.
+      m.page("/mail/u/0/feed/atom", gmailAtom, type: "text/xml; charset=utf-8")
+      rt.call("storage", "set", ["ns": "previews", "key": "endpoints", "value": [
+        "githubApi": .string(m.base + "/gh"), "githubWeb": .string(m.base), "gmail": .string(m.base)]])
+      // In the background: the tab's page never loads (nothing reaches Google).
+      let id = rt.call("tabs", "open", ["url": "https://mail.google.com/mail/u/0/#inbox", "background": true]).str("id")
+      rt.call("tabs", "rename", ["id": .string(id), "title": "Inbox - Gmail"])
+      after(0.8) { hover(rt, id) }
     case "libraryFooter":
       for e in (HostScenarios.archiveItems().array ?? []).reversed() {
         rt.call("tabs", "addToArchive", ["url": e["url"], "title": e["title"]])
