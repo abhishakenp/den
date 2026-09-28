@@ -16,7 +16,7 @@ public enum ExtensionShim {
   /// Marks the background context, where the shim records visits and closed tabs.
   static let backgroundFlag = "__den/background.js"
   /// Bumped when `source` changes, so installed copies get the new one on their next load.
-  static let version = 2
+  static let version = 3
 
   /// Adds the shim to an unpacked extension. Idempotent; returns whether anything changed.
   /// `validPattern` says whether WebKit takes a match pattern: content script entries lose the
@@ -145,6 +145,72 @@ public enum ExtensionShim {
 
       if (inContent) return;
       const inBackground = g.__denBackground === true;
+      const report = g.__denShimReport = {events: [], wrapped: [], failed: []};
+
+      // Events WebKit leaves out of a namespace it has. One missing event is enough to stop a
+      // background at its first `.addListener` (Vimium: webNavigation.onHistoryStateUpdated), so
+      // each gets a working stand-in; the namespace is wrapped when WebKit won't take a new key.
+      const addToNamespace = (ns, extra) => {
+        const target = api[ns];
+        for (const [k, v] of Object.entries(extra)) { try { Object.defineProperty(target, k, {value: v, configurable: true, enumerable: true}); } catch (e) {} }
+        if (Object.keys(extra).every((k) => target[k] != null)) return true;
+        const wrapper = new Proxy(target, {
+          get: (t, k) => {
+            if (Object.prototype.hasOwnProperty.call(extra, k)) return extra[k];
+            const v = Reflect.get(t, k);
+            return typeof v === 'function' ? v.bind(t) : v;
+          },
+          has: (t, k) => Object.prototype.hasOwnProperty.call(extra, k) || Reflect.has(t, k),
+        });
+        for (const r of roots) { try { Object.defineProperty(r, ns, {value: wrapper, configurable: true, enumerable: true, writable: true}); } catch (e) {} }
+        if (Object.keys(extra).every((k) => api[ns] && api[ns][k] != null)) { report.wrapped.push(ns); return true; }
+        report.failed.push(ns);
+        return false;
+      };
+      const EVENTS = {
+        webNavigation: ['onBeforeNavigate', 'onCommitted', 'onDOMContentLoaded', 'onCompleted', 'onErrorOccurred', 'onCreatedNavigationTarget',
+          'onReferenceFragmentUpdated', 'onTabReplaced', 'onHistoryStateUpdated'],
+        tabs: ['onCreated', 'onUpdated', 'onMoved', 'onActivated', 'onHighlighted', 'onDetached', 'onAttached', 'onRemoved', 'onReplaced', 'onZoomChange'],
+        windows: ['onCreated', 'onRemoved', 'onFocusChanged', 'onBoundsChanged'],
+        runtime: ['onStartup', 'onInstalled', 'onSuspend', 'onSuspendCanceled', 'onUpdateAvailable', 'onConnect', 'onConnectExternal', 'onMessage', 'onMessageExternal'],
+        action: ['onClicked'], storage: ['onChanged'], alarms: ['onAlarm'], commands: ['onCommand'], contextMenus: ['onClicked'],
+        notifications: ['onClosed', 'onClicked', 'onButtonClicked', 'onShown'], permissions: ['onAdded', 'onRemoved'],
+      };
+      const urls = new Map();
+      let watching = false;
+      const navigation = {};
+      // History-API and #fragment navigations, from the tab URL changes WebKit reports without a load.
+      const watchURLs = () => {
+        if (watching || !inBackground || !api.tabs || !api.tabs.onUpdated) return;
+        watching = true;
+        api.tabs.onUpdated.addListener((tabId, info, tab) => {
+          const url = info.url || (tab && tab.url);
+          if (!url) return;
+          const prev = urls.get(tabId);
+          urls.set(tabId, url);
+          if (!info.url || !prev || prev === url || info.status === 'loading' || (tab && tab.status === 'loading')) return;
+          const d = {tabId, url, frameId: 0, parentFrameId: -1, processId: 0, timeStamp: Date.now(), transitionType: 'link', transitionQualifiers: []};
+          const e = prev.split('#')[0] === url.split('#')[0] ? navigation.onReferenceFragmentUpdated : navigation.onHistoryStateUpdated;
+          if (e) e.fire(d);
+        });
+        if (api.tabs.onRemoved) api.tabs.onRemoved.addListener((id) => { urls.delete(id); });
+      };
+      for (const [ns, names] of Object.entries(EVENTS)) {
+        if (!api[ns]) continue;
+        const extra = {};
+        for (const n of names) {
+          if (api[ns][n] != null) continue;
+          const e = event();
+          if (ns === 'webNavigation' && (n === 'onHistoryStateUpdated' || n === 'onReferenceFragmentUpdated')) {
+            navigation[n] = e;
+            const add = e.addListener;
+            e.addListener = (f) => { add(f); watchURLs(); };
+          }
+          extra[n] = e;
+          report.events.push(ns + '.' + n);
+        }
+        if (Object.keys(extra).length) addToNamespace(ns, extra);
+      }
 
       // storage.session.setAccessLevel (background and pages only: content scripts keep their
       // own fallbacks for a missing one).

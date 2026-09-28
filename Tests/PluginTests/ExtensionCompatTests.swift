@@ -101,6 +101,7 @@ struct ExtensionCompatTests {
       runtime: ['onInstalled', 'onStartup', 'onMessage', 'onConnect'], storage: ['onChanged']};
     out.missingEvents = Object.entries(events).flatMap(([ns, es]) => es.filter(e => !chrome[ns] || !chrome[ns][e]).map(e => ns + '.' + e)).join(',');
     out.windowIdNone = String(chrome.windows?.WINDOW_ID_NONE);
+    out.shimReport = JSON.stringify(globalThis.__denShimReport);
     // Vimium's background as a module here: the error that stops it, if any.
     try { await import('/background_scripts/main.js'); out.mainImport = 'ok'; } catch (e) { out.mainImport = 'error ' + e + ' ' + (e && e.stack || '').slice(0, 300); }
     out.browser = typeof browser;
