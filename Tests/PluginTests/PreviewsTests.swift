@@ -355,7 +355,11 @@ struct PreviewsTests {
   }
 
   /// The real page script, run by `webviews.eval` in a live page shaped like Google Calendar's.
-  @Test func calendarScriptReadsEventChipsInALivePage() async throws {
+  /// The chips are late today (11:50pm, 11:59pm) so they are still upcoming by the page's real
+  /// clock; in the day's last 15 minutes they aren't, so the test doesn't run then (seen on CI, UTC).
+  @Test(.enabled(if: Calendar.current.component(.hour, from: Date()) < 23 || Calendar.current.component(.minute, from: Date()) < 45,
+                 "11:50pm event chips are in the past during the last 15 minutes of the day"))
+  func calendarScriptReadsEventChipsInALivePage() async throws {
     let h = Harness()
     let m = Mock()
     m.realEval = true
