@@ -119,7 +119,7 @@ struct NowPlayingTests {
     let rt = ServiceTests.runtime()
     _ = rt.call("webviews", "create", ["id": "ua", "userAgent": "mobile"])
     let ua = try #require(rt.webviews.record("ua")?.userAgent)
-    #expect(ua.contains("iPhone") && ua.contains("Mobile/") && ua.contains("Safari/604.1"), ua)
+    #expect(ua.contains("iPhone") && ua.contains("Mobile/") && ua.contains("Safari/604.1"), "\(ua)")
     _ = rt.call("content", "show", ["panes": ["ua"]])
     #expect(rt.webviews.record("ua")?.webView?.customUserAgent == ua)
     _ = rt.call("webviews", "create", ["id": "desk"])
