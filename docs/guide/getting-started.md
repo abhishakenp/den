@@ -54,9 +54,11 @@ Then:
 3. **⌘,** opens Settings.
 4. Skim [Tips & hidden gems](tips.md). Most of what makes den fast isn't visible until you know it's there.
 
+On your second launch a small **New to den?** card at the bottom of the sidebar offers a 1-minute tour (five steps, skip any of them). Close it and it's gone for good; **Take the den Tour** in the command bar brings it back. After that, den shows a one-time tip now and then when a shortcut would help; **Settings ▸ General ▸ Show tips** turns them off ([Tips](tips.md#den-teaches-you-as-you-go)).
+
 ## Importing
 
-Importing from Arc, Chrome or Safari isn't built yet. For now, sign in to the sites you use as you visit them; den offers to save each password to your Keychain ([Passwords](privacy-and-passwords.md#passwords-the-touch-id-vault)).
+Importing from Arc, Chrome or Safari isn't built yet. When it is, den offers it as a quiet one-click card at the bottom of the sidebar, never as a step you have to get through. For now, sign in to the sites you use as you visit them; den offers to save each password to your Keychain ([Passwords](privacy-and-passwords.md#passwords-the-touch-id-vault)).
 
 ## Make den your default browser
 

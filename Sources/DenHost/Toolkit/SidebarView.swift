@@ -3,7 +3,7 @@ import CordisValue
 
 /// Holds one rendered tree for a slot, reconciled in place across updates.
 @MainActor
-final class SlotView: FlippedView {
+class SlotView: FlippedView {
   var root: NodeView?
   func set(_ tree: Value, renderer: Renderer) {
     if tree.isNull {
@@ -226,16 +226,58 @@ final class SidebarPager: FlippedView {
   }
 }
 
-/// The whole sidebar: fixed header + favorites, the swipeable space pager, the dock (the `media`
-/// plugin's now-playing stack, sized by its tree) and the footer.
+/// `sidebar.notice`: a small card pinned above the footer (the tour and import cards of the
+/// `tips` plugin, or any plugin's short notice). The tree is generic nodes (`stack`, `label`,
+/// `action`); the host only draws the card behind it from the theme tokens (`ThemeTokens.card`:
+/// fill, a 0.5 pt hairline, 10 pt continuous radius) and fades it in. Empty, it takes no space.
+@MainActor
+final class NoticeSlotView: SlotView, Themable {
+  static let radius: CGFloat = 10
+  static let gap: CGFloat = 8
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.cornerRadius = Self.radius
+    layer?.cornerCurve = .continuous
+    layer?.borderWidth = 0.5
+    layer?.masksToBounds = true
+  }
+  required init?(coder: NSCoder) { fatalError() }
+
+  override func set(_ tree: Value, renderer: Renderer) {
+    let appearing = root == nil && !tree.isNull
+    super.set(tree, renderer: renderer)
+    isHidden = root == nil
+    apply(renderer.palette)
+    guard appearing, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+    alphaValue = 0
+    NSAnimationContext.runAnimationGroup { c in
+      c.duration = 0.2  // den's choice (Arc's tour card was never measured)
+      c.timingFunction = CAMediaTimingFunction(name: .easeOut)
+      animator().alphaValue = 1
+    }
+  }
+
+  func apply(_ p: Palette) {
+    let c = p.tokens.card
+    layer?.backgroundColor = c.fill.cg
+    layer?.borderColor = c.border.cg
+  }
+}
+
+/// The whole sidebar: fixed header + favorites, the swipeable space pager, the notice card, the
+/// dock (the `media` plugin's now-playing stack, sized by its tree) and the footer.
 @MainActor
 public final class SidebarView: FlippedView {
   let header = SlotView(), favorites = SlotView(), dock = SlotView(), footer = SlotView()
+  let notice = NoticeSlotView()
   let pager = SidebarPager()
 
   override init(frame: NSRect) {
     super.init(frame: frame)
-    [header, favorites, pager, dock, footer].forEach { addSubview($0) }
+    [header, favorites, pager, notice, dock, footer].forEach { addSubview($0) }
+    notice.isHidden = true
   }
   required init?(coder: NSCoder) { fatalError() }
 
@@ -256,6 +298,7 @@ public final class SidebarView: FlippedView {
     case "sidebar.favorites": return favorites
     case "sidebar.footer": return footer
     case "sidebar.dock": return dock
+    case "sidebar.notice": return notice
     default:
       pager.ensurePages(max(pager.pages.count, page + 1))
       return pager.pages[page].slot(name)
@@ -279,8 +322,14 @@ public final class SidebarView: FlippedView {
     let dh = min(dock.height(for: w), max(0, (bounds.height - footH - y) * 0.6))
     let dockGap: CGFloat = dh > 0 ? Tokens.sidebarSectionSpacing : 0
     dock.frame = NSRect(x: pad, y: bounds.height - footH - dh, width: w, height: dh)
-    pager.frame = NSRect(x: pad, y: y, width: w, height: max(0, bounds.height - footH - dh - dockGap - y))
-    for s in [header, favorites, dock, footer] { s.needsLayout = true }
+    // The notice card sits above the dock (or the footer), with a gap on each side.
+    let dockTop = bounds.height - footH - dh - dockGap
+    let nh = notice.root == nil ? 0 : notice.height(for: w)
+    let noticeBottom = dh > 0 ? dockTop : bounds.height - footH - (nh > 0 ? NoticeSlotView.gap : 0)
+    notice.frame = NSRect(x: pad, y: noticeBottom - nh, width: w, height: nh)
+    let bottom = nh > 0 ? notice.frame.minY - NoticeSlotView.gap : dockTop
+    pager.frame = NSRect(x: pad, y: y, width: w, height: max(0, bottom - y))
+    for s in [header, favorites, notice, dock, footer] { s.needsLayout = true }
     pager.pages.forEach { $0.relayoutDoc() }
   }
 

@@ -4,7 +4,7 @@ import CordisValue
 /// `ui` service: the Arc UI toolkit, rendered natively from `Value` trees.
 ///
 /// Methods:
-///   set {slot, tree, page?}      slots: sidebar.header, sidebar.favorites, sidebar.spaceHeader*, sidebar.pinned*,
+///   set {slot, tree, page?}      slots: sidebar.header, sidebar.favorites, sidebar.notice, sidebar.spaceHeader*, sidebar.pinned*,
 ///                                sidebar.today*, sidebar.dock, sidebar.footer, side.header (over content.side),
 ///                                overlay.commandBar, overlay.peek, dialog, toast
 ///                                (* = per space page; `page` defaults to the current page). tree null clears.
@@ -413,7 +413,23 @@ public final class UIService: HostService {
         dismiss()
       }
     }
-    if ms > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(ms)) { dismiss() } }
+    guard ms > 0 else { return }
+    // `hold`: the toast stays while the pointer is on it (a tip has something to read), and
+    // leaves 1 s after the pointer does.
+    scheduleDismiss(t, after: ms, hold: tree.flag("hold"), dismiss)
+  }
+
+  func scheduleDismiss(_ t: ToastView, after ms: Int, hold: Bool, _ dismiss: @escaping () -> Void) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(ms)) { [weak self, weak t] in
+      guard let t else { return }
+      if hold, Self.pointerInside(t) { self?.scheduleDismiss(t, after: 1000, hold: hold, dismiss) } else { dismiss() }
+    }
+  }
+
+  /// Is the mouse pointer over `v` right now?
+  static func pointerInside(_ v: NSView) -> Bool {
+    guard let w = v.window, v.superview != nil else { return false }
+    return v.bounds.contains(v.convert(w.mouseLocationOutsideOfEventStream, from: nil))
   }
 
   /// `overlay.library` slot: the Archive / Library sheet over the content area.
