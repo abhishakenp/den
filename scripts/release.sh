@@ -3,7 +3,7 @@
 #   scripts/release.sh <semver>          e.g. 0.1.0, or 0.1.0-alpha.1 (a "-" suffix = pre-release)
 #   scripts/release.sh <semver> --dry-run   build + sign into dist/<semver>, publish nothing
 #
-# 1. Verified build: scripts/test.sh (swift test) + scripts/bundle.sh (DEN_VERSION=<semver>). Refuses a dirty tree.
+# 1. Verified build: a green CI run on HEAD (DEN_RELEASE_LOCAL_TESTS=1: scripts/test.sh locally) + scripts/bundle.sh (DEN_VERSION=<semver>). Refuses a dirty tree.
 # 2. dist/<semver>/: den-<semver>.zip (ditto -c -k --keepParent), den-<semver>.dmg, every plugin
 #    as <id>.dylib, plugins.json (id, version, abi, hostAPI, sha256, EdDSA signature, url,
 #    permissions), release notes (commits since the last tag).
@@ -24,8 +24,17 @@ DIST=dist/$VERSION
 [[ -z $(git status --porcelain -- Sources Plugins Package.swift Package.resolved Resources scripts) ]] || { echo "tree is dirty; release from a clean checkout"; exit 1; }
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && { echo "$TAG exists"; exit 1; }
 
-echo "== verify: scripts/test.sh (swift test, one run at a time machine-wide)"
-if ! scripts/test.sh > build/release-test.log 2>&1; then
+if [[ ${DEN_RELEASE_LOCAL_TESTS:-0} != 1 ]]; then
+  # Remote build mode (docs/dev.md): the gate is a green CI run on this exact commit, on a clean
+  # macos-26 runner. Local runs depend on this Mac's power state, appearance and load.
+  HEAD_SHA=$(git rev-parse HEAD)
+  echo "== verify: CI on $HEAD_SHA"
+  git fetch -q origin main
+  [[ $(git rev-parse origin/main) == $HEAD_SHA ]] || git merge-base --is-ancestor HEAD origin/main || { echo "HEAD is not on origin/main: push it first"; exit 1; }
+  ok=$(gh run list -R $REPO --commit $HEAD_SHA --workflow CI --json conclusion -q '[.[] | select(.conclusion=="success")] | length')
+  (( ok > 0 )) || { echo "no green CI run on $HEAD_SHA: not releasing (DEN_RELEASE_LOCAL_TESTS=1 runs the suite locally instead)"; exit 1; }
+  echo "CI green on $HEAD_SHA"
+elif ! scripts/test.sh > build/release-test.log 2>&1; then
   # Timing-sensitive tests (WebKit sign-in, latency budgets) can fail on a loaded machine:
   # re-run the failed ones once, on their own. A crashed run (no summary) is not retried.
   failed=(${(f)"$(sed -nE 's/^✘ Test ([A-Za-z0-9_]+)\(.*\) failed.*/\1/p' build/release-test.log | sort -u)"})
