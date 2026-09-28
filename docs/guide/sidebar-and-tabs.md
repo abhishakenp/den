@@ -74,7 +74,7 @@ Folders live with your pinned tabs, and in Today as groups.
 - In the pinned section, right-click a folder ▸ **New Folder Inside**. Folders nest.
 - Click a folder to open or close it. **A closed folder still shows the tab you're on** under its name, so you never lose your place.
 - Drop a tab onto the **middle** of a folder's row to put it inside. Near its top or bottom edge, the tab goes before or after the folder instead.
-- Right-click ▸ **Rename Folder…** (or **Rename Group…**) to rename it in place.
+- Right-click ▸ **Rename Folder…** (or **Rename Group…**) to rename it in place, and **Change Icon…** to give it an emoji (see [Emoji icons](#emoji-icons)).
 - Right-click ▸ **Delete Folder…** (a group: **Close Group…**) archives the tabs inside, and **Ungroup Tabs** puts a group's tabs back in Today. ⌃Z undoes either.
 - A Today folder goes away when its last tab does; a pinned folder stays, even empty.
 - Hover a folder to see its tabs: click one to switch to it, or **New Tab** to add one (see [Hover previews](hover-previews.md)).
@@ -92,6 +92,19 @@ Folders live with your pinned tabs, and in Today as groups.
 - Or right-click ▸ **Rename…**, Tabs ▸ **Rename Tab**, or "Rename Tab" in the command bar.
 - Clear the name and press Return to go back to the page's own title.
 - Favorites keep their page titles.
+
+## Emoji icons
+
+Give a tab or folder an emoji (or a symbol) in place of its site icon or folder icon:
+
+- Right-click ▸ **Change Icon…** and pick one, or type or paste any emoji into the field at the top.
+- While renaming, click the icon at the left of the name (it gets a soft highlight) to open the same picker.
+- Or start the name with an emoji: "🚀 Launch" makes 🚀 the icon and "Launch" the name. Just an emoji changes only the icon.
+- Right-click ▸ **Remove Icon** brings the site icon back. ⌃Z undoes either.
+
+The icon shows on the row, the favorites tile and the hover card, and it stays after a restart.
+
+<p align="center"><img src="../screenshots/tab-icon-picker-dark.png" alt="The icon picker next to a tab, with emoji icons on a tab, a pinned tab and a folder" width="520"></p>
 
 ## Drag and drop
 
@@ -115,7 +128,7 @@ Drag links, URLs or files from other apps onto the sidebar and they open as Toda
 
 ## Right-click a tab
 
-**Copy Link**, **Duplicate**, **Rename…**, **Mute Tab** / **Unmute Tab** (while it plays audio), **Pin Tab** / **Unpin Tab** / **Remove from Favorites**, **Add to Favorites**, **New Folder with Tab** (or **Remove from Folder**), **Move to \<space\>** for each other space, and **Archive Tab** (Today) or **Close Tab**, then **Close Tabs Below** for Today tabs.
+**Copy Link**, **Duplicate**, **Rename…**, **Change Icon…** (and **Remove Icon** once one is set), **Mute Tab** / **Unmute Tab** (while it plays audio), **Pin Tab** / **Unpin Tab** / **Remove from Favorites**, **Add to Favorites**, **New Folder with Tab** (or **Remove from Folder**), **Move to \<space\>** for each other space, and **Archive Tab** (Today) or **Close Tab**, then **Close Tabs Below** for Today tabs.
 
 Every item with a shortcut shows it on the right. **Hold ⌥** while the menu is open for the alternates: **Copy Link as Markdown** (⌥⇧⌘C), **Close Other Tabs** (⌥⌘W) and **Close Tabs Above**. Closing several tabs at once is one ⌃Z.
 

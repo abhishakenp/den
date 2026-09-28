@@ -17,17 +17,19 @@ final class TabsCore {
     var lastActive: Int64
     var audio = false
     var muted = false  // runtime only, like `audio`: a tab stays muted while it lives
+    /// An icon the user chose (an emoji or `sf:` symbol, TabsIcons.swift); it replaces the favicon.
+    var customIcon: String?
 
     var displayTitle: String {
       if let c = customTitle, !c.isEmpty { return c }
       return URLs.pageTitle(title, url)
     }
-    var icon: String { URLs.icon(favicon, url) }
+    var icon: String { customIcon ?? URLs.icon(favicon, url) }
     var drift: Bool { URLs.drifted(url: url, pinned: pinnedUrl) }
 
     var value: Value {
       ["id": .string(id), "title": .string(title), "customTitle": .str(customTitle), "url": .string(url),
-       "pinnedUrl": .str(pinnedUrl), "favicon": .str(favicon), "lastActive": .int(lastActive)]
+       "pinnedUrl": .str(pinnedUrl), "favicon": .str(favicon), "icon": .str(customIcon), "lastActive": .int(lastActive)]
     }
 
     init(id: String, title: String, url: String, pinnedUrl: String? = nil, favicon: String? = nil, lastActive: Int64) {
@@ -43,6 +45,7 @@ final class TabsCore {
       guard let id = v["id"].string else { return nil }
       self.init(id: id, title: v.s("title"), url: v.s("url"), pinnedUrl: v.sOpt("pinnedUrl"), favicon: v.sOpt("favicon"), lastActive: v.i("lastActive"))
       customTitle = v.sOpt("customTitle")
+      customIcon = v.sOpt("icon")
     }
   }
 
@@ -56,10 +59,13 @@ final class TabsCore {
     var open: Bool
     var children: [String]
     var auto = false
+    /// An icon the user chose (TabsIcons.swift); nil shows the folder symbol.
+    var icon: String? = nil
 
     var value: Value {
       var v: Value = ["id": .string(id), "spaceId": .string(spaceId), "title": .string(title), "open": .bool(open), "children": .array(children.map { .string($0) })]
       if auto { v.put("auto", true) }
+      if let icon { v.put("icon", .string(icon)) }
       return v
     }
   }
@@ -124,6 +130,7 @@ final class TabsCore {
   var dirty = false
   var shown = ""  // tab id currently in the content area
   var editing: String?  // tab or folder whose title is being renamed inline in the sidebar
+  var iconEditing: String?  // tab or folder whose icon picker is open (TabsIcons.swift)
   /// Other plugins' buttons in the URL pill, per web view and owner (`pillButtons`).
   var pillButtons: [String: [(String, [Value])]] = [:]
   /// Tab -> the tab it was ⌘-clicked from, so later links from a group land next to their
@@ -224,7 +231,7 @@ final class TabsCore {
     for t in v.a("tabs") { if let tab = Tab(t) { tabs[tab.id] = tab } }
     for f in v.a("folders") {
       guard let id = f["id"].string else { continue }
-      folders[id] = Folder(id: id, spaceId: f.s("spaceId"), title: f.s("title"), open: f.b("open", true), children: f.a("children").compactMap { $0.string }, auto: f.b("auto"))
+      folders[id] = Folder(id: id, spaceId: f.s("spaceId"), title: f.s("title"), open: f.b("open", true), children: f.a("children").compactMap { $0.string }, auto: f.b("auto"), icon: f.sOpt("icon"))
     }
     for sp in v.a("splits") {
       guard let id = sp["id"].string else { continue }
@@ -477,6 +484,10 @@ final class TabsCore {
       let id = args.s("id")
       guard tabs[id] != nil || folders[id] != nil else { return .err("tabs: no tab '" + id + "'") }
       rename(id, args.s("title"))
+    case "setIcon":
+      let id = args.s("id")
+      guard tabs[id] != nil || folders[id] != nil else { return .err("tabs: no tab '" + id + "'") }
+      setIcon(id, args.s("icon"))
     case "navigate":
       guard let id = args.sOpt("id") ?? selectedId, tabs[id] != nil else { return .err("tabs: no tab to navigate") }
       let r = env.call("webviews", "navigate", ["id": .string(id), "url": args["url"]])
@@ -565,14 +576,14 @@ final class TabsCore {
       "id": .string(id), "spaceId": .str(loc.flatMap { space(of: $0.0) }), "kind": .string(loc.map { kind(of: $0.0) } ?? "today"),
       "folderId": folderId, "title": .string(t.displayTitle), "customTitle": .str(t.customTitle), "url": .string(t.url),
       "pinnedUrl": .str(t.pinnedUrl), "favicon": .str(t.favicon.flatMap { URLs.usable($0) ? $0 : nil }), "webviewId": .string(id), "lastActive": .int(t.lastActive),
-      "audio": .bool(t.audio), "muted": .bool(t.muted),
+      "audio": .bool(t.audio), "muted": .bool(t.muted), "icon": .str(t.customIcon),
     ]
   }
 
   func list(_ sid: String) -> Value {
     func item(_ id: String) -> Value {
       if let f = folders[id] {
-        return ["id": .string(id), "folder": true, "title": .string(f.title), "open": .bool(f.open), "auto": .bool(f.auto), "children": .array(f.children.map { item($0) })]
+        return ["id": .string(id), "folder": true, "title": .string(f.title), "open": .bool(f.open), "auto": .bool(f.auto), "icon": .str(f.icon), "children": .array(f.children.map { item($0) })]
       }
       if let sp = splits[id] {
         return ["id": .string(id), "split": true, "layout": .string(sp.layout), "children": .array(sp.children.map { tabValue($0) })]
@@ -813,8 +824,8 @@ final class TabsCore {
 
   func archiveEntry(_ id: String, space sid: String?) -> Value {
     let t = tabs[id]!
-    return ["id": .string(id), "title": .string(t.displayTitle), "url": .string(t.url), "favicon": .string(t.icon),
-            "closedAt": .int(env.now()), "spaceId": .str(sid)]
+    return ["id": .string(id), "title": .string(t.displayTitle), "url": .string(t.url), "favicon": .string(URLs.icon(t.favicon, t.url)),
+            "icon": .str(t.customIcon), "closedAt": .int(env.now()), "spaceId": .str(sid)]
   }
 
   /// Moves a tab into the archive (webview suspended; collected later).
@@ -1037,7 +1048,7 @@ final class TabsCore {
     if let t = title {
       let changed = folders[id] != nil ? !t.isEmpty && t != folders[id]!.title
         : t.isEmpty ? tabs[id]?.customTitle != nil : t != tabs[id]?.displayTitle
-      if changed { rename(id, t); return }
+      if changed { renameFromSidebar(id, t); return }
     }
     if let sid { renderPage(sid) }
   }
@@ -1070,6 +1081,7 @@ final class TabsCore {
     let id = tabs[archiveId] == nil ? archiveId : newId("tab-")
     let icon = e.sOpt("favicon")
     tabs[id] = Tab(id: id, title: e.s("title"), url: e.s("url"), favicon: icon, lastActive: env.now())
+    tabs[id]?.customIcon = e.sOpt("icon")
     var list = today[sid] ?? []
     list.insert(id, at: 0)
     today[sid] = list
@@ -1588,6 +1600,7 @@ final class TabsCore {
     if let f = folders[id] {
       let group = kind(of: parent) == "today"
       var menu: [Value] = [["id": "renameFolder", "title": group ? "Rename Group…" : "Rename Folder…", "icon": "sf:pencil"]]
+      menu += iconMenuItems(hasIcon: f.icon != nil)
       if !group { menu.append(["id": "newFolder", "title": "New Folder Inside", "icon": "sf:folder.badge.plus"]) }
       if group { menu.append(["id": "newTabInFolder", "title": "New Tab in Group", "icon": "sf:plus", "key": .string(Self.chord("tabs.key.newTabInFolder"))]) }
       menu.append(["separator": true])
@@ -1667,6 +1680,7 @@ final class TabsCore {
                       item("duplicate", "Duplicate", "sf:plus.square.on.square")]
     // Favorites are icon tiles with no title to edit in place.
     if box != .favorites { m.append(item("rename", "Rename…", "sf:pencil")) }
+    m += iconMenuItems(hasIcon: t.customIcon != nil)
     if t.audio || t.muted {
       m.append(t.muted ? item("unmute", "Unmute Tab", "sf:speaker.wave.2") : item("mute", "Mute Tab", "sf:speaker.slash"))
     }
@@ -1706,6 +1720,7 @@ final class TabsCore {
   }
 
   func folderIcon(_ f: Folder, group: Bool) -> String {
+    if let icon = f.icon { return icon }
     guard group else { return "sf:folder" }
     // A group shows its first tab's icon (Dia's resting state).
     for c in tabsIn(folder: f.id) { if let t = tabs[c] { return t.icon } }
@@ -1999,8 +2014,10 @@ final class TabsCore {
   }
 
   func action(_ id: String, _ action: String, _ value: Value) {
+    if id == Self.iconPickerId { iconPickerAction(action, value); return }
     if tabs[id] != nil {
       switch action {
+      case "pickIcon": openIconPicker(id)
       case "click":
         // ⌘-click / ⇧-click pick more tabs (⌃⌘N groups them); a plain click selects.
         if pick(id, modifiers: value.a("modifiers")) { return }
@@ -2027,6 +2044,7 @@ final class TabsCore {
     }
     if folders[id] != nil {
       switch action {
+      case "pickIcon": openIconPicker(id)
       case "hover": previewFolder(id)
       case "toggle":
         folders[id]?.open.toggle()
@@ -2037,6 +2055,7 @@ final class TabsCore {
       case "renameCancel": endRename(id, nil)
       case "menu":
         if value.string == "renameFolder" { beginRename(id) }
+        if let item = value.string, iconMenuPicked(id, item) { return }
         if value.string == "deleteFolder" { confirmDeleteFolder(id) }
         if value.string == "newTabInFolder" { newTabInFolder(id) }
         if value.string == "ungroup" { ungroup(id) }
@@ -2256,6 +2275,7 @@ final class TabsCore {
       }
     case "duplicate": _ = duplicate(id)
     case "rename": beginRename(id)
+    case "changeIcon", "removeIcon": _ = iconMenuPicked(id, item)
     case "mute", "unmute": toggleMute(id)
     case "reset": reset(id)
     case "replacePinned":

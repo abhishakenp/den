@@ -228,6 +228,11 @@ for sc in IconPicker Rename Reorder; do
   shot space-$n space$sc light 3
   shot space-$n-dark space$sc dark 3
 done
+# Emoji tab and folder icons (Change Icon… / an emoji typed first), and the picker on a tab.
+shot tab-emoji-icons tabEmojiIcons light 3
+shot tab-emoji-icons-dark tabEmojiIcons dark 3
+shot tab-icon-picker tabIconPicker light 3
+shot tab-icon-picker-dark tabIconPicker dark 3
 # Settings (⌘,): each section, from the real plugins. The Settings window draws blank through
 # cacheDisplay, so it's captured by its window id (den's own window only; off-display works too).
 win() { # name scenario appearance width
