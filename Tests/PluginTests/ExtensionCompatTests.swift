@@ -159,7 +159,10 @@ struct ExtensionCompatTests {
     try? await Task.sleep(for: .milliseconds(400))
     h.rt.window.window.makeFirstResponder(w)
     press(w, "/", 44)
-    ok["/ find"] = await wait(10) { (await Wait.js(w, Self.vimiumFrames) as? String ?? "").contains("hud:block") || (await Wait.js(w, Self.vimiumFrames) as? String ?? "").contains("hud-frame:block") }
+    ok["/ find"] = await wait(10) {
+      let f = await Wait.js(w, Self.vimiumFrames) as? String ?? ""
+      return f.contains("hud:block") || f.contains("hud-frame:block")
+    }
     let framesAfterFind = await Wait.js(w, Self.vimiumFrames) ?? "?"
     press(w, "\u{1b}", 53)
     try? await Task.sleep(for: .milliseconds(400))
