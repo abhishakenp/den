@@ -258,7 +258,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `button` | `id`, `icon`, `title?`, `size?`, `tooltip?`, `enabled?`, `action?`, `progress?` (0–1: an accent ring around the icon; negative: a short arc, size unknown), `dot?` (a small accent dot: something new) | `click` (or `action`) |
 | `navBar` | `id`, `canGoBack`, `canGoForward`, `loading` | `toggleSidebar`, `back`, `forward`, `reload`, `stop` |
 | `urlPill` | `id`, `text`, `progress?`, `loading?`, `placeholder?`, `buttons?: [{id, icon, tooltip?, active?}]`, `webview?` | `click`, `copy`. A `buttons` item (always visible, left of copy; `active` tints it with the accent) emits `{id: <its id>, action: click, value: {webview}}` |
-| `grid` | `columns?`, `children` | – |
+| `grid` | `columns?` (4), `children` | – . Rows of up to `columns` tiles; every row's tiles stretch to fill the width (1 full width, 2 halves, 5 = 4 + 1), fixed height. Adding, removing or reordering children springs the others into place (none with Reduce Motion) |
 | `favoriteTile` | `id`, `icon`, `title`, `selected`, `audio`, `muted?`, `dropInto?`, `badge?` (a short text chip at the tile's bottom, accent-filled: "in 8m"; the icon moves up 5 pt to make room) | `click`, `doubleClick`, `reorder`, `mute` (the speaker badge) |
 | `spaceTitle` | `id`, `title`, `icon?`, `editing?`, `editText?` | `click`, `doubleClick`, `more`, `rename {title}`, `renameCancel` |
 | `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected`, `spaceId?` (makes it a drop target for dragged rows), `reorderable?` | `click`, `move {index}` (after a drag-reorder, see [Space icon reorder](#space-icon-reorder)) |
