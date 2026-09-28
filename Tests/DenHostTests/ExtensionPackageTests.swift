@@ -108,4 +108,55 @@ struct ExtensionPackageTests {
     #expect(a == ExtensionPackage.AMOVersion(guid: "addon@darkreader.org", slug: "darkreader", version: "4.9.133", fileURL: URL(string: "https://addons.mozilla.org/f/d.xpi")!, sha256: "abc", size: 12))
     #expect(ExtensionPackage.parseAMO(Data("{}".utf8)) == nil)
   }
+
+  static func manifest(_ d: URL) throws -> [String: Any] {
+    (try JSONSerialization.jsonObject(with: Data(contentsOf: d.appendingPathComponent("manifest.json"))) as? [String: Any]) ?? [:]
+  }
+
+  @Test func failureReasonsArePlain() {
+    #expect(ExtensionText.failureReason("the store answered 204") == "the store didn’t hand over a download")
+    #expect(ExtensionText.failureReason("The Internet connection appears to be offline.").hasPrefix("den couldn’t reach the store"))
+    #expect(ExtensionText.failureReason("not a CRX or ZIP file") == "the file isn’t a working extension")
+    #expect(ExtensionText.failureReason("Unable to parse the background service worker") == "it needs features Safari’s engine doesn’t have yet")
+  }
+
+  @Test func shimModuleWorkerContentScriptsAndPages() throws {
+    let d = Self.tempDir()
+    defer { try? FileManager.default.removeItem(at: d) }
+    let m = #"{"manifest_version": 3, "name": "V", "version": "1", "permissions": ["bookmarks", "history", "tabs"], "background": {"service_worker": "bg/main.js", "type": "module"}, "content_scripts": [{"matches": ["<all_urls>"], "js": ["a.js", "b.js"]}, {"matches": ["file:///*"], "css": ["x.css"]}], "action": {"default_popup": "p.html"}}"#
+    try m.write(to: d.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
+    try FileManager.default.createDirectory(at: d.appendingPathComponent("pages"), withIntermediateDirectories: true)
+    try "<html><head><script src='x.js'></script></head></html>".write(to: d.appendingPathComponent("pages/p.html"), atomically: true, encoding: .utf8)
+    try "<html><body>no scripts</body></html>".write(to: d.appendingPathComponent("plain.html"), atomically: true, encoding: .utf8)
+    // WebKit rejects some patterns Chrome takes: that entry goes, the others stay.
+    #expect(try ExtensionShim.apply(to: d, validPattern: { $0 != "file:///*" }))
+    let out = try Self.manifest(d)
+    #expect((out["background"] as? [String: Any])?["service_worker"] as? String == "__den/worker.js")
+    #expect((out["background"] as? [String: Any])?["type"] as? String == "module")
+    let worker = try String(contentsOf: d.appendingPathComponent("__den/worker.js"), encoding: .utf8)
+    #expect(worker == "import \"/__den/background.js\";\nimport \"/__den/shim.js\";\nimport \"/bg/main.js\";\n")
+    let cs = out["content_scripts"] as? [[String: Any]]
+    #expect(cs?[0]["js"] as? [String] == ["__den/shim.js", "a.js", "b.js"])
+    #expect(cs?.count == 1)
+    #expect(try String(contentsOf: d.appendingPathComponent("pages/p.html"), encoding: .utf8).contains("<head><script src=\"/__den/shim.js\"></script><script src='x.js'>"))
+    #expect(try String(contentsOf: d.appendingPathComponent("plain.html"), encoding: .utf8) == "<html><body>no scripts</body></html>")
+    #expect(try String(contentsOf: d.appendingPathComponent("__den/shim.js"), encoding: .utf8).hasPrefix("// den-shim v"))
+    #expect(try ExtensionPackage.readManifest(d).name == "V")
+    // A second load changes nothing.
+    #expect(try !ExtensionShim.apply(to: d))
+  }
+
+  @Test func shimClassicWorkerAndBackgroundScripts() throws {
+    let d = Self.tempDir()
+    defer { try? FileManager.default.removeItem(at: d) }
+    try #"{"manifest_version": 3, "name": "C", "version": "1", "background": {"service_worker": "sw.js"}}"#.write(to: d.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
+    #expect(try ExtensionShim.apply(to: d))
+    #expect(try String(contentsOf: d.appendingPathComponent("__den/worker.js"), encoding: .utf8) == "importScripts(\"/__den/background.js\", \"/__den/shim.js\", \"/sw.js\");\n")
+    let f = Self.tempDir()
+    defer { try? FileManager.default.removeItem(at: f) }
+    try #"{"manifest_version": 3, "name": "F", "version": "1", "background": {"scripts": ["main.js"], "type": "module"}}"#.write(to: f.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
+    #expect(try ExtensionShim.apply(to: f))
+    #expect((try Self.manifest(f)["background"] as? [String: Any])?["scripts"] as? [String] == ["__den/background.js", "__den/shim.js", "main.js"])
+    #expect(try !ExtensionShim.apply(to: f))
+  }
 }
