@@ -73,6 +73,9 @@ for s in $scenarios; do
   hosts=() totals=()
   settle=${LAB_SETTLE:-10} url=()
   [[ $s == page || $s == ubo ]] && { settle=${LAB_SETTLE:-45}; url=(--url https://example.com); }
+  # Compiles run in the background: measure once they are over (and relieved).
+  [[ $s == emptycompile ]] && settle=${LAB_SETTLE:-40}
+  [[ $s == ubo ]] && settle=${LAB_SETTLE:-90}
   src=$s; [[ $s == page || $s == emptyload || $s == emptycompile ]] && src=empty
   for i in $(seq 1 $reps); do
     fresh $src
