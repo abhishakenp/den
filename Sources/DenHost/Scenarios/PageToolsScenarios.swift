@@ -17,9 +17,11 @@ import WebKit
 /// - `zap` / `unstick`: MDN with the Zap panel after hiding an element / Remove Sticky Headers.
 /// - `highlightLink`: "Copy Link to Highlight" on the article, then that link opened in a new tab
 ///   (WebKit scrolls to and marks the text). Like the command, it copies the link.
+/// - `qrCode`: "QR Code for This Page" over example.com (the popover beside the URL pill).
+/// - `copyToast`: ⇧⌘C on example.com; the toast names what was copied (it copies the link).
 @MainActor
 public enum PageToolsScenarios {
-  public static let names = ["readerButton", "reader", "readAloud", "translate", "translateJa", "captureRegion", "captureFull", "zap", "unstick", "highlightLink"]
+  public static let names = ["readerButton", "reader", "readAloud", "translate", "translateJa", "captureRegion", "captureFull", "zap", "unstick", "highlightLink", "qrCode", "copyToast"]
   static let article = "https://en.wikipedia.org/wiki/Arc_(web_browser)"
   static let sticky = "https://developer.mozilla.org/en-US/docs/Web/CSS/position"
 
@@ -129,6 +131,19 @@ public enum PageToolsScenarios {
         let select = "var ps = document.querySelectorAll('#mw-content-text p'), p = ps[Math.min(12, ps.length - 1)], t = document.createTreeWalker(p, 4), n = t.nextNode(); while (n && n.data.trim().length < 40) n = t.nextNode(); var r = document.createRange(); r.setStart(n, 0); r.setEnd(n, Math.min(n.data.length, 60)); getSelection().removeAllRanges(); getSelection().addRange(r); return n.data.slice(0, 60)"
         _ = rt.call("webviews", "inject", ["id": .string(w), "plugin": "pagetools", "script": .string(select)])
         after(rt, 1) { rt.plugins.emit("webviews.menu", ["id": "pagetools.highlight", "webview": .string(w), "plugin": "pagetools"]) }
+      }
+    case "qrCode":
+      open(rt, "https://example.com/") { _ in
+        run("pagetools.qrCode")
+        after(rt, 0.5) { say(name, "popover=\(rt.ui.popoverOpen) overlays=\(rt.call("ui", "get")["overlays"])") }
+      }
+    case "copyToast":
+      // At a fixed time (not after the load), so a 3.2 s snapshot lands inside the 2.2 s toast.
+      let id = rt.call("tabs", "open", ["url": "https://example.com/"]).str("id")
+      rt.call("tabs", "select", ["id": .string(id)])
+      after(rt, 2.6) {
+        rt.plugins.emit("tabs.key.copy")
+        after(rt, 0.3) { say(name, "toast=\(rt.ui.toasts.last?.label.stringValue ?? "none")") }
       }
     default: break
     }

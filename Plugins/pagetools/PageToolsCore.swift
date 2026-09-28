@@ -266,6 +266,9 @@ final class PageToolsCore {
       }
     }
     env.on("translate.result") { [self] v in translatedBatch(v) }
+    env.on("app.saved") { [self] v in
+      if v.s("request") == "pagetools.qr", !v.s("path").isEmpty { toast("Saved " + lastComponent(v.s("path")), icon: "sf:qrcode") }
+    }
     env.on("app.folder") { [self] v in
       guard v.s("request") == "pagetools.folder" else { return }
       let path = v.s("path")
@@ -281,6 +284,9 @@ final class PageToolsCore {
       switch v.s("id") {
       case "pagetools.pill.reader": run("pagetools.reader")
       case "pagetools.pill.translate": run(translated[focused() ?? ""] != nil ? "pagetools.showOriginal" : "pagetools.translate")
+      case Self.qrPanel: if v.s("action") == "dismiss" { closeQR() }
+      case "pagetools.qr.copy": if v.s("action") == "click" { copyQR() }
+      case "pagetools.qr.save": if v.s("action") == "click" { saveQR() }
       default: break
       }
     }
@@ -304,6 +310,8 @@ final class PageToolsCore {
     ("pagetools.unstick", "Remove Sticky Headers", "sf:pin.slash", ["sticky", "header", "fixed", "banner", "zap"], ""),
     ("pagetools.zapClear", "Show Zapped Elements on This Site", "sf:bolt.slash", ["zap", "restore", "unhide", "reset"], ""),
     ("pagetools.highlight", "Copy Link to Highlight", "sf:link", ["highlight", "text fragment", "quote", "link", "selection"], ""),
+    ("pagetools.share", "Share…", "sf:square.and.arrow.up", ["share", "airdrop", "messages", "send", "mail"], ""),
+    ("pagetools.qrCode", "QR Code for This Page", "sf:qrcode", ["qr", "code", "phone", "share", "scan"], ""),
   ]
 
   /// `commands` is optional (plugin `commandbar`) and may load later: retry every 500 ms for 30 s.
@@ -354,6 +362,8 @@ final class PageToolsCore {
     case "pagetools.unstick": unstick(w)
     case "pagetools.zapClear": clearZaps(w)
     case "pagetools.highlight": highlight(w)
+    case "pagetools.share": share(w)
+    case "pagetools.qrCode": showQR(w)
     default: break
     }
   }
@@ -689,7 +699,8 @@ final class PageToolsCore {
     if let path = v["path"].string {
       toast("Saved " + lastComponent(path), icon: "sf:camera.viewfinder")
     } else {
-      toast("Copied capture to clipboard", icon: "sf:camera.viewfinder")
+      let size = v.i("width") > 0 ? String(v.i("width")) + " × " + String(v.i("height")) + " px" : ""
+      toast(Copied.text("image", size), icon: "sf:camera.viewfinder")
     }
   }
 
@@ -789,7 +800,73 @@ final class PageToolsCore {
       return toast(r.s("error") == "no selection" ? "Select some text first" : "Couldn’t make a link to that text", icon: "sf:link")
     }
     env.call("app", "copy", ["text": .string(url)])
-    toast("Copied link to highlight", icon: "sf:link")
+    let quote = r.s("text")
+    toast(Copied.text("link to highlight", quote.isEmpty ? "" : "“" + Copied.clip(quote, max: 40) + "”"), icon: "sf:link")
+  }
+
+  // MARK: - Share and QR code
+
+  static let qrPanel = "pagetools.qr"
+  static let pillId = "tabs.url"
+  var qr: (webview: String, url: String, path: String)?
+
+  /// The page's web address, or nil (with a toast) when it has none worth sharing.
+  func shareable(_ w: String) -> (String, String)? {
+    let st = env.call("webviews", "get", ["id": .string(w)])
+    let url = st.s("url")
+    guard URLs.isWeb(url) else {
+      toast("This page has no web address to share", icon: "sf:square.and.arrow.up")
+      return nil
+    }
+    return (url, st.s("title"))
+  }
+
+  /// macOS's share sheet (AirDrop, Messages, Mail…) next to the URL pill.
+  func share(_ w: String) {
+    guard let page = shareable(w) else { return }
+    let (url, title) = page
+    env.call("app", "share", ["url": .string(url), "title": .string(title), "anchor": .string(Self.pillId)])
+  }
+
+  /// A QR code for the page in a popover beside the URL pill: scan it with a phone, copy or save it.
+  func showQR(_ w: String) {
+    guard let page = shareable(w) else { return }
+    let url = page.0
+    let r = env.call("app", "qrCode", ["text": .string(url)])
+    guard let path = r["path"].string else { return toast("Couldn’t make a QR code", icon: "sf:exclamationmark.triangle") }
+    qr = (w, url, path)
+    env.call("ui", "set", ["slot": "popover", "tree": qrTree(url, path)])
+  }
+
+  func qrTree(_ url: String, _ path: String) -> Value {
+    ["type": "panel", "id": .string(Self.qrPanel), "anchor": .string(Self.pillId), "width": 280, "icon": "sf:qrcode",
+     "title": "Scan to open on your phone", "subtitle": .string(Copied.short(url, max: 40)),
+     "children": [
+       ["type": "image", "id": "pagetools.qr.image", "src": .string(path), "radius": 10, "aspect": 1],
+       ["type": "buttonRow", "id": "pagetools.qr.buttons", "children": [
+         ["type": "actionButton", "id": "pagetools.qr.copy", "title": "Copy Image", "style": "secondary"],
+         ["type": "actionButton", "id": "pagetools.qr.save", "title": "Save…", "style": "primary"],
+       ]],
+     ]]
+  }
+
+  func closeQR() {
+    qr = nil
+    env.call("ui", "set", ["slot": "popover", "tree": .null])
+  }
+
+  func copyQR() {
+    guard let q = qr else { return }
+    if !env.call("app", "copyImage", ["path": .string(q.path)]).isErr {
+      toast(Copied.text("QR code", Copied.short(q.url)), icon: "sf:qrcode")
+    }
+    closeQR()
+  }
+
+  func saveQR() {
+    guard let q = qr else { return }
+    closeQR()
+    env.call("app", "saveFile", ["path": .string(q.path), "name": .string("QR code " + URLs.host(q.url) + ".png"), "request": "pagetools.qr"])
   }
 
   // MARK: - Helpers

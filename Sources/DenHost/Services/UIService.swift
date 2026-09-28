@@ -429,6 +429,12 @@ public final class UIService: HostService {
   /// True when the node `id` is rendered in the sidebar.
   func isInSidebar(_ id: String) -> Bool { findNode(id, in: sidebarView) != nil }
 
+  /// A visible rendered node by id, anywhere in the window (the share picker's anchor).
+  func nodeView(_ id: String) -> NSView? {
+    guard !id.isEmpty, let root = wc.window.contentView else { return nil }
+    return findNode(id, in: root)
+  }
+
   func findNode(_ id: String, in v: NSView) -> NodeView? {
     if let n = v as? NodeView, n.nodeId == id, !n.isHiddenOrHasHiddenAncestor { return n }
     for s in v.subviews { if let f = findNode(id, in: s) { return f } }

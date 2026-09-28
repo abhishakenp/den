@@ -318,6 +318,32 @@ struct VaultTests {
     #expect(e.h.rt.ui.sheets["overlay.passwords"] == nil && e.h.rt.call("vault", "accounts").isErr)
   }
 
+  /// Copy from the Passwords sheet: Touch ID, the password on the pasteboard marked concealed, a
+  /// toast naming the account, and the pasteboard cleared later, unless something else was copied
+  /// since. A private pasteboard and a short delay stand in for the general one and 60 s.
+  @Test func copiedPasswordIsClearedUnlessReplaced() async throws {
+    let e = start()
+    let pb = NSPasteboard(name: NSPasteboard.Name("den-vault-test-\(UUID())"))
+    defer { pb.releaseGlobally() }
+    e.h.rt.vault.pasteboard = pb
+    e.h.rt.vault.clipboardClearSeconds = 0.4
+    _ = e.store.save(origin: "https://login.test", username: "ada", password: Data("pw".utf8))
+    e.core.open()
+    #expect(try await wait { e.core.sheetOpen })
+    e.h.action("passwords.row:https://login.test ada", "click")
+    #expect(try await wait { pb.string(forType: .string) == "pw" })
+    #expect(pb.types?.contains(NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")) == true)
+    #expect(try await wait { e.h.rt.ui.toasts.last?.label.stringValue == "Copied password for ada on login.test · clears in 60 s" })
+    #expect(try await wait { pb.string(forType: .string) == nil })
+    // Copied again, then something else is copied before the delay: that is left alone.
+    e.h.action("passwords.row:https://login.test ada", "click")
+    #expect(try await wait { pb.string(forType: .string) == "pw" })
+    pb.clearContents()
+    pb.setString("mine", forType: .string)
+    try await Task.sleep(for: .milliseconds(700))
+    #expect(pb.string(forType: .string) == "mine")
+  }
+
   /// The real Keychain store, on a `.invalid` origin that is removed again. An ad-hoc signed
   /// process has no keychain-access-groups entitlement, so it lands in the login keychain ("app").
   @Test func systemKeychainRoundTrip() {

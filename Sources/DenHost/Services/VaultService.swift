@@ -44,6 +44,10 @@ public final class VaultService: HostService {
   public private(set) var enabled = false
   var unlockedUntil: Date = .distantPast
   public var clock: () -> Date = Date.init
+  /// Where `copy` puts a password, and how long it stays: cleared after this many seconds unless
+  /// something else was copied since (the pasteboard's change count moved). Tests use their own.
+  public var pasteboard: NSPasteboard = .general
+  public var clipboardClearSeconds: TimeInterval = 60
 
   // thin-host: feature-specific, migrate to plugin (the save-a-login flow (captures, save/dismiss) belongs in the passwords plugin; the host keeps a generic secret store)
   struct Capture {
@@ -284,16 +288,24 @@ public final class VaultService: HostService {
     auth.authenticate(reason: "copy your password for \(URL(string: a.origin)?.host ?? a.origin)") { [weak self] ok, ctx in
       guard let self else { return }
       guard ok, let data = self.store.password(for: a, context: ctx) else { return self.result(request, "copy", false, ok ? self.keychainError : self.refusal) }
-      let pb = NSPasteboard.general
-      pb.clearContents()
-      // Concealed: clipboard managers that honor it don't record the password.
-      pb.setString(String(decoding: data, as: UTF8.self), forType: .string)
-      pb.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
-      let count = pb.changeCount
-      DispatchQueue.main.asyncAfter(deadline: .now() + 60) { if NSPasteboard.general.changeCount == count { NSPasteboard.general.clearContents() } }
+      Self.copyConcealed(String(decoding: data, as: UTF8.self), to: self.pasteboard, clearAfter: self.clipboardClearSeconds)
       self.result(request, "copy", true, nil)
     }
     return ["request": .string(request)]
+  }
+
+  /// Puts a secret on `pb`, marked concealed (clipboard managers that honor
+  /// `org.nspasteboard.ConcealedType` don't record it), and clears it after `seconds`, but only if
+  /// the pasteboard still holds it: anything copied since is left alone.
+  static func copyConcealed(_ secret: String, to pb: NSPasteboard, clearAfter seconds: TimeInterval) {
+    pb.clearContents()
+    pb.setString(secret, forType: .string)
+    pb.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
+    let count = pb.changeCount
+    Task { @MainActor in
+      try? await Task.sleep(for: .seconds(seconds))
+      if pb.changeCount == count { pb.clearContents() }
+    }
   }
 
   // MARK: Suggestions

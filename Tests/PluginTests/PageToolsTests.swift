@@ -256,7 +256,7 @@ struct PageToolsTests {
     let url = r.copied.first ?? ""
     #expect(url.hasPrefix("https://news.test/story#:~:text="), "\(url)")
     #expect(url.lowercased().contains("paragraph%205"))
-    #expect(r.toasts.contains("Copied link to highlight"))
+    #expect(r.toasts.contains("Copied link to highlight · “Paragraph 5 adds a little more context”"), "\(r.toasts)")
   }
 
   @Test func captureNamesUseLocalTime() {

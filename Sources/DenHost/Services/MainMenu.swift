@@ -60,7 +60,9 @@ public enum MainMenu {
       Entry("file.closeOthers", "Close Other Tabs", "", .event("tabs.key.closeOthers")),
       Entry("file.closeWindow", "Close Window", "cmd+shift+w", .sel(#selector(NSWindow.performClose(_:)))), .sep,
       Entry("file.savePage", "Save Page As…", "cmd+shift+s", .host("page.save")),
-      Entry("file.print", "Print…", "cmd+p", .host("page.print")),
+      Entry("file.print", "Print…", "cmd+p", .host("page.print")), .sep,
+      Entry("file.share", "Share…", "", .command("pagetools.share")),
+      Entry("file.qrCode", "QR Code for This Page", "", .command("pagetools.qrCode")),
     ]),
     ("Edit", [
       Entry("edit.undo", "Undo", "cmd+z", .sel(Selector(("undo:")))),

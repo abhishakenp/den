@@ -196,10 +196,36 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
   /// The input field; tells the bar when it gains focus so the field editor's caret gets the mode color.
   final class Field: NSTextField {
     var onFocus: (() -> Void)?
+    /// Paste and Go / Paste and Search: (clipboard text, is an address).
+    var onPasteGo: ((String, Bool) -> Void)?
     override func becomeFirstResponder() -> Bool {
       let ok = super.becomeFirstResponder()
       if ok { onFocus?() }
       return ok
+    }
+
+    /// The field editor asks its delegate (this field) for its context menu: "Paste and Go" (an
+    /// address on the clipboard) or "Paste and Search" (other text) goes right after Paste.
+    @objc(textView:menu:forEvent:atIndex:)
+    func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+      if let item = Self.pasteGoItem(target: self) {
+        let i = menu.items.firstIndex { $0.action == #selector(NSText.paste(_:)) }.map { $0 + 1 } ?? 0
+        menu.insertItem(item, at: i)
+      }
+      return menu
+    }
+
+    static func pasteGoItem(target: Field) -> NSMenuItem? {
+      guard target.onPasteGo != nil, let title = PasteText.title(url: "Paste and Go", search: "Paste and Search") else { return nil }
+      let item = NSMenuItem(title: title, action: #selector(pasteAndGo(_:)), keyEquivalent: "")
+      item.target = target
+      item.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
+      return item
+    }
+
+    @objc func pasteAndGo(_ sender: Any?) {
+      guard let text = PasteText.read() else { return }
+      onPasteGo?(text, PasteText.isURL(text))
     }
   }
 
@@ -368,6 +394,12 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     input.cell?.isScrollable = true
     input.cell?.wraps = false
     input.onFocus = { [weak self] in self?.applyCaret() }
+    input.onPasteGo = { [weak self] text, isURL in
+      guard let self else { return }
+      self.input.stringValue = text
+      self.emit(self.barId, "input", ["text": .string(text)])
+      self.submit(isURL ? "go" : "search", modifiers: [])
+    }
     searchIcon.spec = "sf:magnifyingglass"
     separator.wantsLayer = true
     surface.layer?.borderWidth = 0

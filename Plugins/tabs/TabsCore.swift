@@ -1618,7 +1618,7 @@ final class TabsCore {
       ["type": "navBar", "id": "tabs.nav", "canGoBack": .bool(st.b("canGoBack")), "canGoForward": .bool(st.b("canGoForward")), "loading": .bool(st.b("loading"))],
       ["type": "urlPill", "id": "tabs.url", "text": .string(text), "secure": .bool(Text.hasPrefix(tabs[selectedId ?? ""]?.url ?? "", "https:")),
        "loading": .bool(st.b("loading")), "progress": .double(st["progress"].double ?? 0), "placeholder": "Search or Enter URL…",
-       "buttons": .array((pillButtons[selectedId ?? ""] ?? []).flatMap { $0.1 }), "webview": .str(selectedId)],
+       "buttons": .array((pillButtons[selectedId ?? ""] ?? []).flatMap { $0.1 }), "webview": .str(selectedId), "menu": .array(pillMenu())],
     ]]])
   }
 
@@ -1734,6 +1734,7 @@ final class TabsCore {
     let k = kind(of: box)
     var m: [Value] = [item("copy", "Copy Link", "sf:link", "tabs.key.copy"), alt(item("copyMarkdown", "Copy Link as Markdown", "sf:link", "copyMarkdown")),
                       item("duplicate", "Duplicate", "sf:plus.square.on.square")]
+    if URLs.isWeb(t.url) { m.insert(item("share", "Share…", "sf:square.and.arrow.up"), at: 2) }
     // Favorites are icon tiles with no title to edit in place.
     if box != .favorites { m.append(item("rename", "Rename…", "sf:pencil")) }
     if t.audio || t.muted {
@@ -1977,7 +1978,41 @@ final class TabsCore {
   func copyURL() {
     guard let id = selectedId, let t = tabs[id] else { return }
     env.call("app", "copy", ["text": .string(t.url)])
-    env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Copied Current URL", "icon": "sf:link"]])
+    env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(Copied.link(t.url)), "icon": "sf:link"]])
+  }
+
+  /// The URL pill's context menu: Paste and Go / Paste and Search (named by the host for what's on
+  /// the clipboard when the menu opens), then the page's link.
+  func pillMenu() -> [Value] {
+    var m: [Value] = [["id": "pasteGo", "title": "Paste and Search", "titleURL": "Paste and Go", "icon": "sf:doc.on.clipboard", "paste": true]]
+    guard let id = selectedId, let t = tabs[id], URLs.isWeb(t.url) else { return m }
+    var copy: Value = ["id": "copy", "title": "Copy Link", "icon": "sf:link"]
+    if !Self.chord("tabs.key.copy").isEmpty { copy.put("key", .string(Self.chord("tabs.key.copy"))) }
+    var md: Value = ["id": "copyMarkdown", "title": "Copy Link as Markdown", "icon": "sf:link", "alternate": true]
+    if !Self.chord("copyMarkdown").isEmpty { md.put("key", .string(Self.chord("copyMarkdown"))) }
+    m.append(["separator": true])
+    m.append(copy)
+    m.append(md)
+    m.append(["id": "share", "title": "Share…", "icon": "sf:square.and.arrow.up"])
+    return m
+  }
+
+  /// Paste and Go / Paste and Search in the selected tab (a new tab when none is selected), through
+  /// the command bar's own address-or-search rule and engine.
+  func pasteAndGo() {
+    let p = env.call("app", "pasteboard")
+    guard let text = p["text"].string, !text.isEmpty else { return }
+    let mode = selectedId == nil ? "new" : "edit"
+    if env.call("commands", "paste", ["text": .string(text), "mode": .string(mode)]).isErr, p.b("url") {
+      // No command bar plugin: an address still opens.
+      if let id = selectedId { _ = handle("navigate", ["id": .string(id), "url": .string(text)]) } else { _ = open(text, space: currentSpace, kind: "today", background: false, index: nil) }
+    }
+  }
+
+  /// macOS's share sheet (AirDrop, Messages…) for a tab's page, next to `anchor`.
+  func share(_ id: String, anchor: String) {
+    guard let t = tabs[id], URLs.isWeb(t.url) else { return }
+    env.call("app", "share", ["url": .string(t.url), "title": .string(t.displayTitle), "anchor": .string(anchor)])
   }
 
   func openCommandBar(_ mode: String) {
@@ -2159,6 +2194,15 @@ final class TabsCore {
     case "tabs.url":
       if action == "click" { openCommandBar("edit") }
       if action == "copy" { copyURL() }
+      if action == "menu" {
+        switch value.string ?? "" {
+        case "pasteGo": pasteAndGo()
+        case "copy": copyURL()
+        case "copyMarkdown": if let id = selectedId { menuPicked(id, "copyMarkdown") }
+        case "share": if let id = selectedId { share(id, anchor: "tabs.url") }
+        default: break
+        }
+      }
     case Self.libraryId:
       libraryAction(action, value)
     case Self.downloadToastId:
@@ -2354,9 +2398,10 @@ final class TabsCore {
     case "copy":
       if let t = tabs[id] {
         env.call("app", "copy", ["text": .string(t.url)])
-        env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Copied Link", "icon": "sf:link"]])
+        env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(Copied.link(t.url)), "icon": "sf:link"]])
       }
     case "duplicate": _ = duplicate(id)
+    case "share": share(id, anchor: id)
     case "rename": beginRename(id)
     case "mute", "unmute": toggleMute(id)
     case "keepActive": toggleKeepActive(id)
@@ -2380,7 +2425,7 @@ final class TabsCore {
     case "copyMarkdown":
       if let t = tabs[id] {
         env.call("app", "copy", ["text": .string("[" + t.displayTitle + "](" + t.url + ")")])
-        env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Copied Link as Markdown", "icon": "sf:link"]])
+        env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(Copied.markdown(t.url)), "icon": "sf:link"]])
       }
     case "closeOthers": closeMany(id, "others")
     case "closeBelow": closeMany(id, "below")

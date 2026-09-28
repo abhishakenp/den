@@ -194,6 +194,11 @@ if [[ -f build/den.app/Contents/PlugIns/pagetools.dylib ]]; then
     soft shot pagetools-${rest%:*} $sc light ${rest##*:}
     soft shot pagetools-${rest%:*}-dark $sc dark ${rest##*:}
   done
+  # Share and clipboard: the QR code popover and a copy toast (network: example.com).
+  soft shot qr-code qrCode light 9
+  soft shot qr-code-dark qrCode dark 9
+  soft shot copy-toast copyToast light 3.2
+  soft shot copy-toast-dark copyToast dark 3.2
 fi
 # Extensions (ExtensionScenarios.extensionsVerify, network: Chrome Web Store, Firefox Add-ons):
 # installs real extensions and writes its own PNGs to $DEN_SNAPSHOT_DIR, then exits; capped at 10 min.

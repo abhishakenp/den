@@ -23,6 +23,8 @@ final class PasswordsCore {
   var pending: Value?
   var sheetOpen = false
   var unlockRequest = ""
+  /// "password for ada on login.test": the copy toast's words for the account being copied.
+  var copyWhat = "password"
   var commandsRegistered = false
   var registerAttempts = 0
 
@@ -155,7 +157,8 @@ final class PasswordsCore {
       unlockRequest = ""
       if v.b("ok") { sheetOpen = true; render() }
     case "copy":
-      toast(v.b("ok") ? "Password copied (cleared in 60 s)" : "Password not copied", "sf:doc.on.doc")
+      // What went on the clipboard, and that it won't stay there (VaultService clears it after 60 s).
+      toast(v.b("ok") ? Copied.text(copyWhat, "clears in 60 s") : "Password not copied", "sf:doc.on.doc")
     case "fill":
       if !v.b("ok") && v.s("error") != "cancelled" { toast("Couldn't fill the password", "sf:exclamationmark.triangle.fill") }
     default: break
@@ -205,6 +208,10 @@ final class PasswordsCore {
     guard sheetOpen, Text.hasPrefix(id, Self.rowPrefix) else { return }
     let account = Text.dropPrefix(id, Self.rowPrefix)
     if action == "click" {
+      let a = (env.call("vault", "accounts").array ?? []).first { $0.s("id") == account }
+      let user = a?.s("username") ?? ""
+      let site = URLs.host(a?.s("origin") ?? "")
+      copyWhat = (user.isEmpty ? "password" : "password for " + user) + (site.isEmpty ? "" : " on " + site)
       env.call("vault", "copy", ["account": .string(account)])
     } else if action == "secondary" {
       env.call("vault", "delete", ["account": .string(account)])
