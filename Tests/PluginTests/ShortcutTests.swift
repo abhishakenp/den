@@ -24,7 +24,7 @@ struct ShortcutTests {
     ("cmd+opt+down", .event("tabs.key.nextTab")), ("cmd+opt+up", .event("tabs.key.prevTab")),
     ("ctrl+tab", .event("tabs.key.recent")), ("ctrl+shift+tab", .event("tabs.key.recentBack")),
     ("cmd+1", .event("tabs.key.nth")), ("cmd+5", .event("tabs.key.nth")), ("cmd+9", .event("tabs.key.nth")),
-    ("cmd+d", .event("tabs.key.pin")), ("cmd+shift+k", .event("tabs.key.clear")), ("ctrl+z", .event("tabs.key.undo")),
+    ("cmd+d", .event("tabs.key.pin")), ("cmd+shift+k", .event("tabs.key.clear")), ("ctrl+shift+t", .event("tabs.key.tidy")), ("ctrl+z", .event("tabs.key.undo")),
     ("cmd+opt+w", .event("tabs.key.closeOthers")), ("cmd+opt+t", .event("tabs.key.newTabInFolder")), ("cmd+ctrl+n", .event("tabs.key.newFolder")),
     ("cmd+o", .event("peek.key.expand")),
     // Navigation

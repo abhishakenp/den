@@ -30,6 +30,7 @@ New tabs open at the top of Today. Anything you want to keep, pin (⌘D). Today 
 
 - Today tabs archive themselves after **24 hours** without use. The selected tab and tabs playing audio are never archived. Change it in Settings ▸ Tabs ▸ **Archive Today tabs** (Never, 1 h, 6 h, 12 h, 24 h, 7 days, 30 days).
 - **Clear** (on the divider) or ⇧⌘K archives every Today tab except the one you're on. den shows "Cleared Tabs! Use ⌃Z to undo."
+- **Tidy** (on the divider while you hover it, once turned on) or ⌃⇧T sorts Today's loose tabs into named groups. See [Tidy Tabs](#tidy-tabs).
 
 ## The Library
 
@@ -65,6 +66,16 @@ The Library keeps your last 500 tabs.
 - **⌥⌘T** opens a new tab at the end of the current tab's group.
 - **⌃Z** right after a ⌘-click takes the group away and leaves both tabs.
 - Don't want groups? Settings ▸ Tabs ▸ **Group ⌘-clicked links** off gives you a plain background tab at the top of Today.
+
+### Tidy Tabs
+
+Today piled up? **Tidy** sorts its loose tabs (the ones not already in a group) into named groups, like "Trip to Lisbon" or "Pull Requests", using Apple's on-device model. Your tabs never leave your Mac.
+
+- It's **off** until you turn on Settings ▸ Tabs ▸ **Tidy tabs with Apple Intelligence**. It needs a Mac with Apple Intelligence turned on; if yours can't run it, that setting says why.
+- Then hover the divider above Today and click **Tidy** (next to **Clear**), press **⌃⇧T**, pick **Tidy Tabs** in the command bar or the Tabs menu, or right-click the divider.
+- The new groups start collapsed; the tab you're on stays visible under its group's name. Tabs that fit no group stay where they were.
+- **⌃Z**, or **Undo** on the "Tidied 6 tabs into 2 groups" toast, puts every tab back in one step.
+- It never runs on its own unless you also turn on **Tidy automatically**: then, when Today has 8 or more loose tabs, den tidies them for you (at most every 30 minutes).
 
 ## Folders
 

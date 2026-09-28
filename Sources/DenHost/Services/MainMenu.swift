@@ -126,6 +126,7 @@ public enum MainMenu {
       Entry("tabs.recentBack", "Switch to Oldest Recent Tab", "", .event("tabs.key.recentBack")),
       Entry("tabs.goTo", "Go to Tab", "", .submenu([Entry("tabs.nth", "Tab", "", .event("tabs.key.nth"))])), .sep,
       Entry("tabs.clear", "Clear Today Tabs", "", .event("tabs.key.clear")),
+      Entry("tabs.tidy", "Tidy Tabs", "", .event("tabs.key.tidy")),
       Entry("tabs.undo", "Undo Sidebar Action", "", .event("tabs.key.undo")),
     ]),
     ("Window", [

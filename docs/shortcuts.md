@@ -30,6 +30,7 @@ Chords are `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f
 | Tab 1…8, last tab | ⌘1…9 | ⌘1…9 | ⌘1…9 | ⌘1…9 (favorites first) | Tabs ▸ Go to Tab |
 | Pin / unpin | – | – | ⌘D | ⌘D | `tabs.pin` |
 | Clear Today tabs | – | – | ⇧⌘K | ⇧⌘K (undo with ⌃Z) | `tabs.clear` |
+| Tidy Today tabs into groups | – | – | – (Arc Max: Tidy button) | ⌃⇧T (on-device model, off until turned on in Settings ▸ Tabs; undo with ⌃Z) | `tabs.tidy` |
 | Undo sidebar action | – | – | ⌃Z (toast) | ⌃Z | `tabs.undo` |
 | Open Peek / mini window in space | – | – | ⌘O | ⌘O | `file.openInSpace` |
 | New window | ⌘N | ⌘N | ⌘N | – | den has one window with every space in it (Arc's windows share spaces too). Not planned yet |

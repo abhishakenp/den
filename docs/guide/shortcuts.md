@@ -20,6 +20,7 @@ Where Arc and Safari disagree, den follows Arc, and keeps Safari's key as a seco
 | Tab 1…8, last tab | ⌘1…⌘8, ⌘9 (favorites first) |
 | Pin / unpin | ⌘D |
 | Clear Today tabs | ⇧⌘K |
+| Tidy Today tabs into groups (once turned on in Settings ▸ Tabs) | ⌃⇧T |
 | Undo sidebar action | ⌃Z |
 | Library (closed tabs) | ⌘Y or ⇧⌘L |
 

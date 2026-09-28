@@ -16,6 +16,11 @@ import FoundationModels
 ///   todos {items: [{id, text}], max? (8), instructions?, id?}
 ///                                          -> {id}; `ai.result {id, ok, todos: [{item, title}]}`
 ///                                             (guided generation; `item` is an input id)
+///   group {items: [{id, text}], instructions?, maxGroups? (6), id?}
+///                                          -> {id}; `ai.result {id, ok, groups: [{name, items: [id]}]}`
+///                                             (guided generation: named groups of input ids; each id in
+///                                             at most one group, empty groups dropped; items past the
+///                                             context budget are left out, `skipped` counts them)
 /// Failures: `ai.result {id, ok: false, error, reason?}`; `error: "unavailable"` when Apple
 /// Intelligence can't run (callers fall back to plain lists). Requests run one at a time.
 @MainActor
@@ -43,7 +48,7 @@ public final class AIService: HostService {
       var v: Value = ["available": .bool(a.available), "contextSize": .int(Int64(generator.contextSize))]
       if let r = a.reason { v = v.with("reason", .string(r)) }
       return v
-    case "summarize", "brief", "todos":
+    case "summarize", "brief", "todos", "group":
       var id = args.str("id")
       if id.isEmpty { id = "ai-\(nextId)"; nextId += 1 }
       enqueue(id: id, method: method, args: args)
@@ -72,6 +77,9 @@ public final class AIService: HostService {
             result = ["ok": true, "text": .string(text)]
           case "brief":
             result = try await self.brief(args.list("sources"), instructions: args.str("instructions", Self.briefInstructions))
+          case "group":
+            result = try await self.group(args.list("items"), instructions: args.str("instructions", Self.groupInstructions),
+                                          maxGroups: Int(args.num("maxGroups", 6)))
           default:
             let todos = try await self.todos(args.list("items"), max: Int(args.num("max", 8)), instructions: args.str("instructions", Self.todoInstructions))
             result = ["ok": true, "todos": .array(todos)]
@@ -91,6 +99,8 @@ public final class AIService: HostService {
   static let summaryInstructions = "You summarize a person's work notifications. Be brief, concrete and neutral. Mention people and what they need. Never invent facts."
   static let briefInstructions = "You write a short morning briefing from per-source summaries: at most 3 short sentences, most important first. Mention each item once. Plain text, no lists, no greeting."
   static let todoInstructions = "You turn one work notification into a todo for the user. Decide whether it needs them to act (reply, review, fix, answer); thanks, FYIs and announcements do not. The todo is a short imperative phrase under 70 characters that names the person and the thing. Use only words and facts from the notification; never add details that are not in it."
+
+  static let groupInstructions = "You sort a list of numbered items into a few groups of related items. Give each group a short, specific name. Use each item number at most once. Leave out items that fit no group."
 
   /// Characters of input that fit in one request.
   public var chunkBudget: Int { max(800, (generator.contextSize - reservedTokens) * charsPerToken) }
@@ -177,6 +187,39 @@ public final class AIService: HostService {
   }
 }
 
+extension AIService {
+  /// One guided generation over a numbered list ("1. text"): the model answers with item numbers,
+  /// which map back to the caller's ids. Numbers out of range, repeats and empty groups are
+  /// dropped here, so callers only see valid, disjoint groups. Items that don't fit the context
+  /// budget are left out (lines are cut to 120 characters first).
+  func group(_ items: [Value], instructions: String, maxGroups: Int) async throws -> Value {
+    var ids: [String] = []
+    var lines: [String] = []
+    var size = 0, skipped = 0
+    for v in items {
+      let id = v.str("id"), text = v.str("text")
+      guard !id.isEmpty, !ids.contains(id) else { continue }
+      let line = "\(ids.count + 1). " + String(text.prefix(120))
+      if size + line.count + 1 > chunkBudget { skipped += 1; continue }
+      ids.append(id)
+      lines.append(line)
+      size += line.count + 1
+    }
+    guard ids.count >= 2 else { return ["ok": true, "groups": [], "skipped": .int(Int64(skipped))] }
+    let raw = try await generator.group(instructions: instructions + " Make at most \(max(1, maxGroups)) groups.", prompt: lines.joined(separator: "\n"))
+    var used = Set<Int>()
+    var out: [Value] = []
+    for g in raw where out.count < max(1, maxGroups) {
+      let name = g.name.trimmingCharacters(in: .whitespacesAndNewlines)
+      var members: [Value] = []
+      for n in g.items where n >= 1 && n <= ids.count && used.insert(n).inserted { members.append(.string(ids[n - 1])) }
+      guard !name.isEmpty, !members.isEmpty else { continue }
+      out.append(["name": .string(name), "items": .array(members)])
+    }
+    return ["ok": true, "groups": .array(out), "skipped": .int(Int64(skipped))]
+  }
+}
+
 // MARK: - Generator
 
 public enum AIError: Error, CustomStringConvertible {
@@ -197,6 +240,39 @@ public protocol AIGenerator {
   var contextSize: Int { get }
   func respond(instructions: String, prompt: String) async throws -> String
   func todo(instructions: String, text: String) async throws -> (actionable: Bool, title: String)
+  /// Named groups of 1-based item numbers from a numbered list.
+  func group(instructions: String, prompt: String) async throws -> [(name: String, items: [Int])]
+}
+
+@MainActor
+extension AIGenerator {
+  /// Plain-text fallback for generators without guided generation: one "Name: 1, 2, 3" line per group.
+  public func group(instructions: String, prompt: String) async throws -> [(name: String, items: [Int])] {
+    let text = try await respond(instructions: instructions + " Answer with one line per group: the name, a colon, then the item numbers separated by commas.",
+                                 prompt: prompt)
+    return AIService.parseGroups(text)
+  }
+}
+
+extension AIService {
+  /// "Name: 1, 2, 3" lines -> groups (lines without a colon or numbers are skipped).
+  nonisolated static func parseGroups(_ text: String) -> [(name: String, items: [Int])] {
+    var out: [(name: String, items: [Int])] = []
+    for line in text.split(whereSeparator: \.isNewline) {
+      guard let colon = line.lastIndex(of: ":") else { continue }
+      var name = line[..<colon].trimmingCharacters(in: .whitespaces)
+      // List markers: "- ", "* ", "• ", "# ", "1. ", "2) ".
+      while let f = name.first, "-*•#".contains(f) { name = String(name.dropFirst()).trimmingCharacters(in: .whitespaces) }
+      let digits = name.prefix { $0.isNumber }
+      if !digits.isEmpty, let m = name.dropFirst(digits.count).first, m == "." || m == ")" {
+        name = String(name.dropFirst(digits.count + 1)).trimmingCharacters(in: .whitespaces)
+      }
+      name = name.trimmingCharacters(in: CharacterSet(charactersIn: "*\"'“”"))
+      let nums = line[line.index(after: colon)...].split { !$0.isNumber }.compactMap { Int($0) }
+      if !name.isEmpty && !nums.isEmpty { out.append((name, nums)) }
+    }
+    return out
+  }
 }
 
 @Generable
@@ -205,6 +281,20 @@ struct GeneratedTodo {
   var actionable: Bool
   @Guide(description: "A short imperative todo under 70 characters naming the person and the thing")
   var title: String
+}
+
+@Generable
+struct GeneratedGroups {
+  @Guide(description: "Groups of related items")
+  var groups: [GeneratedGroup]
+}
+
+@Generable
+struct GeneratedGroup {
+  @Guide(description: "A short, specific name for the group, one to three words in Title Case")
+  var name: String
+  @Guide(description: "The numbers of the items in this group")
+  var items: [Int]
 }
 
 @MainActor
@@ -243,6 +333,14 @@ public struct FoundationModelsGenerator: AIGenerator {
       let session = LanguageModelSession(instructions: instructions)
       let r = try await session.respond(to: text, generating: GeneratedTodo.self)
       return (r.content.actionable, r.content.title)
+    } catch { throw Self.map(error) }
+  }
+
+  public func group(instructions: String, prompt: String) async throws -> [(name: String, items: [Int])] {
+    do {
+      let session = LanguageModelSession(instructions: instructions)
+      let r = try await session.respond(to: prompt, generating: GeneratedGroups.self)
+      return r.content.groups.map { ($0.name, $0.items) }
     } catch { throw Self.map(error) }
   }
 
