@@ -17,13 +17,13 @@ extension HostScenarios {
   }
 
   /// `launcher:<query>`: the command bar as a launcher, with a stand-in `settings` registry (the
-  /// proposed service in docs/plugin-services.md) and stub `extensions` / `downloads` services, so
+  /// proposed service in docs/plugin-services.md) and a stub `extensions` service (the host provides `downloads`), so
   /// den's destinations and settings show as they will once those land. Needs the plugins.
   static func launcher(_ name: String, runtime rt: DenRuntime) -> NSWindow? {
     guard name.hasPrefix("launcher:") else { return nil }
     let q = String(name.dropFirst("launcher:".count))
     let stub = LauncherSettingsStub()
-    for d in ["extensions", "downloads"] where !rt.plugins.serviceNames.contains(d) { rt.plugins.provide(d) { _, _ in ["ok": true] } }
+    for d in ["extensions"] where !rt.plugins.serviceNames.contains(d) { rt.plugins.provide(d) { _, _ in ["ok": true] } }
     if !rt.plugins.serviceNames.contains("settings") { rt.plugins.provide("settings") { m, a in stub.handle(m, a) } }
     rt.call("commands", "open", ["mode": "new", "query": .string(q)])
     rt.ui.commandBar.input.currentEditor()?.selectedRange = NSRange(location: (q as NSString).length, length: 0)

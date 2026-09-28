@@ -99,7 +99,7 @@ struct DownloadsLibraryTests {
     var fresh = done
     fresh.unseen = true
     h.rt.downloads.seed([fresh])
-    #expect(footerButton(h)?["dot"] == true && footerButton(h)?["progress"] == nil)
+    #expect(footerButton(h)?["dot"] == true && footerButton(h)?["progress"].isNull == true)
 
     // Toasts say what's happening, with a way to it.
     h.rt.host.emit("downloads.started", ["id": "d3", "name": "photo.jpg", "webview": ""])

@@ -72,6 +72,8 @@ extension Harness {
       }
     }
     for d in destinations {
+      // The host's own service (downloads) steps aside for the recording stand-in.
+      if let old = rt.serviceHandles[d] { rt.plugins.dispose(old) }
       rt.plugins.provide(d) { m, _ in
         MainActor.assumeIsolated { h_destinationCalls.append(d + "." + m) }
         return ["ok": true]

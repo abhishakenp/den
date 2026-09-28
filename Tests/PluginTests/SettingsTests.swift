@@ -82,9 +82,9 @@ struct SettingsTests {
     cmd.start()
     let briefing = BriefingCore(env: h.env)
     briefing.start()
-    // General gains "Quitting"; Tabs gains "Links".
+    // General gains "Quitting"; Tabs gains "Downloads" and "Links".
     #expect(h.rt.settings.groups(of: "general").map(\.id) == ["general", "quit"])
-    #expect(h.rt.settings.groups(of: "tabs").map(\.id) == ["tabs", "peek"])
+    #expect(h.rt.settings.groups(of: "tabs").map(\.id) == ["tabs", "tabs.downloads", "peek"])
     #expect(h.rt.call("settings", "list").array?.map { $0.s("id") } == ["general", "tabs", "commandbar", "briefing"])
     // Quit prompt.
     #expect(quit.warn)
