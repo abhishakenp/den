@@ -22,9 +22,18 @@ import CordisValue
 public final class UIService: HostService {
   public let name = "ui"
   let host: ServiceHost
-  let wc: DenWindowController
+  let windows: WindowSet
+  /// The active window: overlays, cards and page switches go here.
+  var wc: DenWindowController { windows.active }
   let content: ContentService?
-  public let sidebarView = SidebarView()
+  /// Every window's sidebar, by window id. Sidebar slots render into every normal window (or the
+  /// one `window` names); a private window's sidebar only takes trees addressed to it.
+  private(set) var sidebars: [String: SidebarView] = [:]
+  /// The palette each window's sidebar was last painted with.
+  private var palettes: [String: Palette] = [:]
+  /// The active window's sidebar.
+  public var sidebarView: SidebarView { sidebars[windows.active.id]! }
+  public func sidebar(of window: String) -> SidebarView? { sidebars[window] }
   var renderer: Renderer!
   let drag: DragController
   lazy var commandBar = CommandBarView(emit: { [weak self] in self?.emit($0, $1, $2) })
@@ -48,20 +57,20 @@ public final class UIService: HostService {
   /// `ui.card`: generic popover cards and the hover intent of nodes with `hoverIntent` (Card.swift).
   public private(set) var cards: CardController!
 
-  public init(host: ServiceHost, window: DenWindowController, content: ContentService?) {
+  public init(host: ServiceHost, windows: WindowSet, content: ContentService?) {
     self.host = host
-    self.wc = window
+    self.windows = windows
     self.content = content
     let emitter: (String, String, Value) -> Void = { id, action, value in
       host.emit("ui.action", ["id": .string(id), "action": .string(action), "value": value])
     }
     drag = DragController(emit: emitter)
+    let wc = windows.active
     renderer = Renderer(palette: Palette(theme: wc.currentTheme, dark: wc.isDark), emit: emitter)
     renderer.drag = drag
-    drag.root = sidebarView
-    drag.contentFrame = { [weak wc] in wc.map { $0.contentArea.convert($0.contentArea.bounds, to: nil) } ?? .zero }
+    drag.contentFrame = { [weak windows] in windows.map { $0.active.contentArea.convert($0.active.contentArea.bounds, to: nil) } ?? .zero }
     drag.accent = { [weak self] in self?.renderer.palette.accentStrong ?? .controlAccentColor }
-    drag.overlay = { [weak wc] in wc?.overlays }
+    drag.overlay = { [weak windows] in windows?.active.overlays }
     content?.accent = renderer.palette.accentStrong
     cards = CardController(renderer: renderer, emit: emitter)
     cards.overlays = wc.overlays
@@ -73,8 +82,8 @@ public final class UIService: HostService {
       let right = wc.sidebarHidden ? (wc.sidebarRevealed ? wc.sidebar.frame.maxX : 0) : wc.sidebar.frame.maxX
       return wc.overlays.convert(NSPoint(x: right, y: 0), from: wc.sidebar.superview).x
     }
-    cards.windowRect = { [weak wc] r in
-      guard let wc, let content = wc.window.contentView else { return r }
+    cards.windowRect = { [weak windows] r in
+      guard let wc = windows?.active, let content = wc.window.contentView else { return r }
       // Window coordinates with a top-left origin (the content view spans the window) -> the
       // window's own bottom-left base coordinates -> overlays.
       let base = NSRect(x: r.minX, y: content.frame.height - r.maxY, width: r.width, height: r.height)
@@ -82,26 +91,80 @@ public final class UIService: HostService {
     }
     renderer.hover = cards
 
-    wc.sidebar.body.addSubview(sidebarView)
-    sidebarView.frame = wc.sidebar.body.bounds
-    sidebarView.autoresizingMask = [.width, .height]
-    sidebarView.pager.ensurePages(1)
-    sidebarView.pager.onProgress = { [weak wc] a, b, t in wc?.blendTheme(from: a, to: b, progress: t) }
-    sidebarView.pager.onCommit = { [weak self] p in
-      HoverTracker.setNeedsRefresh(self?.wc.window)
-      self?.wc.showTheme(for: p)
-      self?.refreshPalette()
-      emitter("sidebar", "page", .int(Int64(p)))
-    }
-    sidebarView.onDoubleClickEmpty = { emitter("sidebar", "doubleClick", .null) }
-
     commandBackdrop.onClick = { emitter("commandBar", "dismiss", .null) }
     libraryBackdrop.wantsLayer = true
     libraryBackdrop.layer?.backgroundColor = NSColor(white: 0, alpha: Tokens.libraryBackdropAlpha).cgColor
     libraryBackdrop.onClick = { [weak self] in self?.library.send("dismiss") }
+    windows.each { [unowned self] wc in self.setUpSidebar(wc, emitter: emitter) }
+    windows.onRemove.append { [weak self] wc in
+      self?.sidebars[wc.id] = nil
+      self?.palettes[wc.id] = nil
+    }
+    windows.onActivate.append { [weak self] _, wc in self?.activated(wc) }
+    drag.root = sidebarView
+  }
+
+  /// A window's sidebar: its pager (the same space pages as every other normal window; a private
+  /// window has one page), filled with the trees the other windows already show.
+  private func setUpSidebar(_ wc: DenWindowController, emitter: @escaping (String, String, Value) -> Void) {
+    let sv = SidebarView()
+    let source = sidebars[windows.active.id]
+    sidebars[wc.id] = sv
+    wc.sidebar.body.addSubview(sv)
+    sv.frame = wc.sidebar.body.bounds
+    sv.autoresizingMask = [.width, .height]
+    sv.pager.ensurePages(wc.isPrivate ? 1 : max(1, source?.pager.pages.count ?? 1))
+    sv.pager.onProgress = { [weak wc] a, b, t in wc?.blendTheme(from: a, to: b, progress: t) }
+    sv.pager.onCommit = { [weak self, weak wc] p in
+      guard let self, let wc else { return }
+      HoverTracker.setNeedsRefresh(wc.window)
+      wc.showTheme(for: p)
+      self.refreshPalette()
+      emitter("sidebar", "page", .int(Int64(p)))
+    }
+    sv.onDoubleClickEmpty = { emitter("sidebar", "doubleClick", .null) }
     let prev = wc.onLayout
-    wc.onLayout = { [weak self] in prev?(); self?.layoutOverlays() }
+    wc.onLayout = { [weak self, weak wc] in
+      prev?()
+      if let self, let wc, wc === self.windows.active { self.layoutOverlays() }
+    }
     wc.background.onAppearanceChange = { [weak self] in self?.refreshPalette() }
+    if source == nil { palettes[wc.id] = renderer.palette }
+    // A later normal window starts with what the others show, on the active window's page.
+    if let source, !wc.isPrivate {
+      let palette = Palette(theme: wc.currentTheme, dark: wc.isDark)
+      withPalette(palette) {
+        for (name, slot) in source.allSlots() where slot.root != nil {
+          sv.slot(name.slot, page: name.page)?.set(slot.root?.node ?? .null, renderer: renderer)
+        }
+      }
+      palettes[wc.id] = palette
+      sv.pager.show(wc.page, animated: false)
+    }
+  }
+
+  /// The active window changed: overlays, cards and drags follow it, and its palette applies.
+  private func activated(_ wc: DenWindowController) {
+    cards.hideAll()
+    cards.overlays = wc.overlays
+    drag.root = sidebarView
+    if commandBarOpen { emit("commandBar", "dismiss", .null) }
+    refreshPalette()
+    HoverTracker.setNeedsRefresh(wc.window)
+  }
+
+  /// Renders with `p` (a background window's own theme), then restores the active palette.
+  private func withPalette(_ p: Palette, _ body: () -> Void) {
+    let saved = renderer.palette
+    renderer.palette = p
+    body()
+    renderer.palette = saved
+  }
+
+  /// The windows a sidebar tree goes to: the one named, else every normal window.
+  private func sidebarTargets(_ window: String?) -> [DenWindowController]? {
+    if let window { return windows.find(window).map { [$0] } }
+    return windows.normal
   }
 
   func emit(_ id: String, _ action: String, _ value: Value) {
@@ -111,16 +174,27 @@ public final class UIService: HostService {
   public func handle(method: String, args: Value) -> Value {
     switch method {
     case "set":
-      return set(args.str("slot"), args["tree"], page: args["page"].int.map(Int.init))
+      return set(args.str("slot"), args["tree"], page: args["page"].int.map(Int.init), window: args["window"].string)
     case "setPages":
+      // Every normal window has the same space pages; `current` places the active one (or `window`).
       let n = max(1, Int(args.num("count", 1)))
-      sidebarView.pager.ensurePages(n)
-      if let c = args["current"].int { sidebarView.pager.show(Int(c), animated: false); wc.showTheme(for: Int(c)); refreshPalette() }
-      sidebarView.needsLayout = true
+      let named = args["window"].string.flatMap { windows.find($0) } ?? wc
+      let target = named.isPrivate ? windows.main : named
+      for w in windows.normal {
+        guard let sv = sidebars[w.id] else { continue }
+        sv.pager.ensurePages(n)
+        if sv.pager.current >= n, w !== target { sv.pager.show(n - 1, animated: false); w.showTheme(for: n - 1) }
+        sv.needsLayout = true
+      }
+      if let c = args["current"].int, let sv = sidebars[target.id] { sv.pager.show(Int(c), animated: false); target.showTheme(for: Int(c)); refreshPalette() }
     case "showPage":
       let p = Int(args.num("page", 0))
-      sidebarView.pager.show(p, animated: args.flag("animated", true))
-      wc.showTheme(for: sidebarView.pager.current)
+      let target = args["window"].string.flatMap { windows.find($0) } ?? wc
+      guard let sv = sidebars[target.id] else { return .error("ui: no window") }
+      // A private window has no space pages: switching spaces there changes nothing on screen.
+      if target.isPrivate { return .ok }
+      sv.pager.show(p, animated: args.flag("animated", true))
+      target.showTheme(for: sv.pager.current)
       refreshPalette()
     case "tokens":
       return Self.tokens(renderer.palette)
@@ -133,7 +207,7 @@ public final class UIService: HostService {
       for s in Self.sheetSlots where sheets[s] != nil { overlays.append(.string(s)) }
       let shown = cards.cards.filter { $0.value.superview != nil && !$0.value.leaving }.map(\.key).sorted().map { Value.string($0) }
       return ["page": .int(Int64(sidebarView.pager.current)), "pages": .int(Int64(sidebarView.pager.pages.count)), "overlays": .array(overlays),
-              "cards": .array(shown)]
+              "cards": .array(shown), "window": .string(wc.id)]
     case "card":
       let r = cards.set(args)
       HoverTracker.setNeedsRefresh(wc.window)
@@ -169,7 +243,7 @@ public final class UIService: HostService {
     return nil
   }
 
-  func set(_ slot: String, _ tree: Value, page: Int?) -> Value {
+  func set(_ slot: String, _ tree: Value, page: Int?, window: String? = nil) -> Value {
     // Anything modal (command bar, dialogs, sheets, popovers) closes the hover card.
     if !tree.isNull, slot.hasPrefix("overlay.") || slot == "dialog" || slot == "popover" { cards.hideAll() }
     switch slot {
@@ -187,11 +261,17 @@ public final class UIService: HostService {
       side.header.set(tree, renderer: renderer)
       side.needsLayout = true
     default:
-      guard slot.hasPrefix("sidebar."), let s = sidebarView.slot(slot, page: page ?? sidebarView.pager.current) else {
-        return .error("ui: unknown slot '\(slot)'")
+      guard slot.hasPrefix("sidebar."), sidebarView.slot(slot, page: 0) != nil else { return .error("ui: unknown slot '\(slot)'") }
+      guard let targets = sidebarTargets(window) else { return .error("ui: no window '\(window ?? "")'") }
+      for w in targets {
+        guard let sv = sidebars[w.id], let s = sv.slot(slot, page: page ?? sv.pager.current) else { continue }
+        if w === wc {
+          s.set(tree, renderer: renderer)
+        } else {
+          withPalette(palettes[w.id] ?? Palette(theme: w.currentTheme, dark: w.isDark)) { s.set(tree, renderer: renderer) }
+        }
+        sv.needsLayout = true
       }
-      s.set(tree, renderer: renderer)
-      sidebarView.needsLayout = true
     }
     // Rows were re-rendered, reused or reordered: hover follows the pointer, not stale flags.
     HoverTracker.setNeedsRefresh(wc.window)
@@ -204,8 +284,23 @@ public final class UIService: HostService {
   /// Re-themes every surface, but only when the tokens actually changed (a space switch between
   /// two identical themes, or a repeated setTheme, redraws nothing).
   public func refreshPalette() {
+    // Other windows keep their own space's colors (only their sidebars and overlays repaint).
+    for w in windows.all where w !== wc {
+      let p = Palette(theme: w.currentTheme, dark: w.isDark)
+      guard p != palettes[w.id] else { continue }
+      palettes[w.id] = p
+      sidebars[w.id]?.applyPaletteRecursively(p)
+      w.overlays.applyPaletteRecursively(p)
+    }
     let np = Palette(theme: wc.currentTheme, dark: wc.isDark)
-    guard np != renderer.palette else { return }
+    guard np != renderer.palette || palettes[wc.id] != np else { return }
+    palettes[wc.id] = np
+    guard np != renderer.palette else {
+      sidebarView.applyPaletteRecursively(np)
+      wc.overlays.applyPaletteRecursively(np)
+      content?.accent = np.accentStrong
+      return
+    }
     renderer.palette = np
     content?.accent = renderer.palette.accentStrong
     sidebarView.applyPaletteRecursively(renderer.palette)

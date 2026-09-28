@@ -164,6 +164,44 @@ final class TabsCore {
   /// Live folders (GitHub): rows fed by a connection. Countdown chips on favorites, by host.
   lazy var liveFolders = LiveFolders(core: self)
   var badges: [String: String] = [:]
+  // Windows (TabsWindows.swift). Every window shows the same spaces and tabs; each keeps its own
+  // place (space and tab, Arc). `currentSpace`/`selected` belong to `normalWin`, the normal window
+  // used last; `places` holds where every other normal window is.
+  struct Place {
+    var space: String
+    var tab: String?
+  }
+  /// The window in front (normal or private) and the normal window used last.
+  var activeWin = "w1"
+  var normalWin = "w1"
+  var places: [String: Place] = [:]
+  /// The active normal window shows no tab (a new ⌘N window before you pick one).
+  var blankWin = false
+  /// While set, `spaces.current` only records the space (a window change already shows it).
+  var activating = false
+  /// Rendering the sidebar for this window (per-window selection; nil = the only one).
+  var renderWin: String?
+  /// Normal windows closed this session, newest first (⇧⌘T / File ▸ Reopen Closed Window).
+  var closedWindows: [Value] = []
+  /// The last thing closed was a window, so ⇧⌘T reopens it rather than a tab.
+  var lastClosedWasWindow = false
+  /// Windows from the saved state, placed at launch.
+  var savedWindows: [Value] = []
+  /// A window that should open the command bar once it's in front (a new, empty window).
+  var commandBarFor: String?
+  /// Being reopened: the next window.opened takes this place.
+  var reopening: Value?
+  /// Setting: a tab can show in more than one window (it moves to the window you pick it in).
+  /// Off: picking a tab shown in another window brings that window forward.
+  var sameTabInWindows = false
+  /// Private windows: their tabs live only here (never in `tabs`, the state or the archive).
+  struct PrivateWindow {
+    var tabs: [String] = []
+    var selected: String?
+  }
+  var privates: [String: PrivateWindow] = [:]
+  var ptabs: [String: Tab] = [:]
+  var nextPrivate: Int64 = 1
 
   init(env: PluginEnv) { self.env = env }
 
@@ -183,6 +221,8 @@ final class TabsCore {
     startDownloads()
     renderAll()
     showSelected()
+    // Windows open at quit come back where they were (TabsWindows.swift).
+    restoreWindows()
     tick()
     env.timer(Self.tickMs, true) { [self] in tick() }
     // Links that launched den: wait one turn so the peek plugin (Little Arc) is loaded too.
@@ -225,7 +265,7 @@ final class TabsCore {
         "today": .array((today[sid] ?? []).map { .string($0) }), "selected": .str(selected[sid]),
       ])
     }
-    return [
+    var v: Value = [
       "version": 1, "nextId": .int(nextId),
       "tabs": .array(tabs.keys.sorted().map { tabs[$0]!.value }),
       "folders": .array(folders.keys.sorted().map { folders[$0]!.value }),
@@ -235,6 +275,9 @@ final class TabsCore {
       "archive": .array(archive),
       "mru": .array(mru.map { .string($0) }),
     ]
+    // Where each normal window is (window restore). Only with more than one window.
+    if !places.isEmpty { v.put("windows", windowsValue()) }
+    return v
   }
 
   func apply(state v: Value) {
@@ -276,6 +319,7 @@ final class TabsCore {
       save()
     } else {
       apply(state: state)
+      savedWindows = state.a("windows")
     }
     for sid in spaceIds {
       if pinned[sid] == nil { pinned[sid] = [] }
@@ -453,7 +497,8 @@ final class TabsCore {
     return out
   }
 
-  var selectedId: String? { selected[currentSpace] }
+  /// The normal window's selected tab (nil in a new, empty window).
+  var selectedId: String? { blankWin ? nil : selected[currentSpace] }
 
   // MARK: - Service
 
@@ -462,10 +507,19 @@ final class TabsCore {
     case "list":
       return list(args.sOpt("spaceId") ?? currentSpace)
     case "selected":
-      return selectedId.map { ["id": .string($0)] } ?? .null
+      // The tab in front: a private window's own tab while one is active.
+      guard let id = frontTab else { return .null }
+      return ptabs[id] != nil ? ["id": .string(id), "private": true] : ["id": .string(id)]
+    case "closedWindows":
+      return ["count": .int(Int64(closedWindows.count))]
     case "open":
       let url = args.s("url")
       guard !url.isEmpty else { return .err("tabs: open needs a url") }
+      // In a private window, a new tab is private (unless a space is named).
+      if let w = activePrivate, args.sOpt("spaceId") == nil {
+        if let a = args.sOpt("webview"), ptabs[a] != nil || tabs[a] != nil { return .err("tabs: cannot adopt webview '" + a + "'") }
+        return ["id": .string(openPrivate(url, in: w, background: args.b("background"), adopt: args.sOpt("webview")))]
+      }
       let kind = args.sOpt("kind") ?? "today"
       guard kind == "today" || kind == "pinned" || kind == "favorite" else { return .err("tabs: bad kind " + kind) }
       if kind == "favorite" && favorites.count >= Self.maxFavorites { return .err("tabs: favorites are full") }
@@ -477,9 +531,11 @@ final class TabsCore {
                     adopt: args.sOpt("webview"))
       return ["id": .string(id)]
     case "select":
+      if ptabs[args.s("id")] != nil { selectPrivate(args.s("id")); return .okay }
       guard tabs[args.s("id")] != nil else { return .err("tabs: no tab '" + args.s("id") + "'") }
       select(args.s("id"))
     case "close":
+      if ptabs[args.s("id")] != nil { closePrivate(args.s("id")); return .okay }
       guard tabs[args.s("id")] != nil else { return .err("tabs: no tab '" + args.s("id") + "'") }
       close(args.s("id"))
     case "pin", "unpin", "favorite":
@@ -502,6 +558,11 @@ final class TabsCore {
       guard tabs[id] != nil || folders[id] != nil else { return .err("tabs: no tab '" + id + "'") }
       rename(id, args.s("title"))
     case "navigate":
+      if let id = args.sOpt("id") ?? frontTab, ptabs[id] != nil {
+        let r = env.call("webviews", "navigate", ["id": .string(id), "url": args["url"]])
+        if r.isErr { return r }
+        return .okay
+      }
       guard let id = args.sOpt("id") ?? selectedId, tabs[id] != nil else { return .err("tabs: no tab to navigate") }
       let r = env.call("webviews", "navigate", ["id": .string(id), "url": args["url"]])
       if r.isErr { return r }
@@ -826,7 +887,15 @@ final class TabsCore {
   }
 
   func select(_ id: String) {
+    if ptabs[id] != nil { return selectPrivate(id) }
     guard tabs[id] != nil else { return }
+    // Shown in another window, and a tab shows in one window only: go to that window instead.
+    if let w = windowShowing(id) {
+      env.call("window", "focus", ["id": .string(w)])
+      return
+    }
+    let fromPrivate = activeWin != normalWin
+    blankWin = false
     let sid = spaceOf(id) ?? currentSpace
     let previous = selectedId
     let now = env.now()
@@ -851,6 +920,8 @@ final class TabsCore {
     renderPage(sid)
     saveSoon()
     env.emit("tabs.selected", ["id": .string(id), "previous": .str(previous)])
+    // Picked from a private window (the command bar's open tabs): the normal window shows it.
+    if fromPrivate { env.call("window", "focus", ["id": .string(normalWin)]) }
   }
 
   /// Picks what to show after `id` leaves `sid`'s selection.
@@ -896,6 +967,9 @@ final class TabsCore {
   /// (Dia 1.48: "show the next tab first, then tear down"), and the sidebar renders once.
   func close(_ id: String) {
     guard tabs[id] != nil else { return }
+    lastClosedWasWindow = false
+    // Other windows showing it are left empty (their sidebars re-render below).
+    leaveOtherWindows(id)
     let sid = spaceOf(id) ?? currentSpace
     let wasSelected = selectedId == id || selected[sid] == id
     let next = wasSelected ? replacement(for: id, in: sid) : nil
@@ -1525,6 +1599,9 @@ final class TabsCore {
          "subtitle": "Tabs of these sites never unload when idle and their media is never paused. Unload Space (Control-Command-U) still unloads them.",
          "items": .array(keepActive.map { h -> Value in ["id": .string(h), "title": .string(h), "icon": "sf:bolt", "buttons": [["id": "remove", "title": "Remove"]]] }),
          "empty": "No sites yet. Right-click a tab and choose “Keep Site Active”."],
+        ["key": "sameTabInWindows", "type": "toggle", "title": "Let a tab open in two windows",
+         "subtitle": "On: picking a tab that's open in another window moves it to this one, and the other window says where it went. Off: den brings forward the window that has it.",
+         "default": .bool(sameTabInWindows)],
       ],
     ])
     guard !r.isErr, !settingsSubscribed else { return }  // an older host without Settings; subscribed once
@@ -1534,6 +1611,7 @@ final class TabsCore {
     applySetting("suspendAfterMinutes", v["suspendAfterMinutes"])
     applySetting("groupLinks", v["groupLinks"])
     applySetting("batterySaver", v["batterySaver"])
+    applySetting("sameTabInWindows", v["sameTabInWindows"])
     env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { applySetting(v.s("key"), v["value"]) } }
     env.on("settings.action") { [self] v in
       guard v.s("id") == Self.ns, v.s("key") == "keepActive", v.s("button") == "remove" else { return }
@@ -1547,6 +1625,10 @@ final class TabsCore {
   func applySetting(_ key: String, _ v: Value) {
     if key == "groupLinks" {
       if let b = v.bool { groupLinks = b }
+      return
+    }
+    if key == "sameTabInWindows" {
+      if let b = v.bool { sameTabInWindows = b }
       return
     }
     if key == "batterySaver" {
@@ -1619,37 +1701,52 @@ final class TabsCore {
     let id = selectedId
     if let p = shown as String?, !p.isEmpty, p != id, tabs[p] != nil { tabs[p]?.lastActive = env.now(); fgLastUse[p] = fgNow() }
     shown = id ?? ""
+    // The normal window's content (named only while a private window is in front).
+    var show: Value
+    var title: Value
     if let id, let sid = splitOf(id), let sp = splits[sid] {
-      env.call("content", "show", ["panes": .array(sp.children.map { .string($0) }), "orientation": .string(sp.layout), "focus": .string(id)])
-      env.call("window", "setTitle", ["title": .string(tabs[id]?.displayTitle ?? "den")])
+      show = ["panes": .array(sp.children.map { .string($0) }), "orientation": .string(sp.layout), "focus": .string(id)]
+      title = ["title": .string(tabs[id]?.displayTitle ?? "den")]
     } else if let id {
-      env.call("content", "show", ["panes": [.string(id)]])
-      env.call("window", "setTitle", ["title": .string(tabs[id]?.displayTitle ?? "den")])
+      show = ["panes": [.string(id)]]
+      title = ["title": .string(tabs[id]?.displayTitle ?? "den")]
     } else {
-      env.call("content", "show", ["panes": []])
-      env.call("window", "setTitle", ["title": .string(spaceName(currentSpace))])
+      show = ["panes": []]
+      title = ["title": .string(spaceName(currentSpace))]
     }
+    if activeWin != normalWin {
+      show.put("window", .string(normalWin))
+      title.put("window", .string(normalWin))
+    }
+    env.call("content", "show", show)
+    env.call("window", "setTitle", title)
     renderGlobal()
   }
 
-  func renderHeader() {
+  func renderHeader() { eachWindow { renderHeader(tab: shownTabForRender, url: { tabs[$0]?.url }) } }
+
+  /// The nav bar and URL pill for the tab a window shows (`url` finds a normal or private tab's URL).
+  func renderHeader(tab: String?, url: (String) -> String?) {
     var st: Value = .null
     var text = ""
-    if let id = selectedId, let t = tabs[id] {
+    let u = tab.flatMap { url($0) }
+    if let id = tab, let u {
       st = env.call("webviews", "get", ["id": .string(id)])
-      text = URLs.display(t.url)
+      text = URLs.display(u)
     }
-    env.call("ui", "set", ["slot": "sidebar.header", "tree": ["type": "list", "id": "tabs.header", "spacing": 0, "children": [
+    uiSet(["slot": "sidebar.header", "tree": ["type": "list", "id": "tabs.header", "spacing": 0, "children": [
       ["type": "navBar", "id": "tabs.nav", "canGoBack": .bool(st.b("canGoBack")), "canGoForward": .bool(st.b("canGoForward")), "loading": .bool(st.b("loading"))],
-      ["type": "urlPill", "id": "tabs.url", "text": .string(text), "secure": .bool(Text.hasPrefix(tabs[selectedId ?? ""]?.url ?? "", "https:")),
+      ["type": "urlPill", "id": "tabs.url", "text": .string(text), "secure": .bool(Text.hasPrefix(u ?? "", "https:")),
        "loading": .bool(st.b("loading")), "progress": .double(st["progress"].double ?? 0), "placeholder": "Search or Enter URL…",
-       "buttons": .array((pillButtons[selectedId ?? ""] ?? []).flatMap { $0.1 }), "webview": .str(selectedId), "menu": .array(pillMenu())],
+       "buttons": .array((pillButtons[tab ?? ""] ?? []).flatMap { $0.1 }), "webview": .str(tab), "menu": .array(ptabs[tab ?? ""] != nil ? Array(pillMenu().prefix(1)) : pillMenu())],
     ]]])
   }
 
-  func renderFavorites() {
-    let sel = selectedId
-    env.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "tabs.favorites", "children": .array(favorites.compactMap { fid in
+  func renderFavorites() { eachWindow { renderFavoritesNow() } }
+
+  func renderFavoritesNow() {
+    let sel = shownTabForRender
+    uiSet(["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "tabs.favorites", "children": .array(favorites.compactMap { fid in
       // A favorited split shows as its first tab's tile.
       let id = splits[fid]?.children.first ?? fid
       guard let t = tabs[id] else { return nil }
@@ -1663,7 +1760,7 @@ final class TabsCore {
 
   func row(_ id: String, _ sid: String, box: Box) -> Value {
     let t = tabs[id]!
-    var r: Value = ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(selected[sid] == id),
+    var r: Value = ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(selOf(sid) == id),
                     "audio": .bool(t.audio), "muted": .bool(t.muted), "drift": .bool(kind(of: box) != "today" && t.drift),
                     "closeTitle": .string(kind(of: box) == "today" ? "Archive Tab" : "Close Tab"),
                     "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1",
@@ -1692,7 +1789,7 @@ final class TabsCore {
       // Dia's group look in Today: a lighter rounded panel around the header and its tabs.
       if group { v.put("style", "group") }
       // Collapsed, the folder still shows its active tab under the header (Dia 1.28).
-      if !f.open, let sel = selected[sid], tabsIn(folder: id).contains(sel) {
+      if !f.open, let sel = selOf(sid), tabsIn(folder: id).contains(sel) {
         var shown: Value? = nil
         if let s = splitOf(sel) { shown = node(s, sid, parent: .folder(id)) } else if tabs[sel] != nil { shown = row(sel, sid, box: .folder(id)) }
         if let shown { v.put("closedChildren", .array([shown])) }
@@ -1703,7 +1800,7 @@ final class TabsCore {
     }
     if let sp = splits[id] {
       // One sidebar item: the split's tabs side by side (Arc §7). Clicking a pane's segment focuses it.
-      let sel = selected[sid]
+      let sel = selOf(sid)
       let on = sp.children.contains(sel ?? "")
       return ["type": "splitRow", "id": .string(id), "selected": .bool(on), "layout": .string(sp.layout), "menu": .array(splitMenu(id)),
               "hoverIntent": .int(Self.rowCardDelayMs),
@@ -1728,9 +1825,13 @@ final class TabsCore {
   }
 
   func renderPage(_ sid: String) {
+    eachWindow { renderPageNow(sid) }
+  }
+
+  func renderPageNow(_ sid: String) {
     guard let page = pageIndex(sid) else { return }
     let p: Value = .int(Int64(page))
-    env.call("ui", "set", ["slot": "sidebar.pinned", "page": p, "tree": ["type": "list", "id": .string("tabs.pinned:" + sid),
+    uiSet(["slot": "sidebar.pinned", "page": p, "tree": ["type": "list", "id": .string("tabs.pinned:" + sid),
       "children": .array((pinned[sid] ?? []).compactMap { node($0, sid, parent: .pinned(sid)) })]])
     let list = today[sid] ?? []
     var kids: [Value] = [
@@ -1738,7 +1839,7 @@ final class TabsCore {
       ["type": "newTabRow", "id": .string("tabs.newtab:" + sid), "title": "New Tab"],
     ]
     kids += list.compactMap { node($0, sid, parent: .today(sid)) }
-    env.call("ui", "set", ["slot": "sidebar.today", "page": p, "tree": ["type": "list", "id": .string("tabs.today:" + sid), "children": .array(kids)]])
+    uiSet(["slot": "sidebar.today", "page": p, "tree": ["type": "list", "id": .string("tabs.today:" + sid), "children": .array(kids)]])
   }
 
   /// Every item that has a shortcut shows it on the right; holding ⌥ swaps in the alternates
@@ -1863,26 +1964,33 @@ final class TabsCore {
   func subscribe() {
     env.on("ui.action") { [self] v in action(v.s("id"), v.s("action"), v["value"]) }
     env.on("spaces.current") { [self] v in
+      // A window coming forward already shows its place: only record the space.
+      if activating { currentSpace = v.s("id"); return }
       if let p = shownTab() { tabs[p]?.lastActive = env.now(); fgLastUse[p] = fgNow() }
       currentSpace = v.s("id")
+      blankWin = false
       showSelected()
     }
+    subscribeWindows()
     env.on("spaces.changed") { [self] v in spacesChanged(v.a("spaces")) }
     env.on("content.focus") { [self] v in splitFocused(v.s("id")) }
     env.on("tabs.key.close") { [self] _ in closeFromKey() }
     env.on("tabs.key.reopen") { [self] _ in
+      // A window closed after the last tab comes back first (then ⇧⌘T goes on with tabs).
+      if lastClosedWasWindow, !closedWindows.isEmpty { reopenWindow(); return }
       // A peek closed after the last archived tab is reopened first (Arc §6).
       if env.call("peek", "reopen", ["after": .int(archive.first?.i("closedAt") ?? 0)])["ok"] == true { return }
       if let e = archive.first { _ = restore(e.s("id")) }
     }
     env.on("tabs.key.pin") { [self] _ in
-      guard let id = selectedId else { return }
+      // Keys about the spaces' tabs do nothing in a private window.
+      guard activePrivate == nil, let id = selectedId else { return }
       setKind(id, kindOf(id) == "today" ? "pinned" : "today", toast: true)
     }
-    env.on("tabs.key.clear") { [self] _ in clearToday(currentSpace) }
-    env.on("tabs.key.closeOthers") { [self] _ in if let id = selectedId { closeMany(id, "others") } }
-    env.on("tabs.key.newTabInFolder") { [self] _ in newTabInFolder(nil) }
-    env.on("tabs.key.newFolder") { [self] _ in folderFromSelection() }
+    env.on("tabs.key.clear") { [self] _ in if activePrivate == nil { clearToday(currentSpace) } }
+    env.on("tabs.key.closeOthers") { [self] _ in if activePrivate == nil, let id = selectedId { closeMany(id, "others") } }
+    env.on("tabs.key.newTabInFolder") { [self] _ in if activePrivate == nil { newTabInFolder(nil) } }
+    env.on("tabs.key.newFolder") { [self] _ in if activePrivate == nil { folderFromSelection() } }
     env.on("app.active") { [self] v in
       setActive(v.b("active"))
       if !v.b("active") { closeBlankTabs() }
@@ -1891,17 +1999,17 @@ final class TabsCore {
     env.on("tabs.key.undo") { [self] _ in _ = undo() }
     env.on("spaces.library") { [self] _ in openLibrary() }
     env.on("tabs.key.recent") { [self] _ in
-      if let id = mru.first(where: { $0 != selectedId && tabs[$0] != nil }) { select(id) }
+      if activePrivate == nil, let id = mru.first(where: { $0 != selectedId && tabs[$0] != nil }) { select(id) }
     }
     env.on("tabs.key.nth") { [self] v in
-      let list = order(currentSpace, onlyVisible: true)
+      let list = activePrivate.map { privates[$0]?.tabs ?? [] } ?? order(currentSpace, onlyVisible: true)
       let n = Int(v["payload"].int ?? 1)
       guard !list.isEmpty else { return }
       if n == 9 { select(list[list.count - 1]) } else if n - 1 < list.count { select(list[n - 1]) }
     }
     env.on("tabs.key.recentBack") { [self] _ in
       // Arc's tab switcher backward from the current tab wraps to the least recent one.
-      if let id = mru.last(where: { $0 != selectedId && tabs[$0] != nil }) { select(id) }
+      if activePrivate == nil, let id = mru.last(where: { $0 != selectedId && tabs[$0] != nil }) { select(id) }
     }
     env.on("tabs.key.library") { [self] _ in _ = handle("library", ["open": .bool(!(libraryOpen && librarySection == "archive"))]) }
     env.on("tabs.key.prevTab") { [self] _ in stepTab(-1) }
@@ -1933,6 +2041,11 @@ final class TabsCore {
     // target=_blank and window.open (foreground); ⌘-click / middle-click / "Open Link in New Tab"
     // come with `background: true` (⌘⇧-click: false).
     env.on("webviews.newWindow") { [self] v in
+      // From a private tab: another private tab in the same window.
+      if let w = privateWindow(of: v.s("id")) {
+        _ = openPrivate(v.s("url"), in: w, background: v.b("background"))
+        return
+      }
       // A link click (⌘ / middle / ⌘⇧) carries `background`; from a Today tab it groups with
       // its source. target=_blank and window.open don't, and open a plain tab.
       if !v["background"].isNull, openFromLink(v.s("url"), source: v.s("id"), background: v.b("background")) != nil { return }
@@ -1941,6 +2054,10 @@ final class TabsCore {
     // Links, URLs and files dropped on the sidebar or a page: today tabs, the last one selected.
     env.on("window.dropURLs") { [self] v in
       let urls = v.a("urls").compactMap { $0.string }
+      if let w = activePrivate {
+        for (k, u) in urls.enumerated() { _ = openPrivate(u, in: w, background: k < urls.count - 1) }
+        return
+      }
       for (k, u) in urls.enumerated() { _ = open(u, space: currentSpace, kind: "today", background: k < urls.count - 1, index: nil) }
     }
     env.on("app.openURL") { [self] v in openExternal(v.a("urls")) }
@@ -1966,7 +2083,7 @@ final class TabsCore {
     fgLastUse[id] = fgNow()
     mru.removeAll { $0 == id }
     mru.insert(id, at: 0)
-    env.call("window", "setTitle", ["title": .string(tabs[id]?.displayTitle ?? "den")])
+    setTitle(tabs[id]?.displayTitle ?? "den")
     renderPage(space)
     renderGlobal()
     saveSoon()
@@ -1994,11 +2111,17 @@ final class TabsCore {
   }
 
   func web(_ method: String) {
-    guard let id = selectedId else { return }
+    guard let id = frontTab else { return }
     env.call("webviews", method, ["id": .string(id)])
   }
 
   func stepTab(_ d: Int) {
+    if let w = activePrivate {
+      let list = privates[w]?.tabs ?? []
+      guard let cur = privates[w]?.selected, let i = list.firstIndex(of: cur) else { if let f = list.first { selectPrivate(f) }; return }
+      if i + d >= 0 && i + d < list.count { selectPrivate(list[i + d]) }
+      return
+    }
     let list = order(currentSpace, onlyVisible: true)
     guard !list.isEmpty else { return }
     guard let cur = selectedId, let i = list.firstIndex(of: cur) else {
@@ -2017,11 +2140,15 @@ final class TabsCore {
       return
     }
     if !env.call("content", "get")["peek"].isNull, !env.call("peek", "close").isErr { return }
+    if let w = activePrivate {
+      if let id = privates[w]?.selected { closePrivate(id) }
+      return
+    }
     if let id = selectedId { close(id) }
   }
 
   func copyURL() {
-    guard let id = selectedId, let t = tabs[id] else { return }
+    guard let id = frontTab, let t = tabs[id] ?? ptabs[id] else { return }
     env.call("app", "copy", ["text": .string(t.url)])
     env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(Copied.link(t.url)), "icon": "sf:link"]])
   }
@@ -2062,7 +2189,7 @@ final class TabsCore {
 
   func openCommandBar(_ mode: String) {
     var args: Value = ["mode": .string(mode)]
-    if mode == "edit", let id = selectedId, let t = tabs[id] { args.put("query", .string(t.url)) }
+    if mode == "edit", let id = frontTab, let t = tabs[id] ?? ptabs[id] { args.put("query", .string(t.url)) }
     if env.call("commands", "open", args).isErr {
       env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "The Command Bar plugin isn't loaded", "icon": "sf:exclamationmark.triangle"]])
     }
@@ -2095,12 +2222,13 @@ final class TabsCore {
 
   func webEvent(_ e: String, _ v: Value) {
     let id = v.s("id")
+    if ptabs[id] != nil { return privateWebEvent(e, v) }
     guard tabs[id] != nil else { return }
-    let isSelected = id == selectedId
+    let isSelected = id == selectedId || isShownElsewhere(id)
     switch e {
     case "webviews.title":
       tabs[id]?.title = v.s("title")
-      if isSelected { env.call("window", "setTitle", ["title": .string(tabs[id]!.displayTitle)]) }
+      if id == selectedId { setTitle(tabs[id]!.displayTitle) }
       // A group waiting for its new tab's title can ask for a name now.
       if let fid = pendingNames.removeValue(forKey: id) { askName(fid) }
     case "webviews.url":
@@ -2160,6 +2288,7 @@ final class TabsCore {
   }
 
   func action(_ id: String, _ action: String, _ value: Value) {
+    if privateAction(id, action, value) { return }
     if liveFolders.action(id, action, value) { return }
     if tabs[id] != nil {
       switch action {

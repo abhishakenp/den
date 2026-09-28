@@ -19,7 +19,9 @@ import UniformTypeIdentifiers
 @MainActor
 final class AppShare {
   let host: ServiceHost
-  weak var wc: DenWindowController?
+  /// The browser window in front (the share sheet and save panel go over it).
+  var current: () -> DenWindowController? = { nil }
+  var wc: DenWindowController? { current() }
   /// Finds a rendered node by id (set by `DenRuntime` from the `ui` service).
   var anchorView: ((String) -> NSView?)?
   /// Shows the picker (tests swap it to record what would be shared).
@@ -36,7 +38,7 @@ final class AppShare {
 
   init(host: ServiceHost, window: DenWindowController?) {
     self.host = host
-    self.wc = window
+    current = { [weak window] in window }
   }
 
   func handle(_ method: String, _ args: Value) -> Value {

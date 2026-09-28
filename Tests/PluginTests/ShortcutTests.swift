@@ -46,7 +46,7 @@ struct ShortcutTests {
     // App
     ("cmd+y", .event("tabs.key.library")), ("cmd+shift+l", .event("tabs.key.library")), ("cmd+opt+l", .event("tabs.key.downloads")),
     ("cmd+,", .host("app.settings")), ("cmd+m", .sel("performMiniaturize:")), ("cmd+h", .sel("hide:")), ("cmd+q", .sel("terminate:")),
-    ("cmd+shift+w", .sel("performClose:")),
+    ("cmd+shift+w", .sel("performClose:")), ("cmd+n", .host("window.new")), ("cmd+shift+n", .host("window.newPrivate")),
     // Edit
     ("cmd+z", .sel("undo:")), ("cmd+shift+z", .sel("redo:")), ("cmd+x", .sel("cut:")), ("cmd+c", .sel("copy:")), ("cmd+v", .sel("paste:")),
     ("cmd+opt+shift+v", .sel("pasteAsPlainText:")), ("cmd+a", .sel("selectAll:")),

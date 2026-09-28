@@ -65,6 +65,8 @@ public final class DownloadsService: NSObject, HostService, WKDownloadDelegate {
     public var active: Bool { state == "downloading" }
   }
 
+  /// Whether a web view belongs to a private window (set by `DenRuntime`): its downloads aren't saved.
+  public var isPrivateWebview: (String) -> Bool = { _ in false }
   private var loaded = false
   public private(set) var items: [Item] = []
   private var live: [String: WKDownload] = [:]
@@ -214,7 +216,9 @@ public final class DownloadsService: NSObject, HostService, WKDownloadDelegate {
       }
       items = Array(kept.reversed())
     }
-    _ = storage.handle(method: "set", args: ["ns": .string(Self.ns), "key": "items", "value": .array(items.map(Self.stored))])
+    // A private window's downloads are listed this session only; the file stays where you saved it.
+    let kept = items.filter { !isPrivateWebview($0.webview) }
+    _ = storage.handle(method: "set", args: ["ns": .string(Self.ns), "key": "items", "value": .array(kept.map(Self.stored))])
   }
 
   /// Emits `downloads.changed` now, or (while bytes arrive) at most every 250 ms.

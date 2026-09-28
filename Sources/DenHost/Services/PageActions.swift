@@ -16,18 +16,19 @@ public final class PageActions {
   let host: ServiceHost
   unowned let webviews: WebViewsService
   unowned let content: ContentService
-  let wc: DenWindowController
+  let windows: WindowSet
+  var wc: DenWindowController { windows.active }
   let storage: StorageService
   var palette: () -> Palette? = { nil }
   /// The default search engine `(name, url template with %s)`, from the command bar's
   /// `commands.engines` when that plugin is loaded; Google otherwise.
   var searchEngine: () -> (name: String, url: String)? = { nil }
 
-  init(host: ServiceHost, webviews: WebViewsService, content: ContentService, window: DenWindowController, storage: StorageService) {
+  init(host: ServiceHost, webviews: WebViewsService, content: ContentService, windows: WindowSet, storage: StorageService) {
     self.host = host
     self.webviews = webviews
     self.content = content
-    self.wc = window
+    self.windows = windows
     self.storage = storage
   }
 
@@ -75,7 +76,8 @@ public final class PageActions {
     default: return .error("webviews: zoom action must be in, out or reset")
     }
     w.pageZoom = CGFloat(z)
-    if let site = siteKey(w.url ?? URL(string: r.url)) {
+    // Private pages zoom for now only: nothing about the site is written down.
+    if !r.isPrivate, let site = siteKey(w.url ?? URL(string: r.url)) {
       if abs(z - 1) < 0.001 {
         if storedZoom(site) != 1 { _ = storage.handle(method: "delete", args: ["ns": "_zoom", "key": .string(site)]) }
       } else {
@@ -160,8 +162,10 @@ public final class PageActions {
     }
     b.onClose = { [weak self] in self?.hideBar() }
     bar = b
-    let prev = wc.onLayout
-    wc.onLayout = { [weak self] in prev?(); self?.layoutBar() }
+    windows.each { [weak self] w in
+      let prev = w.onLayout
+      w.onLayout = { [weak self, weak w] in prev?(); if let self, w === self.windows.active { self.layoutBar() } }
+    }
     return b
   }
 

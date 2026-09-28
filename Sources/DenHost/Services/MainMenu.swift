@@ -52,9 +52,12 @@ public enum MainMenu {
     ]),
     ("File", [
       Entry("file.newTab", "New Tab…", "", .event("commands.key.new")),
+      Entry("file.newWindow", "New Window", "cmd+n", .host("window.new")),
+      Entry("file.newPrivateWindow", "New Private Window", "cmd+shift+n", .host("window.newPrivate")),
       Entry("file.newTabInGroup", "New Tab in Group", "", .event("tabs.key.newTabInFolder")),
       Entry("file.openLocation", "Open Location…", "", .event("commands.key.edit")),
       Entry("file.reopenTab", "Reopen Closed Tab", "", .event("tabs.key.reopen")),
+      Entry("file.reopenWindow", "Reopen Closed Window", "", .host("window.reopen")),
       Entry("file.openInSpace", "Open Peek or Mini Window in Space", "", .event("peek.key.expand")), .sep,
       Entry("file.closeTab", "Close Tab", "", .event("tabs.key.close")),
       Entry("file.closeOthers", "Close Other Tabs", "", .event("tabs.key.closeOthers")),

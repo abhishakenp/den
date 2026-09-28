@@ -271,7 +271,7 @@ final class TextNode: NodeView {
   }
   override func apply(_ p: Palette) { label.textColor = ["caption", "secondary"].contains(node.str("style")) ? p.secondaryText : p.text }
   override func height(for w: CGFloat) -> CGFloat { ceil(label.intrinsicContentSize.height) + 4 }
-  override var preferredWidth: CGFloat? { ceil(label.textWidth) + 4 }
+  override var preferredWidth: CGFloat? { ceil(label.textWidth) + 6 }  // the label is inset 2 pt each side, and its cell pads the text 2 pt more
   override func layout() { label.frame = bounds.insetBy(dx: 2, dy: 2) }
 }
 

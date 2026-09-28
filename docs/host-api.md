@@ -23,15 +23,27 @@ The code lives in `Sources/DenHost/Services/`. `DenRuntime` registers every serv
 | `setTheme` | `colors: [hex]` (≤3), `intensity 0–1`, `grain 0–1`, `appearance: light\|dark\|auto`, `page?` | ok |
 | `setSidebar` | `width?`, `hidden?`, `animated?` | ok |
 | `toggleSidebar` | `animated?` | ok |
-| `setTitle` | `title` | ok |
-| `get` | – | `{width, hidden, page, fullScreen, dark}` |
+| `setTitle` | `title`, `window?` | ok |
+| `get` | – | `{width, hidden, page, fullScreen, dark, id, private, count}` (the active window; `count` = browser windows) |
+| `new` | `private?`, `id?` (a normal window's old id: its saved frame comes back; a taken id gets the next free one), `page?`, `focus?` (true), `restored?`, `sidebarHidden?` | `{id}`. A browser window on the same spaces (⌘N), or a private one (⇧⌘N). Emits `window.opened`, then (with `focus`) `window.activated` |
+| `list` | – | `[{id, private, page, panes, focus, key, visible, frame}]`, first window first |
+| `focus` | `id` | ok. Brings that window forward and makes it active |
+| `close` | `id?` (the active one) | ok. See "Closing" below |
 | `openMini` | `webview`, `space?` (name on the "Open in" button), `width?`, `height?` | `{id}`. Opens a Little Arc window hosting that web view |
 | `updateMini` | `id`, `space?` | ok |
 | `closeMini` | `id` | ok. The web view is detached, not closed |
 | `listMini` | – | `[{id, webview, key}]`. `key` is true for the key window (the peek plugin's ⌘O acts on it) |
 | `focusMini` | `id` | ok. Brings that Little Arc window to the front (the command bar's Windows rows) |
 
-Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `window.sidebarReveal {revealed}`, `window.miniAction {id, webview, action: open|copy}`, `window.miniClosed {id, webview}`.
+Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `window.sidebarReveal {revealed}`, `window.miniAction {id, webview, action: open|copy}`, `window.miniClosed {id, webview}`, `window.opened {id, private, page, panes, focus, restored}`, `window.activated {id, previous, private, page, panes, focus}`, `window.closed {id, private, page, panes, focus, frame}`, `window.reopen` (File ▸ Reopen Closed Window).
+
+**Several windows** (`WindowSet.swift`). `w1` exists from launch; ⌘N (`window.new`) adds `w2`, `w3`… (the lowest free number, so saved frames stay few), ⇧⌘N adds private `p1`, `p2`…. Host services act on the **active** window, the one most recently key: `content`, `ui` overlays, the find bar, page prompts (a page's dialog goes over the window that shows it), the mini player. Per window, the host keeps the content area (panes, cards, peek) and the sidebar; `content.show/get` and `ui.set/showPage/setPages` take an optional `window` to address another one. What a window shows is the plugins' business: the host never picks tabs.
+
+- **Sidebar trees.** A `ui.set` of a sidebar slot without `window` goes to every normal window; with `window`, to that one only. A new normal window starts with a copy of what the active one shows, on the same page, and each window paints its trees with its own space's palette. Space themes (`setTheme`) apply to every normal window; each shows its own page.
+- **One live page.** A web view is in one window at a time. `content.show` of a page another window has on screen moves the live view (no reload, no second process), and the window it left shows "Open in another window · Show Here" in that pane. When that window becomes active again it takes the page back (Arc's Tab Handoff).
+- **Private windows** wear `Tokens.privateTheme` (always dark; space themes don't reach them), take only sidebar trees addressed to them, and have one sidebar page. Web views with profile `private:<window>` share one `WKWebsiteDataStore.nonPersistent()` per window, released when it closes (`releaseStore`). A private page never writes a snapshot to disk (no switch snapshot, `snapshot` to a path is refused; a capture you ask for still works) and its zoom isn't remembered.
+- **Closing.** Closing any window but the last normal one removes it and its views (its pages stay alive, just off screen) and emits `window.closed` with what it showed and its frame; the next window in front becomes active. The last normal window only hides, as before (the Dock brings it back).
+- **Frames.** `w1` keeps the `den.main` autosave name; `w2`… use `den.window.<id>`; private windows remember nothing. A new window cascades from the one in front.
 
 **Little Arc** (spec §8) is a floating panel, 1185x832 by default, placed 20 pt from the screen's right edge and 20 pt below the menu bar. A 47 pt bar holds the traffic lights, a URL field (site icon, centered domain, copy-link button → `action: copy`) and an "Open in <space> ⌘O" button (→ `action: open`). The web view fills the rest, with no inset card. The bar follows the main window's theme. For "Open in space", the plugin calls `closeMini` and then shows the same web view with `content.show`; closing the window emits `miniClosed`, and the plugin decides whether to close the web view. The ⌘O shortcut itself is bound by the plugin through `keys`.
 

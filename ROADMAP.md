@@ -77,6 +77,7 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
 - ✅ Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard after 5 min (state kept, snapshot on disk, web view and WebContent process gone; the snapshot shows at once on restore). Media, PiP, camera/mic and unsaved input are never discarded
 - 🟡 Session restore and crash recovery
   - ✅ spaces, tabs and selection come back after quit, relaunch and updates (plugin storage); discarded tabs keep `interactionState`
+  - ✅ every open window comes back after a relaunch, on its own space and tab (private windows don't)
   - ✅ a "This page crashed · Reload" view when a page's web process dies (never reloads by itself)
   - ⏳ crash recovery of den itself
 - ⏳ Apple Pay exception: skip den's injected scripts on checkout pages, since any injection disables Apple Pay
@@ -158,8 +159,9 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ Split view, including drag-to-split, 2–4 panes, side by side, top and bottom, grid
 - ✅ Little Arc-style quick window (opt-in for links from other apps; ⌘O into the space)
 - ✅ Compact mode / hide sidebar, chrome-less content area
-- ⏳ Multiple windows (⌘N) and private windows (⇧⌘N)
-- ⏳ Reopen a closed window with all its tabs
+- ✅ Multiple windows (⌘N) on the same spaces and tabs, each keeping its own place (space and tab); a tab shows in one window at a time ([guide](docs/guide/windows.md))
+- ✅ Private windows (⇧⌘N): an ephemeral data store per window, always-dark chrome, nothing persisted (tabs, archive, command bar history, snapshots, zoom)
+- ✅ Reopen a closed window with its space and tab (⇧⌘T right after the close, File ▸ Reopen Closed Window)
 - ⏳ Link routing rules (Arc's Air Traffic Control)
 - ⏳ Boosts: per-site CSS/JS customization
 - ⏳ Web apps (PWA) support, and web apps in the Dock
@@ -371,7 +373,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 - ⏳ Link status pill: a bottom pill with the hovered link's URL, moving away from the cursor (Arc)
 - ⏳ Emoji tab and folder icons, from rename and the right-click menu (Arc)
-- ⏳ Same tab in multiple windows: opt-in, ships with multi-window support
+- ✅ Same tab in multiple windows: opt-in (Settings ▸ Tabs), Arc's model: the tab loads once and moves to the window you pick it in; the other window shows "Open in another window · Show Here" and takes it back when it's in front
 - ⏳ AI tab tidying: Apple on-device model, off by default, enable in Settings, never automatic unless enabled
 - ✅ Web panels: optional plugin, normal priority (chat, AI chat sites like claude.ai/Gemini, reference, dashboards beside any tab; slides out from the sidebar edge; sleeps when hidden). Zen removed theirs for a Firefox-specific sandbox issue (Mozilla bug 1935985, per Zen discussion #7314) that doesn't apply to WebKit, where a panel is an ordinary sandboxed web view
 - ✅ Now-playing dock at the bottom of the sidebar (Arc): every playing tab with artwork, title and artist (from the page's media info), play/pause, previous/next, mute, jump to tab and stop. Handles several playing at once, most recent first. Media keys and Control Center's Now Playing control den. Zero cost when nothing plays; event-driven

@@ -29,7 +29,7 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 
 ## Browsing
 
-- Profile management, and private windows.
+- Profile management.
 - A built-in ad and tracker blocker.
 - Link routing rules (URL → space), like Arc's Air Traffic Control.
 - Boosts: per-site colors, fonts and CSS.

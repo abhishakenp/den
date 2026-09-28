@@ -241,6 +241,15 @@ public final class SidebarView: FlippedView {
 
   public override var mouseDownCanMoveWindow: Bool { true }
 
+  /// Every slot with its name and page (a new window copies what the others show).
+  func allSlots() -> [((slot: String, page: Int), SlotView)] {
+    var out: [((slot: String, page: Int), SlotView)] = [(("sidebar.header", 0), header), (("sidebar.favorites", 0), favorites), (("sidebar.dock", 0), dock), (("sidebar.footer", 0), footer)]
+    for (i, p) in pager.pages.enumerated() {
+      out += [(("sidebar.spaceHeader", i), p.spaceHeader), (("sidebar.pinned", i), p.pinned), (("sidebar.today", i), p.today)]
+    }
+    return out
+  }
+
   func slot(_ name: String, page: Int) -> SlotView? {
     switch name {
     case "sidebar.header": return header

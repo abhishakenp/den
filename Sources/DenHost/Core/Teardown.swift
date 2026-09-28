@@ -29,7 +29,7 @@ extension DenRuntime {
       if w.responds(to: close) { w.perform(close) }
     }
     media.panel?.orderOut(nil)
-    window.window.orderOut(nil)
+    for w in windows.all { w.window.orderOut(nil) }
     pids.formUnion(webviews.destroyedProcessIds)
     return pids.sorted()
   }
