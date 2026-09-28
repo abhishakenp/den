@@ -4,8 +4,8 @@
 // Generates a light page with N (default 300) JPEG photos, text, links and inline background
 // images, then for each variant (interleaved, N reps) loads it in a fresh 1200x800 on-screen
 // WKWebView with the variant as a user stylesheet (_WKUserStyleSheet, as den's pagestyle does),
-// scrolls through the whole page, waits 3 s, and sums phys_footprint over every WebKit process
-// started for this bench (WebContent, GPU, Networking). Prints per run, then medians; writes a
+// scrolls through the whole page, waits 3 s, and reads phys_footprint of that page's WebContent
+// process (where its layers and decoded images live). Prints per run, then medians; writes a
 // viewport PNG per variant (<outdir>/<variant>.png) to check quality.
 import AppKit
 import Darwin
@@ -32,9 +32,18 @@ let variants: [(String, String)] = [
   ("mediaLayers", "html { \(inv) }\nhtml \(media) { \(inv) will-change: transform; }\nhtml \(nested)"),
   // the root on its own compositing layer as well
   ("allLayers", "html { \(inv) will-change: filter; }\nhtml \(media) { \(inv) will-change: transform; }\nhtml \(nested)"),
-  // one viewport-sized backdrop filter instead of a filter on the whole page; media re-inverted on layers
-  ("backdrop", "html::after { content: \"\"; position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; backdrop-filter: invert(1) hue-rotate(180deg); }\nhtml \(media) { \(inv) will-change: transform; }\nhtml \(nested)"),
+  // media re-inverted only near the viewport (a script marks them with an IntersectionObserver):
+  // offscreen images carry no filter, so no filtered copy of them is kept
+  ("nearMedia", "html { \(inv) }\nhtml \(media)[data-den-near] { \(inv) }\nhtml \(nested)"),
 ]
+/// Variants that also need the near-viewport marker script.
+let nearScript = """
+  (()=>{const sel='img,video,canvas,embed,object,iframe,svg image,[style*="background-image"]';
+  const io=new IntersectionObserver(es=>{for(const e of es){if(e.isIntersecting)e.target.setAttribute('data-den-near','');else e.target.removeAttribute('data-den-near')}},{rootMargin:'100% 0px'});
+  const seen=new WeakSet();const scan=r=>{for(const el of (r.querySelectorAll?r.querySelectorAll(sel):[])){if(!seen.has(el)){seen.add(el);io.observe(el)}}};
+  const go=()=>{scan(document);new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes)if(n.nodeType===1){if(n.matches(sel)&&!seen.has(n)){seen.add(n);io.observe(n)}scan(n)}}).observe(document.documentElement,{childList:true,subtree:true})};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go()})();
+  """
 let chosen = args.filter { a in variants.contains { $0.0 == a } }
 let run = chosen.isEmpty ? variants : variants.filter { chosen.contains($0.0) }
 
@@ -144,7 +153,11 @@ for rep in 1...reps {
     let cfg = WKWebViewConfiguration()
     cfg.websiteDataStore = .nonPersistent()  // fresh caches every run
     if !css.isEmpty, let sheet = makeSheet(css) { cfg.userContentController.perform(NSSelectorFromString("_addUserStyleSheet:"), with: sheet) }
+    if css.contains("data-den-near") {
+      cfg.userContentController.addUserScript(WKUserScript(source: nearScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
     let win = NSWindow(contentRect: NSRect(x: 40, y: 40, width: 1200, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
+    win.isReleasedWhenClosed = false
     win.appearance = NSAppearance(named: .aqua)
     let web = WKWebView(frame: win.contentView!.bounds, configuration: cfg)
     web.autoresizingMask = [.width, .height]
@@ -155,41 +168,37 @@ for rep in 1...reps {
     let d = Date().addingTimeInterval(30)
     while !nav.done && Date() < d { pump(0.02) }
     pump(1)
+    // This view's own WebContent process (WebKit SPI, as den's WebViewsService reads it); DOM
+    // layers and decoded images live there. GPU and Networking are shared across runs.
+    let pid = (web.value(forKey: "_webProcessIdentifier") as? NSNumber)?.int32Value ?? 0
     let height = (js(web, "document.documentElement.scrollHeight") as? Double) ?? 0
     var y = 0.0, peak: UInt64 = 0
     while y < height {  // ~ a fast wheel scroll: 400 px per 50 ms
       _ = js(web, "window.scrollTo(0, \(y))"); pump(0.05); y += 400
-      if Int(y) % 4000 == 0 { peak = max(peak, webkitProcs().reduce(0) { $0 + footprint($1.0) }) }
+      peak = max(peak, footprint(pid))
     }
     _ = js(web, "window.scrollTo(0, \(min(height / 3, 12000)))")
     pump(3)
-    let procs = webkitProcs()
-    let total = procs.reduce(0) { $0 + footprint($1.0) }
+    let total = footprint(pid)
     peak = max(peak, total)
-    let parts = procs.map { String(format: "%@ %.1f", $0.1.replacingOccurrences(of: "com.apple.WebKit.", with: ""), Double(footprint($0.0)) / 1048576) }.joined(separator: ", ")
-    print(String(format: "run %d %-12@ settled %.1f MB peak %.1f MB height %.0f  [%@]", rep, name, Double(total) / 1048576, Double(peak) / 1048576, height, parts))
+    let others = webkitProcs().filter { $0.0 != pid }.map { String(format: "%@ %.1f", $0.1.replacingOccurrences(of: "com.apple.WebKit.", with: ""), Double(footprint($0.0)) / 1048576) }.joined(separator: ", ")
+    print(String(format: "run %d %-12@ WebContent %d settled %.1f MB peak %.1f MB height %.0f  (others: %@)", rep, name, pid, Double(total) / 1048576, Double(peak) / 1048576, height, others))
     results[name, default: []].append(Double(total) / 1048576)
-    if rep == 1 {
-      let sc = WKSnapshotConfiguration()
-      var fin = false
-      web.takeSnapshot(with: sc) { img, _ in
-        if let img, let t = img.tiffRepresentation, let png = NSBitmapImageRep(data: t)?.representation(using: .png, properties: [:]) {
-          try? png.write(to: out.appendingPathComponent("\(name).png"))
-        }
-        fin = true
-      }
-      let sd = Date().addingTimeInterval(10)
-      while !fin && Date() < sd { pump(0.02) }
+    if rep == 1 {  // the window as the screen shows it (backdrop filters included)
+      let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+      p.arguments = ["-x", "-o", "-l\(win.windowNumber)", out.appendingPathComponent("\(name).png").path]
+      try? p.run(); p.waitUntilExit()
     }
     web.removeFromSuperview()
     win.orderOut(nil)
     win.close()
     // Let the WebContent process exit before the next variant.
     let ed = Date().addingTimeInterval(10)
-    while Date() < ed && webkitProcs().contains(where: { $0.1.contains("WebContent") }) { pump(0.1) }
+    web.navigationDelegate = nil
+    while Date() < ed && kill(pid, 0) == 0 { pump(0.1) }
   }
 }
-print("== medians (settled MB, WebKit processes)")
+print("== medians (settled MB, the page's WebContent process)")
 for (name, _) in run {
   let s = (results[name] ?? []).sorted()
   let med = s.isEmpty ? 0 : (s.count % 2 == 1 ? s[s.count / 2] : (s[s.count / 2 - 1] + s[s.count / 2]) / 2)
