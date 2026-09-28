@@ -16,7 +16,7 @@ struct CompatJSOutcome: @unchecked Sendable {
 /// manifest checks, permission prompt, `WKWebExtension` load), then what they do on a real page.
 /// Needs the network (Chrome Web Store, addons.mozilla.org): CI has it.
 @MainActor
-@Suite(.serialized, .watchdog(seconds: 240))
+@Suite(.serialized, .watchdog(seconds: 360))
 struct ExtensionCompatTests {
   static let vimium = "dbepggeogbaibhgnhhndojpepiihcmeb"
 
@@ -58,7 +58,10 @@ struct ExtensionCompatTests {
     if let ctx = h.rt.extensions.contexts[id] {
       print("compat ctx loaded=\(ctx.isLoaded) errors=\(ctx.errors.map(\.localizedDescription)) extErrors=\(ctx.webExtension.errors.map(\.localizedDescription))")
       print("compat granted=\(ctx.currentPermissions.map(\.rawValue).sorted()) patterns=\(ctx.currentPermissionMatchPatterns.map(\.string).sorted())")
-      do { try await ctx.loadBackgroundContent(); print("compat background loaded ok") } catch { print("compat background error: \(error)") }
+      var bg = "pending"
+      ctx.loadBackgroundContent { err in bg = err.map { "error: \($0.localizedDescription)" } ?? "ok" }
+      _ = await wait(25) { bg != "pending" }
+      print("compat background load=\(bg)")
       print("compat ctx errors after background=\(ctx.errors.map(\.localizedDescription))")
     }
   }

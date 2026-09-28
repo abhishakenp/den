@@ -331,8 +331,18 @@ public final class ExtensionsService: NSObject, HostService {
     if let old = contexts.removeValue(forKey: e.id) { retire(old, id: e.id, from: c) }
     // A context with this id may still be loaded, waiting out its grace period: same baseURL.
     if let pending = retiring[e.id] { await pending.value }
+    let dir = URL(fileURLWithPath: registry.path(e), isDirectory: true)
+    // den's own copies get stand-ins for the APIs WebKit lacks (ExtensionShim); a folder in
+    // ~/.den/extensions is the developer's and stays as it is.
+    if e.sourceKind != .home {
+      do {
+        try ExtensionShim.apply(to: dir) { (try? WKWebExtension.MatchPattern(string: $0)) != nil }
+      } catch {
+        record("shim \(e.id) \(e.name): \(error)")
+      }
+    }
     do {
-      let ext = try await WKWebExtension(resourceBaseURL: URL(fileURLWithPath: registry.path(e), isDirectory: true))
+      let ext = try await WKWebExtension(resourceBaseURL: dir)
       // Disabled or removed while the package was read (toggle off/on, then Remove): don't load it.
       guard registry.item(e.id)?.enabled == true, contexts[e.id] == nil else { return }
       let ctx = WKWebExtensionContext(for: ext)
@@ -586,24 +596,45 @@ public final class ExtensionsService: NSObject, HostService {
     } else if !approved {
       let missing = unsupportedAPIs(e.id)
       toast((existing == nil ? "Added \(name)" : "Updated \(name)") + (missing.isEmpty ? "" : ". Not available in den: " + missing.joined(separator: ", ")))
-      if let ctx = contexts[id] { await checkBackground(ctx, name: name) }
+      if let ctx = contexts[id] { checkBackground(ctx, name: name) }
     }
     changed()
     ui.storeState(pending: nil)
   }
 
-  /// Starts a fresh install's background once, so a worker that fails on its first run is
-  /// reported now rather than found out later as an extension that "does nothing".
-  func checkBackground(_ ctx: WKWebExtensionContext, name: String) async {
+  /// Starts a fresh install's background once, so a worker that fails (or never finishes
+  /// loading) on its first run is reported now, not found out later as an extension that "does
+  /// nothing". Doesn't hold the install: the answer comes later.
+  var backgroundChecks: Set<String> = []
+  static let backgroundCheckSeconds: Double = 20
+
+  func checkBackground(_ ctx: WKWebExtensionContext, name: String) {
     guard ctx.webExtension.hasBackgroundContent else { return }
-    do {
-      try await ctx.loadBackgroundContent()
-    } catch {
-      let detail = ([error.localizedDescription] + ctx.errors.map(\.localizedDescription)).joined(separator: "\n")
-      record("background failed \(ctx.uniqueIdentifier) \(name): \(detail)")
-      problem("Part of \(name) didn’t start", reason: "it uses something den can’t run yet", detail: detail)
-      changed()
+    backgroundChecks.insert(ctx.uniqueIdentifier)
+    Task { @MainActor [weak self] in
+      do {
+        try await ctx.loadBackgroundContent()
+        self?.backgroundChecked(ctx, name: name, error: nil)
+      } catch {
+        self?.backgroundChecked(ctx, name: name, error: error.localizedDescription)
+      }
     }
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.backgroundCheckSeconds) { [weak self] in
+      MainActor.assumeIsolated {
+        self?.backgroundChecked(ctx, name: name, error: "Its background script didn’t finish starting within \(Int(Self.backgroundCheckSeconds)) seconds.")
+      }
+    }
+  }
+
+  func backgroundChecked(_ ctx: WKWebExtensionContext, name: String, error: String?) {
+    let id = ctx.uniqueIdentifier
+    guard backgroundChecks.remove(id) != nil else { return }
+    guard let error, contexts[id] === ctx else { return }
+    let detail = ([error] + ctx.errors.map(\.localizedDescription)).joined(separator: "\n")
+    record("background of \(id) \(name): \(detail)")
+    loadErrors[id] = error
+    problem("Part of \(name) didn’t start", reason: "it uses something den can’t run yet", detail: detail)
+    changed()
   }
 
   func waitReady() async {

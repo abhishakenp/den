@@ -101,6 +101,10 @@ public enum ExtensionScenarios {
     let label = await eval(web(rt), "document.getElementById('den-add')?.textContent || 'none'", world: world) as? String ?? "?"
     let hidden = await eval(web(rt), "document.querySelectorAll('[data-den-hidden]').length", world: world) as? Int ?? -1
     log("store button url=\(url) found=\(found) label=\(label) nativeHidden=\(hidden)")
+    // den's own button in the URL pill, which doesn't depend on the store's page.
+    let offered = await wait(10) { rt.extensions.ui.storeOffer?.id == id && find(rt.ui.sidebarView)?.storeButton != nil }
+    log("pill button offered=\(offered) label=\(find(rt.ui.sidebarView)?.storeButton?.label.stringValue ?? "none")")
+    if let snapshot, offered { await snap(rt, snapshot.replacingOccurrences(of: ".png", with: "-pill.png")) }
     guard found else { return false }
     if let snapshot {
       _ = await eval(web(rt), "document.getElementById('den-add').scrollIntoView({block: 'center'})", world: world)
