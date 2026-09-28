@@ -155,6 +155,18 @@ final class TabsCore {
   var aiAvailable: Bool?
   /// Setting: ⌘-clicking a link groups the new tab with its source (default on).
   var groupLinks = true
+  /// Tidy Tabs (TabsTidy.swift): settings, the space being tidied, and the undo step it made.
+  var tidyEnabled = false
+  var tidyAuto = false
+  var tidying: String?
+  var tidyStartedAt: Int64 = 0
+  var tidyUndoDepth = -1
+  var tidyLastAuto: [String: Int64] = [:]
+  var tidyUnavailable: String?
+  var tidyCommandRegistered = false
+  var tidyRegisterAttempts = 0
+  var tidyReady = false
+  var settingsListening = false
   /// Foreground clock: milliseconds den has been frontmost this session. Idle discard counts
   /// only this time, so tabs don't unload while you work in another app.
   var fgAccum: Int64 = 0
@@ -226,6 +238,8 @@ final class TabsCore {
     liveFolders.start()
     registerSettings()
     startDownloads()
+    tidyStart()
+    tidyReady = true
     renderAll()
     showSelected()
     // Windows open at quit come back where they were (TabsWindows.swift).
@@ -1594,7 +1608,7 @@ final class TabsCore {
     }
     let r = env.call("settings", "register", [
       "id": .string(Self.ns), "title": "Tabs", "icon": "sf:square.on.square", "order": 10,
-      "controls": [
+      "controls": .array(([
         ["key": "archiveAfterMs", "type": "choice", "title": "Archive Today tabs",
          "subtitle": "Today tabs you haven't used for this long move to the Library. Pinned tabs and favorites stay. Shift-Command-T brings the last one back.",
          "options": .array(options), "default": .int(archiveAfterMs)],
@@ -1614,7 +1628,7 @@ final class TabsCore {
         ["key": "sameTabInWindows", "type": "toggle", "title": "Let a tab open in two windows",
          "subtitle": "On: picking a tab that's open in another window moves it to this one, and the other window says where it went. Off: den brings forward the window that has it.",
          "default": .bool(sameTabInWindows)],
-      ],
+      ] as [Value]) + tidyControls()),
     ])
     guard !r.isErr, !settingsSubscribed else { return }  // an older host without Settings; subscribed once
     settingsSubscribed = true
@@ -1624,6 +1638,8 @@ final class TabsCore {
     applySetting("groupLinks", v["groupLinks"])
     applySetting("batterySaver", v["batterySaver"])
     applySetting("sameTabInWindows", v["sameTabInWindows"])
+    applySetting("tidy", v["tidy"])
+    applySetting("tidyAuto", v["tidyAuto"])
     env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { applySetting(v.s("key"), v["value"]) } }
     env.on("settings.action") { [self] v in
       guard v.s("id") == Self.ns, v.s("key") == "keepActive", v.s("button") == "remove" else { return }
@@ -1635,6 +1651,10 @@ final class TabsCore {
   }
 
   func applySetting(_ key: String, _ v: Value) {
+    if key == "tidy" || key == "tidyAuto" {
+      applyTidySetting(key, v)
+      return
+    }
     if key == "groupLinks" {
       if let b = v.bool { groupLinks = b }
       return
@@ -1664,6 +1684,7 @@ final class TabsCore {
   // MARK: - Idle: auto-archive and suspension
 
   func tick() {
+    autoTidy()
     let now = env.now()
     var archived = 0
     if archiveAfterMs > 0 {
@@ -1848,7 +1869,7 @@ final class TabsCore {
       "children": .array((pinned[sid] ?? []).compactMap { node($0, sid, parent: .pinned(sid)) })]])
     let list = today[sid] ?? []
     var kids: [Value] = [
-      list.isEmpty ? ["type": "divider", "id": .string("tabs.divider:" + sid)] : ["type": "divider", "id": .string("tabs.divider:" + sid), "action": "Clear"],
+      todayDivider(sid, empty: list.isEmpty),
       ["type": "newTabRow", "id": .string("tabs.newtab:" + sid), "title": "New Tab"],
     ]
     kids += list.compactMap { node($0, sid, parent: .today(sid)) }
@@ -1947,6 +1968,7 @@ final class TabsCore {
       ("cmd+d", "tabs.key.pin", "Pin/Unpin Tab", "Tabs"),
       ("cmd+shift+k", "tabs.key.clear", "Clear Unpinned Tabs", "Tabs"),
       ("cmd+ctrl+u", "tabs.key.unloadSpace", "Unload Space", "Spaces"),
+      ("ctrl+shift+t", "tabs.key.tidy", "Tidy Tabs", "Tabs"),
       ("ctrl+tab", "tabs.key.recent", "Switch to Recent Tab", "Tabs"),
       ("ctrl+shift+tab", "tabs.key.recentBack", "Switch to Oldest Recent Tab", "Tabs"),
       // Arc's ⌥⌘↑/↓ first (shown in the menu), then Safari's and Chrome's ⌘⇧[ / ⌘⇧] (docs/shortcuts.md).
@@ -2010,7 +2032,10 @@ final class TabsCore {
       setActive(v.b("active"))
       if !v.b("active") { closeBlankTabs() }
     }
-    env.on("ai.result") { [self] v in nameArrived(v) }
+    env.on("ai.result") { [self] v in
+      nameArrived(v)
+      tidyArrived(v)
+    }
     env.on("tabs.key.undo") { [self] _ in _ = undo() }
     env.on("spaces.library") { [self] _ in openLibrary() }
     env.on("tabs.key.recent") { [self] _ in
@@ -2411,6 +2436,7 @@ final class TabsCore {
       if action == "button", value.s("button") == "clear" { clearArchive() }
     default:
       if Text.hasPrefix(id, "tabs.divider:"), action == "clear" { clearToday(Text.dropPrefix(id, "tabs.divider:")) }
+      if tidyAction(id, action, value) { return }
       if Text.hasPrefix(id, "tabs.newtab:"), action == "click" {
         // ⌥-click: the new tab opens as a split with the current one (Dia 0.47).
         if value.a("modifiers").contains("opt"), !env.call("peek", "addSplit").isErr { return }
