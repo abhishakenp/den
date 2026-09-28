@@ -4,7 +4,11 @@ den runs Chrome and Firefox extensions on WebKit, through Apple's `WKWebExtensio
 
 ## Installing
 
-**From the store.** Open an extension's page on the [Chrome Web Store](https://chromewebstore.google.com) or [Firefox Add-ons](https://addons.mozilla.org). den swaps the store's install button for **＋ Add to den**. Click it.
+**From the store.** Open an extension's page on the [Chrome Web Store](https://chromewebstore.google.com) or [Firefox Add-ons](https://addons.mozilla.org). The URL pill at the top of the sidebar shows **Add to den**. Click it. It works whatever the store's page says: the Chrome Web Store tells Safari-engine browsers to "Switch to Chrome" and greys out its own button, but den reads the extension from the page address and never needs the store's button.
+
+<p align="center"><img src="../screenshots/extensions-add-to-den-pill.png" alt="Add to den in the URL pill on a Chrome Web Store page" width="560"></p>
+
+den also swaps the store's own install button for **＋ Add to den** on the page itself, when the page shows one.
 
 <p align="center">
   <img src="../screenshots/extensions-add-to-den.png" alt="Add to den on the Chrome Web Store" width="400">
@@ -16,6 +20,8 @@ den shows what the extension can do, and what WebKit can't give it, before you c
 <p align="center"><img src="../screenshots/extensions-permission-prompt.png" alt="Add extension prompt listing permissions" width="520"></p>
 
 If an installed extension later asks for more access, den asks again ("wants more access" ▸ **Allow**).
+
+**When something goes wrong.** den never fails quietly. If an install can't finish, or an extension installs but part of it won't start, a notice says so in plain words ("Vimium couldn't be installed: …"). **Details** shows the technical reason. den also writes it to `~/.den/logs/extensions.log`. An extension's page in **Extensions** lists its errors, and notes any features den can't give it ("Some features unavailable in den: bookmarks, history").
 
 **From a file.** **Install Extension from File…** in the command bar takes an unpacked folder, or a `.crx`, `.xpi` or `.zip`.
 

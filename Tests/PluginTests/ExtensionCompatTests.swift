@@ -184,8 +184,9 @@ struct ExtensionCompatTests {
     return JSON.stringify(out);
     """
 
-  /// Vimium's keys on a real page: link hints (f), scrolling (j, G, gg), the vomnibar (o), find
-  /// (/) and tab switching (K). Returns what worked.
+  /// Vimium's keys on a real page, each from a freshly loaded page: scrolling (j, G, gg), link
+  /// hints (f, then Esc), hints for a new tab (F), the vomnibar (o), find (/) and tab switching
+  /// through chrome.tabs (K). Returns what worked.
   @discardableResult
   func vimiumOnPage(_ h: Harness, _ extId: String, mock: MockServices) async -> [String: Bool] {
     var ok: [String: Bool] = [:]
@@ -198,44 +199,64 @@ struct ExtensionCompatTests {
     ok["content script"] = await wait(20) { (await Wait.js(w, "getComputedStyle(document.documentElement).getPropertyValue('--vimium-background-color')") as? String ?? "") != "" }
     // What the extension's content scripts see, through its own scripting API (same world).
     _ = await probe(h, extId, page: "pages/options.html", Self.contentProbe)
-    h.rt.window.window.makeFirstResponder(w)
-    try? await Task.sleep(for: .seconds(2))
     func y() async -> Double { await Wait.js(w, "window.scrollY") as? Double ?? -1 }
+    func frames() async -> String { await Wait.js(w, Self.vimiumFrames) as? String ?? "" }
+    func markers() async -> Int { await Wait.js(w, "document.querySelectorAll('.vimiumHintMarker').length") as? Int ?? -1 }
+    /// A fresh page with Vimium in normal mode and keyboard focus.
+    func fresh() async {
+      h.tabs("select", ["id": .string(tab)])
+      w.reload()
+      _ = await wait(20) { !w.isLoading }
+      _ = await wait(10) { (await Wait.js(w, "getComputedStyle(document.documentElement).getPropertyValue('--vimium-background-color')") as? String ?? "") != "" }
+      h.rt.window.window.makeFirstResponder(w)
+      try? await Task.sleep(for: .seconds(1.5))
+    }
+    var notes: [String] = []
 
-    press(w, "f", 3)
-    ok["f link hints"] = await wait(10) { (await Wait.js(w, "document.querySelectorAll('.vimiumHintMarker').length") as? Int ?? 0) > 0 }
-    let markers = await Wait.js(w, "[...document.querySelectorAll('.vimiumHintMarker')].map(m => m.textContent).join(',')") ?? "?"
-    press(w, "\u{1b}", 53)
-    try? await Task.sleep(for: .milliseconds(400))
+    await fresh()
     press(w, "j", 38)
-    ok["j scroll"] = await wait(10) { await y() > 0 }
+    ok["j scroll down"] = await wait(10) { await y() > 0 }
     press(w, "G", 5, shift: true)
     ok["G bottom"] = await wait(10) { await y() > 2000 }
     press(w, "g", 5)
     press(w, "g", 5)
     ok["gg top"] = await wait(10) { await y() == 0 }
+
+    await fresh()
+    press(w, "f", 3)
+    ok["f link hints"] = await wait(10) { await markers() > 0 }
+    notes.append("hints=\(await Wait.js(w, "[...document.querySelectorAll('.vimiumHintMarker')].map(m => m.textContent).join(',')") ?? "?")")
+    press(w, "\u{1b}", 53)
+    ok["Esc leaves hints"] = await wait(5) { await markers() <= 0 }
+
+    await fresh()
+    let tabsBefore = h.ids("today").count
+    press(w, "F", 3, shift: true)
+    ok["F link hints"] = await wait(10) { await markers() > 0 }
+    let first = await Wait.js(w, "document.querySelector('.vimiumHintMarker')?.textContent || ''") as? String ?? ""
+    let codes: [Character: UInt16] = ["a": 0, "s": 1, "d": 2, "f": 3, "j": 38, "k": 40, "l": 37, "g": 5, "h": 4]
+    for ch in first.lowercased() { press(w, String(ch), codes[ch] ?? 0) }
+    ok["F opens a new tab"] = await wait(10) { h.ids("today").count > tabsBefore }
+    notes.append("F first=\(first) tabs \(tabsBefore)->\(h.ids("today").count)")
+
+    await fresh()
     press(w, "o", 31)
-    ok["o vomnibar"] = await wait(10) { (await Wait.js(w, Self.vimiumFrames) as? String ?? "").contains("vomnibar-frame:block") }
-    let framesAfterO = await Wait.js(w, Self.vimiumFrames) ?? "?"
-    press(w, "\u{1b}", 53)
-    try? await Task.sleep(for: .milliseconds(400))
-    h.rt.window.window.makeFirstResponder(w)
+    ok["o vomnibar"] = await wait(10) { (await frames()).range(of: "vomnibar-frame[^\"]*:block", options: .regularExpression) != nil }
+    notes.append("afterO=\(await frames())")
+
+    await fresh()
     press(w, "/", 44)
-    ok["/ find"] = await wait(10) {
-      let f = await Wait.js(w, Self.vimiumFrames) as? String ?? ""
-      return f.contains("hud:block") || f.contains("hud-frame:block")
-    }
-    let framesAfterFind = await Wait.js(w, Self.vimiumFrames) ?? "?"
-    press(w, "\u{1b}", 53)
-    try? await Task.sleep(for: .milliseconds(400))
-    h.rt.window.window.makeFirstResponder(w)
-    press(w, "K", 40, shift: true)
-    press(w, "J", 38, shift: true)
+    ok["/ find"] = await wait(10) { (await frames()).range(of: "hud-frame[^\"]*:block", options: .regularExpression) != nil }
+    notes.append("afterFind=\(await frames())")
+
+    await fresh()
     let before = h.selected
     press(w, "K", 40, shift: true)
     ok["K next tab"] = await wait(10) { h.selected != before }
+    notes.append("K \(String(describing: before))->\(String(describing: h.selected)) other=\(other)")
+
     let keys = await Wait.js(w, "JSON.stringify(window.__keys)") ?? "?"
-    print("compat vimium \(extId) results=\(ok.sorted { $0.key < $1.key }) markers=\(markers) framesAfterO=\(framesAfterO) framesAfterFind=\(framesAfterFind) selected=\(String(describing: h.selected)) other=\(other) pageKeys=\(keys)")
+    print("compat vimium \(extId) results=\(ok.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")) notes=\(notes) pageKeys=\(keys)")
     if let ctx = h.rt.extensions.contexts[extId] { print("compat vimium ctx errors=\(ctx.errors.map(\.localizedDescription))") }
     return ok
   }
@@ -299,7 +320,7 @@ struct ExtensionCompatTests {
     await report(h, id)
     _ = await probe(h, id, page: "pages/options.html", Self.apiProbe)
     let ok = await vimiumOnPage(h, id, mock: mock)
-    #expect(ok["content script"] == true && ok["f link hints"] == true && ok["j scroll"] == true)
+    #expect(ok["content script"] == true && ok["f link hints"] == true && ok["j scroll down"] == true)
   }
 
   @Test func vimiumFromFirefoxAddons() async throws {
@@ -314,7 +335,7 @@ struct ExtensionCompatTests {
     await report(h, id)
     _ = await probe(h, id, page: "pages/options.html", Self.apiProbe)
     let ok = await vimiumOnPage(h, id, mock: mock)
-    #expect(ok["content script"] == true && ok["f link hints"] == true && ok["j scroll"] == true)
+    #expect(ok["content script"] == true && ok["f link hints"] == true && ok["j scroll down"] == true)
   }
 
   @Test func otherPopularExtensions() async throws {
