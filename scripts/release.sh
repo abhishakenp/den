@@ -73,7 +73,7 @@ ENTRY="{\"version\":\"$VERSION\",\"tag\":\"$TAG\",\"build\":$BUILD,\"hostAPI\":$
 
 # Notes: commits since the previous tag.
 LAST=$(git describe --tags --abbrev=0 2>/dev/null || true)
-{ echo "den $VERSION"; echo; echo "Commits${LAST:+ since $LAST}:"; git log --no-merges --format='- %s (%h)' ${LAST:+$LAST..}HEAD | head -100; } > $DIST/notes.md
+{ echo "den $VERSION"; echo; echo "Commits${LAST:+ since $LAST}:"; git log -n 100 --no-merges --format='- %s (%h)' ${LAST:+$LAST..}HEAD; } > $DIST/notes.md
 
 # updates/plugins.json and updates/appcast.xml (merged with what main has).
 mkdir -p updates
