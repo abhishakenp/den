@@ -132,7 +132,8 @@ done
 # and the HTTPS-first and lookalike interstitials, reached by real navigations. Invisible windows.
 if [[ -f build/den.app/Contents/PlugIns/shields.dylib ]]; then
   shields_shot() { # name scenario appearance delay
-    build/den.app/Contents/MacOS/den --background --no-den-home --storage "$store/shields" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "$4"
+    resolve "$1" "$3" || return 0
+    run --no-den-home --storage "$store/shields" --appearance "$_ap" --scenario "$2" --snapshot "$out/$_n.png" --snapshot-delay "$4"
   }
   shields_shot shields-panel shieldsPanel light 45
   shields_shot shields-panel-dark shieldsPanel dark 30
