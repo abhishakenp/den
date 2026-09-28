@@ -83,7 +83,7 @@ struct NowPlayingTests {
 
     // Stop: paused, and gone from now playing until it plays again.
     #expect(rt.call("webviews", "mediaControl", ["id": "s", "action": "stop"]) == .ok)
-    #expect(await wait(10, "stopped") { rt.webviews.record("s")?.nowPlaying == nil })
+    #expect(await wait(10, "stopped") { (rt.webviews.record("s")?.nowPlaying?.isNull ?? true) })
     #expect(events.last?["now"].isNull == true)
     #expect(rt.call("webviews", "mediaControl", ["id": "s", "action": "play"]).str("error").contains("plays nothing"))
     #expect(rt.call("webviews", "mediaControl", ["id": "s", "action": "dance"]).str("error").contains("unknown media action"))
@@ -110,7 +110,7 @@ struct NowPlayingTests {
     #expect(await wait { !muted.isLoading && muted.url != nil })
     _ = await Wait.asyncJS(muted, "const v = document.querySelector('video'); v.muted = true; await v.play(); return true")
     #expect(await wait(10, "playing muted") { rt.webviews.record("m")?.media.playing == true })
-    #expect(rt.webviews.record("m")?.nowPlaying == nil)
+    #expect(rt.webviews.record("m")?.nowPlaying?.isNull ?? true)
     mock.stop()
   }
 

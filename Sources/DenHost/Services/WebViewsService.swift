@@ -26,7 +26,8 @@ public struct PageMedia: Equatable {
     pip = v.flag("pip")
     dirty = v.flag("d")
     video = v["v"].isNull ? nil : v["v"]
-    now = v["n"].isNull ? nil : v["n"]
+    // Not `isNull ? nil : v["n"]`: Value is ExpressibleByNilLiteral, so that `nil` would be `.null`.
+    if !v["n"].isNull { now = v["n"] }
   }
 }
 
@@ -443,7 +444,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       r.audio = false
       host.emit("webviews.audio", ["id": .string(r.id), "playing": false])
     }
-    if r.nowPlaying != nil {
+    if case .some = r.nowPlaying {
       r.nowPlaying = nil
       host.emit("webviews.nowPlaying", ["id": .string(r.id), "now": .null, "muted": .bool(r.muted)])
     }
@@ -1095,7 +1096,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     guard body.str("k") == "s" else { return }
     let key = msg.frameInfo.isMainFrame ? "main" : (msg.frameInfo.request.url?.absoluteString ?? "frame")
     let media = PageMedia(body)
-    if !msg.frameInfo.isMainFrame && !media.playing && !media.dirty && !media.pip && media.video == nil && media.now == nil {
+    if !msg.frameInfo.isMainFrame && !media.playing && !media.dirty && !media.pip && media.video == nil && media.now.map({ _ in true }) != true {
       r.frames[key] = nil
     } else {
       r.frames[key] = (msg.frameInfo, media)
