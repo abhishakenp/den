@@ -94,6 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     runtime = DenRuntime(storageRoot: root, crashMarkerPath: PluginHost.defaultCrashMarkerPath)
     // Unpacked development extensions (docs/den-home.md). Only a path: nothing is read until the first web view.
     runtime.extensions.homeFolder = home?.extensions
+    runtime.extensions.logFile = home.map { DenLog(url: $0.logs.appendingPathComponent("extensions.log")) }
     trace("runtime")
     // Demo runs never touch the real Keychain.
     if args.contains("--demo") { runtime.vault.store = MemoryVaultStore() }

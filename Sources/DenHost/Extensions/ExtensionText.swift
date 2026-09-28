@@ -44,6 +44,22 @@ public enum ExtensionText {
     return out
   }
 
+  /// Why an install failed, in plain words, from the technical reason (logged as is).
+  public static func failureReason(_ technical: String) -> String {
+    let t = technical.lowercased()
+    if t.contains("store answered") || t.contains("not a chrome web store id") || t.contains("unexpected answer from addons") {
+      return "the store didn’t hand over a download"
+    }
+    if t.contains("internet") || t.contains("network") || t.contains("timed out") || t.contains("offline") || t.contains("could not connect") || t.contains("hostname") {
+      return "den couldn’t reach the store. Check your connection and try again"
+    }
+    if t.contains("checksum") { return "the download was damaged. Try again" }
+    if t.contains("crx") || t.contains("zip") || t.contains("unpack") || t.contains("manifest") {
+      return "the file isn’t a working extension"
+    }
+    return "it needs features Safari’s engine doesn’t have yet"
+  }
+
   /// "*://*.example.com/*" -> "example.com"; a bare host passes through.
   static func siteName(_ pattern: String) -> String {
     var s = pattern

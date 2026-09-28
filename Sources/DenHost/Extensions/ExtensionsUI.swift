@@ -59,6 +59,7 @@ final class ExtensionsUI {
   func refresh() {
     guard let svc else { return }
     items = svc.menuItems()
+    storeOffer = svc.selectedStoreOffer()
     NotificationCenter.default.post(name: Self.changedNotification, object: self)
     if menuOpen { menuView?.update(items, palette: palette); layout() }
   }
@@ -69,8 +70,27 @@ final class ExtensionsUI {
 
   func storeState(pending: String?) {
     storePending = pending
+    NotificationCenter.default.post(name: Self.changedNotification, object: self)
     guard let svc else { return }
     for r in svc.webviews.records.values { if let w = r.webView, let h = w.url?.host, ExtensionPackage.isStoreHost(h) { svc.pageChanged(w) } }
+  }
+
+  // MARK: Store offer
+
+  /// The store item the selected tab shows, while it isn't installed: the URL pill offers
+  /// "Add to den" for it. den's own button, so installing never depends on the store's page.
+  private(set) var storeOffer: StoreRef?
+
+  func refreshStoreOffer() {
+    let o = svc?.selectedStoreOffer()
+    guard o != storeOffer else { return }
+    storeOffer = o
+    NotificationCenter.default.post(name: Self.changedNotification, object: self)
+  }
+
+  func addStoreOffer() {
+    guard let o = storeOffer, storePending == nil else { return }
+    svc?.installCurrentStorePage(o)
   }
 
   // MARK: Pill

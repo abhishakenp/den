@@ -23,6 +23,10 @@ public final class ExtensionsService: NSObject, HostService {
   public let root: URL
   /// `~/.den/extensions`: unpacked folders loaded as development extensions. nil = none.
   public var homeFolder: URL?
+  /// `~/.den/logs/extensions.log`: why installs and loads failed. nil = the unified log only.
+  public var logFile: DenLog?
+  /// Extension names by install request, once the manifest is read (for failure messages).
+  var installNames: [String: String] = [:]
   let persistent: Bool
   static let log = Logger(subsystem: "io.github.abhishakenp.den", category: "extensions")
 
@@ -69,7 +73,12 @@ public final class ExtensionsService: NSObject, HostService {
   /// Called once `call` and `subscribe` are wired. Listens on the plugin bus, which carries both
   /// host events (forwarded) and plugin events.
   public func start() {
-    subscribe("ui.action") { [weak self] v in MainActor.assumeIsolated { self?.dialogAction(v) } }
+    subscribe("ui.action") { [weak self] v in
+      MainActor.assumeIsolated {
+        if v.str("id") == Self.problemToast, v.str("action") == "toast" { self?.showProblemDetails() } else { self?.dialogAction(v) }
+      }
+    }
+    subscribe("tabs.selected") { [weak self] _ in MainActor.assumeIsolated { self?.ui.refreshStoreOffer() } }
     subscribe("schedule.fire") { [weak self] v in
       MainActor.assumeIsolated { if v.str("id") == Self.updateScheduleId { self?.checkUpdates(force: false) } }
     }
@@ -338,7 +347,7 @@ public final class ExtensionsService: NSObject, HostService {
       loadErrors[e.id] = nil
     } catch {
       loadErrors[e.id] = error.localizedDescription
-      Self.log.error("load \(e.id, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+      record("load \(e.id) \(e.name) failed: \(error.localizedDescription)")
     }
   }
 
@@ -471,9 +480,40 @@ public final class ExtensionsService: NSObject, HostService {
   // thin-host: feature-specific, migrate to plugin
   func failed(_ request: String, _ error: Error) {
     let msg = (error as? ExtensionPackageError)?.description ?? error.localizedDescription
-    Self.log.error("install failed: \(msg, privacy: .public)")
-    host.emit("webext.failed", ["request": .string(request), "error": .string(msg)])
-    if msg != "cancelled" { toast("Couldn’t add extension: \(msg)", icon: "sf:exclamationmark.triangle.fill") }
+    let name = installNames.removeValue(forKey: request)
+    guard msg != "cancelled" else {
+      host.emit("webext.failed", ["request": .string(request), "error": .string(msg)])
+      return
+    }
+    let reason = ExtensionText.failureReason(msg)
+    record("install failed [\(request)] \(name ?? "?"): \(msg)")
+    host.emit("webext.failed", ["request": .string(request), "error": .string(msg), "reason": .string(reason)])
+    problem("\(name ?? "The extension") couldn’t be installed", reason: reason, detail: msg)
+  }
+
+  /// Technical lines for `~/.den/logs/extensions.log` (and the unified log).
+  func record(_ line: String) {
+    Self.log.error("\(line, privacy: .public)")
+    logFile?.write(line)
+  }
+
+  /// The last problem shown, for the toast's Details button.
+  var lastProblem: (title: String, detail: String)?
+  static let problemToast = "webext.problem"
+
+  /// A plain-language toast with a Details button (the technical reason, and where the log is).
+  func problem(_ title: String, reason: String, detail: String) {
+    lastProblem = (title, detail)
+    _ = host.call("ui", "set", ["slot": "toast", "tree": [
+      "type": "toast", "id": .string(Self.problemToast), "text": .string("\(title): \(reason)."), "icon": "sf:exclamationmark.triangle.fill",
+      "action": "Details", "duration": 10000,
+    ]])
+  }
+
+  func showProblemDetails() {
+    guard let p = lastProblem else { return }
+    let where_ = logFile.map { "\n\nden keeps a log of this in " + ($0.url.path as NSString).abbreviatingWithTildeInPath + "." } ?? ""
+    info(title: p.title, message: p.detail + where_)
   }
 
   /// CRX or XPI bytes → an unpacked folder (off the main thread).
@@ -492,9 +532,11 @@ public final class ExtensionsService: NSObject, HostService {
   func finishInstall(dir: URL, source: ExtensionSource, storeId: String?, request: String, approved: Bool) async throws {
     defer { try? FileManager.default.removeItem(at: dir) }
     let manifest = try ExtensionPackage.readManifest(dir)
+    installNames[request] = manifest.name
     let id = ExtensionPackage.extensionId(source: source, storeId: storeId, manifest: manifest, path: dir.path)
     let staged = try await WKWebExtension(resourceBaseURL: dir)
     let name = staged.displayName ?? manifest.name
+    installNames[request] = name
     let perms = staged.requestedPermissions.map(\.rawValue).sorted()
     let patterns = staged.requestedPermissionMatchPatterns.map(\.string).sorted()
     let existing = registry.item(id)
@@ -534,11 +576,34 @@ public final class ExtensionsService: NSObject, HostService {
       await waitReady()
     }
     if e.enabled { await load(e) }
+    installNames[request] = nil
     Self.log.info("installed \(id, privacy: .public) \(e.version, privacy: .public)")
     host.emit("webext.installed", ["request": .string(request), "id": .string(id), "name": .string(name), "update": .bool(existing != nil)])
-    if !approved { toast(existing == nil ? "Added \(name)" : "Updated \(name)") }
+    if let err = loadErrors[id] {
+      // In place, but WebKit wouldn't run it: say so instead of "Added".
+      record("load failed after install \(id) \(name): \(err)")
+      problem("\(name) was added but couldn’t start", reason: ExtensionText.failureReason(err), detail: err)
+    } else if !approved {
+      let missing = unsupportedAPIs(e.id)
+      toast((existing == nil ? "Added \(name)" : "Updated \(name)") + (missing.isEmpty ? "" : ". Not available in den: " + missing.joined(separator: ", ")))
+      if let ctx = contexts[id] { await checkBackground(ctx, name: name) }
+    }
     changed()
     ui.storeState(pending: nil)
+  }
+
+  /// Starts a fresh install's background once, so a worker that fails on its first run is
+  /// reported now rather than found out later as an extension that "does nothing".
+  func checkBackground(_ ctx: WKWebExtensionContext, name: String) async {
+    guard ctx.webExtension.hasBackgroundContent else { return }
+    do {
+      try await ctx.loadBackgroundContent()
+    } catch {
+      let detail = ([error.localizedDescription] + ctx.errors.map(\.localizedDescription)).joined(separator: "\n")
+      record("background failed \(ctx.uniqueIdentifier) \(name): \(detail)")
+      problem("Part of \(name) didn’t start", reason: "it uses something den can’t run yet", detail: detail)
+      changed()
+    }
   }
 
   func waitReady() async {
@@ -551,6 +616,9 @@ public final class ExtensionsService: NSObject, HostService {
       DispatchQueue.main.asyncAfter(deadline: .now() + 10) { once() }
     }
   }
+
+  /// API permissions a loaded extension asks for that neither WebKit nor den provides.
+  func unsupportedAPIs(_ id: String) -> [String] { contexts[id].map { unsupportedPermissions($0.webExtension) } ?? [] }
 
   func unsupportedPermissions(_ ext: WKWebExtension) -> [String] {
     let manifestPerms = ((ext.manifest["permissions"] as? [Any]) ?? []).compactMap { $0 as? String }.filter { !$0.contains("://") && $0 != "<all_urls>" }
@@ -680,7 +748,7 @@ public final class ExtensionsService: NSObject, HostService {
             available.append(.string(e.id))
           }
         } catch {
-          Self.log.error("update \(e.id, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+          record("update \(e.id) \(e.name) failed: \(error.localizedDescription)")
         }
       }
       for e in due { registry.update(e.id) { $0.checkedAt = now } }
@@ -825,7 +893,7 @@ public final class ExtensionsService: NSObject, HostService {
 
   func prompt(title: String, icon: String, lines: [String], unsupported: [String], confirm: String, done: @escaping (Bool) -> Void) {
     var message = lines.isEmpty ? "It needs no special access." : "It can:\n" + lines.map { "•  " + $0 }.joined(separator: "\n")
-    if !unsupported.isEmpty { message += "\n\nNot available in WebKit: " + unsupported.joined(separator: ", ") + "." }
+    if !unsupported.isEmpty { message += "\n\nNot available in den: " + unsupported.joined(separator: ", ") + "." }
     let id = "extensions.prompt:\(nextPrompt)"
     nextPrompt += 1
     let tree: Value = [
@@ -834,6 +902,18 @@ public final class ExtensionsService: NSObject, HostService {
       "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "ok", "title": .string(confirm), "style": "default"]],
     ]
     prompts.append(Prompt(id: id, tree: tree, done: done))
+    if prompts.count == 1 { _ = host.call("ui", "set", ["slot": "dialog", "tree": tree]) }
+  }
+
+  /// A notice with one OK button, queued with the prompts.
+  func info(title: String, message: String) {
+    let id = "extensions.prompt:\(nextPrompt)"
+    nextPrompt += 1
+    let tree: Value = [
+      "type": "dialog", "id": .string(id), "icon": "sf:exclamationmark.triangle.fill", "title": .string(title), "message": .string(message),
+      "buttons": [["id": "ok", "title": "OK", "style": "default"]],
+    ]
+    prompts.append(Prompt(id: id, tree: tree, done: { _ in }))
     if prompts.count == 1 { _ = host.call("ui", "set", ["slot": "dialog", "tree": tree]) }
   }
 
@@ -869,7 +949,9 @@ public final class ExtensionsService: NSObject, HostService {
   /// After every load and URL change: on a store page, (re)place the "Add to den" button.
   /// Any other page costs one host comparison.
   func pageChanged(_ w: WKWebView) {
-    guard let h = w.url?.host, ExtensionPackage.isStoreHost(h) else { return }
+    let onStore = w.url?.host.map(ExtensionPackage.isStoreHost) ?? false
+    if onStore || ui.storeOffer != nil { ui.refreshStoreOffer() }
+    guard onStore else { return }
     let ucc = w.configuration.userContentController
     ucc.removeScriptMessageHandler(forName: "denStore", contentWorld: Self.storeWorld)
     guard storeButtons else {
@@ -883,11 +965,27 @@ public final class ExtensionsService: NSObject, HostService {
     }
   }
 
+  /// The selected tab's store item, unless it's installed already.
+  func selectedStoreOffer() -> StoreRef? {
+    guard let id = selectedTabId(), let r = webviews.record(id), let u = r.webView?.url ?? URL(string: r.url),
+          let ref = ExtensionPackage.storeRef(for: u) else { return nil }
+    return registry.items.contains { $0.storeId == ref.id || $0.id == ref.id } ? nil : ref
+  }
+
+  /// Installs a store item the user asked for from den's UI; a request den can't start says why.
+  func installCurrentStorePage(_ ref: StoreRef) {
+    let r = handle(method: "installFromStore", args: ["source": .string(ref.source.rawValue), "id": .string(ref.id)])
+    if r.isError { failed("store", Self.failure(r.str("error"))) }
+  }
+
   func storeMessage(_ msg: WKScriptMessage) {
     guard let body = msg.body as? [String: Any], let source = body["source"] as? String, let id = body["id"] as? String else { return }
     // Trust only what the page URL says, not the message.
-    guard let u = msg.webView?.url, let ref = ExtensionPackage.storeRef(for: u), ref.id == id, ref.source.rawValue == source else { return }
-    _ = handle(method: "installFromStore", args: ["source": .string(source), "id": .string(id)])
+    guard let u = msg.webView?.url, let ref = ExtensionPackage.storeRef(for: u), ref.id == id, ref.source.rawValue == source else {
+      record("store button: page \(msg.webView?.url?.absoluteString ?? "?") doesn't match \(source):\(id)")
+      return
+    }
+    installCurrentStorePage(ref)
   }
 
   // MARK: Pick a file

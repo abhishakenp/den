@@ -83,7 +83,7 @@ struct ExtensionsTests {
     #expect(h.rt.ui.dialog.title.stringValue == "Add “Den Test” to den?")
     #expect(h.rt.ui.dialog.message.stringValue.contains("Read and change your data on 127.0.0.1"))
     #expect(h.rt.ui.dialog.message.stringValue.contains("Block content on any page"))
-    #expect(h.rt.ui.dialog.message.stringValue.contains("Not available in WebKit: userScripts"))
+    #expect(h.rt.ui.dialog.message.stringValue.contains("Not available in den: userScripts"))
     h.action("extensions.prompt:1", "button", ["button": "ok"])
     #expect(await wait { h.events.contains { $0.0 == "webext.installed" } })
     #expect(!h.events.contains { $0.0 == "webext.failed" })
