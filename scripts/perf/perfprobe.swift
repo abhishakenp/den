@@ -15,6 +15,8 @@
 //       process tree: every process whose parent chain OR "responsible process" leads to the app
 //       (covers Chromium helpers and WebKit's com.apple.WebKit.* XPC services). With --cpu S it
 //       then measures CPU time and wakeups over S seconds of idle across the same tree.
+//       --exec CMD runs `sh -c CMD` after the samples, before the quit, with PERF_PID set to the
+//       app's pid (heap, vmmap, footprint of the live process).
 //
 // Only processes started by this tool are ever quit. Pre-existing instances are never touched.
 import AppKit
@@ -202,6 +204,11 @@ case "mem":
     var cpu: UInt64 = 0, wk: UInt64 = 0
     for p in tree(w.pid) { if let b = usage(p) { let x = a[p]; cpu += b.cpuNs - (x?.cpuNs ?? 0); wk += b.wakeups - (x?.wakeups ?? 0) } }
     print(String(format: "cpu.idlePct %.3f cpuMs=%.1f over %.1fs  wakeups/s %.1f load=%@", Double(cpu) / 1e9 / dt * 100, Double(cpu) / 1e6, dt, Double(wk) / dt, loadavg()))
+  }
+  if let exec = opt("--exec") {  // after sampling: e.g. heap/vmmap of the live process (PERF_PID)
+    let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/sh"); p.arguments = ["-c", exec]
+    p.environment = ProcessInfo.processInfo.environment.merging(["PERF_PID": "\(w.pid)"]) { $1 }
+    try? p.run(); p.waitUntilExit()
   }
   if let shot {  // taken after sampling so it cannot affect the numbers
     // what state the window is in (sign-in, page, ...): a local screenshot of that one window

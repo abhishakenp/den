@@ -1,0 +1,100 @@
+name: Perf lab
+
+# Memory A/B and bisection on the macos-26 runner (docs/dev.md, "Perf lab"). Push a branch named
+# perf/<anything>: every ref listed in its scripts/perf/lab-refs (HEAD = the pushed commit) is
+# built on its own runner and measured by scripts/perf/lab.sh (repeated runs, medians, heap and
+# vmmap of the live process); scripts/perf/darkbench.swift measures dark-mode stylesheet variants.
+# Results: the job summaries and the perf-lab-* artifacts. Nothing here gates anything.
+on:
+  push:
+    branches: ["perf/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-lab-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEN_SIGN_IDENTITY: "-"
+  DEN_CI: "1"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      darkbench: ${{ steps.plan.outputs.darkbench }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: plan
+        run: |
+          # lab-refs: "<ref> <label> [scenario...]" per line, and a "darkbench: yes|no" line.
+          f=scripts/perf/lab-refs
+          grep -vE '^\s*(#|$)|:' "$f" |
+            jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | map(select(length > 0))
+              | {ref: .[0], label: ((.[1] // .[0]) | gsub("[^A-Za-z0-9._-]"; "-")), scenarios: (.[2:] | join(" "))})' > m.json
+          echo "matrix=$(cat m.json)" >> "$GITHUB_OUTPUT"
+          echo "darkbench=$(awk -F': *' '$1 == "darkbench" {print $2}' "$f")" >> "$GITHUB_OUTPUT"
+          cat m.json
+
+  darkbench:
+    needs: plan
+    if: needs.plan.outputs.darkbench == 'yes'
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Dark-mode stylesheet variants (300-image page)
+        run: |
+          mkdir -p build/perf build/darkbench
+          swiftc -O scripts/perf/darkbench.swift -o build/perf/darkbench
+          build/perf/darkbench build/darkbench --reps 3 | tee build/darkbench/darkbench.log
+          { echo "### darkbench"; echo '```'; sed -n '/== medians/,$p' build/darkbench/darkbench.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-lab-darkbench
+          path: |
+            build/darkbench/*.log
+            build/darkbench/*.png
+          retention-days: 14
+
+  measure:
+    needs: plan
+    if: needs.plan.outputs.matrix != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.plan.outputs.matrix) }}
+    name: lab ${{ matrix.label }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Keep the lab tools of this branch
+        run: mkdir -p "$RUNNER_TEMP/lab" && cp scripts/perf/*.swift scripts/perf/lab.sh "$RUNNER_TEMP/lab/"
+      - name: Set up Xcode 26, swift.org toolchain, caches
+        uses: ./.github/actions/setup
+      - name: Check out ${{ matrix.ref }}
+        run: |
+          ref=${{ matrix.ref }}
+          [[ $ref == HEAD ]] && ref=$GITHUB_SHA
+          git fetch --quiet origin '+refs/heads/lab/*:refs/remotes/origin/lab/*' || true
+          git checkout --force --detach "$ref" 2>/dev/null || git checkout --force --detach "origin/$ref"
+          git log -1 --format='%h %s'
+      - name: Bundle den.app
+        run: scripts/bundle.sh
+      - name: Measure
+        run: |
+          "$RUNNER_TEMP/lab/lab.sh" build/den.app build/lab ${{ matrix.scenarios }}
+          { echo "### lab ${{ matrix.label }} ($(git log -1 --format='%h %s'))"; echo '```'; cat build/lab/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-lab-${{ matrix.label }}
+          path: build/lab
+          retention-days: 14
