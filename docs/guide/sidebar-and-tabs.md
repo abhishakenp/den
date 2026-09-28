@@ -70,7 +70,7 @@ The Library keeps your last 500 tabs. Its **Downloads** tab (⌥⌘L) lists your
 
 Today piled up? **Tidy** sorts its loose tabs (the ones not already in a group) into named groups, like "Trip to Lisbon" or "Pull Requests", using Apple's on-device model. Your tabs never leave your Mac.
 
-- It's **off** until you turn on Settings ▸ Tabs ▸ **Tidy tabs with Apple Intelligence**. It needs a Mac with Apple Intelligence turned on; if yours can't run it, that setting says why.
+- It's **off** until you turn on Settings ▸ Tabs ▸ **Tidy tabs using Apple Intelligence**. It needs a Mac with Apple Intelligence turned on; if yours can't run it, that setting says why.
 - Then hover the divider above Today and click **Tidy** (next to **Clear**), press **⌃⇧T**, pick **Tidy Tabs** in the command bar or the Tabs menu, or right-click the divider.
 - The new groups start collapsed; the tab you're on stays visible under its group's name. Tabs that fit no group stay where they were.
 - **⌃Z**, or **Undo** on the "Tidied 6 tabs into 2 groups" toast, puts every tab back in one step.
