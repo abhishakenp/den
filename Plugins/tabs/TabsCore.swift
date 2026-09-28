@@ -17,6 +17,9 @@ final class TabsCore {
     var lastActive: Int64
     var audio = false
     var muted = false  // runtime only, like `audio`: a tab stays muted while it lives
+    /// The page's now-playing media (`webviews.nowPlaying`), runtime only: the row's hover
+    /// play/pause and skip buttons. nil when nothing played or it stopped.
+    var media: Value?
 
     var displayTitle: String {
       if let c = customTitle, !c.isEmpty { return c }
@@ -1665,6 +1668,10 @@ final class TabsCore {
                     "closeTitle": .string(kind(of: box) == "today" ? "Archive Tab" : "Close Tab"),
                     "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1",
                     "hoverIntent": .int(Self.rowCardDelayMs)]
+    if let m = t.media {
+      let acts = m.a("acts")
+      r.put("media", ["paused": .bool(m.b("paused")), "next": .bool(acts.contains("nexttrack")), "previous": .bool(acts.contains("previoustrack"))])
+    }
     if editing == id { r.put("editing", true) }
     if multi.contains(id) { r.put("highlighted", true) }
     return r
@@ -1907,6 +1914,18 @@ final class TabsCore {
     env.on("tabs.key.copy") { [self] _ in copyURL() }
     for e in ["webviews.title", "webviews.url", "webviews.favicon", "webviews.progress", "webviews.state", "webviews.audio", "webviews.muted"] {
       env.on(e) { [self] v in webEvent(e, v) }
+    }
+    // Now-playing media: the row's hover playback buttons.
+    env.on("webviews.nowPlaying") { [self] v in
+      let id = v.s("id")
+      guard tabs[id] != nil else { return }
+      let m: Value? = v["now"].isNull ? nil : v["now"]
+      // Only what the row shows: a new title or artwork doesn't re-render the sidebar.
+      func shape(_ x: Value?) -> Value { x.map { ["paused": .bool($0.b("paused")), "acts": $0["acts"]] } ?? .null }
+      let changed = shape(tabs[id]?.media) != shape(m)
+      tabs[id]?.media = m
+      guard changed else { return }
+      if favorites.contains(id) { renderFavorites() } else if let sid = spaceOf(id) { renderPage(sid) }
     }
     // The mini player's "back to tab" (host `media` service).
     env.on("media.backToTab") { [self] v in if tabs[v.s("webview")] != nil { select(v.s("webview")) } }
@@ -2155,6 +2174,9 @@ final class TabsCore {
       case "close": close(id)
       case "reset": reset(id)
       case "mute": toggleMute(id)
+      case "media":
+        // The row's hover playback buttons (toggle / next / previous).
+        env.call("webviews", "mediaControl", ["id": .string(id), "action": .string(value.s("action"))])
       case "reorder": handleReorder(value)
       case "dropOnSpace": moveToSpace(id, value.s("spaceId"))
       case "dropOnContent":

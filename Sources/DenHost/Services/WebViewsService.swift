@@ -15,6 +15,9 @@ public struct PageMedia: Equatable {
   public var dirty = false
   /// The frame's main playing video (or the mini player's video, even while paused).
   public var video: Value?
+  /// Now playing: the last media element that played with sound, and the page's Media Session
+  /// info `{title, artist, album, art, paused, dur, video, acts}`. nil once it's gone or stopped.
+  public var now: Value?
 
   init() {}
   init(_ v: Value) {
@@ -23,6 +26,7 @@ public struct PageMedia: Equatable {
     pip = v.flag("pip")
     dirty = v.flag("d")
     video = v["v"].isNull ? nil : v["v"]
+    now = v["n"].isNull ? nil : v["n"]
   }
 }
 
@@ -79,7 +83,24 @@ public final class WebRecord {
       m.dirty = m.dirty || f.media.dirty
     }
     m.video = videoFrame?.media.video
+    m.now = nowFrame?.media.now
     return m
+  }
+
+  /// The now-playing info last reported as `webviews.nowPlaying` (nil: none).
+  public fileprivate(set) var nowPlaying: Value?
+  /// `create {userAgent}`: a custom user agent for this page (web panels ask for a phone's).
+  public var userAgent: String?
+
+  /// The frame whose media is "now playing": a playing one before a paused one, the main frame
+  /// first.
+  public var nowFrame: (frame: WKFrameInfo, media: PageMedia)? {
+    var best: (frame: WKFrameInfo, media: PageMedia)?
+    for key in frames.keys.sorted(by: { a, b in a == "main" && b != "main" }) {
+      guard let f = frames[key], let n = f.media.now else { continue }
+      if best == nil || (best?.media.now?.flag("paused") == true && !n.flag("paused")) { best = f }
+    }
+    return best
   }
 
   /// The frame with the biggest playing video (the main frame wins a tie).
@@ -98,7 +119,8 @@ public final class WebRecord {
 /// `webviews` service.
 ///
 /// Methods:
-///   create {id?, url?, profile?}              -> {id}   (lazy: no WKWebView until shown)
+///   create {id?, url?, profile?, userAgent?}  -> {id}   (lazy: no WKWebView until shown; userAgent "mobile" = Safari on iPhone)
+///   mediaControl {id, action, value?}          -> play|pause|toggle|next|previous|seek|skip|stop on the page's now-playing media
 ///   navigate {id, url}  back {id}  forward {id}  reload {id}  stop {id}
 ///   close {id}                                 -> destroys the web view and record
 ///   suspend {id, force?}                       -> full discard: saves interactionState (+ a snapshot on disk), destroys
@@ -126,6 +148,7 @@ public final class WebRecord {
 ///   webviews.progress {id,progress,loading}  webviews.state {id,canGoBack,canGoForward}
 ///   webviews.audio {id,playing}  webviews.newWindow {id,url}  webviews.crashed {id}
 ///   webviews.suspended {id}  webviews.snapshot {id,path,ok}  webviews.muted {id,muted}  webviews.media {id, playing, pip, dirty}
+///   webviews.nowPlaying {id, now: {title, artist, album, art, paused, dur, video, acts} | null, muted}
 ///   + any event named by a link rule: {id,url,source}
 @MainActor
 public final class WebViewsService: NSObject, HostService, WKNavigationDelegate, WKUIDelegate {
@@ -217,6 +240,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     case "suspend": return suspend(r, force: args.flag("force"))
     case "setMuted": setMuted(r, args.flag("muted"))
     case "pauseMedia": return pauseMedia(r)
+    case "mediaControl": return mediaControl(r, args.str("action"), args.num("value"))
     case "snapshot":
       if !args["rect"].isNull || args.flag("full") || args.flag("clipboard") || !args.str("folder").isEmpty { return capture(r, args) }
       snapshot(r, path: args.str("path"), width: args["width"].double.map { CGFloat($0) }, jpeg: args.str("format") == "jpeg")
@@ -239,12 +263,35 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
     guard records[id] == nil else { return .error("webviews: id '\(id)' exists") }
     let url = Self.normalize(args.str("url"))?.absoluteString ?? "about:blank"
-    records[id] = WebRecord(id: id, profile: args.str("profile", "default"), url: url)
+    let r = WebRecord(id: id, profile: args.str("profile", "default"), url: url)
+    let ua = args.str("userAgent")
+    r.userAgent = ua == "mobile" ? Self.mobileUserAgent : (ua.isEmpty ? nil : ua)
+    records[id] = r
     order.append(id)
     return ["id": .string(id)]
   }
 
   public func record(_ id: String) -> WebRecord? { records[id] }
+
+  /// `create {userAgent: "mobile"}`: Safari on an iPhone, so sites send their phone layout (web
+  /// panels). iOS 26 Safari reports its OS as 18_6 (Apple froze that part of the string).
+  public nonisolated static var mobileUserAgent: String {
+    let version = applicationNameForUserAgent.split(separator: " ").first.map { String($0.dropFirst("Version/".count)) } ?? "26.0"
+    return "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(version) Mobile/15E148 Safari/604.1"
+  }
+
+  /// `mediaControl {id, action, value?}`: plays, pauses, skips or stops the page's now-playing
+  /// media (`PageMedia.now`), in the frame that reported it. `next` / `previous` run the page's
+  /// Media Session handlers (without one, `previous` restarts the track and `next` fails).
+  func mediaControl(_ r: WebRecord, _ action: String, _ value: Double) -> Value {
+    guard ["play", "pause", "toggle", "next", "previous", "seek", "skip", "stop"].contains(action) else {
+      return .error("webviews: unknown media action '\(action)'")
+    }
+    guard r.webView != nil, let f = r.nowFrame else { return .error("webviews: '\(r.id)' plays nothing") }
+    if action == "next", !(f.media.now?["acts"].array ?? []).contains(.string("nexttrack")) { return .error("webviews: the page has no next track") }
+    runPageScript(r.id, "return window.__denMedia.act(a, x)", arguments: ["a": action, "x": value], frame: f.frame)
+    return .ok
+  }
 
   /// Creates the WKWebView on first show (or after a discard), restoring saved state.
   public func materialize(_ id: String) -> WKWebView? {
@@ -269,6 +316,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.media, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: PageScripts.world))
     config.userContentController.add(scriptHandler, contentWorld: PageScripts.world, name: PageScripts.handler)
+    config.userContentController.addUserScript(WKUserScript(source: PageScripts.sessionHook, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
     for h in configureHooks { h(r, config) }
     for list in ruleLists { config.userContentController.add(list) }
     config.userContentController.addUserScript(WKUserScript(source: DenWebView.contextScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
@@ -282,6 +330,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     w.allowsBackForwardNavigationGestures = true
     w.allowsMagnification = true
     w.isInspectable = true
+    if let ua = r.userAgent { w.customUserAgent = ua }
     w.underPageBackgroundColor = .clear
     // No white flash: until the page paints, the view draws nothing, so the card behind it (the
     // page's last known colour, or den's surface) shows instead of WebKit's white. WebKit's
@@ -369,7 +418,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   }
 
   func mediaValue(_ m: PageMedia) -> Value {
-    ["playing": .bool(m.playing), "audible": .bool(m.audible), "pip": .bool(m.pip), "dirty": .bool(m.dirty), "video": m.video ?? .null]
+    ["playing": .bool(m.playing), "audible": .bool(m.audible), "pip": .bool(m.pip), "dirty": .bool(m.dirty), "video": m.video ?? .null, "now": m.now ?? .null]
   }
 
   /// Tests only: WebContent pids of every web view destroyed so far, so a test harness can check
@@ -393,6 +442,10 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if r.audio {
       r.audio = false
       host.emit("webviews.audio", ["id": .string(r.id), "playing": false])
+    }
+    if r.nowPlaying != nil {
+      r.nowPlaying = nil
+      host.emit("webviews.nowPlaying", ["id": .string(r.id), "now": .null, "muted": .bool(r.muted)])
     }
     // denMedia, and plugins' `den` handlers in their content worlds (PageScripting).
     w.configuration.userContentController.removeAllScriptMessageHandlers()
@@ -1042,7 +1095,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     guard body.str("k") == "s" else { return }
     let key = msg.frameInfo.isMainFrame ? "main" : (msg.frameInfo.request.url?.absoluteString ?? "frame")
     let media = PageMedia(body)
-    if !msg.frameInfo.isMainFrame && !media.playing && !media.dirty && !media.pip && media.video == nil {
+    if !msg.frameInfo.isMainFrame && !media.playing && !media.dirty && !media.pip && media.video == nil && media.now == nil {
       r.frames[key] = nil
     } else {
       r.frames[key] = (msg.frameInfo, media)
@@ -1071,6 +1124,10 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
     onMedia?(r)
     host.emit("webviews.media", ["id": .string(r.id), "playing": .bool(m.playing), "pip": .bool(m.pip), "dirty": .bool(m.dirty)])
+    if m.now != r.nowPlaying {
+      r.nowPlaying = m.now
+      host.emit("webviews.nowPlaying", ["id": .string(r.id), "now": m.now ?? .null, "muted": .bool(r.muted)])
+    }
   }
 }
 

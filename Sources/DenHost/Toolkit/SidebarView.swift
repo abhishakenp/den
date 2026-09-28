@@ -226,15 +226,16 @@ final class SidebarPager: FlippedView {
   }
 }
 
-/// The whole sidebar: fixed header + favorites, the swipeable space pager, and the footer.
+/// The whole sidebar: fixed header + favorites, the swipeable space pager, the dock (the `media`
+/// plugin's now-playing stack, sized by its tree) and the footer.
 @MainActor
 public final class SidebarView: FlippedView {
-  let header = SlotView(), favorites = SlotView(), footer = SlotView()
+  let header = SlotView(), favorites = SlotView(), dock = SlotView(), footer = SlotView()
   let pager = SidebarPager()
 
   override init(frame: NSRect) {
     super.init(frame: frame)
-    [header, favorites, pager, footer].forEach { addSubview($0) }
+    [header, favorites, pager, dock, footer].forEach { addSubview($0) }
   }
   required init?(coder: NSCoder) { fatalError() }
 
@@ -245,6 +246,7 @@ public final class SidebarView: FlippedView {
     case "sidebar.header": return header
     case "sidebar.favorites": return favorites
     case "sidebar.footer": return footer
+    case "sidebar.dock": return dock
     default:
       pager.ensurePages(max(pager.pages.count, page + 1))
       return pager.pages[page].slot(name)
@@ -264,8 +266,12 @@ public final class SidebarView: FlippedView {
     y += fh + (fh > 0 ? Tokens.sidebarSectionSpacing : 0)
     let footH = footer.root == nil ? 0 : Tokens.footerHeight
     footer.frame = NSRect(x: pad, y: bounds.height - footH, width: w, height: footH)
-    pager.frame = NSRect(x: pad, y: y, width: w, height: max(0, bounds.height - footH - y))
-    for s in [header, favorites, footer] { s.needsLayout = true }
+    // The dock sits right above the footer (Arc's audio controller), as tall as its tree.
+    let dh = min(dock.height(for: w), max(0, (bounds.height - footH - y) * 0.6))
+    let dockGap: CGFloat = dh > 0 ? Tokens.sidebarSectionSpacing : 0
+    dock.frame = NSRect(x: pad, y: bounds.height - footH - dh, width: w, height: dh)
+    pager.frame = NSRect(x: pad, y: y, width: w, height: max(0, bounds.height - footH - dh - dockGap - y))
+    for s in [header, favorites, dock, footer] { s.needsLayout = true }
     pager.pages.forEach { $0.relayoutDoc() }
   }
 
