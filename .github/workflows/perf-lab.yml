@@ -47,10 +47,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Dark-mode stylesheet variants (300-image page)
+        env:
+          DARKBENCH_VARIANTS: none current rootOnly nearMedia
         run: |
           mkdir -p build/perf build/darkbench
           swiftc -O scripts/perf/darkbench.swift -o build/perf/darkbench
-          build/perf/darkbench build/darkbench --reps 3 | tee build/darkbench/darkbench.log
+          build/perf/darkbench build/darkbench --reps ${DARKBENCH_REPS:-5} ${DARKBENCH_VARIANTS:-} | tee build/darkbench/darkbench.log
           { echo "### darkbench"; echo '```'; sed -n '/== medians/,$p' build/darkbench/darkbench.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

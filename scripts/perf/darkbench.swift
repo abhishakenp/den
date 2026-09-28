@@ -147,7 +147,7 @@ func js(_ w: WKWebView, _ s: String) -> Any? {
   while !fin && Date() < d { pump(0.01) }
   return r
 }
-var results: [String: [Double]] = [:]
+var results: [String: [Double]] = [:], loadedResults: [String: [Double]] = [:], peakResults: [String: [Double]] = [:]
 for rep in 1...reps {
   for (name, css) in run {
     let cfg = WKWebViewConfiguration()
@@ -171,6 +171,10 @@ for rep in 1...reps {
     // This view's own WebContent process (WebKit SPI, as den's WebViewsService reads it); DOM
     // layers and decoded images live there. GPU and Networking are shared across runs.
     let pid = (web.value(forKey: "_webProcessIdentifier") as? NSNumber)?.int32Value ?? 0
+    // As docs/research/dark-mode.md measured it: 2.5 s after the load, before any scrolling.
+    pump(1.5)
+    let loaded = footprint(pid)
+    loadedResults[name, default: []].append(Double(loaded) / 1048576)
     let height = (js(web, "document.documentElement.scrollHeight") as? Double) ?? 0
     var y = 0.0, peak: UInt64 = 0
     while y < height {  // ~ a fast wheel scroll: 400 px per 50 ms
@@ -182,7 +186,9 @@ for rep in 1...reps {
     let total = footprint(pid)
     peak = max(peak, total)
     let others = webkitProcs().filter { $0.0 != pid }.map { String(format: "%@ %.1f", $0.1.replacingOccurrences(of: "com.apple.WebKit.", with: ""), Double(footprint($0.0)) / 1048576) }.joined(separator: ", ")
-    print(String(format: "run %d %-12@ WebContent %d settled %.1f MB peak %.1f MB height %.0f  (others: %@)", rep, name, pid, Double(total) / 1048576, Double(peak) / 1048576, height, others))
+    print(String(format: "run %d %-12@ WebContent %d loaded %.1f MB, scroll peak %.1f MB, settled %.1f MB, height %.0f  (others: %@)", rep, name, pid,
+                 Double(loaded) / 1048576, Double(peak) / 1048576, Double(total) / 1048576, height, others))
+    peakResults[name, default: []].append(Double(peak) / 1048576)
     results[name, default: []].append(Double(total) / 1048576)
     if rep == 1 {  // the window as the screen shows it (backdrop filters included)
       let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -198,9 +204,12 @@ for rep in 1...reps {
     while Date() < ed && kill(pid, 0) == 0 { pump(0.1) }
   }
 }
-print("== medians (settled MB, the page's WebContent process)")
+print("== medians, MB (the page's WebContent process): 2.5 s after load, peak while scrolling, 3 s after")
+func med(_ xs: [Double]?) -> String {
+  let s = (xs ?? []).sorted()
+  let m = s.isEmpty ? 0 : (s.count % 2 == 1 ? s[s.count / 2] : (s[s.count / 2 - 1] + s[s.count / 2]) / 2)
+  return String(format: "%.1f (%@)", m, s.map { String(format: "%.1f", $0) }.joined(separator: ", "))
+}
 for (name, _) in run {
-  let s = (results[name] ?? []).sorted()
-  let med = s.isEmpty ? 0 : (s.count % 2 == 1 ? s[s.count / 2] : (s[s.count / 2 - 1] + s[s.count / 2]) / 2)
-  print(String(format: "%-12@ median %.1f MB  (%@)", name, med, s.map { String(format: "%.1f", $0) }.joined(separator: ", ")))
+  print(String(format: "%-12@ loaded %@  peak %@  settled %@", name, med(loadedResults[name]), med(peakResults[name]), med(results[name])))
 }
