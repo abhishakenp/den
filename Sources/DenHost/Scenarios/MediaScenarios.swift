@@ -16,9 +16,11 @@ import WebKit
 ///   is remembered, a video inside a cross-origin iframe, and the setting. One line per check
 ///   (`scenario.mini <name> ok=…`), then `scenario.done ok=…`, and it exits 0 or 1.
 /// - `miniURL`: like `mini` with `DEN_MINI_URL` (e.g. a YouTube watch page), for manual checks.
+/// - `miniExtras`: like `mini` on a video with a subtitle track, subtitles on and the controls
+///   showing (the host chip, keep on top, CC).
 @MainActor
 public enum MediaScenarios {
-  public static let names = ["mini", "miniOff", "miniInline", "miniPlayer", "miniURL"]
+  public static let names = ["mini", "miniOff", "miniInline", "miniPlayer", "miniURL", "miniExtras"]
 
   public static func apply(_ name: String, runtime rt: DenRuntime) {
     Task { @MainActor in await run(name, rt) }
@@ -79,9 +81,12 @@ public enum MediaScenarios {
     guard let video = fixture() else { log("scenario.mini fixture missing"); exit(1) }
     mock.files = [
       "/video.html": ("text/html; charset=utf-8", Data(page.utf8)), "/test-video.mp4": ("video/mp4", video),
+      "/video-cc.html": ("text/html; charset=utf-8", Data(page.replacingOccurrences(of: "loop></video>", with: "loop><track kind=subtitles srclang=en label=English src=/subs.vtt></video>").utf8)),
+      "/subs.vtt": ("text/vtt", Data("WEBVTT\n\n00:00.000 --> 00:30.000\nden keeps the video playing while you browse.\n".utf8)),
       "/embed.html": ("text/html; charset=utf-8", Data("<!doctype html><title>Embedded Video</title><body style='margin:0;padding:30px;background:#fff'><h2>Embed</h2><iframe src='http://localhost:\(mock.port)/video.html' width=760 height=560 style='border:0' allow='autoplay; picture-in-picture'></iframe></body>".utf8)),
     ]
-    let url = name == "miniURL" ? (ProcessInfo.processInfo.environment["DEN_MINI_URL"] ?? "https://www.youtube.com") : mock.base + "/video.html"
+    let url = name == "miniURL" ? (ProcessInfo.processInfo.environment["DEN_MINI_URL"] ?? "https://www.youtube.com")
+      : mock.base + (name == "miniExtras" ? "/video-cc.html" : "/video.html")
     let other = rt.call("tabs", "selected")["id"].string ?? ""
     let id = rt.call("tabs", "open", ["url": .string(url)])["id"].string ?? ""
     var allOK = true
@@ -122,6 +127,10 @@ public enum MediaScenarios {
     _ = await until(3) { false }  // let isolation apply and a few frames play
     check("tabSwitch.isolated", await isolated())
     if name != "miniPlayer" {
+      if name == "miniExtras" {
+        rt.call("media", "control", ["action": "cc"])
+        _ = await until(3) { rt.media.panel?.player.controls.captionState == 2 }
+      }
       rt.media.panel?.player.showControls(true, animated: false)
       let p = await probe()
       log("scenario.ready mini=\(rt.media.playerId ?? "-") t=\(p.num("t")) paused=\(p.flag("paused")) frame=\(rt.media.panel.map { NSStringFromRect($0.frame) } ?? "-")")

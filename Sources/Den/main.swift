@@ -10,7 +10,8 @@ import os
 //   --scenario <name>              state before snapshot: main, hidden, reveal, space2, toast, swipe, swipeCommit,
 //                                  load10, load10discard, split, split3, command, commandEdit, commandActions, dialog, peek,
 //                                  littleArcLink, littleArcCmdO (prints scenario.cmdO … ok=true|false, exits), rename, themeLive,
-//                                  blank (no web view at all: den's own footprint), discard, mini, miniPlayer, miniURL
+//                                  blank (no web view at all: den's own footprint), discard, mini, miniPlayer, miniURL,
+//                                  miniExtras, nowPlaying, webPanel
 //                                  (discard and miniPlayer print a line per check and exit 0/1)
 //                                  (split*, command*, dialog, peek and littleArcLink need those plugins)
 //                                  page: opens --url <url> as the selected tab (dark mode, sign-in and vault checks)
@@ -415,10 +416,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case "commandActions":
       rt.call("commands", "open", ["mode": "new"])
       rt.plugins.emit("ui.action", ["id": "commandBar", "action": "tab", "value": ["query": ""]])
-    case "mini", "miniOff", "miniInline", "miniPlayer", "miniURL":
-      snapMini = s == "mini" || s == "miniURL"
+    case "mini", "miniOff", "miniInline", "miniPlayer", "miniURL", "miniExtras":
+      snapMini = s == "mini" || s == "miniURL" || s == "miniExtras"
       #if Scenarios
       MediaScenarios.apply(s, runtime: rt)
+      #endif
+    case "nowPlaying", "webPanel":
+      #if Scenarios
+      NowPlayingScenarios.apply(s, runtime: rt)
       #endif
     case "discard":
       #if Scenarios

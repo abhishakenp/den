@@ -71,6 +71,16 @@ shot sidebar-hover-reveal reveal light
 shot space-2 space2 light
 shot toast toast light 4.5
 shot space-swipe swipe light
+# Media (NowPlayingScenarios, MediaScenarios): the now-playing dock with a row's hover playback
+# buttons, a web panel beside the tab, and the mini player's extras (host chip, keep on top, CC).
+if [[ -f build/den.app/Contents/PlugIns/media.dylib ]]; then shot now-playing nowPlaying light 5; shot now-playing-dark nowPlaying dark 5; fi
+if [[ -f build/den.app/Contents/PlugIns/panels.dylib ]]; then shot web-panel webPanel light 6; shot web-panel-dark webPanel dark 6; fi
+snapMiniShot() { # name appearance
+  resolve "$1" "$2" || return 0
+  soft run --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario miniExtras --snapshot "$out/$_n.png" --snapshot-delay 9
+}
+snapMiniShot mini-player-extras light
+snapMiniShot mini-player-extras-dark dark
 # These need the commandbar, quit and peek plugins; the PNGs in docs/screenshots predate them.
 if [[ -f build/den.app/Contents/PlugIns/peek.dylib ]]; then shot split-view split light; shot split-grid split3 light; shot peek peek light; shot little-arc-link littleArcLink light; fi
 if [[ -f build/den.app/Contents/PlugIns/commandbar.dylib ]]; then shot command-bar command light; shot command-bar-dark command dark; shot command-bar-edit commandEdit light; shot command-bar-actions commandActions light; shot command-bar-actions-dark commandActions dark; fi
