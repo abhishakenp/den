@@ -26,7 +26,7 @@ struct ExtensionCompatTests {
 
   static let linksPage = """
     <!doctype html><title>links</title><body style='margin:0;font:15px -apple-system'>
-    <p style='padding:20px'><a href='#one' id=l1>One</a> <a href='#two' id=l2>Two</a> <a href='#three' id=l3>Three</a>
+    <p style='padding:20px'><a href='/links?one' id=l1>One</a> <a href='/links?two' id=l2>Two</a> <a href='/links?three' id=l3>Three</a>
     <button id=b1>Button</button></p><div style='height:6000px;background:linear-gradient(#fff,#ccc)'>tall</div>
     <script>window.__keys=[];addEventListener('keydown',e=>__keys.push(e.key+(e.isTrusted?'':'?')),true);</script></body>
     """
@@ -214,13 +214,26 @@ struct ExtensionCompatTests {
     var notes: [String] = []
 
     await fresh()
+    // Vimium scrolls smoothly with requestAnimationFrame, which a window that is never on screen
+    // (these tests) doesn't get: then check the scrolling itself with smooth scrolling off.
+    let raf = await Wait.asyncJS(w, "return await Promise.race([new Promise(r => requestAnimationFrame(() => r('ran'))), new Promise(r => setTimeout(() => r('none'), 2000))])") as? String ?? "?"
+    notes.append("requestAnimationFrame=\(raf)")
     press(w, "j", 38)
+    let smooth = await wait(5) { await y() > 0 }
+    notes.append("smooth j=\(smooth)")
+    if !smooth {
+      _ = await probe(h, extId, page: "pages/options.html", "await chrome.storage.sync.set({smoothScroll: false}); return JSON.stringify(await chrome.storage.sync.get('smoothScroll'));")
+      await fresh()
+      press(w, "j", 38)
+    }
     ok["j scroll down"] = await wait(10) { await y() > 0 }
     press(w, "G", 5, shift: true)
     ok["G bottom"] = await wait(10) { await y() > 2000 }
     press(w, "g", 5)
     press(w, "g", 5)
     ok["gg top"] = await wait(10) { await y() == 0 }
+    press(w, "d", 2)
+    ok["d half page down"] = await wait(10) { await y() > 100 }
 
     await fresh()
     press(w, "f", 3)
