@@ -24,7 +24,7 @@ struct TabIconTests {
     h.startTabs()
     let t = h.ids("today")[0]
     let favicon = todayRow(h, t)["icon"]
-    let menu = todayRow(h, t)["menu"].array ?? []
+    let menu = h.tabs("menu", ["id": .string(t)]).array ?? []
     #expect(menu.contains { $0["id"] == "changeIcon" && $0["title"] == "Change Icon…" })
     #expect(!menu.contains { $0["id"] == "removeIcon" })
 
@@ -38,7 +38,7 @@ struct TabIconTests {
     #expect(!h.rt.ui.popoverOpen)
     #expect(todayRow(h, t)["icon"] == "🚀")
     #expect(h.tabs("list")["today"][0]["icon"] == "🚀")
-    #expect((todayRow(h, t)["menu"].array ?? []).contains { $0["id"] == "removeIcon" })
+    #expect((h.tabs("menu", ["id": .string(t)]).array ?? []).contains { $0["id"] == "removeIcon" })
 
     // ⌃Z brings the favicon back; Remove Icon does too.
     h.key("ctrl+z")
@@ -60,7 +60,7 @@ struct TabIconTests {
     h.startTabs()
     let f = h.ids("favorites")[0]
     let tile = { h.tree("sidebar.favorites", 0)["children"].array?.first { $0["id"].string == f } ?? .null }
-    #expect((tile()["menu"].array ?? []).contains { $0["id"] == "changeIcon" })
+    #expect((h.tabs("menu", ["id": .string(f)]).array ?? []).contains { $0["id"] == "changeIcon" })
     h.tabs("setIcon", ["id": .string(f), "icon": "🎵"])
     #expect(tile()["icon"] == "🎵")
     // The hover card gets the same icon.
