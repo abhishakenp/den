@@ -61,8 +61,9 @@ public enum NowPlayingScenarios {
     ]])
     rt.plugins.emit("ui.action", ["id": "media.more", "action": "click", "value": .null])
     // The first tab's row as if hovered: its playback buttons.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-      func find(_ v: NSView) -> TabRowNode? {
+    Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(300))
+      @MainActor func find(_ v: NSView) -> TabRowNode? {
         if let r = v as? TabRowNode, r.nodeId == ids[0] { return r }
         for s in v.subviews { if let r = find(s) { return r } }
         return nil
@@ -97,7 +98,8 @@ public enum NowPlayingScenarios {
     server = mock
     mock.files = ["/chat.html": ("text/html; charset=utf-8", Data(chat.utf8))]
     rt.plugins.emit("settings.action", ["id": "panels", "key": "add", "value": .string(mock.base + "/chat.html")])
-    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+    Task { @MainActor in
+      try? await Task.sleep(for: .seconds(2))
       print("scenario.ready panel=\(rt.content.sideId ?? "-") width=\(Int(rt.content.sideIfLoaded?.frame.width ?? 0))")
     }
   }
