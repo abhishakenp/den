@@ -11,6 +11,7 @@
 #     seeded   den's first-run store (its pages load)
 #     page     zero tabs + https://example.com, 45 s settle
 #     ubo      page, with uBlock Origin Lite installed (downloaded from the Chrome Web Store)
+#   <scenario>@K=V,K2=V2   the same with that environment for den (e.g. emptycompile@MallocLargeCache=0)
 #   LAB_REPS=5    repetitions per scenario (median reported); LAB_SETTLE overrides the settle time
 # Every run uses a throwaway --storage copy. The app is re-signed with get-task-allow so heap and
 # vmmap can read it (a lab copy only; never a shipped bundle).
@@ -43,7 +44,7 @@ $probe mem $app --settle 20 -- --storage $tmp/seeded > /dev/null
 echo "template: $(ls $tmp/seeded/contentrules 2>/dev/null | wc -l | tr -d " ") compiled rule list files"
 cp -R $tmp/seeded $tmp/empty && $denstore empty-tabs $tmp/empty > /dev/null
 cp -R $tmp/seeded $tmp/tabs200 && $denstore tabs 200 $tmp/tabs200 > /dev/null
-if (( ${scenarios[(Ie)ubo]} )); then
+if (( ${scenarios[(I)ubo*]} )); then
   # uBlock Origin Lite from the Chrome Web Store, unpacked the way den installs it.
   id=ddkjiahejlhfcafbddmgiahcphecmpfh
   cp -R $tmp/empty $tmp/ubo
@@ -69,7 +70,10 @@ fresh() { rm -rf $tmp/store; cp -R $tmp/$1 $tmp/store; }
 median() { sort -n | awk '{a[NR]=$1} END {if (NR==0) {print "-"; exit}; print (NR%2 ? a[(NR+1)/2] : (a[NR/2]+a[NR/2+1])/2)}'; }
 
 summary=$out/summary.txt
-for s in $scenarios; do
+for name in $scenarios; do
+  # <scenario>@K=V,K2=V2 runs the scenario with that environment for den (malloc experiments).
+  s=$name appenv=""
+  [[ $name == *@* ]] && { s=${name%%@*}; appenv=${${name#*@}//,/ }; }
   hosts=() totals=()
   settle=${LAB_SETTLE:-10} url=()
   [[ $s == page || $s == ubo ]] && { settle=${LAB_SETTLE:-45}; url=(--url https://example.com); }
@@ -86,19 +90,19 @@ for s in $scenarios; do
     [[ -f $tmp/store/extensions/extensions.json ]] && sed -i '' "s#$tmp/ubo/#$tmp/store/#g" $tmp/store/extensions/extensions.json
     exec_args=()
     # First run: heap, vmmap, footprint, and the power assertions held while den idles.
-    (( i == 1 )) && exec_args=(--exec "heap -s \$PERF_PID > '$out/$s.heap.txt' 2>&1; vmmap -summary \$PERF_PID > '$out/$s.vmmap.txt' 2>&1; footprint -p \$PERF_PID > '$out/$s.footprint.txt' 2>&1; pmset -g assertions > '$out/$s.assertions.txt' 2>&1; true")
+    (( i == 1 )) && exec_args=(--exec "heap -s \$PERF_PID > '$out/$name.heap.txt' 2>&1; vmmap -summary \$PERF_PID > '$out/$name.vmmap.txt' 2>&1; footprint -p \$PERF_PID > '$out/$name.footprint.txt' 2>&1; pmset -g assertions > '$out/$name.assertions.txt' 2>&1; true")
     # emptyload: the empty store while 3x ncpu busy loops load the machine (launch-time races that
     # only show on a busy Mac: the 2026-09-28 noTabs regression was measured at load 5-800).
     burners=()
     if [[ $s == emptyload ]]; then
       for _ in $(seq 1 $(( $(sysctl -n hw.ncpu) * 3 ))); do yes > /dev/null & burners+=($!); done
     fi
-    $probe mem $app --settle $settle $url $exec_args -- --storage $tmp/store > $tmp/log 2>&1 || true
+    PERF_APP_ENV=$appenv $probe mem $app --settle $settle $url $exec_args -- --storage $tmp/store > $tmp/log 2>&1 || true
     (( ${#burners} )) && kill $burners 2>/dev/null; wait $burners 2>/dev/null || true
-    cat $tmp/log >> $out/$s.log
+    cat $tmp/log >> $out/$name.log
     hosts+=($(awk '$1 == "mem.hostMB" {print $2}' $tmp/log)) totals+=($(awk '$1 == "mem.totalMB" {print $2}' $tmp/log))
   done
-  printf "%-8s host median %s MB [%s]  total median %s MB [%s]\n" $s \
+  printf "%-8s host median %s MB [%s]  total median %s MB [%s]\n" $name \
     "$(print -l $hosts | median)" "${(j:, :)hosts}" "$(print -l $totals | median)" "${(j:, :)totals}" | tee -a $summary
 done
 echo "$(sysctl -n machdep.cpu.brand_string), load at end: $(sysctl -n vm.loadavg)" | tee -a $summary

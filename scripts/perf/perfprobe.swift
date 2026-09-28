@@ -132,6 +132,13 @@ func launch() -> (t0: Double, existing: Set<pid_t>) {
   let cfg = NSWorkspace.OpenConfiguration()
   cfg.createsNewApplicationInstance = true
   cfg.arguments = appArgs
+  // PERF_APP_ENV="K=V K2=V2": environment for the launched app (e.g. malloc tuning experiments).
+  if let e = ProcessInfo.processInfo.environment["PERF_APP_ENV"], !e.isEmpty {
+    cfg.environment = Dictionary(e.split(separator: " ").compactMap { kv -> (String, String)? in
+      let p = kv.split(separator: "=", maxSplits: 1).map(String.init)
+      return p.count == 2 ? (p[0], p[1]) : nil
+    }, uniquingKeysWith: { $1 })
+  }
   cfg.activates = false  // like `open -g`: never pull the test instance in front of the user (apps may still self-activate)
   cfg.addsToRecentItems = false
   let t0 = now()
