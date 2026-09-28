@@ -59,7 +59,7 @@ struct ShareTests {
     let r = Rig()
     defer { r.done() }
     let items: [Value] = [["id": "pasteGo", "title": "Paste and Search", "titleURL": "Paste and Go", "paste": true], ["id": "copy", "title": "Copy Link"]]
-    func titles() -> [String] { ContextMenu.build(items, target: NSObject(), action: #selector(NSObject.description)).items.map(\.title) }
+    func titles() -> [String] { ContextMenu.build(items, target: NSObject(), action: #selector(getter: NSObject.description)).items.map(\.title) }
     r.clip("  example.com/a  ")
     #expect(titles() == ["Paste and Go", "Copy Link"])
     r.clip("swift concurrency")
@@ -85,7 +85,7 @@ struct ShareTests {
     let menu = pill.node.list("menu")
     #expect(menu.first?["paste"] == true && menu.contains { $0.str("id") == "share" })
     r.clip("news.test/story")
-    let ns = ContextMenu.build(menu, target: NSObject(), action: #selector(NSObject.description))
+    let ns = ContextMenu.build(menu, target: NSObject(), action: #selector(getter: NSObject.description))
     #expect(ns.items.first?.title == "Paste and Go")
     r.h.action("tabs.url", "menu", "pasteGo")
     #expect(await wait { r.selectedURL == "https://news.test/story" })
