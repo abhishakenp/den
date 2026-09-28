@@ -275,12 +275,19 @@ public final class CardController {
 
   // MARK: ui.card
 
-  /// `ui.card {id, tree|null, anchor?, rect?, place?, width?, gap?, swap?, graceMs?}`.
+  /// `ui.card {id, tree|null, anchor?, rect?, place?, width?, gap?, swap?, graceMs?, force?}`.
+  /// `force` (with a null tree) closes at once even under the pointer: a card button was used.
   func set(_ args: Value) -> Value {
     let id = args.str("id")
     guard !id.isEmpty else { return .error("ui.card: id required") }
     let tree = args["tree"]
     if tree.isNull {
+      if args.flag("force"), let c = cards[id], c.superview != nil, !c.leaving, !c.bound {
+        closing.removeValue(forKey: id)?.cancel()
+        remove(c)
+        emit(id, "close", ["anchor": .string(c.anchor)])
+        return .ok
+      }
       close(id, graceMs: args["graceMs"].int.map(Int.init))
       return .ok
     }

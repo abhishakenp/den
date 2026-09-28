@@ -521,6 +521,75 @@ struct PreviewsTests {
     #expect(m.cards.count == n && m.fetches.count == 1)
   }
 
+  /// The ⇧-hover card's buttons after the pointer leaves the link for the card (and ⇧ is let go):
+  /// each click lands on the card's own button (hit-tested in the window, nothing reaches the page),
+  /// acts on the card's link, and closes the card at once even with the pointer still on it.
+  /// It used to do nothing: leaving the link cleared the plugin's link before the click arrived.
+  @Test func linkCardButtonsWorkAfterThePointerLeavesTheLink() async throws {
+    let h = Harness()
+    let m = Mock()
+    m.realCard = true
+    var peeks: [Value] = [], splits: [Value] = []
+    h.rt.plugins.provide("peek") { mm, a in if mm == "open" { peeks.append(a) }; return ["ok": true] }
+    h.rt.plugins.provide("tabs") { mm, a in
+      switch mm {
+      case "selected": return ["id": "tab-1"]
+      case "split": splits.append(a); return ["ok": true]
+      default: return ["ok": true]
+      }
+    }
+    _ = start(h, m)
+    let w = h.rt.window.window
+    w.contentView?.layoutSubtreeIfNeeded()
+    let url = "https://github.com/abhishakenp/den"
+    let rect: Value = ["x": 500, "y": 300, "w": 120, "h": 18]
+
+    func click(_ act: String) async throws {
+      h.rt.plugins.emit("webviews.linkHover", ["id": "tab-1", "url": .string(url), "text": "github.com", "rect": rect, "yield": false])
+      let card = try #require(h.rt.ui.cards.card("previews.link"))
+      #expect(h.rt.ui.cards.visible)
+      // The pointer leaves the link on its way to the card (and ⇧ comes up): the page reports the end.
+      h.rt.plugins.emit("webviews.linkHoverEnd", ["id": "tab-1"])
+      card.pointerInside = true
+      card.layoutSubtreeIfNeeded()
+      let button = try #require(h.rt.ui.findNode("previews.link.act:" + act, in: card) as? ActionNode)
+      let p = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
+      // What the window would deliver the click to at that point: the card's button, not the page.
+      let hit = w.contentView?.hitTest(w.contentView!.convert(p, from: nil))
+      #expect(hit === button || hit?.isDescendant(of: button) == true, "the click must land on the card's \(act) button")
+      for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        let e = NSEvent.mouseEvent(with: t, location: p, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber, context: nil,
+                                   eventNumber: 0, clickCount: 1, pressure: 1)!
+        if t == .leftMouseDown { button.mouseDown(with: e) } else { button.mouseUp(with: e) }
+      }
+      // Acting closes the card now, under the pointer too.
+      #expect(!h.rt.ui.cards.visible, "the card closes after \(act)")
+      _ = await Wait.until("the \(act) card leaves") { h.rt.ui.cards.card("previews.link") == nil }
+    }
+
+    try await click("peek")
+    #expect(peeks.last?.s("url") == url && peeks.last?.s("sourceId") == "tab-1")
+    try await click("split")
+    #expect(m.opened.last?.s("url") == url)
+    #expect(splits.last?["ids"] == ["tab-1", "tab-new"])
+    NSPasteboard.general.clearContents()
+    try await click("copy")
+    #expect(NSPasteboard.general.string(forType: .string) == url)
+  }
+
+  /// No OpenGraph title and a link that reads just "github.com": the card's title is the path.
+  @Test func linkCardTitleIsNeverJustTheDomain() {
+    func title(_ url: String, _ og: Value) -> String { Cards.linkTitle(url: url, og: og, site: URLs.host(url)) }
+    #expect(title("https://github.com/abhishakenp/den", ["title": "github.com"]) == "abhishakenp/den")
+    #expect(title("https://github.com/abhishakenp/den/", [:]) == "abhishakenp/den")
+    #expect(title("https://www.github.com/", ["title": "GitHub.com"]) == "github.com")
+    #expect(title("https://github.com/x", ["title": "GitHub · Build and ship software"]) == "GitHub · Build and ship software")
+    #expect(URLs.path("https://a.com/b/c/?q=1#f") == "/b/c" && URLs.path("https://a.com") == "" && URLs.path("nope") == "")
+    // The page's <title> is the fallback when there's no og:title.
+    let og = OpenGraph.parse("<head><title>den: a WebKit browser</title></head>", url: "https://github.com/abhishakenp/den")
+    #expect(title("https://github.com/abhishakenp/den", og) == "den: a WebKit browser")
+  }
+
   @Test func linkToAPullRequestGetsThePRPeek() {
     let h = Harness()
     let m = Mock()

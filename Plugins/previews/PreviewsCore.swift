@@ -81,7 +81,12 @@ final class PreviewsCore {
   var inflight: [String: [(Value) -> Void]] = [:]
   var external: [String: (Value) -> Void] = [:]
   var current: Request?
+  /// The link under the pointer now (nil once the pointer leaves it or ⇧ is released).
   var link: Request?
+  /// The link the card on screen is for. It outlives `link`: the pointer leaves the link to
+  /// reach the card's buttons, and the host keeps the card while the pointer is on it, so the
+  /// buttons act on this until the host reports the card closed.
+  var cardLink: Request?
   var linkGen = 0
   var og: [String: Entry] = [:]
   var ogOrder: [String] = []
@@ -442,6 +447,7 @@ final class PreviewsCore {
     }
     if id == Cards.linkCard, action == "close" {
       link = nil
+      cardLink = nil
       return
     }
     guard Text.hasPrefix(id, "previews.") else { return }
@@ -568,14 +574,22 @@ final class PreviewsCore {
 
   func hideLink(now: Bool = false) {
     linkGen += 1
-    guard link != nil else { return }
+    // `now` (an action ran, or the site shows its own preview) closes the card even after the
+    // pointer left the link; a plain end only when a link was being shown.
+    guard link != nil || (now && cardLink != nil) else { return }
     link = nil
     var a: Value = ["id": .string(Cards.linkCard), "tree": nil]
-    if now { a.put("graceMs", 0) }
+    if now {
+      // At once, even with the pointer on the card (its button was just used).
+      a.put("graceMs", 0)
+      a.put("force", true)
+      cardLink = nil
+    }
     env.call("ui", "card", a)
   }
 
   func presentLink(_ r: Request, _ tree: Value, width: Value) {
+    cardLink = r
     env.call("ui", "card", ["id": .string(Cards.linkCard), "rect": r.rect, "place": "below", "tree": tree, "width": width])
   }
 
@@ -634,7 +648,7 @@ final class PreviewsCore {
   }
 
   func linkAction(_ name: String) {
-    guard let l = link else { return }
+    guard let l = link ?? cardLink else { return }
     switch name {
     case "peek":
       env.call("peek", "open", ["url": .string(l.url), "sourceId": .string(l.webview)])
