@@ -244,6 +244,16 @@ public enum MainMenu {
     return nil
   }
 
+  /// The item that runs a command bar command (`edit.copyMarkdown` for `den.copyMarkdown`), if any.
+  static func commandItem(_ command: String) -> NSMenuItem? {
+    guard let id = itemByCommand[command] else { return nil }
+    return item(id)
+  }
+  static let itemByCommand: [String: String] = Dictionary(entries.compactMap { e -> (String, String)? in
+    if case let .command(c) = e.kind { return (c, e.id) }
+    return nil
+  }, uniquingKeysWith: { a, _ in a })
+
   /// The item slot a plugin event fills, if the layout has one.
   static func slot(for event: String) -> NSMenuItem? {
     guard let id = slotByEvent[event] else { return nil }

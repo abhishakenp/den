@@ -26,21 +26,21 @@ Arc and Dia are the bar for onboarding, with one caveat: **nothing may slow down
 
 ### 2. Shortcuts everywhere an action appears
 
-**Rule:** if an action has a keyboard shortcut, the shortcut is shown wherever the action is shown, right-aligned, in the same glyph style as the menu bar (⌃⌥⇧⌘ order). A remapped shortcut (`[shortcuts]` in `config.toml`) shows the new chord everywhere.
+**Rule:** if an action has a keyboard shortcut, the shortcut is shown wherever the action is shown, right-aligned, in the same glyph style as the menu bar (⌃⌥⇧⌘ order). A remapped shortcut (`[shortcuts]` in `config.toml`) shows the new chord everywhere: surfaces name the action (`keyFor` on menu items, `shortcutFor` on buttons and card actions) and `Shortcuts` reads its chord from the menu bar item. Only icon-only buttons get native tooltips; rows never do (they have hover cards).
 
 Audit checklist (tick when every item on that surface complies):
 
 - [x] Menu bar
 - [x] Command bar rows
-- [ ] Tab context menu (e.g. Pin Tab ⌘D, Archive Tab ⌘W, Rename…)
-- [ ] Space context menu (e.g. New Space, Move Left/Right)
-- [ ] Link context menu (web page)
-- [ ] Page context menu (web page: Back ⌘[, Reload ⌘R, …)
-- [ ] Folder and split context menus
-- [ ] Tooltips on hover-card buttons
-- [ ] Tooltips on every icon button (sidebar toggle ⌘S, back/forward, reload, Library ⇧⌘L, new space, …)
-- [ ] Settings rows that describe an action (e.g. Briefing ▸ shortcut, Clear Today ⇧⌘K)
-- [ ] Toasts that name an action ("Use ⌃Z to undo" already does)
+- [x] Tab context menu (e.g. Pin Tab ⌘D, Archive Tab ⌘W, Rename…)
+- [x] Space context menu (e.g. New Space, Move Left/Right)
+- [x] Link context menu (web page)
+- [x] Page context menu (web page: Back ⌘[, Reload ⌘R, …)
+- [x] Folder and split context menus
+- [x] Tooltips on hover-card buttons
+- [x] Tooltips on every icon button (sidebar toggle ⌘S, back/forward, reload, Library ⇧⌘L, new space, …)
+- [x] Settings rows that describe an action (e.g. Briefing ▸ shortcut, Clear Today ⇧⌘K)
+- [x] Toasts that name an action ("Use ⌃Z to undo" already does)
 
 ## How a tip looks
 

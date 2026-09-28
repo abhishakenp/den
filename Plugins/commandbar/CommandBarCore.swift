@@ -64,7 +64,7 @@ final class CommandBarCore {
     var key = ""  // usage key for ranking
     var score = 0
     var strength = 0  // how well the text matched (no usage): decides the tier, so rows don't jump while typing
-    var shortcut = ""  // drawn as keycaps ("⌘⇧C")
+    var shortcut = ""  // drawn as keycaps ("⇧⌘C", menu order ⌃⌥⇧⌘)
     var toggle: Bool? = nil  // a switch showing a setting's state
     var drill = false  // Tab / → opens its options or settings in the bar
   }
@@ -606,9 +606,9 @@ final class CommandBarCore {
     Builtin(id: "den.renameTab", title: "Rename Tab", icon: "sf:pencil", keywords: ["title"], shortcut: "", needsTab: true, service: "tabs"),
     Builtin(id: "den.pinTab", title: "Pin Tab", icon: "sf:pin", keywords: ["unpin", "pinned"], shortcut: "⌘D", needsTab: true, service: "tabs"),
     Builtin(id: "den.duplicateTab", title: "Duplicate Tab", icon: "sf:plus.rectangle.on.rectangle", keywords: ["copy", "clone"], shortcut: "", needsTab: true, service: "tabs"),
-    Builtin(id: "den.copyURL", title: "Copy URL", icon: "sf:link", keywords: ["link", "share"], shortcut: "⌘⇧C", needsTab: true, service: "app"),
-    Builtin(id: "den.copyMarkdown", title: "Copy URL as Markdown", icon: "sf:text.quote", keywords: ["link", "share", "md"], shortcut: "", needsTab: true, service: "app"),
-    Builtin(id: "den.clearToday", title: "Clear Today Tabs", icon: "sf:arrow.down.to.line", keywords: ["unpinned", "archive", "close"], shortcut: "⌘⇧K", needsTab: false, service: "tabs"),
+    Builtin(id: "den.copyURL", title: "Copy URL", icon: "sf:link", keywords: ["link", "share"], shortcut: "⇧⌘C", needsTab: true, service: "app"),
+    Builtin(id: "den.copyMarkdown", title: "Copy URL as Markdown", icon: "sf:text.quote", keywords: ["link", "share", "md"], shortcut: "⌥⇧⌘C", needsTab: true, service: "app"),
+    Builtin(id: "den.clearToday", title: "Clear Today Tabs", icon: "sf:arrow.down.to.line", keywords: ["unpinned", "archive", "close"], shortcut: "⇧⌘K", needsTab: false, service: "tabs"),
     Builtin(id: "den.viewArchive", title: "View Archive", icon: "sf:archivebox", keywords: ["history", "closed", "restore"], shortcut: "", needsTab: false, service: "tabs"),
     Builtin(id: "den.toggleSidebar", title: "Toggle Sidebar", icon: "sf:sidebar.left", keywords: ["hide", "show"], shortcut: "⌘S", needsTab: false, service: "window"),
     Builtin(id: "den.theme", title: "Edit Theme", icon: "sf:paintpalette", keywords: ["color", "appearance", "dark", "light"], shortcut: "", needsTab: false, service: nil, listener: "spaces.editTheme"),

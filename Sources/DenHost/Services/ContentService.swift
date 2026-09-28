@@ -180,6 +180,8 @@ final class WindowContent {
   private(set) var focused: String?
   fileprivate(set) var cards: [String: CardView] = [:]
   private let emptyCard = CardView()
+  /// What an empty space shows in its card (Arc: "Open your first tab." over a ⌘T keycap).
+  let emptyState = EmptyStateView()
   /// Where a page that just left the screen waits (invisible, still in the window) while its
   /// snapshot is taken: WebKit only snapshots a view that is in a window.
   private let parking = NSView()
@@ -200,6 +202,7 @@ final class WindowContent {
     self.wc = wc
     accent = svc.accent
     wc.contentArea.addSubview(emptyCard)
+    emptyCard.clip.addSubview(emptyState)
     parking.alphaValue = 0
     wc.contentArea.addSubview(parking, positioned: .below, relativeTo: nil)
     peek.isHidden = true
@@ -279,6 +282,7 @@ final class WindowContent {
       hold(l.id, l.view, frame: l.frame)
     }
     emptyCard.isHidden = !ids.isEmpty
+    if ids.isEmpty { emptyState.refresh() }
     layout()
     setFocus(f ?? (ids.contains(focused ?? "") ? focused : ids.first), makeFirstResponder: true)
   }
@@ -593,8 +597,10 @@ public final class PeekOverlayView: FlippedView {
     get { titleLabel.stringValue }
     set { titleLabel.stringValue = newValue; needsLayout = true }
   }
-  static let actions: [(String, String, String)] = [
-    ("xmark", "close", "Close (Esc)"), ("arrow.up.left.and.arrow.down.right", "expand", "Open as Tab"), ("rectangle.split.2x1", "split", "Open in Split View"),
+  /// (symbol, action, tooltip, the menu bar item whose shortcut the tooltip shows, fallback chord).
+  static let actions: [(String, String, String, String, String)] = [
+    ("xmark", "close", "Close", "view.closePeek", "esc"), ("arrow.up.left.and.arrow.down.right", "expand", "Open as Tab", "file.openInSpace", "cmd+o"),
+    ("rectangle.split.2x1", "split", "Open in Split View", "", ""),
   ]
 
   public override init(frame: NSRect) {
@@ -618,10 +624,10 @@ public final class PeekOverlayView: FlippedView {
     titleLabel.lineBreakMode = .byTruncatingMiddle
     titlePill.addSubview(titleLabel)
     addSubview(titlePill)
-    for (sym, action, tip) in Self.actions {
+    for (sym, action, tip, ref, fallback) in Self.actions {
       let b = IconButton(symbol: sym, size: Tokens.peekButtonSize.height) { [weak self] in self?.onAction?(action) }
       b.fixedTint = .white
-      b.toolTip = tip
+      b.setTip(tip, shortcut: ref, fallback: fallback)
       b.wantsLayer = true
       b.layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.72).cgColor  // estimate
       b.layer?.cornerRadius = Tokens.peekButtonSize.height / 2

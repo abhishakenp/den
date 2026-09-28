@@ -268,7 +268,7 @@ final class SpacesCore {
     return [
       ["id": "rename", "title": "Rename Space", "icon": "sf:pencil"],
       ["id": "icon", "title": "Change Space Icon…", "icon": "sf:face.smiling"],
-      ["id": "theme", "title": "Edit Theme Color…", "icon": "sf:paintpalette"],
+      ["id": "theme", "title": "Edit Theme Color…", "icon": "sf:paintpalette", "keyFor": "spaces.theme"],
       ["id": "profile", "title": "Profile", "icon": "sf:person.crop.circle", "items": .array(profileItems)],
       ["separator": true],
       ["id": "duplicate", "title": "Duplicate Space", "icon": "sf:plus.square.on.square"],
@@ -276,9 +276,11 @@ final class SpacesCore {
       ["id": "moveRight", "title": "Move Right", "icon": "sf:arrow.right", "enabled": .bool(i < spaces.count - 1)],
       ["separator": true],
       // Frees every loaded tab of the space but the one on screen (the tabs plugin decides).
-      ["id": "unload", "title": "Unload Space", "icon": "sf:moon.zzz", "key": .string(s.id == current ? "cmd+ctrl+u" : "")],
+      // ⌃⌘U acts on the current space, so only its menu shows the chord.
+      s.id == current ? ["id": "unload", "title": "Unload Space", "icon": "sf:moon.zzz", "key": "cmd+ctrl+u", "keyFor": "spaces.unload"]
+                      : ["id": "unload", "title": "Unload Space", "icon": "sf:moon.zzz"],
       ["separator": true],
-      ["id": "new", "title": "New Space", "icon": "sf:plus"],
+      ["id": "new", "title": "New Space", "icon": "sf:plus", "keyFor": "spaces.new"],
       ["separator": true],
       ["id": "delete", "title": "Delete Space…", "icon": "sf:trash", "destructive": true, "enabled": .bool(spaces.count > 1)],
     ]
@@ -304,7 +306,7 @@ final class SpacesCore {
   /// finished since you last looked (a dot). Opens Library ▸ Downloads.
   var downloadsButton: Value? {
     guard dlActive > 0 || dlUnseen > 0 else { return nil }
-    var b: Value = ["type": "button", "id": "spaces.downloads", "icon": "sf:arrow.down", "tooltip": "Downloads (⌥⌘L)", "size": 32]
+    var b: Value = ["type": "button", "id": "spaces.downloads", "icon": "sf:arrow.down", "tooltip": "Downloads", "shortcutFor": "history.downloads", "shortcut": "cmd+opt+l", "size": 32]
     if dlActive > 0 { b.put("progress", .double(dlPercent < 0 ? -1 : Double(dlPercent) / 100)) } else { b.put("dot", true) }
     return b
   }
@@ -323,16 +325,19 @@ final class SpacesCore {
 
   func renderFooter(current: String, window: String?) {
     var row: [Value] = [
-      ["type": "button", "id": "spaces.library", "icon": "sf:tray.full", "tooltip": "Library (⌘Y)", "size": 32],
+      ["type": "button", "id": "spaces.library", "icon": "sf:tray.full", "tooltip": "Library", "shortcutFor": "history.library", "size": 32],
     ]
     if let d = downloadsButton { row.append(d) }
     row.append(["type": "spacer"])
     for (i, s) in spaces.enumerated() {
-      row.append(["type": "spaceIcon", "id": .string("spaces.icon:" + s.id), "icon": .string(s.icon), "title": .string(s.name), "selected": .bool(s.id == current),
-                  "spaceId": .string(s.id), "reorderable": true, "menu": .array(menu(i))])
+      var icon: Value = ["type": "spaceIcon", "id": .string("spaces.icon:" + s.id), "icon": .string(s.icon), "title": .string(s.name), "selected": .bool(s.id == current),
+                         "spaceId": .string(s.id), "reorderable": true, "menu": .array(menu(i))]
+      // The tooltip shows its ⌃1…⌃9 (bindKeys).
+      if i < 9 { icon.put("shortcut", .string("ctrl+" + String(i + 1))) }
+      row.append(icon)
     }
     row.append(["type": "spacer"])
-    row.append(["type": "button", "id": "spaces.new", "icon": "sf:plus", "tooltip": "New Space", "size": 32])
+    row.append(["type": "button", "id": "spaces.new", "icon": "sf:plus", "tooltip": "New Space", "shortcutFor": "spaces.new", "size": 32])
     var args: Value = ["slot": "sidebar.footer", "tree": ["type": "row", "id": "spaces.footer", "height": 50, "spacing": 2, "children": .array(row)]]
     if let window { args.put("window", .string(window)) }
     env.call("ui", "set", args)

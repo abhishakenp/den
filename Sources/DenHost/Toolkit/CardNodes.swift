@@ -14,7 +14,7 @@ import CordisValue
 //   note   {id?, text, tone?}                        tinted row with a leading accent bar; click
 //   item   {id, title, subtitle?, icon?, accessory?, tone?, clickable?}   row; click
 //   action {id, icon?, title?, variant?: icon|pill, tone?: default|primary|strong|destructive,
-//           tooltip?, shortcut?, enabled?, menu?, height?}              button; click / menu
+//           tooltip?, shortcut?, shortcutFor?, enabled?, menu?, height?} button; click / menu
 //
 // Tones: primary, secondary, glyph, success, warning, danger, add, del, accent, plus the fills
 // above. Colors come from the theme tokens (`ThemeTokens.card`), never from the tree.
@@ -574,7 +574,9 @@ final class ActionNode: NodeView {
 
   var pill: Bool { node.str("variant", "icon") == "pill" }
   var enabled: Bool { node.flag("enabled", true) }
-  var shortcut: String { node.str("shortcut") }
+  /// The chord shown and pressed: `shortcutFor` (a menu bar item id or event) read from the menu
+  /// bar, so a `[shortcuts]` remap applies to the card too; else `shortcut`.
+  var shortcut: String { Shortcuts.chord(for: node.str("shortcutFor")) ?? node.str("shortcut") }
   var tooltipText: String {
     let t = node.str("tooltip")
     guard !shortcut.isEmpty else { return t }

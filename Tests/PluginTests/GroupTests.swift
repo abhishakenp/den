@@ -275,6 +275,62 @@ struct GroupTests {
     #expect(h.ids("today") == today)
   }
 
+  /// Shortcuts everywhere (docs/guide/_in-app-tips.md §2): menus, tooltips and card buttons read
+  /// the chord from the menu bar, so a `[shortcuts]` remap shows on every surface.
+  @Test func surfacesShowTheMenuBarChordIncludingRemaps() throws {
+    let h = Harness()
+    NSApp.mainMenu = NSMenu()
+    MainMenu.install()
+    defer { h.rt.call("keys", "resetRemaps") }
+    h.startTabs()
+    #expect(Shortcuts.chord(for: "tabs.pin") == "cmd+d")
+    #expect(Shortcuts.chord(for: "tabs.key.pin") == "cmd+d")
+    #expect(Shortcuts.chord(for: "tabs.next") == "opt+cmd+down")
+    #expect(Shortcuts.chord(for: "view.zoomIn") == "cmd+plus")
+    #expect(Shortcuts.chord(for: "tabs.key.library") == "cmd+y")
+    #expect(Shortcuts.chord(for: "edit.find.previous") == "shift+cmd+g")
+    #expect(Shortcuts.chord(for: "tabs.duplicate") == nil)  // no default chord: nothing shown
+    #expect(Shortcuts.tip("Back", "history.back") == "Back  ⌘[")
+    #expect(Shortcuts.tip("Previous Tab", "tabs.prev") == "Previous Tab  ⌥⌘↑")
+    #expect(Shortcuts.tip("Done", fallback: "esc") == "Done  ⎋")
+    #expect(Shortcuts.tip("Separate") == "Separate")
+    // Shifted punctuation reads back as its chord (⌘⇧] is "}" with ⌘ in the menu).
+    let alt = NSMenuItem(title: "", action: nil, keyEquivalent: "}")
+    alt.keyEquivalentModifierMask = .command
+    #expect(Shortcuts.chord(of: alt) == "shift+cmd+]")
+
+    let today = h.ids("today")
+    let menu = h.tabs("menu", ["id": .string(today[1])]).array ?? []
+    func built() -> NSMenu { ContextMenu.build(menu, target: NSObject(), action: #selector(NSObject.description)) }
+    func item(_ m: NSMenu, _ id: String) -> NSMenuItem? { m.items.first { ($0.representedObject as? String) == id } }
+    #expect(item(built(), "pin")?.keyEquivalent == "d")
+    #expect(item(built(), "duplicate")?.keyEquivalent == "")
+
+    // Remap Pin/Unpin and Duplicate the way config.toml [shortcuts] does.
+    #expect(h.rt.call("keys", "remap", ["chord": "cmd+shift+p", "item": "tabs.pin"]) == .ok)
+    #expect(h.rt.call("keys", "remap", ["chord": "cmd+opt+d", "item": "tabs.duplicate"]) == .ok)
+    let m = built()
+    #expect(item(m, "pin")?.keyEquivalent == "p" && item(m, "pin")?.keyEquivalentModifierMask == [.command, .shift])
+    #expect(item(m, "duplicate")?.keyEquivalent == "d" && item(m, "duplicate")?.keyEquivalentModifierMask == [.command, .option])
+    #expect(Shortcuts.tip("Pin Tab", "tabs.pin") == "Pin Tab  ⇧⌘P")
+    // A remapped primary keeps its ⌥ alternate as a separate, correctly labelled item.
+    #expect(h.rt.call("keys", "remap", ["chord": "cmd+k", "item": "edit.copyURL"]) == .ok)
+    let m2 = built()
+    #expect(item(m2, "copy")?.keyEquivalent == "k")
+    #expect(item(m2, "copyMarkdown")?.isAlternate == false)
+    h.rt.call("keys", "resetRemaps")
+    #expect(item(built(), "copyMarkdown")?.isAlternate == true)
+    #expect(item(built(), "pin")?.keyEquivalent == "d")
+
+    // Card buttons press and show the live chord.
+    let card: Value = ["type": "action", "id": "a", "icon": "sf:pin", "tooltip": "Pin Tab", "shortcut": "cmd+d", "shortcutFor": "tabs.pin"]
+    let action = ActionNode(renderer: Renderer(palette: Palette(theme: Theme(), dark: true)) { _, _, _ in })
+    action.update(card)
+    #expect(action.shortcut == "cmd+d" && action.tooltipText == "Pin Tab  ⌘D")
+    _ = h.rt.call("keys", "remap", ["chord": "cmd+shift+p", "item": "tabs.pin"])
+    #expect(action.shortcut == "shift+cmd+p" && action.tooltipText == "Pin Tab  ⇧⌘P")
+  }
+
   @Test func splitModifiersShiftOptionClickAndOptionNewTab() {
     let h = Harness()
     h.startPeek()

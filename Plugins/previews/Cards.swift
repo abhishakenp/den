@@ -57,10 +57,13 @@ enum Cards {
   static func spacer(_ h: Int64) -> Value { ["type": "spacer", "height": .int(h)] }
 
   /// An icon button of the card's action row, or (`pill`) a filled button.
-  static func action(_ id: String, icon: String, tooltip: String, shortcut: String = "", enabled: Bool = true, title: String = "",
+  /// `shortcutFor`: the menu bar item the action mirrors (docs/shortcuts.md ids), so the tooltip and
+  /// the card's key follow a `[shortcuts]` remap; `shortcut` is the default chord.
+  static func action(_ id: String, icon: String, tooltip: String, shortcut: String = "", shortcutFor: String = "", enabled: Bool = true, title: String = "",
                      pill: Bool = false, tone: String = "", menu: [Value] = [], value: Value = .null, width: Int64 = 0) -> Value {
     var v: Value = ["type": "action", "id": .string(id), "icon": .string(icon), "tooltip": .string(tooltip)]
     if !shortcut.isEmpty { v.put("shortcut", .string(shortcut)) }
+    if !shortcutFor.isEmpty { v.put("shortcutFor", .string(shortcutFor)) }
     if !enabled { v.put("enabled", false) }
     if !title.isEmpty { v.put("title", .string(title)) }
     if pill { v.put("variant", "pill") }
@@ -116,16 +119,16 @@ enum Cards {
     switch req.kind {
     case "pinned":
       out.append(action(p + "reset", icon: "sf:arrow.uturn.backward", tooltip: req.drift ? "Back to Pinned URL" : "At Pinned URL", enabled: req.drift))
-      out.append(action(p + "unpin", icon: "sf:pin.slash", tooltip: "Unpin Tab", shortcut: "cmd+d"))
+      out.append(action(p + "unpin", icon: "sf:pin.slash", tooltip: "Unpin Tab", shortcut: "cmd+d", shortcutFor: "tabs.pin"))
     case "favorite":
       out.append(action(p + "reset", icon: "sf:arrow.uturn.backward", tooltip: req.drift ? "Back to Pinned URL" : "At Pinned URL", enabled: req.drift))
     default:
-      out.append(action(p + "pin", icon: "sf:pin", tooltip: "Pin Tab", shortcut: "cmd+d"))
+      out.append(action(p + "pin", icon: "sf:pin", tooltip: "Pin Tab", shortcut: "cmd+d", shortcutFor: "tabs.pin"))
     }
     let splitTip = req.inSplit ? "Add to Split" : req.selected ? "Add Split View" : "Open as Split"
-    out.append(action(p + "split", icon: "sf:rectangle.split.2x1", tooltip: splitTip, shortcut: "ctrl+shift+="))
-    out.append(action(p + "duplicate", icon: "sf:plus.square.on.square", tooltip: "Duplicate Tab"))
-    out.append(action(p + "copy", icon: "sf:link", tooltip: "Copy Link", shortcut: "cmd+shift+c"))
+    out.append(action(p + "split", icon: "sf:rectangle.split.2x1", tooltip: splitTip, shortcut: "ctrl+shift+=", shortcutFor: "view.addSplit"))
+    out.append(action(p + "duplicate", icon: "sf:plus.square.on.square", tooltip: "Duplicate Tab", shortcutFor: "tabs.duplicate"))
+    out.append(action(p + "copy", icon: "sf:link", tooltip: "Copy Link", shortcut: "cmd+shift+c", shortcutFor: "edit.copyURL"))
     if req.audio || req.muted {
       out.append(req.muted ? action(p + "unmute", icon: "sf:speaker.wave.2", tooltip: "Unmute Tab")
                            : action(p + "mute", icon: "sf:speaker.slash", tooltip: "Mute Tab"))
@@ -134,8 +137,8 @@ enum Cards {
       let items: [Value] = req.spaces.map { ["id": $0["id"], "title": .string($0.s("name")), "icon": "sf:square.grid.2x2"] }
       out.append(action(p + "move", icon: "sf:arrow.right.square", tooltip: "Move to Space", menu: items))
     }
-    out.append(req.kind == "today" ? action(p + "close", icon: "sf:archivebox", tooltip: "Archive Tab", shortcut: "cmd+w")
-                                   : action(p + "close", icon: "sf:xmark", tooltip: "Close Tab", shortcut: "cmd+w"))
+    out.append(req.kind == "today" ? action(p + "close", icon: "sf:archivebox", tooltip: "Archive Tab", shortcut: "cmd+w", shortcutFor: "file.closeTab")
+                                   : action(p + "close", icon: "sf:xmark", tooltip: "Close Tab", shortcut: "cmd+w", shortcutFor: "file.closeTab"))
     return out
   }
 
@@ -143,8 +146,8 @@ enum Cards {
   static func splitActions(_ req: PreviewsCore.Request) -> [Value] {
     let p = "previews.tab.act:"
     return [
-      action(p + "split", icon: "sf:rectangle.split.2x1", tooltip: "Add to Split", shortcut: "ctrl+shift+="),
-      action(p + "copy", icon: "sf:link", tooltip: "Copy Link", shortcut: "cmd+shift+c"),
+      action(p + "split", icon: "sf:rectangle.split.2x1", tooltip: "Add to Split", shortcut: "ctrl+shift+=", shortcutFor: "view.addSplit"),
+      action(p + "copy", icon: "sf:link", tooltip: "Copy Link", shortcut: "cmd+shift+c", shortcutFor: "edit.copyURL"),
       action(p + "separate", icon: "sf:rectangle.split.2x1.slash", tooltip: "Separate Tabs"),
     ]
   }
@@ -394,8 +397,8 @@ enum Cards {
     let p = "previews.link.act:"
     return [
       action(p + "peek", icon: "sf:eye", tooltip: "Open in Peek  ⇧-click"),
-      action(p + "split", icon: "sf:rectangle.split.2x1", tooltip: "Open as Split", shortcut: "ctrl+shift+="),
-      action(p + "copy", icon: "sf:link", tooltip: "Copy Link", shortcut: "cmd+shift+c"),
+      action(p + "split", icon: "sf:rectangle.split.2x1", tooltip: "Open as Split", shortcut: "ctrl+shift+=", shortcutFor: "view.addSplit"),
+      action(p + "copy", icon: "sf:link", tooltip: "Copy Link", shortcut: "cmd+shift+c", shortcutFor: "edit.copyURL"),
     ]
   }
 

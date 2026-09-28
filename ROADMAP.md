@@ -187,14 +187,16 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - 🟡 One-time discovery tips, one at a time, with a global off switch ([spec](docs/guide/_in-app-tips.md))
   - ✅ 14 tips wired to existing events, limits (1 per 10 min, 3 a day, none in the first minute or over a modal), Settings ▸ General ▸ Show tips, "Don't Show Tips" in the bar and on every tip
   - ⏳ tips that need events den doesn't emit yet (link linger, ⌘F, tab drags, context-menu opens, keyword searches)
-- 🟡 Shortcuts shown on every surface where the action appears
-  - ✅ menu bar, command bar rows
-  - ✅ hover-card button tooltips (and the shortcuts act on the hovered tab while its card is open)
-  - ✅ tab context menu (with ⌥ alternates)
-  - ⏳ space, link and page context menus; icon-button tooltips; Settings rows
+- ✅ Shortcuts shown on every surface where the action appears, remaps included (read from the menu bar item: `keyFor` / `shortcutFor`)
+  - ✅ menu bar, command bar rows (menu glyph order ⌃⌥⇧⌘; Copy URL as Markdown ⌥⇧⌘C)
+  - ✅ hover-card button tooltips (and the shortcuts act on the hovered tab while its card is open, a remapped chord too)
+  - ✅ tab, folder and space context menus (with ⌥ alternates); page context menu (Back, Forward, Reload, Cut, Copy, Paste, Inspect Element)
+  - ✅ icon-button tooltips: sidebar toggle, Back, Forward, Reload/Stop, Copy Link, Library, New Space, space icons (⌃1…⌃9), split pane ×, Peek, find bar, mini player; Settings rows and toasts in glyphs
 - ✅ No row tooltips: tab rows, tiles, split rows and list rows show hover cards instead
 - ✅ User guide ([docs/guide](docs/guide/)), with Tips & hidden gems
-- ⏳ Detail audit: every interaction compared with Arc/Dia (hover states, click targets, tooltips, context menus, animations, empty states, error pages, keyboard coverage) and fixed, plus Dia's micro-interactions
+- 🟡 Detail audit: every interaction compared with Arc/Dia (hover states, click targets, tooltips, context menus, animations, empty states, error pages, keyboard coverage) and fixed, plus Dia's micro-interactions
+  - ✅ first pass (2026-09-28): tooltips and VoiceOver names on every icon button, an empty space shows Arc's "Open a tab." card with a ⌘T keycap, the Little Arc "Open in" button drops its duplicate tooltip, command bar glyph order, consistent "Title  ⌘X" tooltips
+  - ⏳ Favorites empty-state card ("Drag to add Favorites"), toast hover-to-keep, Dia's micro-interactions
 
 ## Media
 

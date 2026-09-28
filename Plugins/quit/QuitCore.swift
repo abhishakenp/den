@@ -43,7 +43,7 @@ final class QuitCore {
     let r = env.call("settings", "register", [
       "id": .string(Self.ns), "section": "general", "title": "Quitting", "order": 50,
       "controls": [["key": "warn", "type": "toggle", "title": "Ask before quitting",
-                    "subtitle": "Command-Q shows a confirmation first. Your tabs come back either way.", "default": .bool(warn)]],
+                    "subtitle": "⌘Q shows a confirmation first. Your tabs come back either way.", "default": .bool(warn)]],
     ])
     guard !r.isErr else { return }
     if let w = env.call("settings", "get", ["id": .string(Self.ns), "key": "warn"]).bool, w != warn { setWarn(w, announce: false) }
