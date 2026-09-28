@@ -115,7 +115,7 @@ final class MiniBarView: FlippedView {
     domain.alignment = .center
     domain.lineBreakMode = .byTruncatingMiddle
     [siteIcon, domain, copy].forEach { field.addSubview($0) }
-    copy.toolTip = "Copy Link"
+    copy.setTip("Copy Link")
     open.onClick = { [weak self] in self?.onAction?("open") }
     addSubview(open)
   }
@@ -161,7 +161,13 @@ final class OpenInButton: FlippedView, Themable {
   let name = makeLabel(size: 13, weight: .semibold)
   let keycap = Keycap()
   var onClick: (() -> Void)?
-  var space = "" { didSet { name.stringValue = space.isEmpty ? "Space" : space; needsLayout = true } }
+  var space = "" {
+    didSet {
+      name.stringValue = space.isEmpty ? "Space" : space
+      keycap.text = Shortcuts.glyphs(for: "file.openInSpace", fallback: "cmd+o")  // a [shortcuts] remap shows here too
+      needsLayout = true
+    }
+  }
   var fill: NSColor = .black
 
   override init(frame: NSRect) {
@@ -169,11 +175,13 @@ final class OpenInButton: FlippedView, Themable {
     keycap.text = "⌘O"
     keycap.font = .systemFont(ofSize: 12, weight: .semibold)
     [prefix, name, keycap].forEach { addSubview($0) }
-    toolTip = "Open in Space (⌘O)"
+    // A titled button with its keycap: no tooltip (den keeps tooltips for icon-only buttons).
+    setAccessibilityRole(.button)
+    setAccessibilityLabel("Open in Space")
   }
   required init?(coder: NSCoder) { fatalError() }
 
-  var keycapWidth: CGFloat { ceil(("⌘O" as NSString).size(withAttributes: [.font: keycap.font]).width) + 10 }
+  var keycapWidth: CGFloat { ceil((keycap.text as NSString).size(withAttributes: [.font: keycap.font]).width) + 10 }
   var preferredWidth: CGFloat { 8 + ceil(prefix.textWidth) + 2 + ceil(name.textWidth) + 4 + keycapWidth + 6 }
 
   func apply(_ p: Palette) {

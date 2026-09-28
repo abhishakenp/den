@@ -350,9 +350,9 @@ public final class MiniControlsView: NSView {
   lazy var pip = button("pip.enter", "Picture in Picture") { [weak self] in self?.onControl?("pip", 0) }
   lazy var close = button("xmark", "Close (pauses the video)") { [weak self] in self?.onControl?("close", 0) }
   lazy var rewind = button("gobackward.10", "Back 10 Seconds (←: 5 s)") { [weak self] in self?.onControl?("skip", -10) }
-  lazy var play = button("pause.fill", "Pause (Space)") { [weak self] in self?.onControl?("toggle", 0) }
+  lazy var play = button("pause.fill", "Pause") { [weak self] in self?.onControl?("toggle", 0) }
   lazy var forward = button("goforward.10", "Forward 10 Seconds (→: 5 s)") { [weak self] in self?.onControl?("skip", 10) }
-  lazy var mute = button("speaker.wave.2.fill", "Mute (M)") { [weak self] in
+  lazy var mute = button("speaker.wave.2.fill", "Mute") { [weak self] in
     guard let self else { return }
     self.onControl?("mute", self.muted ? 0 : 1)
   }
@@ -441,7 +441,7 @@ public final class MiniControlsView: NSView {
     let b = IconButton(symbol: symbol, size: 28, action: action)
     b.fixedTint = .white
     b.firstMouse = true
-    b.toolTip = tip
+    b.setTip(tip)
     return b
   }
 
@@ -474,9 +474,9 @@ public final class MiniControlsView: NSView {
       needsLayout = true
     }
     play.icon.spec = paused ? "sf:play.fill" : "sf:pause.fill"
-    play.toolTip = paused ? "Play (Space)" : "Pause (Space)"
+    play.setTip(paused ? "Play" : "Pause", fallback: "space")
     mute.icon.spec = muted || volume == 0 ? "sf:speaker.slash.fill" : volume < 0.5 ? "sf:speaker.wave.1.fill" : "sf:speaker.wave.2.fill"
-    mute.toolTip = muted ? "Unmute (M)" : "Mute (M)"
+    mute.setTip(muted ? "Unmute" : "Mute", fallback: "m")
     if !volumeSlider.tracking { volumeSlider.value = muted ? 0 : volume }
     speed.title = Self.rateText(rate)
     let live = duration < 0

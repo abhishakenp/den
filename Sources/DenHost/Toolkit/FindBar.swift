@@ -38,9 +38,9 @@ final class FindBarView: FlippedView, NSTextFieldDelegate, Themable {
     field.delegate = self
     glass.spec = "sf:magnifyingglass"
     count.alignment = .right
-    prev.toolTip = "Previous match (⇧⌘G)"
-    next.toolTip = "Next match (⌘G)"
-    close.toolTip = "Done (Esc)"
+    prev.setTip("Previous Match", shortcut: "edit.find.previous", fallback: "cmd+shift+g")
+    next.setTip("Next Match", shortcut: "edit.find.next", fallback: "cmd+g")
+    close.setTip("Done", fallback: "esc")
     [glass, field, count, prev, next, close].forEach { addSubview($0) }
   }
   required init?(coder: NSCoder) { fatalError() }

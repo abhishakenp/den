@@ -50,7 +50,7 @@ struct DownloadsLibraryTests {
 
     // The footer shows a ring while something downloads (2% steps), with its shortcut in the tooltip.
     let ring = try #require(footerButton(h))
-    #expect(ring["progress"] == 0.42 && ring["tooltip"] == "Downloads (⌥⌘L)")
+    #expect(ring["progress"] == 0.42 && ring["tooltip"] == "Downloads" && ring["shortcutFor"] == "history.downloads")
 
     // ⌥⌘L opens Library ▸ Downloads; the old finished one moves under Archived (24 h default).
     h.key("cmd+opt+l")

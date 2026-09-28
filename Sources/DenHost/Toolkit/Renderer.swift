@@ -275,9 +275,10 @@ final class TextNode: NodeView {
   override func layout() { label.frame = bounds.insetBy(dx: 2, dy: 2) }
 }
 
-/// {type:"button", id, icon, title?, size?, tooltip?, progress? (0–1 ring; negative: waiting), dot?}
+/// {type:"button", id, icon, title?, size?, tooltip?, shortcut?, shortcutFor?, progress? (0–1 ring; negative: waiting), dot?}
 /// -> ui.action {id, action: "click"}. `progress` draws a ring around the icon in the accent (the
 /// sidebar's download indicator), `dot` a small accent dot at its top right (something new).
+/// The tooltip shows the shortcut: `shortcutFor` (a menu bar item id or event, remap-aware), else `shortcut`.
 final class ButtonNode: NodeView {
   lazy var button = IconButton(symbol: "sf:circle", size: 28) { [weak self] in self?.emit(self?.node.str("action", "click") ?? "click") }
   let label = makeLabel(size: 12, weight: .medium)
@@ -294,7 +295,7 @@ final class ButtonNode: NodeView {
     super.update(v)
     button.icon.spec = v.str("icon", "sf:circle")
     button.enabled = v.flag("enabled", true)
-    button.toolTip = v.str("tooltip")
+    button.setTip(v.str("tooltip"), shortcut: v.str("shortcutFor"), fallback: v.str("shortcut"))
     label.stringValue = v.str("title")
     label.isHidden = label.stringValue.isEmpty
     ring.progress = v["progress"].double

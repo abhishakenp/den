@@ -36,6 +36,14 @@ final class DenWebView: WKWebView {
     service?.contextMenu?(self, menu)
   }
 
+  /// WebKit's page and text items -> the menu bar item that does the same (docs/shortcuts.md ids).
+  static let menuShortcuts: [String: String] = [
+    "WKMenuItemIdentifierGoBack": "history.back", "WKMenuItemIdentifierGoForward": "history.forward",
+    "WKMenuItemIdentifierReload": "view.reload", "WKMenuItemIdentifierStop": "view.stop",
+    "WKMenuItemIdentifierCut": "edit.cut", "WKMenuItemIdentifierCopy": "edit.copy", "WKMenuItemIdentifierPaste": "edit.paste",
+    "WKMenuItemIdentifierInspectElement": "view.inspectElement",
+  ]
+
   /// Rewrites WebKit's default items (identifiers are WebKit's `WKMenuItemIdentifier…` strings).
   static func customize(_ menu: NSMenu, hit: ContextHit, peek: Bool, engine: String, target: DenWebView?) {
     func item(_ title: String, _ sel: Selector, _ value: String) -> NSMenuItem {
@@ -70,6 +78,9 @@ final class DenWebView: WKWebView {
         if hit.image.isEmpty { menu.removeItem(at: i); continue }
         menu.removeItem(at: i)
         menu.insertItem(item("Save Image As…", #selector(saveAs(_:)), hit.image), at: i)
+      case let id where Self.menuShortcuts[id] != nil:
+        // Page items with a menu bar twin show its chord, remaps included (Back ⌘[, Reload ⌘R…).
+        _ = Shortcuts.apply(Self.menuShortcuts[id]!, to: it)
       case "WKMenuItemIdentifierOpenFrameInNewWindow": it.title = "Open Frame in New Tab"
       case "WKMenuItemIdentifierOpenMediaInNewWindow": it.title = "Open Video in New Tab"
       case "WKMenuItemIdentifierSearchWeb":

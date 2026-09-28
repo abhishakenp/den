@@ -313,9 +313,9 @@ struct LauncherTests {
     h.key("cmd+t")
     h.type("copy url")
     let row = h.barRows.first { $0.str("id") == "cmd:den.copyURL" }
-    #expect(row?.str("shortcut") == "⌘⇧C")
+    #expect(row?.str("shortcut") == "⇧⌘C")
     let view = h.rt.ui.commandBar.rows.first { $0.rowId == "cmd:den.copyURL" }
-    #expect(view?.shortcutCaps.map(\.text) == ["⌘", "⇧", "C"])
+    #expect(view?.shortcutCaps.map(\.text) == ["⇧", "⌘", "C"])
   }
 
   @Test func matcherScoresPrefixAliasInitialsAndFuzzy() {

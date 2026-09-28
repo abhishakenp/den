@@ -104,13 +104,19 @@ class HoverNode: NodeView, Hoverable {
 /// actions: toggleSidebar, back, forward, reload, stop
 final class NavBarNode: NodeView {
   var buttons: [IconButton] = []
+  /// (symbol, action, tooltip, menu bar item whose shortcut the tooltip shows).
+  static let buttons: [(String, String, String, String)] = [
+    ("sidebar.left", "toggleSidebar", "Toggle Sidebar", "view.sidebar"), ("arrow.left", "back", "Back", "history.back"),
+    ("arrow.right", "forward", "Forward", "history.forward"), ("arrow.clockwise", "reload", "Reload Page", "view.reload"),
+  ]
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
-    for (sym, act) in [("sidebar.left", "toggleSidebar"), ("arrow.left", "back"), ("arrow.right", "forward"), ("arrow.clockwise", "reload")] {
+    for (sym, act, tip, ref) in Self.buttons {
       let b = IconButton(symbol: sym, size: Tokens.navButtonSize) { [weak self] in
         guard let self else { return }
         self.emit(act == "reload" && self.node.flag("loading") ? "stop" : act)
       }
+      b.setTip(tip, shortcut: ref)
       buttons.append(b)
       addSubview(b)
     }
@@ -120,7 +126,9 @@ final class NavBarNode: NodeView {
     super.update(v)
     buttons[1].enabled = v.flag("canGoBack")
     buttons[2].enabled = v.flag("canGoForward")
-    buttons[3].icon.spec = v.flag("loading") ? "sf:xmark" : "sf:arrow.clockwise"
+    let loading = v.flag("loading")
+    buttons[3].icon.spec = loading ? "sf:xmark" : "sf:arrow.clockwise"
+    buttons[3].setTip(loading ? "Stop Loading" : "Reload Page", shortcut: loading ? "view.stop" : "view.reload")
   }
   override func apply(_ p: Palette) { buttons.forEach { $0.apply(p) } }
   override func height(for w: CGFloat) -> CGFloat { Tokens.navRowHeight }
@@ -166,6 +174,7 @@ final class URLPillNode: HoverNode {
     addSubview(label)
     addSubview(copy)
     copy.isHidden = true
+    copy.setTip("Copy Link", shortcut: "edit.copyURL")
     extensionsObserver = NotificationCenter.default.addObserver(forName: ExtensionsUI.changedNotification, object: nil, queue: .main) { [weak self] note in
       let sender = note.object.map { ObjectIdentifier($0 as AnyObject) }
       MainActor.assumeIsolated {
@@ -220,7 +229,7 @@ final class URLPillNode: HoverNode {
     label.stringValue = t.isEmpty ? v.str("placeholder", "Search or Enter URL…") : t
     lock.isHidden = true  // Arc shows the bare domain (spec §1: text at x = 20)
     let buttons = v.list("buttons")
-    let key = buttons.map { $0.str("id") + "|" + $0.str("icon") + "|" + $0.str("tooltip") }.joined(separator: ",")
+    let key = buttons.map { $0.str("id") + "|" + $0.str("icon") + "|" + $0.str("tooltip") + "|" + $0.str("shortcut") + "|" + $0.str("shortcutFor") }.joined(separator: ",")
     if key != extraKey {
       extraKey = key
       extra.forEach { $0.removeFromSuperview() }
@@ -231,7 +240,7 @@ final class URLPillNode: HoverNode {
           self.r.emit(id, "click", ["webview": .string(self.node.str("webview"))])
         }
         btn.icon.spec = b.str("icon")
-        btn.toolTip = b.str("tooltip")
+        btn.setTip(b.str("tooltip"), shortcut: b.str("shortcutFor"), fallback: b.str("shortcut"))
         addSubview(btn)
         return btn
       }
@@ -644,7 +653,8 @@ final class SpaceIconNode: HoverNode {
   override func update(_ v: Value) {
     super.update(v)
     icon.spec = v.str("icon")
-    toolTip = v.str("title")
+    // Icon only: the tooltip names the space and its ⌃N.
+    toolTip = Shortcuts.tip(v.str("title"), v.str("shortcutFor"), fallback: v.str("shortcut"))
     apply(r.palette)
     needsDisplay = true
   }

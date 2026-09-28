@@ -44,14 +44,14 @@ final class ThemePickerNode: NodeView {
     super.init(renderer: renderer)
     for (mode, sym, tip) in Self.modes {
       let b = IconButton(symbol: sym, size: Tokens.themePickerModeSize) { [weak self] in self?.setMode(mode) }
-      b.toolTip = tip
+      b.setTip(tip)
       modeButtons.append(b)
       addSubview(b)
     }
-    removeButton.toolTip = "Remove color"
-    addButton.toolTip = "Add color"
-    prevButton.toolTip = "Move to previous preset page."
-    nextButton.toolTip = "Move to next preset page."
+    removeButton.setTip("Remove Color")
+    addButton.setTip("Add Color")
+    prevButton.setTip("Previous Presets")
+    nextButton.setTip("Next Presets")
     emptyLabel.alignment = .center
     [removeButton, addButton, prevButton, nextButton, emptyLabel].forEach { addSubview($0) }
   }

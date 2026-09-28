@@ -446,7 +446,7 @@ final class PageToolsCore {
     var buttons: [Value] = []
     let p = probes[w]
     if p?.readable == true || readerOpen.contains(w) {
-      buttons.append(["id": "pagetools.pill.reader", "icon": "sf:doc.plaintext", "tooltip": "Reader (⌃⌘R)", "active": .bool(readerOpen.contains(w))])
+      buttons.append(["id": "pagetools.pill.reader", "icon": "sf:doc.plaintext", "tooltip": "Reader", "shortcutFor": "pagetools.key.reader", "shortcut": "ctrl+cmd+r", "active": .bool(readerOpen.contains(w))])
     }
     if p?.translatable == true || translated[w] != nil {
       buttons.append(["id": "pagetools.pill.translate", "icon": "sf:translate", "tooltip": .string(translated[w] != nil ? "Show Original" : "Translate Page"),

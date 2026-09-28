@@ -131,6 +131,10 @@ While the mini player is the active window:
 
 Plus the standard text shortcuts: ⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌥⇧⌘V, ⌘A.
 
+## Where you'll see them
+
+You don't need to memorise this page. Every place an action appears shows its shortcut on the right: the tab, folder and space right-click menus, a page's right-click menu (Back ⌘[, Reload ⌘R, Copy ⌘C…), the tooltips of the sidebar's buttons (hover the sidebar toggle for ⌘S, a space icon for ⌃1), the buttons on hover cards, and the command bar. Hold ⌥ in a tab's right-click menu for the alternates (Copy Link as Markdown ⌥⇧⌘C, Close Other Tabs ⌥⌘W).
+
 ## Other keyboard layouts
 
 Shortcuts go by the character a key types, so on Dvorak ⌘W is the key labelled W on your layout, and on QWERTZ ⌘Z is the Z key. When your layout can't type a shortcut's character without extra keys (AZERTY's number row, where ⌃1 is ⌃&; brackets behind a dead key; every letter on Cyrillic, Greek or Hebrew layouts), den uses that key's position on a US keyboard instead, like Chrome and Firefox. Your layout's own shortcut always wins.
@@ -145,5 +149,5 @@ In `~/.den/config.toml`, map a chord to a menu item id or a command id. It appli
 "cmd+shift+y" = "den.copyMarkdown"   # any command bar command
 ```
 
-Chords use `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f5`, `plus`). A remapped menu item loses its default key. A command bound this way shows up in a **Shortcuts** menu. Menu item ids are in the last column of [docs/shortcuts.md](../shortcuts.md); command ids are in [docs/plugin-services.md](../plugin-services.md).
+Chords use `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f5`, `plus`). A remapped menu item loses its default key, and its new one shows everywhere the action does: right-click menus, button tooltips, hover cards and the command bar. A command bound this way shows up in a **Shortcuts** menu. Menu item ids are in the last column of [docs/shortcuts.md](../shortcuts.md); command ids are in [docs/plugin-services.md](../plugin-services.md).
 
