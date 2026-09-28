@@ -118,7 +118,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | [PR peek: state, checks, conflicts, reviews, +/− lines, files](guide/hover-previews.md) | ➖ retired for Live Folders | ✅ on hover in Live Folders | ❌ | ✅ | Public repos with no sign-in; private repos through your github.com session |
 | [Actions on hover cards](guide/hover-previews.md) | ✅ | ✅ | ? | 🟡 | ✅ card buttons (e.g. Join on a calendar card). ⏳ the card rebuilt to the [Dia spec](reference/dia-ui-spec.md), and an inline "Connect GitHub" button that fills the card in live |
 | ⇧-hover link previews on any page | ✅ AI summary | ? | ? | ⏳ | den: an OpenGraph card from the target's `<head>`, no AI, cached, zero cost until a deliberate ⇧-hover. Open in Peek / Split / Copy Link. Plain hover as an option |
-| Web panels in sidebar | ❌ | ❌ | ➖ removed | — | Research rated it "nice" if lazy and discardable ([gaps-chromium-browsers](research/gaps-chromium-browsers.md)); not on the ROADMAP |
+| [Web panels beside the page](guide/media.md#web-panels) | ❌ | ❌ | ➖ removed | ✅ | Optional plugin, ⌃⌘S; same across tabs and spaces; phone layout per panel; hidden panels are discarded after 30 s |
 
 ## Customization
 
@@ -137,8 +137,8 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | Feature | Arc | Dia | Zen | den | Notes |
 |---|---|---|---|---|---|
 | [Mini player when leaving a video tab](guide/media.md) | ✅ | ✅ | ? | ✅ | den's own player, on by default: frameless, on top, seek, volume/mute, ±10 s, speed, back to tab, resize/snap. Native PiP as the fallback |
-| Mini player extras: keep-on-top toggle, tuck off-screen, hostname chip, Firefox's PiP keys, subtitles | ? | ✅ | ? | ⏳ | |
-| [Audio controls in sidebar](guide/media.md) | ✅ | ✅ | ✅ | 🟡 | ✅ speaker and mute. ⏳ hover play/pause/skip for any tab playing audio |
+| [Mini player extras: keep-on-top toggle, tuck off-screen, hostname chip, Firefox's PiP keys, subtitles](guide/media.md#the-mini-player) | ? | ✅ | ? | ✅ | Subtitles for pages that expose text tracks |
+| [Audio controls in sidebar](guide/media.md) | ✅ | ✅ | ✅ | ✅ | Speaker and mute; hover play/pause/skip on the tab row; the now-playing dock (artwork, title, artist, previous/next, several at once); Control Center and media keys |
 | [Calendar countdown, Join button, meeting reminder](guide/connections-and-briefing.md#google-calendar) | ✅ | ✅ meeting groups | ❌ | ✅ | Join on the calendar hover card, a reminder card with Join before each meeting, "in 8m" on the Calendar favorite. ⏳ dragging the card, meeting groups |
 | Camera, mic and screen-share badges on tabs | ✅ | ✅ | ? | ⏳ | |
 

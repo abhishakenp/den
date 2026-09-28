@@ -23,6 +23,7 @@ Everything in den that you won't find by looking at it. One line each, with a li
 - **Drop a tab on the middle of another tab's row** to split the two. [Split view](peek-split-little-arc.md#split-view)
 - **Drop a tab on a split's sidebar row** to add it as another pane. [Split view](peek-split-little-arc.md#split-view)
 - **Click the speaker** on a tab playing audio to mute it. [Media](media.md#tab-audio-and-mute)
+- **Point at a playing tab** for play/pause and skip buttons on its row. [Media](media.md#hover-controls-on-a-tab)
 - **Drop links or files from other apps** onto the sidebar to open them as tabs. [Sidebar](sidebar-and-tabs.md#drag-and-drop)
 - **Move the pointer to the left edge** when the sidebar is hidden (⌘S) to slide it back. [Sidebar](sidebar-and-tabs.md#hiding-the-sidebar)
 - **Double-click the sidebar's edge** to reset its width. Drag it very narrow to hide it. [Sidebar](sidebar-and-tabs.md#hiding-the-sidebar)
@@ -80,6 +81,9 @@ Everything in den that you won't find by looking at it. One line each, with a li
 - **Zoom sticks per site**; ⌘0 forgets it. [Page tools](page-tools.md#zoom-remembered-per-site)
 - **⌃⌘R** toggles Reader; **⇧⌘2** captures a region of the page. [Page tools](page-tools.md#reader)
 - **Leave a playing video's tab** and it follows you in den's mini player. [Media](media.md#the-mini-player)
+- **Music in a tab you left** shows at the bottom of the sidebar; your keyboard's play/pause and skip keys and Control Center drive it, and so do ⌃⌘P, ⌃⌘← and ⌃⌘→. [Media](media.md#now-playing-at-the-bottom-of-the-sidebar)
+- **Drag the mini player past the screen's edge** to tuck it away while the sound plays; click the strip to bring it back. **T** toggles keep on top, **C** subtitles. [Media](media.md#the-mini-player)
+- **⌃⌘S** shows a web panel (Slack, WhatsApp, Claude…) beside every tab; hidden, it sleeps. [Media](media.md#web-panels)
 - **Type "dark"** in the command bar to force a site dark or light. [Privacy](privacy-and-passwords.md#dark-mode-for-every-website)
 
 ## Settings & config

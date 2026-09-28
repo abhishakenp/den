@@ -89,6 +89,17 @@ Reader: Safari's ⇧⌘R is Arc's (and den's) Reload from Origin, so Reader is �
 | Close Peek | Esc | Esc (only while a Peek is open) | `view.closePeek` |
 | Reopen the Peek you just closed | – | ⌘Z (for 15 s after closing it; then ⌘Z is Undo again) | Edit ▸ Reopen Peek |
 | Daily briefing | – | ⇧⌘B (changeable in Settings > Briefing) | `view.briefing` |
+| Show / hide the web panel | – | ⌃⌘S (`panels` plugin) | View ▸ Toggle Web Panel |
+
+## Media
+
+The newest playing tab (the top of the sidebar's now-playing dock) is den's "now playing"; Control Center and the keyboard's media keys drive it too (`nowplaying` service).
+
+| Action | Arc | den | Item id |
+|---|---|---|---|
+| Play / pause media | – | ⌃⌘P | View ▸ Play or Pause Media |
+| Next track | – | ⌃⌘→ | View ▸ Next Track |
+| Previous track | – | ⌃⌘← | View ▸ Previous Track |
 
 ## Address and sharing
 
@@ -136,9 +147,14 @@ While the mini player window is key (a playing video you left, see [guide/media.
 |---|---|
 | Play / pause | Space |
 | Back / forward 5 s | ← / → |
+| Back / forward a tenth of the video (Firefox) | ⌘← / ⌘→ |
+| Start / end (Firefox) | Home / End |
 | Volume up / down | ↑ / ↓ |
-| Mute / unmute | M |
+| Mute / unmute | M; ⌘↓ / ⌘↑ (Firefox) |
+| Subtitles on / off | C |
+| Keep on top on / off | T |
 | Back to the tab | Esc |
+| Close the player (Firefox) | ⌘W |
 
 ## Edit
 

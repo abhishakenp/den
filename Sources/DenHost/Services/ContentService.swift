@@ -296,7 +296,7 @@ public final class ContentService: HostService {
     let animate = old == nil || id == nil
     if animate, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, wc.window.isVisible {
       NSAnimationContext.runAnimationGroup({ c in
-        c.duration = Tokens.sidebarShowDuration
+        c.duration = 0.25  // estimate: a slide, slower than the sidebar's 83 ms show
         c.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)  // estimate: Dia's easing (spec §13)
         c.allowsImplicitAnimation = true
         self.layout()

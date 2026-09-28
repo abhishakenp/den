@@ -64,6 +64,14 @@ Mouse back/forward buttons and two-finger swipes on the page work too.
 | Reopen the Peek you just closed | ⌘Z (for 15 s after closing it) |
 | Move a Peek or Little Arc window into the space | ⌘O |
 | Daily briefing | ⇧⌘B (change it in Settings ▸ Briefing) |
+| Show / hide the web panel | ⌃⌘S |
+
+## Media
+
+| Action | Keys |
+|---|---|
+| Play / pause what's playing | ⌃⌘P, or the play/pause key |
+| Next / previous track | ⌃⌘→ / ⌃⌘←, or the keyboard's media keys |
 
 ## Mini player
 
@@ -73,9 +81,14 @@ While the mini player is the active window:
 |---|---|
 | Play / pause | Space |
 | Back / forward 5 s | ← / → |
+| Back / forward a tenth of the video | ⌘← / ⌘→ |
+| Start / end | Home / End |
 | Volume up / down | ↑ / ↓ |
-| Mute / unmute | M |
+| Mute / unmute | M, or ⌘↓ / ⌘↑ |
+| Subtitles on / off | C |
+| Keep on top on / off | T |
 | Back to the tab | Esc |
+| Close the player | ⌘W |
 
 ## Copying
 
