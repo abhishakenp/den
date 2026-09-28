@@ -124,6 +124,35 @@ struct ExtensionCompatTests {
       .map(f => f.className + ':' + getComputedStyle(f).display))
     """
 
+  static let contentProbe = """
+    const tabs = await chrome.tabs.query({});
+    const t = tabs.find(t => /\\/links$/.test(t.url || ''));
+    if (!t) return JSON.stringify({noTab: tabs.map(t => t.url)});
+    const out = {tab: t.id + ' ' + t.url};
+    try {
+      const r = await chrome.scripting.executeScript({target: {tabId: t.id}, func: async () => {
+        const o = {};
+        o.utils = typeof Utils; o.shim = String(globalThis.__denShim);
+        o.normalMode = typeof normalMode === 'undefined' ? 'undeclared' : String(normalMode);
+        o.enabled = typeof isEnabledForUrl === 'undefined' ? 'undeclared' : String(isEnabledForUrl);
+        o.frameId = String(globalThis.frameId);
+        o.handlers = typeof handlerStack === 'undefined' ? 'undeclared' : String(handlerStack.stack && handlerStack.stack.length);
+        const t = (p) => Promise.race([p, new Promise(r => setTimeout(() => r('timeout'), 5000))]);
+        try { o.init = JSON.stringify(await t(chrome.runtime.sendMessage({handler: 'initializeFrame'}))); } catch (e) { o.init = 'error ' + e; }
+        try { o.settingsLoaded = typeof Settings === 'undefined' ? 'undeclared' : String(Settings.isLoaded()); } catch (e) { o.settingsLoaded = 'error ' + e; }
+        try { o.session = JSON.stringify(await t(chrome.storage.session.get('vimiumSecret'))).slice(0, 60); } catch (e) { o.session = 'error ' + e; }
+        try { o.sync = JSON.stringify(await t(chrome.storage.sync.get(null))).slice(0, 60); } catch (e) { o.sync = 'error ' + e; }
+        return JSON.stringify(o);
+      }});
+      out.results = r.map(x => x.result); out.errors = r.map(x => x.error && String(x.error));
+    } catch (e) { out.executeScript = 'error ' + e; }
+    try {
+      const [x] = await chrome.scripting.executeScript({target: {tabId: t.id}, func: () => document.title});
+      out.title = x && x.result;
+    } catch (e) { out.title = 'error ' + e; }
+    return JSON.stringify(out);
+    """
+
   /// Vimium's keys on a real page: link hints (f), scrolling (j, G, gg), the vomnibar (o), find
   /// (/) and tab switching (K). Returns what worked.
   @discardableResult
@@ -136,6 +165,8 @@ struct ExtensionCompatTests {
     guard let w = h.rt.webviews.record(tab)?.webView else { return ok }
     TestMode.keepActive(w)
     ok["content script"] = await wait(20) { (await Wait.js(w, "getComputedStyle(document.documentElement).getPropertyValue('--vimium-background-color')") as? String ?? "") != "" }
+    // What the extension's content scripts see, through its own scripting API (same world).
+    _ = await probe(h, extId, page: "pages/options.html", Self.contentProbe)
     h.rt.window.window.makeFirstResponder(w)
     try? await Task.sleep(for: .seconds(2))
     func y() async -> Double { await Wait.js(w, "window.scrollY") as? Double ?? -1 }
