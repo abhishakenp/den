@@ -348,6 +348,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ Test windows are invisible (alpha 0 in the window server, still "on screen" for AppKit and WebKit); the test process never activates or shows a Dock icon
 - ✅ A `--background` automation mode for app launches: no Dock icon, never activated, windows off every display, `--snapshot` still renders; automated launches quit by themselves and scripts SIGKILL any that don't (`scripts/lib/launch.zsh`)
 - ✅ `--snapshot` never hangs on a web view that doesn't paint (10 s bound per view)
+- ✅ Nothing outlives a test: each test's runtimes are torn down (WebKit pages closed, speech stopped, extension contexts unloaded); test pages are page-muted and speech is synthesized to buffers, never to a device; `scripts/test.sh` fails (exit 3) and kills any WebContent process a run leaves behind, naming its test; `--exit-after` closes every page before exiting
 
 ## Decided 2026-09-28
 

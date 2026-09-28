@@ -215,7 +215,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       if arg("--snapshot") == nil && !args.contains("--stay") { exit(0) }
     }
     DispatchQueue.main.async { [weak self] in self?.startDenHome(firstWindowMs: ms) }
-    if let s = arg("--exit-after").flatMap(Double.init) { DispatchQueue.main.asyncAfter(deadline: .now() + s) { exit(0) } }
+    if let s = arg("--exit-after").flatMap(Double.init) {
+      // Close every page first (WebKit's page close, not just the view), so no WebContent process
+      // or audio session outlives an automated run; DEN_TRACE prints the pids for scripts to check.
+      DispatchQueue.main.asyncAfter(deadline: .now() + s) { [weak self] in
+        let pids = self?.runtime.tearDown() ?? []
+        if traceOn { print("exit.webcontent \(pids.map(String.init).joined(separator: ","))") }
+        fflush(stdout)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exit(0) }
+      }
+    }
     var snapWindow = runtime.window.window
     if let scenario = arg("--scenario") {
       // Host component scenarios (DenHost/Scenarios) first; the rest need --demo.
