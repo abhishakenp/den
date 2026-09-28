@@ -74,6 +74,14 @@ for name in $scenarios; do
   # <scenario>@K=V,K2=V2 runs the scenario with that environment for den (malloc experiments).
   s=$name appenv=""
   [[ $name == *@* ]] && { s=${name%%@*}; appenv=${${name#*@}//,/ }; }
+  if [[ $s == launch ]]; then
+    # Warm launch to first window (perf.sh's method), seeded store, 12 runs after 1 warm-up.
+    fresh seeded
+    PERF_APP_ENV=$appenv $probe launch $app --runs 12 --warmup 1 -- --storage $tmp/store > $tmp/log 2>&1 || true
+    cat $tmp/log >> $out/$name.log
+    printf "%-8s %s\n" $name "$(/usr/bin/grep '^summary.reqMs' $tmp/log)" | tee -a $summary
+    continue
+  fi
   hosts=() totals=()
   settle=${LAB_SETTLE:-10} url=()
   [[ $s == page || $s == ubo ]] && { settle=${LAB_SETTLE:-45}; url=(--url https://example.com); }
