@@ -95,6 +95,7 @@ On any web page, **hold ⇧ and rest on a link** for a card with the target page
 <p align="center">
   <img src="../screenshots/preview-calendar-dark.png" alt="Calendar hover card with a Join button" width="400">
   <img src="../screenshots/preview-folder-dark.png" alt="Folder hover card" width="400">
+  <img src="../screenshots/preview-gmail-dark.png" alt="Gmail hover card: three unread messages and Compose" width="400">
 </p>
 
 The Gmail, Calendar and Slack cards read from your own signed-in session in den. The Calendar card reads the Calendar tab itself, so open it once first. Nothing goes to a den server; there isn't one.
