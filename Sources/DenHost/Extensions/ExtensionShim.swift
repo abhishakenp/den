@@ -16,7 +16,7 @@ public enum ExtensionShim {
   /// Marks the background context, where the shim records visits and closed tabs.
   static let backgroundFlag = "__den/background.js"
   /// Bumped when `source` changes, so installed copies get the new one on their next load.
-  static let version = 3
+  static let version = 4
 
   /// Adds the shim to an unpacked extension. Idempotent; returns whether anything changed.
   /// `validPattern` says whether WebKit takes a match pattern: content script entries lose the
@@ -143,8 +143,33 @@ public enum ExtensionShim {
       };
       const save = (key, value) => { try { local.set({[key]: value}); } catch (e) {} };
 
-      if (inContent) return;
+      // Link hints (Vimium's F, and extensions like it) open a link in a new tab with a synthetic
+      // ⌘/Ctrl-click. WebKit does nothing for one, so the content script asks its own background
+      // (below) to open the tab. Only right after a key the user pressed, and only for web links.
+      if (inContent) {
+        let lastKey = 0;
+        g.addEventListener('keydown', (e) => { if (e.isTrusted) lastKey = Date.now(); }, true);
+        g.addEventListener('click', (e) => {
+          if (e.isTrusted || !(e.metaKey || e.ctrlKey) || e.button !== 0 || Date.now() - lastKey > 2000) return;
+          const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+          if (!a || !/^https?:/.test(a.href)) return;
+          setTimeout(() => {
+            if (e.defaultPrevented) return;
+            try { api.runtime.connect({name: '__den.openTab'}).postMessage({url: a.href, active: e.shiftKey === true}); } catch (x) {}
+          }, 0);
+        }, true);
+        return;
+      }
       const inBackground = g.__denBackground === true;
+      if (inBackground && api.runtime.onConnect && api.tabs && api.tabs.create) {
+        api.runtime.onConnect.addListener((port) => {
+          if (port.name !== '__den.openTab') return;
+          port.onMessage.addListener((m) => {
+            if (m && typeof m.url === 'string' && /^https?:/.test(m.url)) api.tabs.create({url: m.url, active: m.active === true}).catch(() => {});
+            try { port.disconnect(); } catch (x) {}
+          });
+        });
+      }
       const report = g.__denShimReport = {events: [], wrapped: [], failed: []};
 
       // Events WebKit leaves out of a namespace it has. One missing event is enough to stop a

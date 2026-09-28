@@ -59,10 +59,24 @@ den checks store-installed extensions once a day (only if you have some). An upd
 
 ## What works on WebKit, and what doesn't
 
+Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatTests.swift`, and `--scenario extensionsVerify`):
+
+| Extension | Works? | What we checked |
+|---|---|---|
+| uBlock Origin Lite | Works | Blocks ad and tracker scripts on a test page |
+| Dark Reader | Works | Firefox build darkens a page; Chrome build installs and starts |
+| JSON Formatter | Works | Formats a JSON page |
+| Vimium (Chrome Web Store) | Partial | Works: link hints (`f`, `F`, `Esc`), scrolling (`j`, `d`, `G`, `gg`), the Vomnibar (`o`), find (`/`), next tab (`K`). Not in den: bookmarks (the Vomnibar finds none), history before you installed it |
+| Vimium (Firefox Add-ons) | Partial | Same as above; its toolbar icon shows an error, because that build lacks the icons Vimium asks for outside Firefox. Prefer the Chrome Web Store build |
+| ColorPick Eyedropper | Partial | The popup opens; its background doesn't start, so picking colors doesn't work |
+| Bitwarden | Not yet | Installs, but its background doesn't start (it needs `offscreen`, `sidePanel`, `idle` and more). den tells you so when you add it |
+
+den fills some gaps itself, in its own copy of each extension, so an extension that touches a missing API keeps running instead of stopping silently: events WebKit leaves out (such as `webNavigation.onHistoryStateUpdated`, which stopped Vimium), an empty `bookmarks`, a `history` of pages visited since the extension was added, `sessions` for tabs closed since then, and `search`. Folders in `~/.den/extensions` are left exactly as they are.
+
 WebKit's extension support is good but not Chrome's. These don't exist on WebKit:
 
 - **blocking `webRequest`**: so full **uBlock Origin can't work**. Use **uBlock Origin Lite**, which does.
-- `identity`, `downloads`, `history`, `bookmarks`, side panels.
+- `identity`, `downloads`, side panels, offscreen documents; den's real `history` and `bookmarks`.
 
 And these aren't wired into den yet:
 
