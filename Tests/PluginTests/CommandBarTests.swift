@@ -27,7 +27,11 @@ extension Harness {
       return {}
     }
     suggest.debounce = 0
-    let fake = browsers
+    // A fresh fake per harness: a new Harness can reuse a finished one's address, and so its
+    // ObjectIdentifier, which would hand this test the other test's browser state.
+    let fake = FakeBrowsers()
+    fakeBrowsers[ObjectIdentifier(self)] = fake
+    pendingSuggest[ObjectIdentifier(self)] = nil
     rt.app.browserDefaults = BrowserDefaults(
       current: { fake.current },
       set: { url, scheme, done in
