@@ -376,7 +376,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 ## Decided 2026-09-28
 
-- ⏳ Link status pill: a bottom pill with the hovered link's URL, moving away from the cursor (Arc)
+- ✅ Link status pill: a bottom pill with the hovered link's URL, moving away from the cursor (Arc); the full address after 1.5 s, keyboard focus too, Settings ▸ Previews ▸ Show link addresses
 - ✅ Emoji tab and folder icons, from rename and the right-click menu (Arc): "Change Icon…" / "Remove Icon", click the icon while renaming, or type an emoji first; on rows, favorites tiles and hover cards; undoable, saved
 - ✅ Same tab in multiple windows: opt-in (Settings ▸ Tabs), Arc's model: the tab loads once and moves to the window you pick it in; the other window shows "Open in another window · Show Here" and takes it back when it's in front
 - ⏳ AI tab tidying: Apple on-device model, off by default, enable in Settings, never automatic unless enabled

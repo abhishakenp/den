@@ -140,6 +140,8 @@ for sc in Calendar Folder Gmail; do  # tab cards and the PR peek: ONLY=cards
   shot preview-$n-dark preview$sc dark 5
 done
 shot library-footer libraryFooter light 4
+# The link status pill (Arc): a plain hover over a link, after the full address shows.
+soft shot link-status linkStatus light 6
 shot library-footer-dark libraryFooter dark 4
 # Library ▸ Downloads with the sidebar's download ring, and the upload picker (DownloadScenarios.swift).
 shot downloads downloads light 4

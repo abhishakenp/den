@@ -296,7 +296,7 @@ struct PreviewsTests {
     #expect(m.fetches.isEmpty && m.cards.isEmpty && m.snapshots.isEmpty)
     #expect(core.requests.inFlight == 0)
     // The link listener is installed (a few passive listeners), nothing else.
-    #expect(m.calls.filter { $0.0 == "webviews" }.map { $0.1 } == ["watchLinks"])
+    #expect(m.calls.filter { $0.0 == "webviews" }.map { $0.1 } == ["watchLinks", "watchStatus"])
     #expect(m.calls.first { $0.1 == "watchLinks" }?.2.s("modifier") == "shift")
   }
 
@@ -531,6 +531,50 @@ struct PreviewsTests {
     #expect(Self.words(m.card).contains("Show 2 failures"))
     #expect(Self.tips(m.card).contains("Open in Peek  ⇧-click") && !Self.tips(m.card).contains("Pin Tab"))
     #expect(!m.fetches.contains { $0["stopAfter"] == "</head>" })
+  }
+
+  @Test func statusPillWords() {
+    func p(_ u: String, _ full: Bool = false) -> [String] { let r = PreviewsCore.statusParts(u, full: full); return [r.lead, r.text] }
+    #expect(p("https://www.example.org/docs/start?x=1#top") == ["example.org", "/docs/start"])
+    #expect(p("https://www.example.org/docs/start?x=1#top", true) == ["example.org", "/docs/start?x=1#top"])
+    #expect(p("http://Example.org/") == ["example.org", ""])
+    #expect(p("https://example.org") == ["example.org", ""])
+    #expect(p("https://user@git.example.org:8443/a") == ["git.example.org:8443", "/a"])
+    #expect(p("https://fr.wikipedia.org/wiki/%C3%89t%C3%A9") == ["fr.wikipedia.org", "/wiki/\u{00C9}t\u{00E9}"])
+    #expect(p("mailto:hi@example.org") == ["", "mailto:hi@example.org"])
+    let long = "https://example.org/" + String(repeating: "abcdef/", count: 20)
+    let short = p(long)[1]
+    #expect(short.utf8.count <= PreviewsCore.statusPathMax + 3 && short.hasSuffix("…"))
+    #expect(p(long, true)[1].count == 141)
+    // Cut on a character boundary, never inside one.
+    #expect(PreviewsCore.cut("ééééé", 5) == "éé…")
+  }
+
+  @Test func statusPillFollowsTheLinkAndShowsTheWholeAddressAfterAWhile() {
+    let h = Harness()
+    let m = Mock()
+    let core = start(h, m)
+    let pill = h.rt.ui.statusPill
+    #expect(h.rt.webviews.links.status)  // on by default
+    h.rt.plugins.emit("webviews.linkStatus", ["id": "tab-1", "url": "https://www.example.org/docs/start?x=1"])
+    #expect(pill.showing && pill.shownText == "example.org/docs/start")
+    #expect(h.timers.count == 1 && h.timers[0].0 == 1500)
+    h.fireTimers()
+    #expect(pill.shownText == "example.org/docs/start?x=1")
+    // A later link: the old timer does nothing.
+    h.rt.plugins.emit("webviews.linkStatus", ["id": "tab-1", "url": "https://webkit.org/"])
+    #expect(pill.shownText == "webkit.org" && h.timers.count == 1)  // nothing more to show: no timer
+    h.fireTimers()
+    #expect(pill.shownText == "webkit.org")
+    h.rt.plugins.emit("webviews.linkStatus", ["id": "tab-1", "url": ""])
+    #expect(!pill.showing && core.statusURL == nil)
+    // The setting turns it off, script and all.
+    h.rt.call("settings", "set", ["id": "previews", "key": "status", "value": false])
+    #expect(!h.rt.webviews.links.status)
+    h.rt.plugins.emit("webviews.linkStatus", ["id": "tab-1", "url": "https://webkit.org/"])
+    #expect(!pill.showing)
+    h.rt.call("settings", "set", ["id": "previews", "key": "status", "value": true])
+    #expect(h.rt.webviews.links.status)
   }
 
   @Test func linkPreviewSettings() {
