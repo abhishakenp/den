@@ -215,7 +215,7 @@ menu() { # name appearance [scenario] — the space menu needs the plugins' firs
   build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario "${3:-contextMenu}" --exit-after 8 &
   local pid=$!; sleep 3.5
   local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; for w in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where w[kCGWindowOwnerPID as String] as? Int32 == p && w[kCGWindowLayer as String] as? Int == 101 { print(w[kCGWindowNumber as String]!) }' $pid | head -1)
-  [[ -n $id ]] && screencapture -o -x -l$id "$out/$_n.png"
+  if [[ -n $id ]]; then screencapture -o -x -l$id "$out/$_n.png" || print -u2 "warning: screencapture failed for $_n"; else print -u2 "warning: no window to capture for $_n"; fi
   kill -9 $pid 2>/dev/null || true; wait $pid 2>/dev/null || true
 }
 if [[ -z ${ONLY:-} ]]; then menu context-menu light; menu context-menu-dark dark; fi
@@ -234,7 +234,7 @@ win() { # name scenario appearance width
   build/den.app/Contents/MacOS/den --background --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario "$2" --exit-after 10 &
   local pid=$!; sleep 5
   local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; let w = Double(CommandLine.arguments[2])!; for x in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where x[kCGWindowOwnerPID as String] as? Int32 == p { let b = x[kCGWindowBounds as String] as! [String: Any]; if abs((b["Width"] as! Double) - w) < 2 { print(x[kCGWindowNumber as String]!) } }' $pid $4 | head -1)
-  [[ -n $id ]] && screencapture -o -x -l$id "$out/$_n.png"
+  if [[ -n $id ]]; then screencapture -o -x -l$id "$out/$_n.png" || print -u2 "warning: screencapture failed for $_n"; else print -u2 "warning: no window to capture for $_n"; fi
   kill -9 $pid 2>/dev/null || true; wait $pid 2>/dev/null || true
 }
 for sc in "" Tabs Search Connections Briefing; do
