@@ -106,6 +106,10 @@ public final class WebRecord {
 ///                                                 media, is in picture in picture, uses the camera/mic or holds
 ///                                                 unsaved form input: {suspended: false, reason}
 ///   setMuted {id, muted}                       -> mutes the page (all frames, WebAudio too); kept across discards
+///   pauseMedia {id}                            -> pauses every video and audio element of a page that is not on screen
+///                                                 (no window, no PiP): {paused: true} or {paused: false, reason}
+///   setAutoplay {allowed}                      -> all web views: whether media may start without a click. Applies to
+///                                                 pages created from now on (WebKit fixes it per configuration)
 ///   snapshot {id, path, width?, format?}      -> {pending}; later event webviews.snapshot {id, path, ok}
 ///                                                 width (pt) makes a small copy (hover previews); format png|jpeg
 ///   eval {id, plugin, script, request?, timeoutMs?} -> {request}; later webviews.evalResult {request, webview, ok, value | error}
@@ -187,6 +191,10 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
     if method == "setMenu" { return scripting.setMenu(args) }
     if method == "setContentRules" { return scripting.setContentRules(args) }
+    if method == "setAutoplay" {
+      autoplayAllowed = args.flag("allowed", true)
+      return .ok
+    }
     var args = args
     // Page actions (menu bar): `id` defaults to the page in front (peek, else the focused pane).
     if args.str("id").isEmpty, PageActions.methods.contains(method) || ["back", "forward", "reload", "stop", "get"].contains(method),
@@ -208,6 +216,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     case "close": close(r)
     case "suspend": return suspend(r, force: args.flag("force"))
     case "setMuted": setMuted(r, args.flag("muted"))
+    case "pauseMedia": return pauseMedia(r)
     case "snapshot":
       if !args["rect"].isNull || args.flag("full") || args.flag("clipboard") || !args.str("folder").isEmpty { return capture(r, args) }
       snapshot(r, path: args.str("path"), width: args["width"].double.map { CGFloat($0) }, jpeg: args.str("format") == "jpeg")
@@ -250,6 +259,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
     config.preferences.isElementFullscreenEnabled = true
     config.preferences.inactiveSchedulingPolicy = .suspend
+    if !autoplayAllowed { config.mediaTypesRequiringUserActionForPlayback = .all }
     config.applicationNameForUserAgent = Self.applicationNameForUserAgent
     // Picture in picture is off in WKWebView on macOS unless this (private) preference is set:
     // without it `requestPictureInPicture()` fails with NotSupportedError. KVC finds the
@@ -359,7 +369,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   }
 
   func mediaValue(_ m: PageMedia) -> Value {
-    ["playing": .bool(m.playing), "pip": .bool(m.pip), "dirty": .bool(m.dirty), "video": m.video ?? .null]
+    ["playing": .bool(m.playing), "audible": .bool(m.audible), "pip": .bool(m.pip), "dirty": .bool(m.dirty), "video": m.video ?? .null]
   }
 
   /// Tests only: WebContent pids of every web view destroyed so far, so a test harness can check
@@ -401,6 +411,20 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     records[r.id] = nil
     order.removeAll { $0 == r.id }
     host.emit("webviews.closed", ["id": .string(r.id)])
+  }
+
+  /// `setAutoplay`: false makes media in pages created from now on wait for a click.
+  public private(set) var autoplayAllowed = true
+
+  /// Pauses a background page's media (battery saver). A page on screen (a pane, peek, Little
+  /// Arc, the mini player) or in picture in picture keeps playing.
+  func pauseMedia(_ r: WebRecord) -> Value {
+    guard let w = r.webView else { return ["paused": false, "reason": "notLive"] }
+    if r.media.pip { return ["paused": false, "reason": "pip"] }
+    if w.window != nil { return ["paused": false, "reason": "visible"] }
+    guard r.media.playing else { return ["paused": false, "reason": "notPlaying"] }
+    w.pauseAllMediaPlayback {}
+    return ["paused": true]
   }
 
   /// Why a live page must not be discarded right now, or nil. Checked on every idle discard; an

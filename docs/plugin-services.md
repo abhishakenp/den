@@ -63,6 +63,9 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 | `rename` | `id`, `title` (empty string clears it) | ok |
 | `navigate` | `id?` (default: selected), `url` | ok |
 | `clearToday` | `spaceId?` | ok. Shows the "Cleared tabs" toast with undo |
+| `unloadSpace` | `spaceId?` | `{unloaded}`. Discards every live tab of the space except the one on screen (⌃⌘U, the space's menu); the host still refuses tabs with media, capture or unsaved input. Shows a toast |
+| `keepActive` | `id?` | `[host]`. With `id`, toggles that tab's site on the "Always keep active" list (never idle-unloaded, media never paused) |
+| `energy` | – | `{batterySaver, saving, battery, lowPower, suspendAfterMs, keepActive}`: what the energy policy sees now (`suspendAfterMs` is the effective one) |
 | `undo` | – | ok. Undoes the last sidebar action |
 | `archive` | – | `[{id, title, url, favicon, closedAt, spaceId}]` |
 | `restore` | `id` | `{id}` |
@@ -72,7 +75,7 @@ Tab object: `{id, spaceId, kind: favorite|pinned|today, folderId?, title, custom
 | `deleteFolder` | `id` | ok. Archives the tabs inside it (the menu confirms first) |
 | `split` | `ids` (tab ids), `layout: horizontal\|vertical\|grid` (default horizontal), `focus?` | `{id}` of the split. If one of the tabs is already in a split, the others join it, next to their neighbour in `ids`; otherwise a new split takes the first tab's place. At most 4 tabs. Selects `focus` (default: the last id) |
 | `unsplit` | `id`: a split id ("Separate All Tabs"), or a tab id (only that tab leaves, placed after the split) | ok |
-| `settings` | `archiveAfterMs?` (0 = never, default 24 h), `suspendAfterMs?` (0 = never, default 5 min of den-frontmost time: then the page is discarded, see below), `groupLinks?` (default true) | `{archiveAfterMs, suspendAfterMs, groupLinks}` |
+| `settings` | `archiveAfterMs?` (0 = never, default 24 h), `suspendAfterMs?` (0 = never, default 5 min of den-frontmost time: then the page is discarded, see below), `groupLinks?` (default true), `batterySaver?` (default true) | `{archiveAfterMs, suspendAfterMs, groupLinks, batterySaver}` |
 | `library` | `open?` (default true), `section?` (`archive` default, or `downloads`) | ok. Opens (or closes) the Library sheet |
 | `pillButtons` | `webview`, `owner` (the calling plugin), `buttons: [{id, icon, tooltip?, active?}]` (`[]` removes) | ok. Another plugin's page actions in the URL pill while that web view's tab is selected (the `pagetools` Reader and Translate buttons). A click emits `ui.action {id: <button id>, action: click, value: {webview}}` |
 

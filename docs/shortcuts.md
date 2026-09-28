@@ -31,6 +31,7 @@ Chords are `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f
 | Pin / unpin | – | – | ⌘D | ⌘D | `tabs.pin` |
 | Clear Today tabs | – | – | ⇧⌘K | ⇧⌘K (undo with ⌃Z) | `tabs.clear` |
 | Undo sidebar action | – | – | ⌃Z (toast) | ⌃Z | `tabs.undo` |
+| Unload space (free every loaded tab but the one on screen) | – | – | – | ⌃⌘U (also in the space's menu) | `spaces.unload` |
 | Open Peek / mini window in space | – | – | ⌘O | ⌘O | `file.openInSpace` |
 | New window | ⌘N | ⌘N | ⌘N | – | den has one window with every space in it (Arc's windows share spaces too). Not planned yet |
 | New private window | ⇧⌘N | ⇧⌘N | ⇧⌘N | – | Needs private tabs; the `private` web profile exists, the UI doesn't yet |

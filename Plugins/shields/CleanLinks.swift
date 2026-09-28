@@ -173,13 +173,3 @@ enum CleanLinks {
     return String(decoding: out, as: UTF8.self)
   }
 }
-
-extension Text {
-  static func hasSuffix(_ s: String, _ p: String) -> Bool {
-    let a = Array(s.utf8), b = Array(p.utf8)
-    guard a.count >= b.count else { return false }
-    let off = a.count - b.count
-    for j in 0..<b.count where a[off + j] != b[j] { return false }
-    return true
-  }
-}

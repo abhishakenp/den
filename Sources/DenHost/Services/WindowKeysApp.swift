@@ -223,11 +223,13 @@ public final class KeysService: NSObject, HostService, NSMenuItemValidation {
 ///   defaultBrowser               -> {bundleId, name, isDefault}: the app that opens https links now
 ///   info                         -> {bundleId, version, launchMs}
 ///   copy {text}                  -> puts text on the general pasteboard
-///   state                        -> {active, idleSeconds, keyIdleSeconds}: frontmost, and time since any input / a key press
+///   state                        -> {active, idleSeconds, keyIdleSeconds, battery, lowPower}: frontmost, time since
+///                                   any input / a key press, running on battery, Low Power Mode on
 ///   relaunch {background?}       -> quits cleanly (no quit dialog) and relaunches; `background` doesn't take focus
 ///   setAbout {credits}           -> text shown in the About panel
 ///   showAbout                    -> shows the About panel
-/// Events: app.quitRequested, app.closeRequested, app.openURL {urls: [string]}, app.active {active}
+/// Events: app.quitRequested, app.closeRequested, app.openURL {urls: [string]}, app.active {active},
+///   app.power {battery, lowPower} (either changed)
 @MainActor
 public final class AppService: HostService {
   public let name = "app"
@@ -255,6 +257,24 @@ public final class AppService: HostService {
         MainActor.assumeIsolated { self?.host.emit("app.active", ["active": .bool(on)]) }
       }
     }
+    // `app.power {battery, lowPower}`: plugins that save energy on battery (tabs' battery saver)
+    // follow it. Both sources are notifications: no polling, no wakeups while nothing changes.
+    power = PowerState.read()
+    PowerState.watch { [weak self] in self?.powerChanged() }
+    NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in
+      MainActor.assumeIsolated { self?.powerChanged() }
+    }
+  }
+
+  private(set) var power = PowerState(battery: false, lowPower: false)
+  /// Tests: stands in for the Mac's power source and Low Power Mode.
+  public var powerOverride: PowerState? { didSet { powerChanged() } }
+
+  func powerChanged() {
+    let now = powerOverride ?? PowerState.read()
+    guard now != power else { return }
+    power = now
+    host.emit("app.power", ["battery": .bool(now.battery), "lowPower": .bool(now.lowPower)])
   }
 
   public func handle(method: String, args: Value) -> Value {
@@ -324,7 +344,9 @@ public final class AppService: HostService {
       // Generic signals for plugins that schedule work around the user (e.g. updates).
       let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
       let keyIdle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
-      return ["active": .bool(NSApp.isActive), "idleSeconds": .double(idle), "keyIdleSeconds": .double(keyIdle)]
+      let p = powerOverride ?? power
+      return ["active": .bool(NSApp.isActive), "idleSeconds": .double(idle), "keyIdleSeconds": .double(keyIdle),
+              "battery": .bool(p.battery), "lowPower": .bool(p.lowPower)]
     case "relaunch":
       // Quits cleanly (no quit dialog) and starts this app bundle again; `background` keeps the
       // new instance from taking focus.

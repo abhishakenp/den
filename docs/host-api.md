@@ -55,6 +55,8 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 | `inspect` | `id?`, `console?` | ok, or an error if WebKit has no entry point. Opens the Web Inspector (or its console) |
 | `viewSource` | `id?` | `{pending}`. Opens the page's current DOM as a new tab (see below) |
 | `suspend` | `id`, `force?` | `{suspended: true}`, or `{suspended: false, reason}`. Full discard: keeps `interactionState` (back/forward list and scroll, ~1 KB), destroys the WKWebView, and its WebContent process exits. The page's snapshot is already on disk (below). Without `force` it refuses a page that plays media (`media`), is in picture in picture (`pip`), uses the camera or microphone (`capture`), holds unsaved form input (`form`), or is on screen (`visible`: a pane, peek, Little Arc, the mini player) |
+| `pauseMedia` | `id` | `{paused: true}`, or `{paused: false, reason: notLive\|pip\|visible\|notPlaying}`. `pauseAllMediaPlayback` for a page that is not on screen (no window: not a pane, peek, Little Arc or the mini player) and not in picture in picture (battery saver) |
+| `setAutoplay` | `allowed` | ok. For every web view created from now on: `false` sets `mediaTypesRequiringUserActionForPlayback = .all` (media waits for a click). WebKit fixes it per configuration, so live pages keep theirs |
 | `setMuted` | `id`, `muted` | ok. WebKit's page mute (`_setPageMuted:`, Safari's tab mute): every frame, `<audio>`/`<video>` and WebAudio, without changing the page's own `muted`. Kept across discards while the tab lives. Emits `webviews.muted` |
 | `snapshot` | `id`, `path`, `width?` (pt; a small copy at 2x, for previews), `format?: png\|jpeg` | `{pending}`, then the event `webviews.snapshot {id, path, ok}`. A view that can't draw (not in the window) writes its last snapshot, if any |
 | `snapshot` (capture) | `id`, and any of `rect?: {x, y, width, height}` (CSS px of the document, scroll included), `full?`, `clipboard?`, `folder?` + `name?` | `{pending}`, then `webviews.snapshot {id, ok, path?, clipboard, width, height, bytes, error?}` (pixels). See [Capture](#capture) |
@@ -62,7 +64,7 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 | `inject` | `id`, `plugin`, `files?: [name]` (from the plugin's resource folder), `global?`, `script?` (function body, ≤ 64 KB), `args?` (named arguments of `script`), `request?` | `{request}`, then `webviews.injectResult {request, webview, plugin, ok, value \| error}`. See [Plugins in pages](#plugins-in-pages) |
 | `setMenu` | `plugin`, `items: [{id, title, when?: selection\|any}]` (`[]` removes) | ok. Picking one emits `webviews.menu {id, webview, plugin}` |
 | `setContentRules` | `plugin`, `rules: [WebKit content rule]` (`[]` removes) | `{pending}`, then `webviews.contentRules {plugin, ok, count, error?}` |
-| `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted, media: {playing, pip, dirty, video?}, suspended, live, profile, snapshot, zoom}` |
+| `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted, media: {playing, audible, pip, dirty, video?}, suspended, live, profile, snapshot, zoom}` |
 | `list` | – | `[id]` |
 | `setLinkPolicy` | `id` (or `"*"` for the default), `rules: [{when: crossSite\|sameSite\|any, hosts?: [suffix], modifiers?: [cmd,shift,opt,ctrl], event}]` | ok |
 | `watchLinks` | `modifier: shift\|none\|off`, `yieldTo?: [css selector]` | ok. For every web view, now and later: reports the link under the pointer (`webviews.linkHover` / `webviews.linkHoverEnd`). `shift` reports only while Shift is held, `none` on plain hover, `off` removes the script and handler. Nothing is installed until a plugin calls it |
@@ -553,14 +555,14 @@ Lets a plugin hide features whose provider isn't loaded.
 | `defaultBrowser` | – | `{bundleId, name, isDefault}`: the app that opens https links now |
 | `info` | – | `{bundleId, version, launchMs}` |
 | `copy` | `text` | ok. Puts the text on the general pasteboard |
-| `state` | – | `{active, idleSeconds, keyIdleSeconds}`: whether den is frontmost, and the time since any input or a key press |
+| `state` | – | `{active, idleSeconds, keyIdleSeconds, battery, lowPower}`: whether den is frontmost, the time since any input or a key press, whether the Mac runs on battery, and Low Power Mode |
 | `relaunch` | `background?` | ok. Quits cleanly (no quit dialog) and starts den again. With `background`, it doesn't take focus |
 | `setAbout` | `credits` | ok. Text for the About panel |
 | `showAbout` | – | ok. Shows the About panel (the command bar's "About den") |
 | `paths` | – | `{home, downloads, pictures, desktop}` |
 | `chooseFolder` | `request?`, `message?`, `prompt?` | `{pending}`. An open panel (a sheet on den's window); emits `app.folder {request, path}` (`""` when cancelled) |
 
-Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`, `app.folder`, `app.active {active}` (den became or stopped being the frontmost app).
+Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`, `app.folder`, `app.active {active}` (den became or stopped being the frontmost app), `app.power {battery, lowPower}` (the power source or Low Power Mode changed; IOKit's power-source notification and `NSProcessInfoPowerStateDidChange`, no polling).
 
 **Non-US keyboards** (`KeyLayoutFallback`). Key equivalents match the character a key types. A ⌘/⌃ key whose character matches no menu item, and that is either not ASCII (Cyrillic, Greek, é) or ASCII punctuation where a US keyboard has a digit or symbol (AZERTY's number row, a dead key), runs the menu item at that key's US position instead: ⌃& on AZERTY is ⌃1, ⌘ц on a Russian layout is ⌘W. A Latin letter or digit typed as itself never falls back (Dvorak, QWERTZ). One dictionary lookup per ⌘/⌃ key press.
 

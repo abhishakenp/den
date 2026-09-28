@@ -26,6 +26,7 @@ struct ShortcutTests {
     ("cmd+1", .event("tabs.key.nth")), ("cmd+5", .event("tabs.key.nth")), ("cmd+9", .event("tabs.key.nth")),
     ("cmd+d", .event("tabs.key.pin")), ("cmd+shift+k", .event("tabs.key.clear")), ("ctrl+z", .event("tabs.key.undo")),
     ("cmd+opt+w", .event("tabs.key.closeOthers")), ("cmd+opt+t", .event("tabs.key.newTabInFolder")), ("cmd+ctrl+n", .event("tabs.key.newFolder")),
+    ("cmd+ctrl+u", .event("tabs.key.unloadSpace")),
     ("cmd+o", .event("peek.key.expand")),
     // Navigation
     ("cmd+[", .event("tabs.key.back")), ("cmd+]", .event("tabs.key.forward")),

@@ -149,6 +149,11 @@ final class TabsCore {
   var fgLastUse: [String: Int64] = [:]
   /// The most recently used tabs are never discarded for idleness (Dia 1.5/1.8).
   static let protectedRecent = 5
+  /// Battery saver setting (TabsEnergy.swift), the Mac's power state, and sites kept active.
+  var batterySaver = true
+  var power: (battery: Bool, lowPower: Bool) = (false, false)
+  var keepActive: [String] = []
+  var settingsSubscribed = false
 
   init(env: PluginEnv) { self.env = env }
 
@@ -162,6 +167,7 @@ final class TabsCore {
     setActive(env.call("app", "state").b("active"))
     bindKeys()
     subscribe()
+    startEnergy()
     registerSettings()
     startDownloads()
     renderAll()
@@ -491,6 +497,19 @@ final class TabsCore {
       changed(spaceOf(id))
     case "clearToday":
       clearToday(args.sOpt("spaceId") ?? currentSpace)
+    case "unloadSpace":
+      return ["unloaded": .int(Int64(unloadSpace(args.sOpt("spaceId") ?? currentSpace)))]
+    case "keepActive":
+      // {id}: toggles the tab's site on the "Always keep active" list; no id: the list.
+      if let id = args.sOpt("id") {
+        guard tabs[id] != nil else { return .err("tabs: no tab '" + id + "'") }
+        toggleKeepActive(id)
+      }
+      return .array(keepActive.map { .string($0) })
+    case "energy":
+      // What the energy policy sees now (tests, the command bar).
+      return ["batterySaver": .bool(batterySaver), "saving": .bool(saving), "battery": .bool(power.battery), "lowPower": .bool(power.lowPower),
+              "suspendAfterMs": .int(effectiveSuspendAfterMs), "keepActive": .array(keepActive.map { .string($0) })]
     case "undo":
       guard undo() else { return .err("tabs: nothing to undo") }
     case "archive":
@@ -548,7 +567,14 @@ final class TabsCore {
         groupLinks = g
         env.call("settings", "set", ["id": .string(Self.ns), "key": "groupLinks", "value": .bool(g)])
       }
-      let v: Value = ["archiveAfterMs": .int(archiveAfterMs), "suspendAfterMs": .int(suspendAfterMs), "groupLinks": .bool(groupLinks)]
+      if let b = args["batterySaver"].bool, b != batterySaver {
+        batterySaver = b
+        saveEnergy()
+        applySaver()
+        env.call("settings", "set", ["id": .string(Self.ns), "key": "batterySaver", "value": .bool(b)])
+      }
+      let v: Value = ["archiveAfterMs": .int(archiveAfterMs), "suspendAfterMs": .int(suspendAfterMs), "groupLinks": .bool(groupLinks),
+                      "batterySaver": .bool(batterySaver)]
       if !args.isNull {
         env.call("storage", "set", ["ns": .string(Self.ns), "key": "settings", "value": v])
         // Keep the Settings window in step (a no-op when the change came from it).
@@ -1318,14 +1344,15 @@ final class TabsCore {
     if !on, let s = activeSince { fgAccum += now - s; activeSince = nil }
   }
 
-  /// Tabs that may be discarded now: off screen, not among the most recently used, and unused
-  /// for `suspendAfterMs` of den-frontmost time.
+  /// Tabs that may be discarded now: off screen, not among the most recently used, not a site
+  /// kept active, and unused for `suspendAfterMs` of den-frontmost time (a minute with battery
+  /// saver on, on battery or in Low Power Mode).
   func idleCandidates() -> [String] {
-    let onScreen = Set(splitOf(shown).flatMap { splits[$0]?.children } ?? [shown])
+    let onScreen = onScreenTabs()
     let recent = Set(mru.filter { tabs[$0] != nil }.prefix(Self.protectedRecent))
-    let fg = fgNow()
+    let fg = fgNow(), after = effectiveSuspendAfterMs
     return tabs.keys.sorted().filter { id in
-      !onScreen.contains(id) && !recent.contains(id) && fg - (fgLastUse[id] ?? 0) > suspendAfterMs
+      !onScreen.contains(id) && !recent.contains(id) && fg - (fgLastUse[id] ?? 0) > after && !isKeptActive(id)
     }
   }
 
@@ -1462,19 +1489,42 @@ final class TabsCore {
         ["key": "groupLinks", "type": "toggle", "title": "Group ⌘-clicked links",
          "subtitle": "Command-clicking a link opens it in the background, in a group with the tab it came from. Off: a plain background tab.",
          "default": .bool(groupLinks)],
+        ["key": "batterySaver", "type": "toggle", "title": "Battery saver",
+         "subtitle": "On battery or in Low Power Mode, idle tabs unload after 1 minute, videos in background tabs pause, and new pages don't play videos by themselves. Music keeps playing.",
+         "default": .bool(batterySaver)],
+        ["key": "keepActive", "type": "list", "title": "Always keep active",
+         "subtitle": "Tabs of these sites never unload when idle and their media is never paused. Unload Space (Control-Command-U) still unloads them.",
+         "items": .array(keepActive.map { h -> Value in ["id": .string(h), "title": .string(h), "icon": "sf:bolt", "buttons": [["id": "remove", "title": "Remove"]]] }),
+         "empty": "No sites yet. Right-click a tab and choose “Keep Site Active”."],
       ],
     ])
-    guard !r.isErr else { return }  // an older host without Settings
+    guard !r.isErr, !settingsSubscribed else { return }  // an older host without Settings; subscribed once
+    settingsSubscribed = true
     let v = env.call("settings", "get", ["id": .string(Self.ns)])
     applySetting("archiveAfterMs", v["archiveAfterMs"])
     applySetting("suspendAfterMinutes", v["suspendAfterMinutes"])
     applySetting("groupLinks", v["groupLinks"])
+    applySetting("batterySaver", v["batterySaver"])
     env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { applySetting(v.s("key"), v["value"]) } }
+    env.on("settings.action") { [self] v in
+      guard v.s("id") == Self.ns, v.s("key") == "keepActive", v.s("button") == "remove" else { return }
+      keepActive.removeAll { $0 == v.s("item") }
+      saveEnergy()
+      registerSettings()
+      renderAll()
+    }
   }
 
   func applySetting(_ key: String, _ v: Value) {
     if key == "groupLinks" {
       if let b = v.bool { groupLinks = b }
+      return
+    }
+    if key == "batterySaver" {
+      guard let b = v.bool, b != batterySaver else { return }
+      batterySaver = b
+      saveEnergy()
+      applySaver()
       return
     }
     guard let n = v.int ?? v.double.map({ Int64($0) }) else { return }
@@ -1502,7 +1552,9 @@ final class TabsCore {
         }
       }
     }
-    if suspendAfterMs > 0 {
+    // Media nobody sees or hears pauses first, so its tab can unload below.
+    pauseBackgroundMedia(userIdle: (env.call("app", "state")["idleSeconds"].double ?? 0) >= Self.idlePauseSeconds)
+    if effectiveSuspendAfterMs > 0 {
       // Idle discard, counted in den-frontmost time, never for the most recently used tabs. The
       // host refuses what must stay (on screen, media, PiP, camera/mic, unsaved input) and says
       // why; such a tab is asked again on the next tick.
@@ -1681,6 +1733,12 @@ final class TabsCore {
       m.append(item("replacePinned", "Replace Pinned URL with Current", "sf:pin"))
     }
     m.append(["separator": true])
+    if siteOf(id) != nil {
+      var keep = item("keepActive", "Keep Site Active", "sf:bolt")
+      keep.put("checked", .bool(isKeptActive(id)))
+      m.append(keep)
+    }
+    m.append(["separator": true])
     if k == "today" { m.append(item("pin", "Pin Tab", "sf:pin", "tabs.key.pin")) }
     if k == "pinned" { m.append(item("unpin", "Unpin Tab", "sf:pin.slash", "tabs.key.pin")) }
     if k != "favorite" && favorites.count < Self.maxFavorites { m.append(item("favorite", "Add to Favorites", "sf:star")) }
@@ -1728,6 +1786,7 @@ final class TabsCore {
       ("cmd+shift+t", "tabs.key.reopen", "Restore Last Closed Tab", "File"),
       ("cmd+d", "tabs.key.pin", "Pin/Unpin Tab", "Tabs"),
       ("cmd+shift+k", "tabs.key.clear", "Clear Unpinned Tabs", "Tabs"),
+      ("cmd+ctrl+u", "tabs.key.unloadSpace", "Unload Space", "Spaces"),
       ("ctrl+tab", "tabs.key.recent", "Switch to Recent Tab", "Tabs"),
       ("ctrl+shift+tab", "tabs.key.recentBack", "Switch to Oldest Recent Tab", "Tabs"),
       // Arc's ⌥⌘↑/↓ first (shown in the menu), then Safari's and Chrome's ⌘⇧[ / ⌘⇧] (docs/shortcuts.md).
@@ -1780,7 +1839,10 @@ final class TabsCore {
     env.on("tabs.key.closeOthers") { [self] _ in if let id = selectedId { closeMany(id, "others") } }
     env.on("tabs.key.newTabInFolder") { [self] _ in newTabInFolder(nil) }
     env.on("tabs.key.newFolder") { [self] _ in folderFromSelection() }
-    env.on("app.active") { [self] v in setActive(v.b("active")) }
+    env.on("app.active") { [self] v in
+      setActive(v.b("active"))
+      if !v.b("active") { closeBlankTabs() }
+    }
     env.on("ai.result") { [self] v in nameArrived(v) }
     env.on("tabs.key.undo") { [self] _ in _ = undo() }
     env.on("spaces.library") { [self] _ in openLibrary() }
@@ -2284,6 +2346,7 @@ final class TabsCore {
     case "duplicate": _ = duplicate(id)
     case "rename": beginRename(id)
     case "mute", "unmute": toggleMute(id)
+    case "keepActive": toggleKeepActive(id)
     case "reset": reset(id)
     case "replacePinned":
       checkpoint()

@@ -275,6 +275,9 @@ final class SpacesCore {
       ["id": "moveLeft", "title": "Move Left", "icon": "sf:arrow.left", "enabled": .bool(i > 0)],
       ["id": "moveRight", "title": "Move Right", "icon": "sf:arrow.right", "enabled": .bool(i < spaces.count - 1)],
       ["separator": true],
+      // Frees every loaded tab of the space but the one on screen (the tabs plugin decides).
+      ["id": "unload", "title": "Unload Space", "icon": "sf:moon.zzz", "key": .string(s.id == current ? "cmd+ctrl+u" : "")],
+      ["separator": true],
       ["id": "new", "title": "New Space", "icon": "sf:plus"],
       ["separator": true],
       ["id": "delete", "title": "Delete Space…", "icon": "sf:trash", "destructive": true, "enabled": .bool(spaces.count > 1)],
@@ -354,6 +357,7 @@ final class SpacesCore {
     case "moveLeft", "moveRight":
       _ = handle("move", ["id": .string(sid), "index": .int(Int64(i + (item == "moveLeft" ? -1 : 1)))])
     case "new": newSpace()
+    case "unload": env.call("tabs", "unloadSpace", ["spaceId": .string(sid)])
     case "delete": confirmDelete(sid)
     case "profile.new":
       // A new profile named after the space ("Work", or "Work 2" if taken): its own cookies and site data.

@@ -106,6 +106,52 @@ struct MediaTests {
     mock.stop()
   }
 
+  /// Battery saver's host half: `pauseMedia` pauses a page that is off screen and refuses one on
+  /// screen; `setAutoplay` makes new pages wait for a click; `app.power` reports the power state.
+  @Test func pauseMediaAutoplayAndPower() async throws {
+    let rt = ServiceTests.runtime()
+    rt.window.window.orderFront(nil)
+    defer { rt.window.window.orderOut(nil) }
+    let mock = try Self.served()
+    let id = rt.call("webviews", "create", ["id": "p", "url": .string(mock.base + "/v.html")])["id"].string!
+    let other = rt.call("webviews", "create", ["id": "q"])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    let web = try #require(rt.webviews.record(id)?.webView)
+    #expect(await wait { !web.isLoading && web.url != nil })
+    // Muted, so the mini player leaves it alone.
+    _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.muted = true; await v.play(); return true")
+    #expect(await wait { rt.webviews.record(id)?.media.playing == true })
+    #expect(rt.call("webviews", "get", ["id": .string(id)])["media"]["audible"] == false)
+    #expect(rt.call("webviews", "pauseMedia", ["id": .string(id)])["reason"] == "visible")
+    _ = rt.call("content", "show", ["panes": [.string(other)]])
+    #expect(await wait { web.window == nil })
+    #expect(rt.call("webviews", "pauseMedia", ["id": .string(id)])["paused"] == true)
+    let paused = { await Wait.asyncJS(web, "return document.querySelector('video').paused", seconds: 5) as? Bool }
+    #expect(await Wait.until("the background video paused") { await paused() == true })
+    #expect(await wait { rt.webviews.record(id)?.media.playing == false })
+    #expect(rt.call("webviews", "pauseMedia", ["id": .string(id)])["reason"] == "notPlaying")
+
+    // Autoplay: pages created from now on need a click to play.
+    #expect(rt.webviews.record(other)?.webView?.configuration.mediaTypesRequiringUserActionForPlayback != .all)
+    #expect(rt.call("webviews", "setAutoplay", ["allowed": false]) == .ok)
+    let third = rt.call("webviews", "create", ["id": "r"])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(third)]])
+    #expect(rt.webviews.record(third)?.webView?.configuration.mediaTypesRequiringUserActionForPlayback == .all)
+    _ = rt.call("webviews", "setAutoplay", ["allowed": true])
+
+    // Power: app.state carries it, a change is an event.
+    var events: [Value] = []
+    _ = rt.plugins.on("app.power") { events.append($0) }
+    let state = rt.call("app", "state")
+    #expect(state["battery"].bool != nil && state["lowPower"].bool != nil)
+    rt.app.powerOverride = PowerState(battery: true, lowPower: false)
+    rt.app.powerOverride = PowerState(battery: true, lowPower: false)  // no change, no event
+    rt.app.powerOverride = PowerState(battery: true, lowPower: true)
+    #expect(events.map { $0["battery"] } == [true, true] && events.map { $0["lowPower"] } == [false, true])
+    #expect(rt.call("app", "state")["lowPower"] == true)
+    mock.stop()
+  }
+
   @Test func playerGeometry() {
     let vf = NSRect(x: 0, y: 0, width: 1440, height: 900)
     let f = MiniPlayerPanel.frame(corner: .bottomRight, size: NSSize(width: 400, height: 225), in: vf)

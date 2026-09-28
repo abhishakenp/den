@@ -113,6 +113,7 @@ public enum MainMenu {
       Entry("spaces.theme", "Edit Theme Color…", "", .command("den.theme")), .sep,
       Entry("spaces.next", "Next Space", "", .event("spaces.key.next")),
       Entry("spaces.prev", "Previous Space", "", .event("spaces.key.prev")), .sep,
+      Entry("spaces.unload", "Unload Space", "", .event("tabs.key.unloadSpace")), .sep,
       Entry("spaces.jump", "Space", "", .event("spaces.key.jump")),
     ]),
     ("Tabs", [
