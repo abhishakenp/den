@@ -254,6 +254,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     loadedDeferred = true
     let outcome = loader.loadDeferred()
     trace("plugins.deferred")
+    // Launch builds every plugin's state and the first sidebar trees at once; what that freed
+    // stays dirty in malloc until relieved (perf lab: ~2.6 MB with 200 tabs).
+    MemoryRelief.soon(after: 5)
     if traceOn || !outcome.failed.isEmpty { print("plugins loaded=\(outcome.loaded) failed=\(outcome.failed) crashed=\(outcome.crashed)") }
     updates?.crashed = outcome.crashed
     if let text = PluginLoader.crashToast(outcome.crashed) {

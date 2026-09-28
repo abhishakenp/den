@@ -199,7 +199,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `tokens` | – | den's theme tokens (`ThemeTokens`: space theme + appearance, contrast-checked) as CSS colors for UI drawn inside web pages: `{dark, bg, panel, text, secondary, border, hover, accent, onAccent, mark, shadow}` |
 | `menu` | `id` (a node on screen), `items` (the `menu` item shapes) | `{shown}`. A context menu built on demand: a row or tile that sends no `menu` emits `contextMenu` on right-click, and the plugin answers with this; it opens at the pointer, and a pick emits the node's `menu` action. `tabs` works this way, so hundreds of rows hold no menus |
 
-**Long lists are virtualized.** In a `list` inside a scroll view (the sidebar), `tabRow` and `splitRow` children (fixed height) get views only within 400 pt of the visible area and give them up beyond 1600 pt (unless hovered, pressed, focused or being renamed). Heights and order are unaffected; a row without a view is made from its latest value when it scrolls near.
+**Long lists are virtualized.** In a `list` inside a scroll view (the sidebar), `tabRow` and `splitRow` children (fixed height) get views only within 200 pt of the visible area and give them up beyond 1000 pt (unless hovered, pressed, focused or being renamed). Heights and order are unaffected; a row without a view is made from its latest value when it scrolls near.
 
 **Slots:**
 - `sidebar.header`, `sidebar.favorites`, `sidebar.footer`

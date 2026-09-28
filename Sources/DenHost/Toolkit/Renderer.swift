@@ -132,8 +132,8 @@ final class StackNode: NodeView {
   var slots: [NodeView?] = []
   var specs: [Value] = []
   var kids: [NodeView] { slots.compactMap { $0 } }
-  static let margin: CGFloat = 400
-  static let dropMargin: CGFloat = 1600
+  static let margin: CGFloat = 200
+  static let dropMargin: CGFloat = 1000
   private var scrollObserver: NSObjectProtocol?
 
   override func viewDidMoveToWindow() {

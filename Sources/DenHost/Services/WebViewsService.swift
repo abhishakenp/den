@@ -499,7 +499,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
           let bg = Self.backgroundColor(of: cg)
           // Give the freed bitmap and encoder buffers back to the system now rather than under
           // memory pressure (a moment later: the image is released when this block is).
-          DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 0.5) { malloc_zone_pressure_relief(nil, 0) }
+          MemoryRelief.soon()
           DispatchQueue.main.async {
             MainActor.assumeIsolated {
               if ok { r.snapshotPath = path.path }

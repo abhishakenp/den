@@ -48,7 +48,10 @@ log=$tmp/log
 # Store templates: "seeded" = den's first-run store (created by one throwaway launch), "empty" = the
 # same with zero tabs, "tabs200" = 200 never-loaded tabs and nothing selected (metadata only).
 mkdir -p $tmp/seeded
-$probe launch $app --runs 1 --warmup 0 -- --storage $tmp/seeded > /dev/null
+# 20 s: the first launch compiles the shields rule lists into the template, so every measured
+# launch starts like any launch after the first (a compile at launch leaves its working memory
+# behind; that case is scripts/perf/lab.sh emptycompile).
+$probe mem $app --settle 20 -- --storage $tmp/seeded > /dev/null
 cp -R $tmp/seeded $tmp/empty && $denstore empty-tabs $tmp/empty > /dev/null
 cp -R $tmp/seeded $tmp/tabs200 && $denstore tabs 200 $tmp/tabs200 > /dev/null
 fresh() { rm -rf $tmp/store; cp -R $tmp/$1 $tmp/store; }   # every measurement starts from a clean copy

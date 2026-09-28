@@ -6,6 +6,7 @@
 #   scenarios (default: empty tabs200 seeded):
 #     empty    zero tabs (den alone, no WebKit process)
 #     emptyload  the same, launched and measured while busy loops load every core
+#     emptycompile  the same with no compiled content rule lists (shields compiles at launch)
 #     tabs200  200 never-loaded tabs, nothing selected (per discarded tab = (tabs200 - empty) / 200)
 #     seeded   den's first-run store (its pages load)
 #     page     zero tabs + https://example.com, 45 s settle
@@ -36,7 +37,10 @@ codesign -d --entitlements - --xml $app 2>/dev/null | grep -q get-task-allow && 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp" "$bin"' EXIT
 mkdir -p $tmp/seeded
-$probe launch $app --runs 1 --warmup 0 -- --storage $tmp/seeded > /dev/null
+# 20 s, so the first launch finishes compiling the shields rule lists into the template (every
+# scenario but emptycompile then starts with them compiled, like any launch after the first).
+$probe mem $app --settle 20 -- --storage $tmp/seeded > /dev/null
+echo "template: $(ls $tmp/seeded/contentrules 2>/dev/null | wc -l | tr -d " ") compiled rule list files"
 cp -R $tmp/seeded $tmp/empty && $denstore empty-tabs $tmp/empty > /dev/null
 cp -R $tmp/seeded $tmp/tabs200 && $denstore tabs 200 $tmp/tabs200 > /dev/null
 if (( ${scenarios[(Ie)ubo]} )); then
@@ -69,9 +73,12 @@ for s in $scenarios; do
   hosts=() totals=()
   settle=${LAB_SETTLE:-10} url=()
   [[ $s == page || $s == ubo ]] && { settle=${LAB_SETTLE:-45}; url=(--url https://example.com); }
-  src=$s; [[ $s == page || $s == emptyload ]] && src=empty
+  src=$s; [[ $s == page || $s == emptyload || $s == emptycompile ]] && src=empty
   for i in $(seq 1 $reps); do
     fresh $src
+    # emptycompile: no compiled content rule lists, so shields compiles its lists at launch (a
+    # first launch, or the first after a list update).
+    [[ $s == emptycompile ]] && rm -rf $tmp/store/contentrules
     # The ubo store's extensions.json points at its own folder: rewrite for the copy.
     [[ -f $tmp/store/extensions/extensions.json ]] && sed -i '' "s#$tmp/ubo/#$tmp/store/#g" $tmp/store/extensions/extensions.json
     exec_args=()

@@ -368,9 +368,19 @@ public final class ExtensionsService: NSObject, HostService {
     retireTokens[id] = token
   }
 
+  /// WebKit turns a context's declarativeNetRequest rules into content rule lists in den's process,
+  /// in the background after `load` and after grant changes, with no signal when it's done. For
+  /// uBlock Origin Lite that job peaked at 622 MB and left 77 MB freed but dirty in den's
+  /// footprint (perf lab, 2026-09-28: den 26 MB with a page, 103 MB with uBOL). Relieving malloc
+  /// at a few points while it runs (14–31 s measured) gives that memory back.
+  static func relieveAfterRules() {
+    for s in [5.0, 15, 35, 70] { MemoryRelief.soon(after: s) }
+  }
+
   /// Grants what the user approved: API permissions, and host access by the site access mode.
   func applyGrants(_ ctx: WKWebExtensionContext, _ e: InstalledExtension) {
     rulesTouchedAt[e.id] = Date()
+    Self.relieveAfterRules()
     var perms: [WKWebExtension.Permission: Date] = [:]
     for p in e.granted { perms[WKWebExtension.Permission(rawValue: p)] = .distantFuture }
     ctx.grantedPermissions = perms
