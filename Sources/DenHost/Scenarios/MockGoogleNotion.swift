@@ -186,7 +186,7 @@ extension MockServices {
 
   func notionLog(_ space: String) -> [String: Any] {
     guard space == "a1b2c3d4-0000-4000-8000-000000000001" else { return ["notificationIds": [], "recordMap": [:]] }
-    let ms = { (minutes: Double) in String(Int64((now.timeIntervalSince1970 - minutes * 60) * 1000)) }
+    let ms = { (minutes: Double) in String(Int64((self.now.timeIntervalSince1970 - minutes * 60) * 1000)) }
     func rec(_ v: [String: Any]) -> [String: Any] { ["role": "reader", "value": v] }
     return [
       "notificationIds": ["n-mention", "n-comment", "n-invite", "n-read"],

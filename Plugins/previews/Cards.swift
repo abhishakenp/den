@@ -109,6 +109,8 @@ enum Cards {
   /// copy link · mute (when audible) · move to space ▸ · archive/close. Tooltips carry shortcuts;
   /// while the card shows, those shortcuts act on this tab.
   static func tabActions(_ req: PreviewsCore.Request) -> [Value] {
+    // A live folder's row is a PR or issue, not a tab: the card shows its data without tab verbs.
+    if req.kind == "live" { return [] }
     let p = "previews.tab.act:"
     var out: [Value] = []
     switch req.kind {

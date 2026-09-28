@@ -193,6 +193,7 @@ public final class MockServices: @unchecked Sendable {
               Data("<!doctype html><title>Unauthorized</title><body>401</body>".utf8))
     default:
       if r.path.hasPrefix("/api/") { return slackAPI(String(r.path.dropFirst(5)), r) }
+      if let answer = githubPullPage(r) { return answer }
       return (404, [("Content-Type", "text/plain")], Data("not found".utf8))
     }
   }
@@ -285,6 +286,19 @@ public final class MockServices: @unchecked Sendable {
      "hl_title": title, "hl_text": "", "created": iso(minutesAgo), "reviewable_state": pr ? "ready" : NSNull(), "merged": pr ? false : NSNull()]
   }
 
+  /// `GET /<owner>/<repo>/pull/<n>` with `Accept: application/json`: the PR route's payload, with
+  /// the head and base branches den reads for stacks. 404 without `user_session`.
+  func githubPullPage(_ r: Request) -> (Int, [(String, String)], Data)? {
+    let seg = r.path.split(separator: "/").map(String.init)
+    guard r.method == "GET", seg.count == 4, seg[2] == "pull", let n = Int(seg[3]) else { return nil }
+    guard r.cookies["user_session"] != nil else { return (404, [("Content-Type", "text/plain")], Data("Not Found".utf8)) }
+    let branches: [Int: (String, String)] = [209: ("briefing-rank", "main"), 218: ("live-folders-ui", "briefing-rank"),
+                                             219: ("live-folders-stacks", "live-folders-ui"), 1490: ("apple-pay", "main")]
+    let (head, base) = branches[n] ?? ("feature-\(n)", "main")
+    return json(["payload": ["pullRequestsLayoutRoute": ["pullRequest": ["number": n, "title": "PR \(n)", "state": "OPEN", "headBranch": head, "baseBranch": base,
+                                                                          "author": ["login": "octo-den"]]]]])
+  }
+
   func githubSearch(_ r: Request) -> (Int, [(String, String)], Data) {
     let q = r.query["q"] ?? ""
     let loggedIn = r.cookies["user_session"] != nil
@@ -295,6 +309,12 @@ public final class MockServices: @unchecked Sendable {
                    pr("abhishakenp", "den", 214, "Plugins: <em>session</em> service for signed-in sites", "leepark", 180)]
       } else if q.contains("status:failure") {
         results = [pr("abhishakenp", "den", 209, "Briefing: rank feed by kind, recency and affinity", "octo-den", 300)]
+      } else if q.contains("author:@me") {
+        // Your open PRs: a stack of three in den (209 ← 218 ← 219) and one on its own.
+        results = [pr("abhishakenp", "den", 219, "Live folders: PR stacks", "octo-den", 60),
+                   pr("abhishakenp", "den", 218, "Live folders: sidebar rows and unread dots", "octo-den", 120),
+                   pr("abhishakenp", "den", 209, "Briefing: rank feed by kind, recency and affinity", "octo-den", 300),
+                   pr("acme", "web", 1490, "Checkout: Apple Pay button", "octo-den", 800)]
       } else if q.contains("assignee:@me") {
         results = [pr("acme", "api", 77, "Rate limiter drops requests at exactly 100/s", "ana-g", 1500, pr: false)]
       } else if q.contains("mentions:@me") {

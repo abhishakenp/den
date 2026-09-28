@@ -19,7 +19,7 @@ import WebKit
 ///   card shows with Join.
 @MainActor
 public enum ConnectionScenarios {
-  public static let names = ["briefingEmpty", "connectToast", "autoConnectToast", "briefing", "briefingFeed", "connectionsSettings", "meetingReminder"]
+  public static let names = ["briefingEmpty", "connectToast", "autoConnectToast", "briefing", "briefingFeed", "connectionsSettings", "meetingReminder", "liveFolder"]
   static var mock: MockServices?
   static let providerCount = 5
 
@@ -62,6 +62,27 @@ public enum ConnectionScenarios {
       case "connectionsSettings":
         connectAll(rt, m) {
           rt.call("connections", "open")
+        }
+      case "liveFolder":
+        // GitHub signed in, then a live folder: the first feed primes it, one row is marked
+        // done (the "1 ✓" chip) and one new item arrives (its dot), next to a stack of 3 PRs.
+        let id = rt.call("webviews", "create", ["url": .string(m.base + "/login"), "profile": "private"]).str("id")
+        _ = rt.webviews.materialize(id)
+        poll({ rt.webviews.record(id)?.webView.map { !$0.isLoading && $0.url != nil } ?? false }) {
+          rt.call("webviews", "close", ["id": .string(id)])
+          rt.call("connections", "connect", ["id": "github"])
+          poll({ rt.call("connections", "get", ["id": "github"]).flag("connected") }) {
+            let fid = rt.call("tabs", "newLiveFolder", ["source": "github"]).str("id")
+            var latest: [Value] = []
+            _ = rt.plugins.on("feed.items") { v in if v.str("source") == "github", !v.list("items").isEmpty { latest = v.list("items") } }
+            poll({ !latest.isEmpty }) {
+              rt.plugins.emit("ui.action", ["id": .string("live:" + fid + ":github:acme/api#77"), "action": "close"])
+              let fresh: Value = ["id": "github:acme/design#40", "key": "acme/design#40", "source": "github", "kind": "review",
+                                  "title": "Icon set v3: final glyphs", "url": .string(m.base + "/acme/design/pull/40"), "where": "acme/design"]
+              rt.plugins.emit("feed.items", ["source": "github", "items": .array(latest + [fresh])])
+              rt.call("ui", "set", ["slot": "toast", "tree": nil])
+            }
+          }
         }
       case "meetingReminder":
         rt.call("settings", "set", ["id": "calendar", "key": "address", "value": .string(m.base + "/calendar/ical/basic.ics")])

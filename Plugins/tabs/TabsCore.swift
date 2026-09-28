@@ -56,10 +56,13 @@ final class TabsCore {
     var open: Bool
     var children: [String]
     var auto = false
+    /// A live folder's source ("github"): its rows come from that connection (LiveFolders.swift).
+    var live = ""
 
     var value: Value {
       var v: Value = ["id": .string(id), "spaceId": .string(spaceId), "title": .string(title), "open": .bool(open), "children": .array(children.map { .string($0) })]
       if auto { v.put("auto", true) }
+      if !live.isEmpty { v.put("live", .string(live)) }
       return v
     }
   }
@@ -155,6 +158,10 @@ final class TabsCore {
   var keepActive: [String] = []
   var settingsSubscribed = false
 
+  /// Live folders (GitHub): rows fed by a connection. Countdown chips on favorites, by host.
+  lazy var liveFolders = LiveFolders(core: self)
+  var badges: [String: String] = [:]
+
   init(env: PluginEnv) { self.env = env }
 
   // MARK: - Lifecycle
@@ -168,6 +175,7 @@ final class TabsCore {
     bindKeys()
     subscribe()
     startEnergy()
+    liveFolders.start()
     registerSettings()
     startDownloads()
     renderAll()
@@ -236,7 +244,8 @@ final class TabsCore {
     for t in v.a("tabs") { if let tab = Tab(t) { tabs[tab.id] = tab } }
     for f in v.a("folders") {
       guard let id = f["id"].string else { continue }
-      folders[id] = Folder(id: id, spaceId: f.s("spaceId"), title: f.s("title"), open: f.b("open", true), children: f.a("children").compactMap { $0.string }, auto: f.b("auto"))
+      folders[id] = Folder(id: id, spaceId: f.s("spaceId"), title: f.s("title"), open: f.b("open", true), children: f.a("children").compactMap { $0.string }, auto: f.b("auto"),
+                           live: f.s("live"))
     }
     for sp in v.a("splits") {
       guard let id = sp["id"].string else { continue }
@@ -520,6 +529,18 @@ final class TabsCore {
       return .array(archive)
     case "library":
       if args.b("open", true) { openLibrary(section: args.sOpt("section") ?? "archive") } else { closeLibrary() }
+    case "badge":
+      // A short chip on the favorites whose host is `host` ("in 8m": the calendar's countdown). "" removes it.
+      let host = URLs.host(args.s("host"))
+      guard !host.isEmpty else { return .err("tabs: badge needs a host") }
+      let text = args.s("text")
+      if (badges[host] ?? "") != text {
+        badges[host] = text.isEmpty ? nil : text
+        renderFavorites()
+      }
+    case "newLiveFolder":
+      guard let fid = liveFolders.create(args.s("source"), space: args.sOpt("spaceId")) else { return .err("tabs: no live source '" + args.s("source") + "'") }
+      return ["id": .string(fid)]
     case "pillButtons":
       // Another plugin's buttons in the URL pill while `webview` is selected: [{id, icon, tooltip?, active?}].
       // A click emits ui.action {id: <button id>, action: click, value: {webview}}.
@@ -1454,6 +1475,7 @@ final class TabsCore {
     list.remove(at: i)
     setIds(b, list)
     drop(fid)
+    if liveFolders.state.removeValue(forKey: fid) != nil { liveFolders.save() }
     if selected[sid] == nil, let n = mru.first(where: { spaceOf($0) == sid }) { selected[sid] = n }
     collectWebviews()
     changed(sid)
@@ -1628,9 +1650,11 @@ final class TabsCore {
       // A favorited split shows as its first tab's tile.
       let id = splits[fid]?.children.first ?? fid
       guard let t = tabs[id] else { return nil }
-      return ["type": "favoriteTile", "id": .string(id), "icon": .string(t.icon), "title": .string(t.displayTitle), "selected": .bool(id == sel),
-              "audio": .bool(t.audio), "muted": .bool(t.muted), "dropInto": true,
-              "hoverIntent": .int(Self.tileCardDelayMs)]
+      var tile: Value = ["type": "favoriteTile", "id": .string(id), "icon": .string(t.icon), "title": .string(t.displayTitle), "selected": .bool(id == sel),
+                         "audio": .bool(t.audio), "muted": .bool(t.muted), "dropInto": true,
+                         "hoverIntent": .int(Self.tileCardDelayMs)]
+      if !badges.isEmpty, let b = badges[URLs.host(t.url)] { tile.put("badge", .string(b)) }
+      return tile
     })]])
   }
 
@@ -1648,6 +1672,7 @@ final class TabsCore {
 
   func node(_ id: String, _ sid: String, parent: Box) -> Value? {
     if let f = folders[id] {
+      if !f.live.isEmpty { return liveFolders.node(f) }
       let group = kind(of: parent) == "today"
       var menu: [Value] = [["id": "renameFolder", "title": group ? "Rename Group…" : "Rename Folder…", "icon": "sf:pencil"]]
       if !group { menu.append(["id": "newFolder", "title": "New Folder Inside", "icon": "sf:folder.badge.plus"]) }
@@ -2113,6 +2138,7 @@ final class TabsCore {
   }
 
   func action(_ id: String, _ action: String, _ value: Value) {
+    if liveFolders.action(id, action, value) { return }
     if tabs[id] != nil {
       switch action {
       case "click":

@@ -315,10 +315,12 @@ final class GridNode: NodeView {
   }
 }
 
-/// {type:"favoriteTile", id, icon, title, selected, audio, muted?}  actions: click, doubleClick, reorder, mute (speaker badge)
+/// {type:"favoriteTile", id, icon, title, selected, audio, muted?, badge?}  actions: click, doubleClick, reorder, mute (speaker badge)
+/// `badge`: a short text chip at the bottom of the tile ("in 8m": a plugin's countdown).
 final class FavoriteTileNode: HoverNode {
   let icon = IconView()
   lazy var audio = SpeakerBadge { [weak self] in self?.emit("mute") }
+  let chip = TextChip()
   override var cornerRadius: CGFloat { Tokens.favoriteTileCornerRadius }
   override var baseFill: NSColor? { palette.tileFill }
   override var draggable: Bool { true }
@@ -326,6 +328,7 @@ final class FavoriteTileNode: HoverNode {
     super.init(renderer: renderer)
     addSubview(icon)
     addSubview(audio)
+    addSubview(chip)
   }
   required init?(coder: NSCoder) { fatalError() }
   override func update(_ v: Value) {
@@ -334,13 +337,98 @@ final class FavoriteTileNode: HoverNode {
     icon.fallbackLetter = v.str("title")
     audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))
+    chip.text = v.str("badge")
+    chip.isHidden = chip.text.isEmpty
+    setAccessibilityValue(chip.text.isEmpty ? nil : chip.text)
+    needsLayout = true
   }
-  override func apply(_ p: Palette) { icon.tint = p.text; audio.apply(p); needsDisplay = true }
+  override func apply(_ p: Palette) { icon.tint = p.text; audio.apply(p); chip.apply(p); needsDisplay = true }
   override func layout() {
     let s = Tokens.favoriteIconSize
-    icon.frame = NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s)
+    // With a chip, the icon moves up a little so both fit the tile.
+    let lift: CGFloat = chip.isHidden ? 0 : 5
+    icon.frame = NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2 - lift, width: s, height: s)
     // A small round badge in the top-right corner, clear of the icon (den's estimate).
     audio.frame = NSRect(x: bounds.width - 21, y: 3, width: 18, height: 18)
+    if !chip.isHidden {
+      let w = min(bounds.width - 6, chip.width)
+      chip.frame = NSRect(x: (bounds.width - w) / 2, y: bounds.height - TextChip.height - 3, width: w, height: TextChip.height)
+    }
+  }
+}
+
+/// A small accent capsule with a short text (a tile's countdown, a folder's "3 ✓"). With an
+/// `action` it is a button (hover fill, pointer); without, a label.
+@MainActor
+final class TextChip: NSView, Themable, Hoverable {
+  static let height: CGFloat = 15
+  var hoverGroup: HoverGroup { .control }
+  let label = makeLabel(size: 10, weight: .semibold)
+  var action: (() -> Void)?
+  var text = "" { didSet { label.stringValue = text; needsLayout = true } }
+  /// `accent`: filled with the theme accent; otherwise a quiet neutral fill.
+  var accent = true { didSet { apply(palette) } }
+  private var fill = NSColor.controlAccentColor
+  private var hoverFill = NSColor.controlAccentColor
+  private var palette: Palette?
+  var hovering = false { didSet { needsDisplay = true } }
+
+  init() {
+    super.init(frame: .zero)
+    label.alignment = .center
+    label.lineBreakMode = .byClipping
+    addSubview(label)
+  }
+  required init?(coder: NSCoder) { fatalError() }
+  override var isFlipped: Bool { true }
+  override var mouseDownCanMoveWindow: Bool { action == nil }
+  var width: CGFloat { label.textWidth + 10 }
+
+  func apply(_ p: Palette?) {
+    guard let p else { return }
+    palette = p
+    fill = accent ? p.primaryButton : (p.dark ? Palette.snow(0.14) : Palette.ink(0.08))
+    hoverFill = accent ? p.primaryButton.blended(withFraction: 0.15, of: p.dark ? .white : .black) ?? p.primaryButton
+                       : (p.dark ? Palette.snow(0.22) : Palette.ink(0.14))
+    label.textColor = accent ? p.onAccent : p.text
+    needsDisplay = true
+  }
+  func apply(_ p: Palette) { apply(Optional(p)) }
+
+  override func layout() {
+    super.layout()
+    label.frame = NSRect(x: 4, y: (bounds.height - 13) / 2, width: max(0, bounds.width - 8), height: 13)
+  }
+  override func draw(_ dirtyRect: NSRect) {
+    (hovering && action != nil ? hoverFill : fill).setFill()
+    NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+  }
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    trackingAreas.forEach(removeTrackingArea)
+    guard action != nil else { return }
+    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+  override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func hitTest(_ point: NSPoint) -> NSView? { action == nil ? nil : super.hitTest(point) }
+  override func mouseDown(with event: NSEvent) {}
+  override func mouseUp(with e: NSEvent) {
+    if bounds.contains(convert(e.locationInWindow, from: nil)) { action?() }
+  }
+  override func accessibilityPerformPress() -> Bool { action?(); return action != nil }
+}
+
+/// A small accent dot: something new in a row or a collapsed folder.
+@MainActor
+final class UnreadDot: NSView, Themable {
+  private var color = NSColor.controlAccentColor
+  override var isFlipped: Bool { true }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+  func apply(_ p: Palette) { color = p.primaryButton; needsDisplay = true }
+  override func draw(_ dirtyRect: NSRect) {
+    color.setFill()
+    NSBezierPath(ovalIn: bounds).fill()
   }
 }
 
@@ -726,7 +814,8 @@ final class RenameSupport {
 
 // MARK: - Tabs
 
-/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, editing?, editText?}
+/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, editing?, editText?, unread?}
+/// `unread`: an accent dot on the right (a live folder's new item).
 /// actions: click {modifiers?}, doubleClick, close, reset (favicon click while drifted), mute, contextMenu/menu, reorder,
 /// dropOnContent, rename {title} / renameCancel (while `editing`)
 final class TabRowNode: HoverNode {
@@ -736,13 +825,15 @@ final class TabRowNode: HoverNode {
   lazy var audio = SpeakerBadge(badge: false) { [weak self] in self?.emit("mute") }
   lazy var close = IconButton(symbol: "xmark", size: 22) { [weak self] in self?.emit("close") }
   lazy var rename = RenameSupport(owner: self, label: label)
+  let dot = UnreadDot()
   override var draggable: Bool { node.flag("draggable", true) && !rename.active }
   override class func fixedHeight(_ v: Value) -> CGFloat? { Tokens.tabRowHeight }
   override var busy: Bool { super.busy || rename.active }
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
-    [icon, drift, label, audio, close].forEach { addSubview($0) }
+    [icon, drift, label, audio, dot, close].forEach { addSubview($0) }
     close.isHidden = true
+    dot.isHidden = true
   }
   required init?(coder: NSCoder) { fatalError() }
   var indent: CGFloat { CGFloat(node.num("indent", 0)) * Tokens.folderIndent }
@@ -757,6 +848,7 @@ final class TabRowNode: HoverNode {
     audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))
     close.toolTip = v.str("closeTitle", "Close Tab")
+    dot.isHidden = !v.flag("unread")
     apply(r.palette)
     rename.update(v)
     needsLayout = true
@@ -768,6 +860,7 @@ final class TabRowNode: HoverNode {
     drift.textColor = p.tertiaryText
     icon.tint = p.text
     audio.apply(p)
+    dot.apply(p)
     close.apply(p)
     close.hoverFill = p.controlHoverFill
     needsDisplay = true
@@ -786,6 +879,7 @@ final class TabRowNode: HoverNode {
     var right = bounds.width - 6
     if !close.isHidden { close.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 26 }
     if !audio.isHidden { audio.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 24 }
+    if !dot.isHidden { dot.frame = NSRect(x: right - 10, y: (h - 6) / 2, width: 6, height: 6); right -= 14 }
     label.frame = NSRect(x: x, y: (h - 18) / 2, width: max(0, right - x), height: 18)
     rename.layout()
   }
@@ -911,18 +1005,22 @@ final class SplitRowNode: HoverNode {
   }
 }
 
-/// {type:"folder", id, title, icon?, open, children, closedChildren?, style?: "group", pending?, reveal?, editing?}
+/// {type:"folder", id, title, icon?, open, children, closedChildren?, style?: "group", pending?, reveal?, editing?, unread?, badge?}
+/// - `unread`: a dot on the folder's icon (a collapsed live folder with something new).
+/// - `badge`: a small chip before the chevron ("3 ✓"); clicking it emits `badge`.
 /// - `closedChildren`: rows still shown while the folder is collapsed (its active tab).
 /// - `style: "group"`: a Today group, drawn as a lighter rounded panel around the header and its
 ///   rows, with a bold name (dia-ui-spec §6).
 /// - `pending`: a better name is on its way; a soft shimmer runs across the title (Reduce Motion:
 ///   the title dims instead). `reveal`: the new name just arrived; a colour sweep crosses it once.
-/// actions: toggle, click, reorder (as target: position "into"), rename {title} / renameCancel (while `editing`)
+/// actions: toggle, click, reorder (as target: position "into"), rename {title} / renameCancel (while `editing`), badge
 final class FolderNode: NodeView {
   final class Header: HoverNode {
     let chevron = IconView()
     let icon = IconView()
     let label = makeLabel()
+    let dot = UnreadDot()
+    let chip = TextChip()
     lazy var rename = RenameSupport(owner: self, label: label)
     private(set) var shimmer: CAGradientLayer?
     override var draggable: Bool { !rename.active }
@@ -930,14 +1028,29 @@ final class FolderNode: NodeView {
     required init(renderer: Renderer) {
       super.init(renderer: renderer)
       wantsLayer = true
-      [chevron, icon, label].forEach { addSubview($0) }
+      [chevron, icon, label, dot, chip].forEach { addSubview($0) }
+      dot.isHidden = true
+      chip.isHidden = true
+      chip.accent = false
+      chip.action = { [weak self] in self?.emit("badge") }
     }
     required init?(coder: NSCoder) { fatalError() }
+    override func update(_ v: Value) {
+      super.update(v)
+      dot.isHidden = !v.flag("unread")
+      chip.text = v.str("badge")
+      chip.isHidden = chip.text.isEmpty
+      chip.setAccessibilityLabel(chip.text)
+      chip.setAccessibilityRole(.button)
+      needsLayout = true
+    }
     override func apply(_ p: Palette) {
       label.textColor = p.text
       label.font = .systemFont(ofSize: Tokens.tabRowFontSize, weight: node.str("style") == "group" ? .semibold : .regular)
       icon.tint = p.text
       chevron.tint = p.secondaryText
+      dot.apply(p)
+      chip.apply(p)
       needsDisplay = true
     }
     override func height(for w: CGFloat) -> CGFloat { Tokens.tabRowHeight }
@@ -946,7 +1059,14 @@ final class FolderNode: NodeView {
       let h = bounds.height, s = Tokens.tabRowIconSize
       let x = Tokens.tabRowPaddingX + CGFloat(node.num("indent", 0)) * Tokens.folderIndent
       icon.frame = NSRect(x: x, y: (h - s) / 2, width: s, height: s)
-      label.frame = NSRect(x: x + s + 8, y: (h - 17) / 2, width: bounds.width - x - s - 34, height: 17)
+      dot.frame = NSRect(x: x + s - 4, y: (h - s) / 2 - 2, width: 7, height: 7)
+      var room = bounds.width - x - s - 34
+      if !chip.isHidden {
+        let w = chip.width
+        chip.frame = NSRect(x: bounds.width - 30 - w, y: (h - TextChip.height) / 2, width: w, height: TextChip.height)
+        room -= w + 6
+      }
+      label.frame = NSRect(x: x + s + 8, y: (h - 17) / 2, width: max(0, room), height: 17)
       chevron.frame = NSRect(x: bounds.width - 22, y: (h - 10) / 2, width: 10, height: 10)
       rename.layout()
       if let g = shimmer { g.frame = textRect; g.mask?.frame = CGRect(origin: .zero, size: textRect.size) }

@@ -383,7 +383,7 @@ final class BriefingCore {
   }
 
   /// Everything the connected sources sent, except calendar events (they are the Today section).
-  func allItems() -> [Value] { liveItems().filter { !$0.b("agenda") } }
+  func allItems() -> [Value] { liveItems().filter { !$0.b("agenda") && $0.b("briefing", true) } }
 
   func liveItems() -> [Value] {
     let live = connected().map { $0.s("id") }
@@ -412,7 +412,7 @@ final class BriefingCore {
       summaryState = "working"
       render()
       let sources: [Value] = connected().compactMap { c in
-        let lines = Self.aiLines(items[c.s("id")] ?? [], important: keys, max: Self.maxAIItems)
+        let lines = Self.aiLines((items[c.s("id")] ?? []).filter { $0.b("briefing", true) }, important: keys, max: Self.maxAIItems)
         return lines.isEmpty ? nil : ["name": .string(c.s("title")), "items": .array(lines.map { .string($0) })]
       }
       let todoInput: [Value] = Self.keep(actionable, max: 12, important: keys).map { ["id": .string($0.s("id")), "text": .string($0.s("summary"))] }

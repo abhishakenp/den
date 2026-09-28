@@ -345,13 +345,14 @@ struct ConnectionsTests {
     #expect(todos.contains { $0.s("title").hasPrefix("Review") && $0.s("url").hasSuffix("/acme/web/pull/1482") })
     #expect(todos.allSatisfy { t in feed.contains { $0.s("id") == t.s("id") && $0.s("url") == t.s("url") } })
 
-    // Request volume stays modest: per refresh, Slack ≤ ~20 per workspace and GitHub 4.
+    // Request volume stays modest: per refresh, Slack ≤ ~20 per workspace and GitHub 5 (PR branches for
+    // stacks were read once, by the first refresh, and are cached).
     let slackCalls = calls.filter { $0.hasPrefix("POST /api/") }.count
     let githubCalls = calls.filter { $0 == "GET /search" }.count
-    #expect(githubCalls == 4)
+    #expect(githubCalls == 5)
     // Acme 5 (counts, search, history, 2 replies), den OSS 3; names are cached from the first refresh.
     #expect(slackCalls == 8)
-    #expect(calls.count == 12)
+    #expect(calls.count == 13)
 
     // The page renders the todo rows and feed rows; a checked todo persists.
     let page = ValueJSON.string(h.rt.ui.sheets["overlay.briefing"]!.node)
