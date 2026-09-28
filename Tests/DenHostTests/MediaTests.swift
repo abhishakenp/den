@@ -118,14 +118,18 @@ struct MediaTests {
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     let web = try #require(rt.webviews.record(id)?.webView)
     #expect(await wait { !web.isLoading && web.url != nil })
-    // Muted, so the mini player leaves it alone.
-    _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.muted = true; await v.play(); return true")
+    // Audible (WebKit already pauses muted video that isn't visible); the mini player is off so
+    // the page really goes to the background.
+    _ = rt.call("media", "settings", ["autoMiniPlayer": false])
+    defer { _ = rt.call("media", "settings", ["autoMiniPlayer": true]) }
+    _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.muted = false; await v.play(); return true")
     #expect(await wait { rt.webviews.record(id)?.media.playing == true })
-    #expect(rt.call("webviews", "get", ["id": .string(id)])["media"]["audible"] == false)
+    #expect(rt.call("webviews", "get", ["id": .string(id)])["media"]["audible"] == true)
     #expect(rt.call("webviews", "pauseMedia", ["id": .string(id)])["reason"] == "visible")
     _ = rt.call("content", "show", ["panes": [.string(other)]])
     #expect(await wait { web.window == nil })
-    #expect(rt.call("webviews", "pauseMedia", ["id": .string(id)])["paused"] == true)
+    let r = rt.call("webviews", "pauseMedia", ["id": .string(id)])
+    #expect(r["paused"] == true, "pauseMedia: \(r)")
     let paused = { await Wait.asyncJS(web, "return document.querySelector('video').paused", seconds: 5) as? Bool }
     #expect(await Wait.until("the background video paused") { await paused() == true })
     #expect(await wait { rt.webviews.record(id)?.media.playing == false })
