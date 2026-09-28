@@ -154,6 +154,8 @@ if [[ -f build/den.app/Contents/PlugIns/briefing.dylib ]]; then
   shot connect-toast connectToast light 1.5
   shot connections-settings connectionsSettings light 6
   shot briefing briefing light 30; shot briefing-dark briefing dark 30; shot briefing-feed briefingFeed light 32
+  soft shot connections-sheet connectionsSettings light 8; soft shot connections-sheet-dark connectionsSettings dark 8
+  soft shot meeting-reminder meetingReminder light 8; soft shot meeting-reminder-dark meetingReminder dark 8
 fi
 # Shots for the user guide (docs/guide/_screenshots-todo.md), as light/dark pairs.
 # Password vault (VaultScenarios: MockServices login pages, in-memory store, scripted Touch ID).

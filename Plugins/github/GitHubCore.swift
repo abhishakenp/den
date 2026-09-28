@@ -80,7 +80,8 @@ final class GitHubCore {
   /// `connections` is optional and may load later: retried every 500 ms for 30 s.
   func register() {
     let r = env.call("connections", "register", ["id": .string(Self.id), "title": "GitHub", "icon": .string(Self.icon),
-                                                  "domain": "github.com", "signIn": .string(base + "/login"), "owner": .string(Self.id)])
+                                                  "domain": "github.com", "signIn": .string(base + "/login"), "owner": .string(Self.id),
+                                                  "order": 20, "important": true])
     registered = !r.isErr
     if !registered && registerAttempts < 60 {
       registerAttempts += 1

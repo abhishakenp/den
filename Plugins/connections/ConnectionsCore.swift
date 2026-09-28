@@ -23,6 +23,12 @@ final class ConnectionsCore {
     var icon: String
     var domain: String
     var signIn: String
+    /// What its `teams` are called: "workspaces" (Slack, Notion), "accounts" (Gmail).
+    var unit: String = "workspaces"
+    /// Position in Settings and the sheet (providers register in load order, which varies).
+    var order: Int64 = 50
+    /// Its feed items can be marked important in the briefing (channels, repos, senders, pages).
+    var important: Bool = false
   }
 
   struct Pending {
@@ -77,6 +83,7 @@ final class ConnectionsCore {
         pending[pid] = nil
         render()
       case "workspaces": _ = handle("open", .null)
+      case "important": env.call("settings", "open", ["section": "briefing"])
       default: break
       }
     }
@@ -96,10 +103,15 @@ final class ConnectionsCore {
       if let a = account(p.id) {
         sub = "Connected"
         if !a.s("account").isEmpty { sub += " as " + a.s("account") }
-        let teams = a.a("teams").count
-        if teams > 1 { sub += " · " + String(teams) + " workspaces" }
+        let teams = a.a("teams")
+        if teams.count > 1 {
+          let on = teams.filter { $0.b("enabled", true) }.count
+          sub += " · " + (on == teams.count ? String(teams.count) : String(on) + " of " + String(teams.count)) + " " + p.unit
+        }
+        if !a.s("note").isEmpty { sub += " · " + a.s("note") }
         buttons = [["id": "disconnect", "title": "Disconnect"]]
-        if teams > 1 { buttons.insert(["id": "workspaces", "title": "Workspaces…"], at: 0) }
+        if p.important { buttons.insert(["id": "important", "title": "Important…"], at: 0) }
+        if teams.count > 1 { buttons.insert(["id": "workspaces", "title": .string(Self.capitalized(p.unit) + "…")], at: 0) }
       } else if pending[p.id] != nil {
         sub = "Waiting for you to sign in to " + p.domain + "…"
         buttons = [["id": "cancel", "title": "Cancel"]]
@@ -110,7 +122,7 @@ final class ConnectionsCore {
       "id": .string(Self.ns), "title": "Connections", "icon": "sf:link", "order": 30,
       "controls": [
         ["key": "accounts", "type": "list", "title": "Accounts",
-         "subtitle": "den reads these through the sessions you sign in to inside den. Nothing leaves this Mac except requests to the service itself.",
+         "subtitle": "den reads these through the sessions you sign in to inside den. Nothing leaves this Mac except requests to the service itself. Each one costs nothing until it's connected.",
          "items": .array(items), "empty": "No connection plugins are loaded."],
       ],
     ])
@@ -124,7 +136,10 @@ final class ConnectionsCore {
       let id = args.s("id")
       guard !id.isEmpty else { return .err("connections: id required") }
       providers.removeAll { $0.id == id }
-      providers.append(Provider(id: id, title: args.sOpt("title") ?? id, icon: args.s("icon"), domain: args.s("domain"), signIn: args.s("signIn")))
+      providers.append(Provider(id: id, title: args.sOpt("title") ?? id, icon: args.s("icon"), domain: args.s("domain"), signIn: args.s("signIn"),
+                                unit: args.sOpt("unit") ?? "workspaces", order: args.i("order", 50), important: args.b("important")))
+      // Stable order: by `order`, then id (registration order depends on plugin load timing).
+      providers.sort { $0.order != $1.order ? $0.order < $1.order : $0.id < $1.id }
       registerCommands()
       changed()
       return .okay
@@ -152,10 +167,11 @@ final class ConnectionsCore {
 
   func list() -> Value {
     .array(providers.map { p in
-      var v: Value = ["id": .string(p.id), "title": .string(p.title), "icon": .string(p.icon), "domain": .string(p.domain)]
+      var v: Value = ["id": .string(p.id), "title": .string(p.title), "icon": .string(p.icon), "domain": .string(p.domain), "unit": .string(p.unit)]
       if let a = account(p.id) {
         v.put("connected", true)
         v.put("account", a["account"])
+        if !a.s("note").isEmpty { v.put("note", a["note"]) }
         v.put("profile", a["profile"])
         v.put("teams", a["teams"])
         v.put("since", a["since"])
@@ -239,16 +255,26 @@ final class ConnectionsCore {
           return t
         }
       }
-      let acct: Value = ["id": .string(id), "account": .string(args.s("account")), "profile": .string(profile), "teams": .array(teams),
+      var acct: Value = ["id": .string(id), "account": .string(args.s("account")), "profile": .string(profile), "teams": .array(teams),
                          "since": .int(account(id)?.i("since") ?? env.now())]
+      // A short status a provider adds ("from your Calendar tab", "calendar address").
+      if !args.s("note").isEmpty { acct.put("note", args["note"]) }
       accounts.removeAll { $0.s("id") == id }
       accounts.append(acct)
       save()
       pending[id] = nil
       if autoNew {
-        // Found on its own: say so, with Undo (no sheet pops open unasked).
-        env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "id": .string(Self.undoPrefix + id), "text": .string(p.title + " connected"),
-                                                       "icon": "sf:checkmark.circle.fill", "action": "Undo", "duration": 8000]])
+        // Found on its own: say so, with Undo (no sheet pops open unasked). One Google sign-in
+        // connects Gmail and Calendar together: a second auto-connect within the toast's life
+        // joins the same toast ("Gmail and Google Calendar connected"), and Undo undoes both.
+        let now = env.now()
+        if now - lastAutoAt > Self.autoToastMs { recentAuto = [] }
+        if !recentAuto.contains(id) { recentAuto.append(id) }
+        lastAutoAt = now
+        let titles = recentAuto.compactMap { provider($0)?.title }
+        env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "id": .string(Self.undoPrefix + recentAuto.joined(separator: ",")),
+                                                       "text": .string(Self.and(titles) + " connected"),
+                                                       "icon": "sf:checkmark.circle.fill", "action": "Undo", "duration": .int(Self.autoToastMs)]])
       } else if isNew {
         toast(p.title + " connected", icon: "sf:checkmark.circle.fill")
         if teams.count > 1 { sheetOpen = true }
@@ -277,6 +303,26 @@ final class ConnectionsCore {
   }
 
   static let undoPrefix = "connections.undo:"
+  static let autoToastMs: Int64 = 8000
+  var recentAuto: [String] = []
+  var lastAutoAt: Int64 = 0
+
+  /// "A", "A and B", "A, B and C".
+  static func and(_ parts: [String]) -> String {
+    var s = ""
+    for (i, p) in parts.enumerated() {
+      if i > 0 { s += i == parts.count - 1 ? " and " : ", " }
+      s += p
+    }
+    return s
+  }
+
+  /// "workspaces" -> "Workspaces".
+  static func capitalized(_ s: String) -> String {
+    var b = Array(s.utf8)
+    if let f = b.first, f >= 97 && f <= 122 { b[0] = f - 32 }
+    return String(decoding: b, as: UTF8.self)
+  }
 
   func setDeclined(_ id: String, _ on: Bool) {
     guard (declined[id] == true) != on else { return }
@@ -354,7 +400,8 @@ final class ConnectionsCore {
         var status = "Connected"
         let name = a.s("account")
         if !name.isEmpty { status += " · " + name }
-        if teams.count > 1 { status += " · " + String(teams.count) + " workspaces" }
+        if teams.count > 1 { status += " · " + String(teams.count) + " " + p.unit }
+        if !a.s("note").isEmpty { status += " · " + a.s("note") }
         row.put("connected", true)
         row.put("status", .string(status))
         row.put("button", ["title": "Disconnect", "style": "secondary"])
@@ -376,11 +423,11 @@ final class ConnectionsCore {
         ["type": "toggleRow", "id": .string("connections.team:" + p.id + ":" + t.s("id")), "title": .string(t.s("name")),
          "subtitle": .string(URLs.host(t.s("url"))), "icon": .string(t.sOpt("icon") ?? p.icon), "on": .bool(t.b("enabled", true))]
       }
-      children.append(["type": "section", "id": .string("connections.teams:" + p.id), "title": .string(p.title + " workspaces"),
+      children.append(["type": "section", "id": .string("connections.teams:" + p.id), "title": .string(p.title + " " + p.unit),
                        "accessory": "Shown in your briefing", "children": .array(toggles)])
     }
     return ["type": "sheet", "id": .string(Self.sheetId), "style": "sheet", "title": "Connections", "icon": "sf:link",
-            "subtitle": "Slack and GitHub, through your own sign-in", "children": .array(children)]
+            "subtitle": "Your accounts, through your own sign-in", "children": .array(children)]
   }
 
   func render() {
@@ -392,7 +439,20 @@ final class ConnectionsCore {
   func action(_ v: Value) {
     let id = v.s("id"), act = v.s("action")
     if id == Self.sheetId && act == "dismiss" { closeSheet(); return }
-    if Text.hasPrefix(id, Self.undoPrefix), act == "toast" { undoAutoConnect(Text.dropPrefix(id, Self.undoPrefix)); return }
+    if Text.hasPrefix(id, Self.undoPrefix), act == "toast" {
+      // One toast may carry several providers ("connections.undo:gmail,calendar").
+      var cur: [UInt8] = []
+      for c in Array(Text.dropPrefix(id, Self.undoPrefix).utf8) + [44] {
+        if c == 44 {
+          if !cur.isEmpty { undoAutoConnect(String(decoding: cur, as: UTF8.self)) }
+          cur = []
+        } else {
+          cur.append(c)
+        }
+      }
+      recentAuto = []
+      return
+    }
     if Text.hasPrefix(id, "connections.row:") {
       let pid = Text.dropPrefix(id, "connections.row:")
       if account(pid) != nil { _ = disconnect(pid) } else if pending[pid] != nil {
@@ -445,7 +505,7 @@ final class ConnectionsCore {
     registered.removeAll { id in !want.contains { $0.0 == id } }
     for w in want where !registered.contains(w.0) {
       let r = env.call("commands", "register", ["id": .string(w.0), "title": .string(w.1), "icon": .string(w.2), "owner": "connections",
-                                                  "keywords": ["connect", "account", "sign in", "integration", "slack", "github"]])
+                                                  "keywords": ["connect", "account", "sign in", "integration", "slack", "github", "gmail", "google", "calendar", "notion"]])
       if r.isErr { return false }
       registered.append(w.0)
     }

@@ -125,12 +125,21 @@ final class BriefingCore {
       items.append(["id": c["key"], "title": c["title"], "subtitle": .string(Self.sourceName(c.s("source")) + " · in your feed"), "icon": "sf:star",
                     "buttons": [["id": "mark", "title": "Mark Important", "style": "primary"]]])
     }
-    return ["key": .string(Self.importantSettingKey), "type": "list", "title": "Important channels and repos",
-            "subtitle": "Their messages, reviews and CI come first in the briefing and are never left out of the summary.",
-            "items": .array(items), "empty": "Channels and repos from your feed show up here once Slack or GitHub is connected."]
+    return ["key": .string(Self.importantSettingKey), "type": "list", "title": "Important channels, repos and people",
+            "subtitle": "Their messages, reviews, CI and emails come first in the briefing and are never left out of the summary.",
+            "items": .array(items), "empty": "Channels, repos and people from your feed show up here once something is connected."]
   }
 
-  static func sourceName(_ s: String) -> String { s == "slack" ? "Slack" : s == "github" ? "GitHub" : s }
+  static func sourceName(_ s: String) -> String {
+    switch s {
+    case "slack": return "Slack"
+    case "github": return "GitHub"
+    case "gmail": return "Gmail"
+    case "notion": return "Notion"
+    case "calendar": return "Google Calendar"
+    default: return s
+    }
+  }
 
   func applySetting(_ key: String, _ v: Value) {
     switch key {
@@ -373,11 +382,22 @@ final class BriefingCore {
     for cb in cbs { cb() }
   }
 
-  func allItems() -> [Value] {
+  /// Everything the connected sources sent, except calendar events (they are the Today section).
+  func allItems() -> [Value] { liveItems().filter { !$0.b("agenda") } }
+
+  func liveItems() -> [Value] {
     let live = connected().map { $0.s("id") }
     var out: [Value] = []
     for k in items.keys.sorted() where live.contains(k) { out += items[k]! }
     return out
+  }
+
+  /// Today's calendar events, in time order (all-day first).
+  func agenda() -> [Value] {
+    liveItems().filter { $0.b("agenda") }.sorted { a, b in
+      if a.b("allDay") != b.b("allDay") { return a.b("allDay") }
+      return a.i("ts") != b.i("ts") ? a.i("ts") < b.i("ts") : a.s("title") < b.s("title")
+    }
   }
 
   func compose() {
@@ -409,7 +429,7 @@ final class BriefingCore {
             summary = r.s("text")
             summaryState = "ai"
           } else {
-            summary = Self.plainSummary(ranked)
+            summary = Self.plainSummary(agenda() + ranked)
             summaryState = "plain"
             aiReason = r.sOpt("reason") ?? r.s("error")
           }
@@ -438,7 +458,7 @@ final class BriefingCore {
       }
     } else {
       aiReason = ai.s("reason")
-      summary = Self.plainSummary(ranked)
+      summary = Self.plainSummary(agenda() + ranked)
       summaryState = "plain"
       addTodos(actionable.map { ($0, $0.s("title")) })
       finishCallbacks()
@@ -449,9 +469,13 @@ final class BriefingCore {
   /// "2 review requests, 1 failing PR and 3 unread DMs." (no Apple Intelligence).
   static func plainSummary(_ items: [Value]) -> String {
     var counts: [(String, Int, String, String)] = [
+      ("event", 0, "event today", "events today"),
       ("review", 0, "review request", "review requests"), ("dm", 0, "unread DM", "unread DMs"),
+      ("reply", 0, "email awaiting your reply", "emails awaiting your reply"),
       ("thread", 0, "thread waiting for you", "threads waiting for you"), ("ci", 0, "PR with failing CI", "PRs with failing CI"),
-      ("mention", 0, "mention", "mentions"), ("assigned", 0, "assigned issue", "assigned issues"),
+      ("mention", 0, "mention", "mentions"), ("comment", 0, "comment", "comments"), ("docs", 0, "Docs update", "Docs updates"),
+      ("assigned", 0, "assigned issue", "assigned issues"), ("invite", 0, "page shared with you", "pages shared with you"),
+      ("email", 0, "other unread email", "other unread emails"),
     ]
     for it in items {
       for j in 0..<counts.count where counts[j].0 == it.s("kind") { counts[j].1 += 1 }
@@ -474,9 +498,14 @@ final class BriefingCore {
     case "review": return 50
     case "dm": return 46
     case "thread": return 44
+    case "reply": return 42
     case "ci": return 40
+    case "comment": return 36
     case "mention": return 34
+    case "docs": return 30
+    case "invite": return 26
     case "assigned": return 22
+    case "email": return 12
     default: return 10
     }
   }
@@ -487,7 +516,7 @@ final class BriefingCore {
     var s = base(item.s("kind"))
     if isImportant(item, important) { s += importantBoost }
     let ts = item.i("ts")
-    if ts > 0 { s += max(0, 24 - (now - ts) / 3_600_000) }
+    if ts > 0 { s += max(0, min(24, 24 - (now - ts) / 3_600_000)) }
     let a = (affinity["actor:" + item.s("actor")] ?? 0) + (affinity["where:" + item.s("where")] ?? 0)
     s += min(15, 3 * a)
     return s
@@ -612,9 +641,11 @@ final class BriefingCore {
 
     if conns.isEmpty {
       children.append(["type": "paragraph", "id": "briefing.empty", "icon": "sf:link",
-                       "text": "Connect Slack or GitHub to get a morning briefing: unread DMs, mentions, threads waiting for you, review requests and failing CI, with a todo list you can check off. Sign in to the site in den once, and den picks it up. Nothing leaves this Mac except requests to Slack and GitHub themselves."])
+                       "text": "Connect your accounts to get a morning briefing: today's meetings, unread DMs, mentions, emails waiting for a reply, review requests and failing CI, with a todo list you can check off. Sign in to the site in den once, and den picks it up. Nothing leaves this Mac except requests to the services themselves."])
+      // Several providers: short titles, so the row fits the page.
+      let short = providers.count > 2
       let buttons: [Value] = providers.map { p in
-        ["type": "actionButton", "id": .string("briefing.connect:" + p.s("id")), "title": .string("Connect " + p.s("title")),
+        ["type": "actionButton", "id": .string("briefing.connect:" + p.s("id")), "title": .string(short ? p.s("title") : "Connect " + p.s("title")),
          "icon": .string(p.s("icon")), "style": .string(p.b("pending") ? "secondary" : "primary")]
       }
       if !buttons.isEmpty { children.append(["type": "buttonRow", "id": "briefing.connectRow", "children": .array(buttons)]) }
@@ -646,6 +677,17 @@ final class BriefingCore {
       let name = providers.first { $0.s("id") == k }?.s("title") ?? k
       children.append(["type": "paragraph", "id": .string("briefing.error:" + k), "style": "caption", "icon": "sf:exclamationmark.triangle",
                        "text": .string(name + ": " + errors[k]!)])
+    }
+
+    // Today: the calendar's remaining events.
+    let today = agenda()
+    if !today.isEmpty {
+      let rows: [Value] = today.map { e in
+        ["type": "feedRow", "id": .string("briefing.feed:" + e.s("id")), "title": .string(e.s("title")), "subtitle": .string(e.s("detail")),
+         "icon": .string(e.s("icon")), "time": .string(e.s("time")), "badge": .string(e.s("badge")), "unread": false]
+      }
+      children.append(["type": "section", "id": "briefing.today", "title": "Today",
+                       "accessory": .string(String(today.count) + (today.count == 1 ? " event" : " events")), "children": .array(rows)])
     }
 
     // Todos: open first, then done.
@@ -713,7 +755,7 @@ final class BriefingCore {
     }
     if Text.hasPrefix(id, "briefing.feed:"), act == "open" {
       let fid = Text.dropPrefix(id, "briefing.feed:")
-      if let it = allItems().first(where: { $0.s("id") == fid }) { openItem(url: it.s("url"), actor: it.s("actor"), where_: it.s("where")) }
+      if let it = liveItems().first(where: { $0.s("id") == fid }) { openItem(url: it.s("url"), actor: it.s("actor"), where_: it.s("where")) }
       return
     }
     if id == "briefing.enabled", act == "toggle" { _ = handle("settings", ["enabled": .bool(v["value"].b("on", true))]); return }
@@ -742,11 +784,11 @@ final class BriefingCore {
   func tryRegister() -> Bool {
     if commandRegistered { return true }
     let r = env.call("commands", "register", ["id": "briefing.open", "title": "Daily Briefing", "icon": "sf:sun.max", "shortcut": "⇧⌘B",
-                                               "owner": "briefing", "keywords": ["briefing", "todo", "feed", "today", "morning", "summary", "slack", "github"]])
+                                               "owner": "briefing", "keywords": ["briefing", "todo", "feed", "today", "morning", "summary", "slack", "github", "gmail", "calendar", "notion"]])
     commandRegistered = !r.isErr
     if commandRegistered {
       env.call("commands", "register", ["id": "briefing.important", "title": "Important Channels and Repos…", "icon": "sf:star", "owner": "briefing",
-                                         "keywords": ["important", "priority", "slack", "github", "channel", "repo", "briefing", "settings"]])
+                                         "keywords": ["important", "priority", "slack", "github", "gmail", "notion", "channel", "repo", "sender", "people", "briefing", "settings"]])
       registerImportantCommands()
     }
     return commandRegistered

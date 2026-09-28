@@ -99,7 +99,8 @@ final class SlackCore {
 
   func register() {
     let r = env.call("connections", "register", ["id": .string(Self.id), "title": "Slack", "icon": .string(Self.icon),
-                                                  "domain": "slack.com", "signIn": .string(signIn), "owner": .string(Self.id)])
+                                                  "domain": "slack.com", "signIn": .string(signIn), "owner": .string(Self.id),
+                                                  "unit": "workspaces", "order": 10, "important": true])
     if r.isErr && registerAttempts < 60 {
       registerAttempts += 1
       env.timer(500, false) { [self] in register() }

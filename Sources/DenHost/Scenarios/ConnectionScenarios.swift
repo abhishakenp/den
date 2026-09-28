@@ -5,29 +5,39 @@ import CordisValue
 import WebKit
 
 /// `--scenario` states for connections and the briefing, run against the real plugins with the
-/// local fake Slack/GitHub (`MockServices`) and a private (in-memory) profile, so snapshots never
-/// touch a real account or den's real website data.
+/// local fakes (`MockServices`: Slack, GitHub, Gmail, Google Calendar, Notion) and a private
+/// (in-memory) profile, so snapshots never touch a real account or den's real website data.
 ///
 /// - `briefingEmpty`: no connection yet, the first-run page with the Connect buttons.
 /// - `connectToast`: "Connect Slack" through the real flow (sign-in tab → session detected →
 ///   toast), snapshotted while the toast shows.
-/// - `briefing` / `briefingFeed`: Slack (2 workspaces) and GitHub connected, then the briefing:
-///   fetch → Foundation Models (when available) → page; `briefingFeed` scrolls to the feed.
-/// - `connectionsSettings`: the Connections sheet with the workspace picker.
+/// - `briefing` / `briefingFeed`: every connection signed in (Slack with 2 workspaces, GitHub,
+///   Gmail with 2 accounts, Calendar through its address, Notion), then the briefing: fetch →
+///   Foundation Models (when available) → page; `briefingFeed` scrolls to the feed.
+/// - `connectionsSettings`: the Connections sheet with the workspace and account pickers.
+/// - `meetingReminder`: Calendar connected; a meeting starts in about a minute, so the reminder
+///   card shows with Join.
 @MainActor
 public enum ConnectionScenarios {
-  public static let names = ["briefingEmpty", "connectToast", "autoConnectToast", "briefing", "briefingFeed", "connectionsSettings"]
+  public static let names = ["briefingEmpty", "connectToast", "autoConnectToast", "briefing", "briefingFeed", "connectionsSettings", "meetingReminder"]
   static var mock: MockServices?
+  static let providerCount = 5
 
   public static func apply(_ name: String, runtime rt: DenRuntime) {
-    let m = MockServices()
+    // The reminder scenario shifts the fixtures so "Design review" (now + 10 min) starts in ~1 min.
+    let m = MockServices(now: name == "meetingReminder" ? Date().addingTimeInterval(-9 * 60) : Date())
     try? m.start()
     mock = m
     rt.call("storage", "set", ["ns": "slack", "key": "endpoints", "value": [
       "api": .string(m.base + "/api/"), "origin": .string(m.base), "domain": "127.0.0.1", "signIn": .string(m.base + "/slack/signin")]])
     rt.call("storage", "set", ["ns": "github", "key": "base", "value": .string(m.base)])
-    rt.permissions.grant("slack", ["session:127.0.0.1"])
-    rt.permissions.grant("github", ["session:127.0.0.1"])
+    rt.call("storage", "set", ["ns": "gmail", "key": "endpoints", "value": [
+      "base": .string(m.base), "domain": "127.0.0.1", "signIn": .string(m.base + "/google/signin")]])
+    rt.call("storage", "set", ["ns": "calendar", "key": "endpoints", "value": [
+      "domain": "127.0.0.1", "host": "127.0.0.1", "web": .string(m.base + "/calendar/r")]])
+    rt.call("storage", "set", ["ns": "notion", "key": "endpoints", "value": [
+      "api": .string(m.base + "/api/v3/"), "web": .string(m.base), "domain": "127.0.0.1", "signIn": .string(m.base + "/notion/signin")]])
+    for p in ["slack", "github", "gmail", "calendar", "notion"] { rt.permissions.grant(p, ["session:127.0.0.1"]) }
     // Tabs opened by the connect flow use this space's profile: keep it in memory.
     let space = rt.call("spaces", "current").str("id")
     rt.call("spaces", "update", ["id": .string(space), "profile": "private"])
@@ -50,11 +60,17 @@ public enum ConnectionScenarios {
           print("scenario.autoConnectToast connected=\(rt.call("connections", "get", ["id": "github"]).flag("connected"))")
         }
       case "connectionsSettings":
-        connectBoth(rt, m) {
+        connectAll(rt, m) {
           rt.call("connections", "open")
         }
+      case "meetingReminder":
+        rt.call("settings", "set", ["id": "calendar", "key": "address", "value": .string(m.base + "/calendar/ical/basic.ics")])
+        poll({ rt.call("connections", "get", ["id": "calendar"]).flag("connected") }) {
+          // The reminder follows the calendar's first read (a briefing refresh reads it).
+          rt.call("briefing", "refresh")
+        }
       default:
-        connectBoth(rt, m) {
+        connectAll(rt, m) {
           rt.call("briefing", "open")
           if name == "briefingFeed" { scrollWhenReady(rt, to: "briefing.feed") }
         }
@@ -62,26 +78,27 @@ public enum ConnectionScenarios {
     }
   }
 
-  /// Waits until the slack and github plugins have registered with `connections`.
+  /// Waits until the provider plugins have registered with `connections`.
   static func whenProviders(_ rt: DenRuntime, tries: Int = 0, _ go: @escaping () -> Void) {
     let n = rt.call("connections", "list").array?.count ?? 0
-    if n >= 2 || tries > 40 { return go() }
+    if n >= providerCount || tries > 60 { return go() }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { whenProviders(rt, tries: tries + 1, go) }
   }
 
-  /// Signs in to both fake sites in the private profile (as the user would in a tab), then connects.
-  static func connectBoth(_ rt: DenRuntime, _ m: MockServices, _ then: @escaping () -> Void) {
+  /// Signs in to every fake site in the private profile (as the user would in a tab), then connects.
+  static func connectAll(_ rt: DenRuntime, _ m: MockServices, _ then: @escaping () -> Void) {
     var loaded = 0
-    for url in [m.base + "/slack/signin", m.base + "/login"] {
-      let id = rt.call("webviews", "create", ["url": .string(url), "profile": "private"]).str("id")
+    let pages = ["/slack/signin", "/login", "/google/signin", "/notion/signin"]
+    rt.call("settings", "set", ["id": "calendar", "key": "address", "value": .string(m.base + "/calendar/ical/basic.ics")])
+    for path in pages {
+      let id = rt.call("webviews", "create", ["url": .string(m.base + path), "profile": "private"]).str("id")
       _ = rt.webviews.materialize(id)
       poll({ rt.webviews.record(id)?.webView.map { !$0.isLoading && $0.url != nil } ?? false }) {
         rt.call("webviews", "close", ["id": .string(id)])
         loaded += 1
-        guard loaded == 2 else { return }
-        rt.call("connections", "connect", ["id": "slack"])
-        rt.call("connections", "connect", ["id": "github"])
-        poll({ (rt.call("connections", "list").array ?? []).filter { $0.flag("connected") }.count == 2 }) {
+        guard loaded == pages.count else { return }
+        for p in ["slack", "github", "gmail", "calendar", "notion"] { rt.call("connections", "connect", ["id": .string(p)]) }
+        poll({ (rt.call("connections", "list").array ?? []).filter { $0.flag("connected") }.count == providerCount }) {
           // The first connect opens the settings sheet for the workspace picker; keep the page clean.
           rt.call("connections", "close")
           then()

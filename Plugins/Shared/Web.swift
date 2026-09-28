@@ -178,6 +178,143 @@ enum Web {
 
   static func pad(_ n: Int64) -> String { n < 10 ? "0" + String(n) : String(n) }
 
+  // MARK: JSON (request bodies)
+
+  /// `v` as compact JSON. Doubles are written as integers (request bodies never need fractions).
+  static func json(_ v: Value) -> String {
+    var out: [UInt8] = []
+    writeJSON(v, &out)
+    return String(decoding: out, as: UTF8.self)
+  }
+
+  static func writeJSON(_ v: Value, _ out: inout [UInt8]) {
+    switch v {
+    case .null, .bytes: out += Array("null".utf8)
+    case let .bool(b): out += Array((b ? "true" : "false").utf8)
+    case let .int(n): out += Array(String(n).utf8)
+    case let .double(d): out += Array(String(Int64(d)).utf8)
+    case let .string(s): writeString(s, &out)
+    case let .array(items):
+      out.append(91)
+      for (k, it) in items.enumerated() {
+        if k > 0 { out.append(44) }
+        writeJSON(it, &out)
+      }
+      out.append(93)
+    case let .object(pairs):
+      out.append(123)
+      for (k, p) in pairs.enumerated() {
+        if k > 0 { out.append(44) }
+        writeString(p.0, &out)
+        out.append(58)
+        writeJSON(p.1, &out)
+      }
+      out.append(125)
+    }
+  }
+
+  static func writeString(_ s: String, _ out: inout [UInt8]) {
+    let hex: [UInt8] = Array("0123456789abcdef".utf8)
+    out.append(34)
+    for c in s.utf8 {
+      switch c {
+      case 34: out += [92, 34]
+      case 92: out += [92, 92]
+      case 10: out += [92, 110]
+      case 13: out += [92, 114]
+      case 9: out += [92, 116]
+      case 0..<32: out += [92, 117, 48, 48, hex[Int(c >> 4)], hex[Int(c & 15)]]
+      default: out.append(c)
+      }
+    }
+    out.append(34)
+  }
+
+  // MARK: Tiny XML reader (Gmail's Atom feed)
+
+  /// The text between the first `open` at or after `from` and the next `close`, and the index
+  /// just past `close`.
+  static func between(_ s: [UInt8], _ open: String, _ close: String, from: Int = 0) -> (String, Int)? {
+    let o = Array(open.utf8), c = Array(close.utf8)
+    guard let a = find(s, o, from: from) else { return nil }
+    let start = a + o.count
+    guard let b = find(s, c, from: start) else { return nil }
+    return (String(decoding: s[start..<b], as: UTF8.self), b + c.count)
+  }
+
+  static func find(_ hay: [UInt8], _ needle: [UInt8], from: Int = 0) -> Int? {
+    guard !needle.isEmpty, hay.count >= needle.count, from >= 0, from <= hay.count - needle.count else { return nil }
+    var i = from
+    while i <= hay.count - needle.count {
+      if hay[i] == needle[0] {
+        var ok = true
+        for j in 1..<needle.count where hay[i + j] != needle[j] {
+          ok = false
+          break
+        }
+        if ok { return i }
+      }
+      i += 1
+    }
+    return nil
+  }
+
+  /// The UTF-8 bytes of one Unicode scalar value.
+  static func utf8(_ n: UInt32) -> [UInt8] {
+    if n < 0x80 { return [UInt8(n)] }
+    if n < 0x800 { return [UInt8(0xC0 | (n >> 6)), UInt8(0x80 | (n & 0x3F))] }
+    if n < 0x10000 { return [UInt8(0xE0 | (n >> 12)), UInt8(0x80 | ((n >> 6) & 0x3F)), UInt8(0x80 | (n & 0x3F))] }
+    return [UInt8(0xF0 | (n >> 18)), UInt8(0x80 | ((n >> 12) & 0x3F)), UInt8(0x80 | ((n >> 6) & 0x3F)), UInt8(0x80 | (n & 0x3F))]
+  }
+
+  /// XML/HTML text: named entities (`&amp;` …) and decimal/hex character references.
+  static func entities(_ s: String) -> String {
+    let b = Array(s.utf8)
+    guard b.contains(38) else { return s }  // &
+    var out: [UInt8] = []
+    var i = 0
+    while i < b.count {
+      if b[i] == 38, let semi = b[i...].prefix(12).firstIndex(of: 59) {  // & … ;
+        let name = String(decoding: b[(i + 1)..<semi], as: UTF8.self)
+        var rep: [UInt8]?
+        switch name {
+        case "amp": rep = [38]
+        case "lt": rep = [60]
+        case "gt": rep = [62]
+        case "quot": rep = [34]
+        case "apos": rep = [39]
+        case "nbsp": rep = [32]
+        default:
+          let nb = Array(name.utf8)
+          if nb.first == 35 {  // #
+            var n: UInt32 = 0
+            var ok = nb.count > 1
+            let hex = nb.count > 1 && (nb[1] == 120 || nb[1] == 88)
+            for c in nb.dropFirst(hex ? 2 : 1) {
+              var d: UInt32
+              switch c {
+              case 48...57: d = UInt32(c - 48)
+              case 97...102 where hex: d = UInt32(c - 87)
+              case 65...70 where hex: d = UInt32(c - 55)
+              default: ok = false; d = 0
+              }
+              n = n &* (hex ? 16 : 10) &+ d
+            }
+            if ok, n > 0, n < 0x110000, !(0xD800...0xDFFF).contains(n) { rep = utf8(n) }
+          }
+        }
+        if let rep {
+          out += rep
+          i = semi + 1
+          continue
+        }
+      }
+      out.append(b[i])
+      i += 1
+    }
+    return String(decoding: out, as: UTF8.self)
+  }
+
   /// "now", "5m", "3h", "2d" (for feed rows).
   static func ago(_ ms: Int64, now: Int64) -> String {
     let s = (now - ms) / 1000

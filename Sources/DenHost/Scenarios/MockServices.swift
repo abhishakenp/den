@@ -97,7 +97,7 @@ public final class MockServices: @unchecked Sendable {
         if let data { buffer.append(data) }
         if let req = Self.parse(buffer) {
           let (status, headers, body) = self.respond(req)
-          let reason = [200: "OK", 206: "Partial Content", 302: "Found"][status] ?? "Error"
+          let reason = [200: "OK", 206: "Partial Content", 302: "Found", 401: "Unauthorized"][status] ?? "Error"
           var head = "HTTP/1.1 \(status) \(reason)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n"
           for (k, v) in headers { head += "\(k): \(v)\r\n" }
           c.send(content: Data((head + "\r\n").utf8) + body, completion: .contentProcessed { _ in c.cancel() })
@@ -170,6 +170,7 @@ public final class MockServices: @unchecked Sendable {
     lock.withLock { _log.append("\(r.method) \(r.path)") }
     if r.method == "GET", let f = files[r.path] { return file(f.type, f.data, range: r.headers["range"]) }
     if let (type, body) = lock.withLock({ _pages[r.path] }) { return (200, [("Content-Type", type)], body) }
+    if let answer = routeGoogleNotion(r) { return answer }
     switch (r.method, r.path) {
     case ("GET", "/slack/signin"):
       return (200, [("Content-Type", "text/html; charset=utf-8"), ("Set-Cookie", "d=\(Self.dCookie); Path=/; HttpOnly; SameSite=Lax")], Data(slackSignedInPage.utf8))
