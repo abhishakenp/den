@@ -225,8 +225,8 @@ final class PreviewsCore {
       var p = 0
       while p < rest.count, rest[p] != 63, rest[p] != 35 { p += 1 }
       rest = Array(rest[..<p])
-      if rest == [47] { rest = [] }
     }
+    if rest == [47] { rest = [] }
     let text = URLs.percentDecode(rest)
     return (h, full ? text : cut(text, statusPathMax))
   }
