@@ -46,15 +46,21 @@ final class TabsCore {
     }
   }
 
+  /// A folder in the pinned section (Arc) or a group in Today (Dia's tab groups, den-adapted).
+  /// `auto` groups come from ⌘-clicking links: they dissolve back into a plain tab when one tab
+  /// is left. Manual Today folders go away when their last tab does; pinned folders persist.
   struct Folder {
     var id: String
     var spaceId: String
     var title: String
     var open: Bool
     var children: [String]
+    var auto = false
 
     var value: Value {
-      ["id": .string(id), "spaceId": .string(spaceId), "title": .string(title), "open": .bool(open), "children": .array(children.map { .string($0) })]
+      var v: Value = ["id": .string(id), "spaceId": .string(spaceId), "title": .string(title), "open": .bool(open), "children": .array(children.map { .string($0) })]
+      if auto { v.put("auto", true) }
+      return v
     }
   }
 
@@ -120,6 +126,24 @@ final class TabsCore {
   var editing: String?  // tab or folder whose title is being renamed inline in the sidebar
   /// Other plugins' buttons in the URL pill, per web view and owner (`pillButtons`).
   var pillButtons: [String: [(String, [Value])]] = [:]
+  /// Tab -> the tab it was ⌘-clicked from, so later links from a group land next to their
+  /// opener (Chrome-style, dia-ui-spec §6). Runtime only.
+  var opener: [String: String] = [:]
+  /// Extra tabs picked with ⌘-click / ⇧-click in the sidebar (⌃⌘N makes a folder of them).
+  var multi: [String] = []
+  /// Groups waiting for an on-device name (the header shimmers), and ones revealing it now.
+  var naming: Set<String> = []
+  var revealing: Set<String> = []
+  var aiAvailable: Bool?
+  /// Setting: ⌘-clicking a link groups the new tab with its source (default on).
+  var groupLinks = true
+  /// Foreground clock: milliseconds den has been frontmost this session. Idle discard counts
+  /// only this time, so tabs don't unload while you work in another app.
+  var fgAccum: Int64 = 0
+  var activeSince: Int64?
+  var fgLastUse: [String: Int64] = [:]
+  /// The most recently used tabs are never discarded for idleness (Dia 1.5/1.8).
+  static let protectedRecent = 5
 
   init(env: PluginEnv) { self.env = env }
 
@@ -130,6 +154,7 @@ final class TabsCore {
     currentSpace = env.call("spaces", "current").s("id")
     load()
     for t in tabs.values { ensureWebview(t.id) }
+    setActive(env.call("app", "state").b("active"))
     bindKeys()
     subscribe()
     registerSettings()
@@ -199,7 +224,7 @@ final class TabsCore {
     for t in v.a("tabs") { if let tab = Tab(t) { tabs[tab.id] = tab } }
     for f in v.a("folders") {
       guard let id = f["id"].string else { continue }
-      folders[id] = Folder(id: id, spaceId: f.s("spaceId"), title: f.s("title"), open: f.b("open", true), children: f.a("children").compactMap { $0.string })
+      folders[id] = Folder(id: id, spaceId: f.s("spaceId"), title: f.s("title"), open: f.b("open", true), children: f.a("children").compactMap { $0.string }, auto: f.b("auto"))
     }
     for sp in v.a("splits") {
       guard let id = sp["id"].string else { continue }
@@ -236,7 +261,7 @@ final class TabsCore {
     for (k, sp) in splits { splits[k]!.children = sp.children.filter { tabs[$0] != nil } }
     favorites = favorites.filter { tabs[$0] != nil || splits[$0] != nil }
     for (k, v) in pinned { pinned[k] = v.filter { tabs[$0] != nil || folders[$0] != nil || splits[$0] != nil } }
-    for (k, v) in today { today[k] = v.filter { tabs[$0] != nil || splits[$0] != nil } }
+    for (k, v) in today { today[k] = v.filter { tabs[$0] != nil || folders[$0] != nil || splits[$0] != nil } }
     for (k, f) in folders { folders[k]!.children = f.children.filter { tabs[$0] != nil || folders[$0] != nil || splits[$0] != nil } }
     for (sid, id) in selected where tabs[id] == nil { selected[sid] = nil }
     tidySplits()
@@ -353,7 +378,9 @@ final class TabsCore {
   func kind(of b: Box) -> String {
     switch b {
     case .favorites: return "favorite"
-    case .pinned, .folder: return "pinned"
+    case .pinned: return "pinned"
+    // A folder takes the kind of the section it lives in (a Today group holds today tabs).
+    case let .folder(f): return locate(f).map { kind(of: $0.0) } ?? "pinned"
     case .today: return "today"
     case let .split(s): return locate(s).map { kind(of: $0.0) } ?? "today"
     }
@@ -384,7 +411,11 @@ final class TabsCore {
     func walk(_ list: [String]) {
       for id in list {
         if let f = folders[id] {
-          if f.open || !onlyVisible { walk(f.children) }
+          if f.open || !onlyVisible {
+            walk(f.children)
+          } else if let sel = selected[sid], tabsIn(folder: id).contains(sel) {
+            out.append(sel)  // a collapsed folder still shows its active tab
+          }
         } else if let sp = splits[id] {
           if onlyVisible { out += sp.children.prefix(1) } else { out += sp.children }
         } else {
@@ -491,6 +522,10 @@ final class TabsCore {
     case "deleteFolder":
       guard folders[args.s("id")] != nil else { return .err("tabs: no folder '" + args.s("id") + "'") }
       deleteFolder(args.s("id"))
+    case "newTab":
+      // A new tab at the end of a folder or group (⌥⌘T, the folder card's "New Tab").
+      if let f = args.sOpt("folderId"), folders[f] == nil { return .err("tabs: no folder '" + f + "'") }
+      newTabInFolder(args.sOpt("folderId"))
     case "split":
       let ids = args.a("ids").compactMap { $0.string }
       guard !ids.isEmpty, ids.allSatisfy({ tabs[$0] != nil }) else { return .err("tabs: split needs tab ids") }
@@ -503,7 +538,11 @@ final class TabsCore {
     case "settings":
       if let a = args["archiveAfterMs"].int { archiveAfterMs = max(0, a) }
       if let s = args["suspendAfterMs"].int { suspendAfterMs = max(0, s) }
-      let v: Value = ["archiveAfterMs": .int(archiveAfterMs), "suspendAfterMs": .int(suspendAfterMs)]
+      if let g = args["groupLinks"].bool {
+        groupLinks = g
+        env.call("settings", "set", ["id": .string(Self.ns), "key": "groupLinks", "value": .bool(g)])
+      }
+      let v: Value = ["archiveAfterMs": .int(archiveAfterMs), "suspendAfterMs": .int(suspendAfterMs), "groupLinks": .bool(groupLinks)]
       if !args.isNull {
         env.call("storage", "set", ["ns": .string(Self.ns), "key": "settings", "value": v])
         // Keep the Settings window in step (a no-op when the change came from it).
@@ -533,7 +572,7 @@ final class TabsCore {
   func list(_ sid: String) -> Value {
     func item(_ id: String) -> Value {
       if let f = folders[id] {
-        return ["id": .string(id), "folder": true, "title": .string(f.title), "open": .bool(f.open), "children": .array(f.children.map { item($0) })]
+        return ["id": .string(id), "folder": true, "title": .string(f.title), "open": .bool(f.open), "auto": .bool(f.auto), "children": .array(f.children.map { item($0) })]
       }
       if let sp = splits[id] {
         return ["id": .string(id), "split": true, "layout": .string(sp.layout), "children": .array(sp.children.map { tabValue($0) })]
@@ -630,6 +669,29 @@ final class TabsCore {
       }
       splits[sid] = nil
     }
+    tidyFolders()
+  }
+
+  /// Auto groups (⌘-clicked links) dissolve into their last tab; empty Today folders go away.
+  /// Pinned folders persist, even empty (Arc).
+  func tidyFolders() {
+    var again = true
+    while again {
+      again = false
+      for (fid, f) in folders {
+        guard let (b, i) = locate(fid) else { continue }
+        guard (f.auto && f.children.count <= 1) || (f.children.isEmpty && kind(of: b) == "today") else { continue }
+        var list = ids(b)
+        list.replaceSubrange(i...i, with: f.children)
+        setIds(b, list)
+        folders[fid] = nil
+        naming.remove(fid)
+        revealing.remove(fid)
+        if editing == fid { editing = nil }
+        again = true
+        break
+      }
+    }
   }
 
   // MARK: - Undo
@@ -708,14 +770,14 @@ final class TabsCore {
     let sid = spaceOf(id) ?? currentSpace
     let previous = selectedId
     let now = env.now()
-    if let p = previous { tabs[p]?.lastActive = now }
+    if let p = previous { tabs[p]?.lastActive = now; fgLastUse[p] = fgNow() }
     tabs[id]?.lastActive = now
+    fgLastUse[id] = fgNow()
     mru.removeAll { $0 == id }
     mru.insert(id, at: 0)
     if mru.count > 50 { mru.removeLast() }
     selected[sid] = id
-    // Reveal a tab inside a closed folder.
-    if let (b, _) = locate(id), case let .folder(f) = b, folders[f]?.open == false { folders[f]?.open = true }
+    // A tab inside a collapsed folder shows under its header (Dia 1.28); the folder stays closed.
     if sid != currentSpace {
       // spaces.current comes back through our listener and shows the tab.
       env.call("spaces", "switch", ["id": .string(sid)])
@@ -733,9 +795,17 @@ final class TabsCore {
 
   /// Picks what to show after `id` leaves `sid`'s selection.
   func replacement(for id: String, in sid: String) -> String? {
-    if let list = today[sid], let i = list.firstIndex(of: id) {
-      if i + 1 < list.count { return list[i + 1] }
-      if i > 0 { return list[i - 1] }
+    // The next Today tab below (inside groups too, dia-ui-spec §6), else the one above.
+    var flat: [String] = []
+    func walk(_ list: [String]) {
+      for c in list {
+        if let f = folders[c] { walk(f.children) } else if let sp = splits[c] { flat += sp.children.prefix(1) } else { flat.append(c) }
+      }
+    }
+    walk(today[sid] ?? [])
+    if let i = flat.firstIndex(of: id) {
+      if i + 1 < flat.count { return flat[i + 1] }
+      if i > 0 { return flat[i - 1] }
     }
     let visible = Set(order(sid, onlyVisible: false))
     return mru.first { $0 != id && visible.contains($0) && tabs[$0] != nil }
@@ -762,13 +832,31 @@ final class TabsCore {
     env.emit("tabs.closed", ["id": .string(id)])
   }
 
+  /// ⌘W and the row's X. The next tab goes on screen first; the closed page is let go after
+  /// (Dia 1.48: "show the next tab first, then tear down"), and the sidebar renders once.
   func close(_ id: String) {
     guard tabs[id] != nil else { return }
     let sid = spaceOf(id) ?? currentSpace
     let wasSelected = selectedId == id || selected[sid] == id
     let next = wasSelected ? replacement(for: id, in: sid) : nil
-    if kindOf(id) == "today" {
-      checkpoint()
+    let today = kindOf(id) == "today"
+    if today { checkpoint() }
+    // A pane of a split leaves the split first (the split is shown again without it, below).
+    if splitOf(id) != nil {
+      if today { archiveTab(id, space: sid); collectWebviews() } else { tabs[id]?.lastActive = env.now(); env.call("webviews", "suspend", ["id": .string(id), "force": true]) }
+      if wasSelected {
+        selected[sid] = nil
+        if let n = next { select(n) } else { showSelected() }
+      }
+      changed(sid)
+      return
+    }
+    if wasSelected {
+      selected[sid] = nil
+      if let n = next { focusQuietly(n, in: sid) }
+      showSelected()
+    }
+    if today {
       archiveTab(id, space: sid)
       collectWebviews()
     } else {
@@ -776,11 +864,20 @@ final class TabsCore {
       tabs[id]?.lastActive = env.now()
       env.call("webviews", "suspend", ["id": .string(id), "force": true])
     }
-    if wasSelected {
-      selected[sid] = nil
-      if let n = next { select(n) } else { showSelected() }
-    }
+    multi.removeAll { $0 == id }
     changed(sid)
+    if wasSelected, let n = next { env.emit("tabs.selected", ["id": .string(n), "previous": .string(id)]) }
+  }
+
+  /// `select` without its render and events (the caller renders once and emits).
+  func focusQuietly(_ id: String, in sid: String) {
+    let now = env.now()
+    tabs[id]?.lastActive = now
+    fgLastUse[id] = fgNow()
+    mru.removeAll { $0 == id }
+    mru.insert(id, at: 0)
+    if mru.count > 50 { mru.removeLast() }
+    selected[sid] = id
   }
 
   func setKind(_ id: String, _ kind: String, toast: Bool) {
@@ -808,6 +905,9 @@ final class TabsCore {
     dst.insert(id, at: at)
     setIds(box, dst)
     if case .split = from { tidySplits() }
+    // A group moved into the pinned section becomes a plain (persistent) folder.
+    if folders[id] != nil, kind(of: box) == "pinned" { folders[id]?.auto = false }
+    tidyFolders()
     let newSpace = space(of: box)
     if var t = tabs[id] {
       switch kind(of: box) {
@@ -852,7 +952,6 @@ final class TabsCore {
     } else if kind == "pinned" {
       box = .pinned(sid)
     } else if kind == "today" {
-      guard folders[id] == nil else { return .err("tabs: folders live in the pinned section") }
       box = .today(sid)
     } else {
       return .err("tabs: bad kind " + kind)
@@ -867,7 +966,7 @@ final class TabsCore {
   /// section (pinned stays pinned) in the other space; a favorite lands in that space's today.
   func moveToSpace(_ id: String, _ sid: String) {
     guard pageIndex(sid) != nil, tabs[id] != nil || folders[id] != nil || splits[id] != nil else { return }
-    let kind = folders[id] != nil ? "pinned" : kindOf(id)
+    let kind = kindOf(id)
     if kind != "favorite" && (spaceOf(id) ?? folders[id]?.spaceId) == sid { return }
     _ = move(["id": .string(id), "spaceId": .string(sid), "kind": .string(kind == "favorite" ? "today" : kind)])
   }
@@ -911,6 +1010,10 @@ final class TabsCore {
     checkpoint()
     if folders[id] != nil {
       folders[id]?.title = title.isEmpty ? "Untitled" : title
+      // Naming a group is a deliberate act: it becomes a folder that stays, and no on-device
+      // name replaces the user's.
+      folders[id]?.auto = false
+      naming.remove(id)
     } else {
       tabs[id]?.customTitle = title.isEmpty ? nil : title
     }
@@ -939,9 +1042,18 @@ final class TabsCore {
     if let sid { renderPage(sid) }
   }
 
+  /// Today tabs of a space, groups included (split panes excepted, as before).
+  func todayTabs(_ sid: String) -> [String] {
+    var out: [String] = []
+    for id in today[sid] ?? [] {
+      if folders[id] != nil { out += tabsIn(folder: id).filter { splitOf($0) == nil } } else if tabs[id] != nil { out.append(id) }
+    }
+    return out
+  }
+
   func clearToday(_ sid: String) {
     let keep = selected[sid]
-    let victims = (today[sid] ?? []).filter { $0 != keep }
+    let victims = todayTabs(sid).filter { $0 != keep }
     guard !victims.isEmpty else { return }
     checkpoint()
     for id in victims { archiveTab(id, space: sid) }
@@ -968,26 +1080,325 @@ final class TabsCore {
     return id
   }
 
-  func createFolder(space sid: String, title: String?, tabIds: [String]) -> String {
+  /// A folder at the first tab's place: in the pinned section (Arc), or a group in Today when the
+  /// tab is a Today tab. `rename` opens the name for editing right away (Dia: ⌃⌘N).
+  func createFolder(space sid: String, title: String?, tabIds: [String], rename: Bool = false) -> String {
     checkpoint()
     let fid = newId("folder-")
     var target: Box = .pinned(sid)
     var at: Int? = nil
-    if let first = tabIds.first, let (b, i) = locate(first) {
+    if let first = tabIds.first, var (b, i) = locate(first) {
+      // A tab in a split stands for its split's place.
+      if case let .split(s) = b, let loc = locate(s) { (b, i) = loc }
       switch b {
-      case .pinned, .folder:
+      case .pinned, .folder, .today:
         target = b
         at = i
       default: break
       }
     }
-    folders[fid] = Folder(id: fid, spaceId: space(of: target) ?? sid, title: title ?? "New Folder", open: true, children: [])
+    let inToday = kind(of: target) == "today"
+    let name = title ?? (inToday ? groupName(tabIds) : "New Folder")
+    folders[fid] = Folder(id: fid, spaceId: space(of: target) ?? sid, title: name, open: true, children: [])
     var list = ids(target)
     list.insert(fid, at: max(0, min(at ?? list.count, list.count)))
     setIds(target, list)
-    for t in tabIds { place(t, .folder(fid), index: nil) }
-    changed(sid)
+    for t in tabIds {
+      // A split pane brings its whole split along.
+      let item = splitOf(t) ?? t
+      if locate(item).map({ $0.0 }) != .folder(fid) { place(item, .folder(fid), index: nil) }
+    }
+    multi = []
+    if rename { editing = fid }
+    changed(space(of: target) ?? sid)
     return fid
+  }
+
+  // MARK: - Groups from links (⌘-click)
+
+  /// A site's short name for a group header: "https://en.wikipedia.org/wiki/X" -> "Wikipedia".
+  static func siteName(_ url: String) -> String {
+    let h = URLs.host(url)
+    guard URLs.isWeb(url), !h.isEmpty, h != url else { return URLs.title(url) }
+    var labels: [[UInt8]] = [[]]
+    for c in h.utf8 { if c == 46 { labels.append([]) } else { labels[labels.count - 1].append(c) } }
+    labels = labels.filter { !$0.isEmpty }
+    guard labels.count >= 2 else { return capitalized(String(decoding: labels.first ?? [], as: UTF8.self)) }
+    var k = labels.count - 2
+    // co.uk, com.au and friends: the name is one label further left.
+    let second = String(decoding: labels[k], as: UTF8.self)
+    if labels.count >= 3, labels[labels.count - 1].count == 2, ["co", "com", "org", "net", "ac", "gov", "edu"].contains(second) { k -= 1 }
+    let name = String(decoding: labels[k], as: UTF8.self)
+    for (key, pretty) in siteNames where key == name { return pretty }
+    return capitalized(name)
+  }
+
+  static let siteNames: [(String, String)] = [
+    ("github", "GitHub"), ("youtube", "YouTube"), ("linkedin", "LinkedIn"), ("stackoverflow", "Stack Overflow"), ("ycombinator", "Hacker News"),
+    ("webkit", "WebKit"), ("icloud", "iCloud"), ("bbc", "BBC"), ("cnn", "CNN"), ("nytimes", "NYTimes"), ("mozilla", "MDN"), ("swift", "Swift"),
+  ]
+
+  static func capitalized(_ s: String) -> String {
+    var b = Array(s.utf8)
+    if let f = b.first, f >= 97 && f <= 122 { b[0] = f - 32 }
+    return String(decoding: b, as: UTF8.self)
+  }
+
+  /// "Wikipedia", or "GitHub & Apple" when the tabs come from two sites.
+  func groupName(_ ids: [String]) -> String {
+    var names: [String] = []
+    for id in ids {
+      let t = tabs[id] ?? splits[id].flatMap { tabs[$0.children.first ?? ""] }
+      guard let t else { continue }
+      let n = Self.siteName(t.url)
+      if !n.isEmpty && !names.contains(n) { names.append(n) }
+    }
+    if names.isEmpty { return "New Folder" }
+    return names.count == 1 ? names[0] : names[0] + " & " + names[1]
+  }
+
+  /// A link ⌘-clicked (or middle-clicked) in a Today tab: the new tab opens in the background
+  /// grouped with its source (dia-ui-spec §6). From a plain tab, the two are wrapped into a new
+  /// group at the source's place; from a tab already in a group, the new tab joins it right after
+  /// the source's earlier links (Chrome-style opener order). Returns the new tab's id.
+  func openFromLink(_ url: String, source src: String, background: Bool) -> String? {
+    guard groupLinks, tabs[src] != nil, splitOf(src) == nil, kindOf(src) == "today", let (b, i) = locate(src) else { return nil }
+    let sid = spaceOf(src) ?? currentSpace
+    let id = newId("tab-")
+    tabs[id] = Tab(id: id, title: URLs.title(url), url: url, lastActive: env.now())
+    opener[id] = src
+    var list = ids(b)
+    if case .folder = b {
+      // After the source and every tab it already opened.
+      var at = i
+      for (j, c) in list.enumerated() where j > i && opener[c] == src { at = j }
+      list.insert(id, at: at + 1)
+      setIds(b, list)
+    } else {
+      list.insert(id, at: i + 1)
+      setIds(b, list)
+      // Undo (⌃Z) takes the group away and leaves the two plain tabs.
+      checkpoint()
+      let fid = newId("folder-")
+      folders[fid] = Folder(id: fid, spaceId: sid, title: groupName([src, id]), open: true, children: [src, id], auto: true)
+      var l = ids(b)
+      l.remove(at: i + 1)
+      l[i] = fid
+      setIds(b, l)
+      nameLater(fid, waitingFor: id)
+    }
+    ensureWebview(id)
+    env.emit("tabs.opened", ["id": .string(id)])
+    if background { changed(sid) } else { select(id); changed(sid) }
+    return id
+  }
+
+  /// The on-device model names a new group once its new tab has a title (lazily; only when
+  /// Apple Intelligence can run). Until then the header shimmers over the site-based name.
+  func nameLater(_ fid: String, waitingFor tab: String) {
+    if aiAvailable == nil { aiAvailable = env.call("ai", "availability").b("available") }
+    guard aiAvailable == true else { return }
+    naming.insert(fid)
+    pendingNames[tab] = fid
+    // Don't wait forever for a title (a slow or failing page).
+    env.timer(Self.nameWaitMs, false) { [self] in
+      if pendingNames[tab] == fid { pendingNames[tab] = nil; askName(fid) }
+    }
+  }
+
+  static let nameWaitMs: UInt64 = 4000
+  /// New tab -> the group waiting for its title before it asks for a name.
+  var pendingNames: [String: String] = [:]
+
+  func askName(_ fid: String) {
+    guard naming.contains(fid), let f = folders[fid] else { return }
+    // Background tabs load when first shown, so a new tab may only have its address yet.
+    let titles = tabsIn(folder: fid).compactMap { tabs[$0].map { $0.displayTitle + " (" + URLs.display($0.url) + ")" } }
+    let r = env.call("ai", "summarize", [
+      "id": .string("tabs.name:" + fid), "items": .array(titles.map { .string($0) }),
+      "instructions": "These are the titles of browser tabs opened together. Name the group like a folder: one to three words, specific, Title Case. Reply with the name only: no quotes, no punctuation, no explanation.",
+    ])
+    if r.isErr {
+      naming.remove(fid)
+      if f.auto { changed(f.spaceId) }
+    }
+  }
+
+  func nameArrived(_ v: Value) {
+    let rid = v.s("id")
+    guard Text.hasPrefix(rid, "tabs.name:") else { return }
+    let fid = Text.dropPrefix(rid, "tabs.name:")
+    guard naming.contains(fid), folders[fid] != nil else { return }
+    naming.remove(fid)
+    if v.b("ok"), let name = Self.cleanName(v.s("text")), name != folders[fid]!.title {
+      folders[fid]?.title = name
+      revealing.insert(fid)
+      saveSoon()
+      renderPage(folders[fid]!.spaceId)
+      revealing.remove(fid)  // the reveal plays once, on this render
+    } else {
+      renderPage(folders[fid]!.spaceId)
+    }
+  }
+
+  /// A model reply as a group name: the first line, without quotes or trailing punctuation, at
+  /// most four words and 32 characters; nil when nothing usable is left.
+  static func cleanName(_ s: String) -> String? {
+    var b: [UInt8] = []
+    for c in s.utf8 {
+      if c == 10 || c == 13 { if b.contains(where: { $0 != 32 }) { break } else { continue } }
+      b.append(c)
+    }
+    let strip: [UInt8] = [32, 9, 34, 39, 46, 58, 42, 35, 96, 33, 63]  // space tab " ' . : * # ` ! ?
+    // Curly quotes (“ ” ‘ ’) and the ellipsis.
+    let wide: [[UInt8]] = [[0xE2, 0x80, 0x9C], [0xE2, 0x80, 0x9D], [0xE2, 0x80, 0x98], [0xE2, 0x80, 0x99], [0xE2, 0x80, 0xA6]]
+    var trimmed = true
+    while trimmed && !b.isEmpty {
+      trimmed = false
+      if let f = b.first, strip.contains(f) { b.removeFirst(); trimmed = true }
+      if let l = b.last, strip.contains(l) { b.removeLast(); trimmed = true }
+      for q in wide {
+        if b.count >= 3, Array(b.prefix(3)) == q { b.removeFirst(3); trimmed = true }
+        if b.count >= 3, Array(b.suffix(3)) == q { b.removeLast(3); trimmed = true }
+      }
+    }
+    var words = 0
+    var out: [UInt8] = []
+    var prevSpace = true
+    for c in b {
+      if c == 32 {
+        if !prevSpace { words += 1; if words >= 4 { break } }
+        prevSpace = true
+      } else {
+        prevSpace = false
+      }
+      out.append(c)
+    }
+    while out.last == 32 { out.removeLast() }
+    let name = String(decoding: out, as: UTF8.self)
+    guard !out.isEmpty, name.count <= 32 else { return nil }
+    return name
+  }
+
+  /// ⌥⌘T: a new tab at the end of the selected tab's group, selected, with the command bar to
+  /// pick its page. Outside a group it's a plain new tab (⌘T).
+  func newTabInFolder(_ folderId: String?) {
+    let fid = folderId ?? selectedId.flatMap { s -> String? in
+      guard let (b, _) = locate(splitOf(s) ?? s), case let .folder(f) = b else { return nil }
+      return f
+    }
+    guard let fid, let f = folders[fid] else { return openCommandBar("new") }
+    let id = newId("tab-")
+    // In a pinned folder the tab's pinned URL is taken from the first page it opens (webEvent).
+    tabs[id] = Tab(id: id, title: "New Tab", url: "about:blank", pinnedUrl: kind(of: .folder(fid)) == "today" ? nil : "about:blank", lastActive: env.now())
+    folders[fid]?.children.append(id)
+    if !f.open { folders[fid]?.open = true }
+    ensureWebview(id)
+    env.emit("tabs.opened", ["id": .string(id)])
+    select(id)
+    changed(f.spaceId)
+    if env.call("commands", "open", ["mode": "edit", "query": ""]).isErr {
+      env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "The Command Bar plugin isn't loaded", "icon": "sf:exclamationmark.triangle"]])
+    }
+  }
+
+  // MARK: - Foreground clock (idle discard)
+
+  func fgNow() -> Int64 { fgAccum + (activeSince.map { env.now() - $0 } ?? 0) }
+
+  func setActive(_ on: Bool) {
+    let now = env.now()
+    if on, activeSince == nil { activeSince = now }
+    if !on, let s = activeSince { fgAccum += now - s; activeSince = nil }
+  }
+
+  /// Tabs that may be discarded now: off screen, not among the most recently used, and unused
+  /// for `suspendAfterMs` of den-frontmost time.
+  func idleCandidates() -> [String] {
+    let onScreen = Set(splitOf(shown).flatMap { splits[$0]?.children } ?? [shown])
+    let recent = Set(mru.filter { tabs[$0] != nil }.prefix(Self.protectedRecent))
+    let fg = fgNow()
+    return tabs.keys.sorted().filter { id in
+      !onScreen.contains(id) && !recent.contains(id) && fg - (fgLastUse[id] ?? 0) > suspendAfterMs
+    }
+  }
+
+  /// ⌃⌘N: a folder of the selected tab plus any ⌘/⇧-clicked ones, named for editing.
+  func folderFromSelection() {
+    guard let sel = selectedId else { return }
+    var picked = multi.filter { tabs[$0] != nil && kindOf($0) != "favorite" }
+    if !picked.contains(sel) { picked.append(sel) }
+    guard kindOf(sel) != "favorite" || picked.count > 1 else { return }
+    // Sidebar order, so the folder keeps the tabs as you see them.
+    let sid = spaceOf(sel) ?? currentSpace
+    let order = order(sid, onlyVisible: false)
+    picked.sort { (order.firstIndex(of: $0) ?? Int.max) < (order.firstIndex(of: $1) ?? Int.max) }
+    _ = createFolder(space: sid, title: nil, tabIds: picked.filter { kindOf($0) != "favorite" }, rename: true)
+  }
+
+  /// ⌘-click toggles a tab in the multi-selection; ⇧-click picks the range from the selected tab.
+  func pick(_ id: String, modifiers: [Value]) -> Bool {
+    let cmd = modifiers.contains("cmd"), shift = modifiers.contains("shift")
+    guard cmd || shift, let sel = selectedId, sel != id || cmd else { return false }
+    let sid = spaceOf(id) ?? currentSpace
+    if shift {
+      let list = order(sid, onlyVisible: true)
+      guard let a = list.firstIndex(of: sel), let z = list.firstIndex(of: id) else { return false }
+      multi = Array(list[min(a, z)...max(a, z)]).filter { $0 != sel }
+    } else if multi.contains(id) {
+      multi.removeAll { $0 == id }
+    } else if id != sel {
+      multi.append(id)
+    }
+    renderPage(sid)
+    return true
+  }
+
+  func clearMulti() {
+    guard !multi.isEmpty else { return }
+    multi = []
+    renderAll()
+  }
+
+  /// "Close Other Tabs" (⌥⌘W), "Close Tabs Below/Above": Today tabs only, in sidebar order, undoable.
+  func closeMany(_ keep: String, _ which: String) {
+    let sid = spaceOf(keep) ?? currentSpace
+    var flat: [String] = []
+    func walk(_ list: [String]) {
+      for c in list { if let f = folders[c] { walk(f.children) } else if tabs[c] != nil { flat.append(c) } }
+    }
+    walk(today[sid] ?? [])
+    guard let i = flat.firstIndex(of: keep) ?? (which == "others" ? 0 : nil) else { return }
+    let victims: [String]
+    switch which {
+    case "below": victims = Array(flat[(i + 1)...])
+    case "above": victims = Array(flat[..<i])
+    default: victims = flat.filter { $0 != keep }
+    }
+    guard !victims.isEmpty else { return }
+    checkpoint()
+    let wasSel = selected[sid]
+    for id in victims { archiveTab(id, space: sid) }
+    collectWebviews()
+    if let w = wasSel, tabs[w] == nil {
+      selected[sid] = nil
+      if tabs[keep] != nil { select(keep) } else { showSelected() }
+    }
+    changed(sid)
+    let n = victims.count
+    env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string("Closed " + String(n) + (n == 1 ? " tab" : " tabs") + ". Use ⌃Z to undo."), "icon": "sf:xmark.circle.fill"]])
+  }
+
+  /// "Ungroup Tabs": the group's tabs go back to where the group was, in order.
+  func ungroup(_ fid: String) {
+    guard let f = folders[fid], let (b, i) = locate(fid) else { return }
+    checkpoint()
+    var list = ids(b)
+    list.replaceSubrange(i...i, with: f.children)
+    setIds(b, list)
+    folders[fid] = nil
+    naming.remove(fid)
+    changed(f.spaceId)
   }
 
   func deleteFolder(_ fid: String) {
@@ -1042,16 +1453,24 @@ final class TabsCore {
         ["key": "suspendAfterMinutes", "type": "number", "title": "Unload idle tabs",
          "subtitle": "Background tabs unused for this long free their memory and reload when you come back. Tabs playing audio never unload.",
          "min": 0, "max": 240, "step": 5, "unit": "min", "labels": [["value": 0, "title": "Never"]], "default": .int(suspendAfterMs / 60_000)],
+        ["key": "groupLinks", "type": "toggle", "title": "Group ⌘-clicked links",
+         "subtitle": "Command-clicking a link opens it in the background, in a group with the tab it came from. Off: a plain background tab.",
+         "default": .bool(groupLinks)],
       ],
     ])
     guard !r.isErr else { return }  // an older host without Settings
     let v = env.call("settings", "get", ["id": .string(Self.ns)])
     applySetting("archiveAfterMs", v["archiveAfterMs"])
     applySetting("suspendAfterMinutes", v["suspendAfterMinutes"])
+    applySetting("groupLinks", v["groupLinks"])
     env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { applySetting(v.s("key"), v["value"]) } }
   }
 
   func applySetting(_ key: String, _ v: Value) {
+    if key == "groupLinks" {
+      if let b = v.bool { groupLinks = b }
+      return
+    }
     guard let n = v.int ?? v.double.map({ Int64($0) }) else { return }
     let before = (archiveAfterMs, suspendAfterMs)
     switch key {
@@ -1070,7 +1489,7 @@ final class TabsCore {
     var archived = 0
     if archiveAfterMs > 0 {
       for sid in spaceIds {
-        for id in today[sid] ?? [] where id != selected[sid] {
+        for id in todayTabs(sid) where id != selected[sid] {
           guard let t = tabs[id], now - t.lastActive > archiveAfterMs, !t.audio else { continue }
           archiveTab(id, space: sid)
           archived += 1
@@ -1078,10 +1497,10 @@ final class TabsCore {
       }
     }
     if suspendAfterMs > 0 {
-      // Idle discard. The host refuses what must stay (on screen, media, PiP, camera/mic,
-      // unsaved input) and says why; such a tab is asked again on the next tick.
-      let onScreen = Set(splitOf(shown).flatMap { splits[$0]?.children } ?? [shown])
-      for (id, t) in tabs where !onScreen.contains(id) && now - t.lastActive > suspendAfterMs {
+      // Idle discard, counted in den-frontmost time, never for the most recently used tabs. The
+      // host refuses what must stay (on screen, media, PiP, camera/mic, unsaved input) and says
+      // why; such a tab is asked again on the next tick.
+      for id in idleCandidates() {
         if env.call("webviews", "get", ["id": .string(id)]).b("live") {
           env.call("webviews", "suspend", ["id": .string(id)])
         }
@@ -1111,7 +1530,7 @@ final class TabsCore {
 
   func showSelected() {
     let id = selectedId
-    if let p = shown as String?, !p.isEmpty, p != id, tabs[p] != nil { tabs[p]?.lastActive = env.now() }
+    if let p = shown as String?, !p.isEmpty, p != id, tabs[p] != nil { tabs[p]?.lastActive = env.now(); fgLastUse[p] = fgNow() }
     shown = id ?? ""
     if let id, let sid = splitOf(id), let sp = splits[sid] {
       env.call("content", "show", ["panes": .array(sp.children.map { .string($0) }), "orientation": .string(sp.layout), "focus": .string(id)])
@@ -1161,16 +1580,32 @@ final class TabsCore {
                     "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1",
                     "hoverIntent": .int(Self.rowCardDelayMs)]
     if editing == id { r.put("editing", true) }
+    if multi.contains(id) { r.put("highlighted", true) }
     return r
   }
 
   func node(_ id: String, _ sid: String, parent: Box) -> Value? {
     if let f = folders[id] {
-      return ["type": "folder", "id": .string(id), "title": .string(f.title), "icon": "sf:folder", "open": .bool(f.open), "editing": .bool(editing == id),
-              "hoverIntent": .int(Self.rowCardDelayMs),
-              "children": .array(f.children.compactMap { node($0, sid, parent: .folder(id)) }),
-              "menu": [["id": "renameFolder", "title": "Rename Folder…", "icon": "sf:pencil"], ["id": "newFolder", "title": "New Folder Inside", "icon": "sf:folder.badge.plus"],
-                       ["separator": true], ["id": "deleteFolder", "title": "Delete Folder…", "icon": "sf:trash"]]]
+      let group = kind(of: parent) == "today"
+      var menu: [Value] = [["id": "renameFolder", "title": group ? "Rename Group…" : "Rename Folder…", "icon": "sf:pencil"]]
+      if !group { menu.append(["id": "newFolder", "title": "New Folder Inside", "icon": "sf:folder.badge.plus"]) }
+      if group { menu.append(["id": "newTabInFolder", "title": "New Tab in Group", "icon": "sf:plus", "key": .string(Self.chord("tabs.key.newTabInFolder"))]) }
+      menu.append(["separator": true])
+      if group { menu.append(["id": "ungroup", "title": "Ungroup Tabs", "icon": "sf:rectangle.stack.badge.minus"]) }
+      menu.append(["id": "deleteFolder", "title": group ? "Close Group…" : "Delete Folder…", "icon": "sf:trash"])
+      var v: Value = ["type": "folder", "id": .string(id), "title": .string(f.title), "icon": .string(folderIcon(f, group: group)), "open": .bool(f.open),
+                      "editing": .bool(editing == id), "hoverIntent": .int(Self.rowCardDelayMs), "children": .array(f.children.compactMap { node($0, sid, parent: .folder(id)) }), "menu": .array(menu)]
+      // Dia's group look in Today: a lighter rounded panel around the header and its tabs.
+      if group { v.put("style", "group") }
+      // Collapsed, the folder still shows its active tab under the header (Dia 1.28).
+      if !f.open, let sel = selected[sid], tabsIn(folder: id).contains(sel) {
+        var shown: Value? = nil
+        if let s = splitOf(sel) { shown = node(s, sid, parent: .folder(id)) } else if tabs[sel] != nil { shown = row(sel, sid, box: .folder(id)) }
+        if let shown { v.put("closedChildren", .array([shown])) }
+      }
+      if naming.contains(id) { v.put("pending", true) }
+      if revealing.contains(id) { v.put("reveal", true) }
+      return v
     }
     if let sp = splits[id] {
       // One sidebar item: the split's tabs side by side (Arc §7). Clicking a pane's segment focuses it.
@@ -1212,39 +1647,78 @@ final class TabsCore {
     env.call("ui", "set", ["slot": "sidebar.today", "page": p, "tree": ["type": "list", "id": .string("tabs.today:" + sid), "children": .array(kids)]])
   }
 
+  /// Every item that has a shortcut shows it on the right; holding ⌥ swaps in the alternates
+  /// (Copy Link ↔ Copy Link as Markdown, Archive Tab ↔ Close Other Tabs, Close Tabs Below ↔
+  /// Above; dia-ui-spec §4).
   func menu(for id: String, box: Box) -> [Value] {
     guard let t = tabs[id] else { return [] }
-    var m: [Value] = [["id": "copy", "title": "Copy Link", "icon": "sf:link"], ["id": "duplicate", "title": "Duplicate", "icon": "sf:plus.square.on.square"]]
-    // Favorites are icon tiles with no title to edit in place.
-    if box != .favorites { m.append(["id": "rename", "title": "Rename…", "icon": "sf:pencil"]) }
-    if t.audio || t.muted {
-      m.append(t.muted ? ["id": "unmute", "title": "Unmute Tab", "icon": "sf:speaker.wave.2"] : ["id": "mute", "title": "Mute Tab", "icon": "sf:speaker.slash"])
+    func item(_ id: String, _ title: String, _ icon: String, _ event: String? = nil) -> Value {
+      var v: Value = ["id": .string(id), "title": .string(title), "icon": .string(icon)]
+      if let e = event, !Self.chord(e).isEmpty { v.put("key", .string(Self.chord(e))) }
+      return v
+    }
+    func alt(_ v: Value) -> Value {
+      var v = v
+      v.put("alternate", true)
+      return v
     }
     let k = kind(of: box)
+    var m: [Value] = [item("copy", "Copy Link", "sf:link", "tabs.key.copy"), alt(item("copyMarkdown", "Copy Link as Markdown", "sf:link", "copyMarkdown")),
+                      item("duplicate", "Duplicate", "sf:plus.square.on.square")]
+    // Favorites are icon tiles with no title to edit in place.
+    if box != .favorites { m.append(item("rename", "Rename…", "sf:pencil")) }
+    if t.audio || t.muted {
+      m.append(t.muted ? item("unmute", "Unmute Tab", "sf:speaker.wave.2") : item("mute", "Mute Tab", "sf:speaker.slash"))
+    }
     if k != "today" && t.drift {
-      m.append(["id": "reset", "title": "Go Back to Pinned URL", "icon": "sf:arrow.uturn.backward"])
-      m.append(["id": "replacePinned", "title": "Replace Pinned URL with Current", "icon": "sf:pin"])
+      m.append(item("reset", "Go Back to Pinned URL", "sf:arrow.uturn.backward"))
+      m.append(item("replacePinned", "Replace Pinned URL with Current", "sf:pin"))
     }
     m.append(["separator": true])
-    if k == "today" { m.append(["id": "pin", "title": "Pin Tab", "icon": "sf:pin"]) }
-    if k == "pinned" { m.append(["id": "unpin", "title": "Unpin Tab", "icon": "sf:pin.slash"]) }
-    if k != "favorite" && favorites.count < Self.maxFavorites { m.append(["id": "favorite", "title": "Add to Favorites", "icon": "sf:star"]) }
-    if k == "favorite" { m.append(["id": "unpin", "title": "Remove from Favorites", "icon": "sf:star.slash"]) }
-    if k != "favorite" { m.append(["id": "newFolder", "title": "New Folder with Tab", "icon": "sf:folder.badge.plus"]) }
+    if k == "today" { m.append(item("pin", "Pin Tab", "sf:pin", "tabs.key.pin")) }
+    if k == "pinned" { m.append(item("unpin", "Unpin Tab", "sf:pin.slash", "tabs.key.pin")) }
+    if k != "favorite" && favorites.count < Self.maxFavorites { m.append(item("favorite", "Add to Favorites", "sf:star")) }
+    if k == "favorite" { m.append(item("unpin", "Remove from Favorites", "sf:star.slash")) }
+    if case .folder = box {
+      m.append(item("removeFromFolder", k == "today" ? "Remove from Group" : "Remove from Folder", "sf:rectangle.stack.badge.minus"))
+    } else if k != "favorite" {
+      m.append(item("newFolder", k == "today" ? "New Group with Tab" : "New Folder with Tab", "sf:folder.badge.plus", "tabs.key.newFolder"))
+    }
     let here = space(of: box)
     for s in spaces where s.s("id") != here && k != "favorite" {
       m.append(["id": .string("move:" + s.s("id")), "title": .string("Move to " + s.s("name")), "icon": "sf:arrow.right.square"])
     }
     m.append(["separator": true])
-    m.append(["id": "close", "title": k == "today" ? "Archive Tab" : "Close Tab", "icon": "sf:xmark"])
+    m.append(item("close", k == "today" ? "Archive Tab" : "Close Tab", "sf:xmark", "tabs.key.close"))
+    if k == "today" {
+      m.append(alt(item("closeOthers", "Close Other Tabs", "sf:xmark.square", "tabs.key.closeOthers")))
+      m.append(item("closeBelow", "Close Tabs Below", "sf:arrow.down.to.line"))
+      m.append(alt(item("closeAbove", "Close Tabs Above", "sf:arrow.up.to.line")))
+    }
     return m
+  }
+
+  /// The chord each tab action is bound to, for menus (the same table `bindKeys` binds).
+  static func chord(_ event: String) -> String {
+    for (c, e, _, _) in binds where e == event { return c }
+    if event == "copyMarkdown" { return "cmd+opt+shift+c" }  // the Edit menu's Copy URL as Markdown
+    return ""
+  }
+
+  func folderIcon(_ f: Folder, group: Bool) -> String {
+    guard group else { return "sf:folder" }
+    // A group shows its first tab's icon (Dia's resting state).
+    for c in tabsIn(folder: f.id) { if let t = tabs[c] { return t.icon } }
+    return "sf:folder"
   }
 
   // MARK: - Input
 
-  func bindKeys() {
-    let binds: [(String, String, String, String)] = [
+  static let binds: [(String, String, String, String)] = [
       ("cmd+w", "tabs.key.close", "Archive Tab", "File"),
+      ("cmd+opt+w", "tabs.key.closeOthers", "Close Other Tabs", "File"),
+      ("cmd+opt+t", "tabs.key.newTabInFolder", "New Tab in Group", "File"),
+      ("cmd+ctrl+n", "tabs.key.newFolder", "New Folder with Selected Tabs", "Tabs"),
       ("cmd+shift+t", "tabs.key.reopen", "Restore Last Closed Tab", "File"),
       ("cmd+d", "tabs.key.pin", "Pin/Unpin Tab", "Tabs"),
       ("cmd+shift+k", "tabs.key.clear", "Clear Unpinned Tabs", "Tabs"),
@@ -1267,8 +1741,10 @@ final class TabsCore {
       ("cmd+.", "tabs.key.stop", "Stop", "View"),
       ("cmd+s", "tabs.key.sidebar", "Show/Hide Sidebar", "View"),
       ("cmd+shift+c", "tabs.key.copy", "Copy URL", "Edit"),
-    ]
-    for (c, e, t, m) in binds { env.call("keys", "bind", ["chord": .string(c), "event": .string(e), "title": .string(t), "menu": .string(m)]) }
+  ]
+
+  func bindKeys() {
+    for (c, e, t, m) in Self.binds { env.call("keys", "bind", ["chord": .string(c), "event": .string(e), "title": .string(t), "menu": .string(m)]) }
     for n in 1...9 {
       env.call("keys", "bind", ["chord": .string("cmd+" + String(n)), "event": "tabs.key.nth", "title": .string(n == 9 ? "Last Tab" : "Tab " + String(n)),
                                 "menu": "Tabs", "payload": .int(Int64(n))])
@@ -1278,7 +1754,7 @@ final class TabsCore {
   func subscribe() {
     env.on("ui.action") { [self] v in action(v.s("id"), v.s("action"), v["value"]) }
     env.on("spaces.current") { [self] v in
-      if let p = shownTab() { tabs[p]?.lastActive = env.now() }
+      if let p = shownTab() { tabs[p]?.lastActive = env.now(); fgLastUse[p] = fgNow() }
       currentSpace = v.s("id")
       showSelected()
     }
@@ -1295,6 +1771,11 @@ final class TabsCore {
       setKind(id, kindOf(id) == "today" ? "pinned" : "today", toast: true)
     }
     env.on("tabs.key.clear") { [self] _ in clearToday(currentSpace) }
+    env.on("tabs.key.closeOthers") { [self] _ in if let id = selectedId { closeMany(id, "others") } }
+    env.on("tabs.key.newTabInFolder") { [self] _ in newTabInFolder(nil) }
+    env.on("tabs.key.newFolder") { [self] _ in folderFromSelection() }
+    env.on("app.active") { [self] v in setActive(v.b("active")) }
+    env.on("ai.result") { [self] v in nameArrived(v) }
     env.on("tabs.key.undo") { [self] _ in _ = undo() }
     env.on("spaces.library") { [self] _ in openLibrary() }
     env.on("tabs.key.recent") { [self] _ in
@@ -1327,6 +1808,9 @@ final class TabsCore {
     // target=_blank and window.open (foreground); ⌘-click / middle-click / "Open Link in New Tab"
     // come with `background: true` (⌘⇧-click: false).
     env.on("webviews.newWindow") { [self] v in
+      // A link click (⌘ / middle / ⌘⇧) carries `background`; from a Today tab it groups with
+      // its source. target=_blank and window.open don't, and open a plain tab.
+      if !v["background"].isNull, openFromLink(v.s("url"), source: v.s("id"), background: v.b("background")) != nil { return }
       _ = open(v.s("url"), space: spaceOf(v.s("id")) ?? currentSpace, kind: "today", background: v.b("background"), index: nil)
     }
     // Links, URLs and files dropped on the sidebar or a page: today tabs, the last one selected.
@@ -1354,6 +1838,7 @@ final class TabsCore {
     selected[space] = id
     shown = id
     tabs[id]?.lastActive = env.now()
+    fgLastUse[id] = fgNow()
     mru.removeAll { $0 == id }
     mru.insert(id, at: 0)
     env.call("window", "setTitle", ["title": .string(tabs[id]?.displayTitle ?? "den")])
@@ -1457,7 +1942,12 @@ final class TabsCore {
     case "webviews.title":
       tabs[id]?.title = v.s("title")
       if isSelected { env.call("window", "setTitle", ["title": .string(tabs[id]!.displayTitle)]) }
-    case "webviews.url": tabs[id]?.url = v.s("url")
+      // A group waiting for its new tab's title can ask for a name now.
+      if let fid = pendingNames.removeValue(forKey: id) { askName(fid) }
+    case "webviews.url":
+      tabs[id]?.url = v.s("url")
+      // A new tab in a pinned folder (⌥⌘T) takes its first real page as its pinned URL.
+      if tabs[id]?.pinnedUrl == "about:blank", v.s("url") != "about:blank" { tabs[id]?.pinnedUrl = v.s("url") }
     case "webviews.favicon": if let u = v.sOpt("url") { tabs[id]?.favicon = u }
     case "webviews.audio": tabs[id]?.audio = v.b("playing")
     case "webviews.muted": tabs[id]?.muted = v.b("muted")
@@ -1498,8 +1988,7 @@ final class TabsCore {
       return
     }
     if folders[src] != nil {
-      // Folders live in the pinned section, never inside themselves.
-      if case .today = box { return }
+      // Folders live in the pinned section or Today, never in favorites or inside themselves.
       if box == .favorites { return }
       if case let .folder(f) = box, f == src || contains(folder: src, f) { return }
     }
@@ -1512,7 +2001,11 @@ final class TabsCore {
   func action(_ id: String, _ action: String, _ value: Value) {
     if tabs[id] != nil {
       switch action {
-      case "click": select(id)
+      case "click":
+        // ⌘-click / ⇧-click pick more tabs (⌃⌘N groups them); a plain click selects.
+        if pick(id, modifiers: value.a("modifiers")) { return }
+        clearMulti()
+        select(id)
       case "hover": preview(id)
       case "doubleClick": if kindOf(id) != "favorite" { beginRename(id) }
       case "rename": endRename(id, value.s("title"))
@@ -1545,6 +2038,8 @@ final class TabsCore {
       case "menu":
         if value.string == "renameFolder" { beginRename(id) }
         if value.string == "deleteFolder" { confirmDeleteFolder(id) }
+        if value.string == "newTabInFolder" { newTabInFolder(id) }
+        if value.string == "ungroup" { ungroup(id) }
         if value.string == "newFolder" {
           let sid = folders[id]!.spaceId
           let fid = newId("folder-")
@@ -1590,7 +2085,11 @@ final class TabsCore {
       if action == "button", value.s("button") == "clear" { clearArchive() }
     default:
       if Text.hasPrefix(id, "tabs.divider:"), action == "clear" { clearToday(Text.dropPrefix(id, "tabs.divider:")) }
-      if Text.hasPrefix(id, "tabs.newtab:"), action == "click" { openCommandBar("new") }
+      if Text.hasPrefix(id, "tabs.newtab:"), action == "click" {
+        // ⌥-click: the new tab opens as a split with the current one (Dia 0.47).
+        if value.a("modifiers").contains("opt"), !env.call("peek", "addSplit").isErr { return }
+        openCommandBar("new")
+      }
       if Text.hasPrefix(id, "tabs.deleteFolder:"), action == "button" {
         env.call("ui", "set", ["slot": "dialog", "tree": nil])
         let fid = Text.dropPrefix(id, "tabs.deleteFolder:")
@@ -1739,10 +2238,12 @@ final class TabsCore {
 
   func confirmDeleteFolder(_ fid: String) {
     guard let f = folders[fid] else { return }
+    let group = kindOf(fid) == "today"
     env.call("ui", "set", ["slot": "dialog", "tree": [
       "type": "dialog", "id": .string("tabs.deleteFolder:" + fid), "icon": "sf:folder",
-      "title": .string("Delete your " + f.title + " folder?"), "message": "Deleting this folder will archive the tabs inside it.",
-      "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "delete", "title": "Delete", "style": "destructive"]],
+      "title": .string(group ? "Close the " + f.title + " group?" : "Delete your " + f.title + " folder?"),
+      "message": .string(group ? "Its tabs go to the Archive. ⌃Z brings them back." : "Deleting this folder will archive the tabs inside it."),
+      "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "delete", "title": group ? "Close Group" : "Delete", "style": "destructive"]],
     ]])
   }
 
@@ -1765,7 +2266,22 @@ final class TabsCore {
     case "pin": setKind(id, "pinned", toast: true)
     case "unpin": setKind(id, "today", toast: true)
     case "favorite": if favorites.count < Self.maxFavorites { setKind(id, "favorite", toast: false) }
-    case "newFolder": _ = createFolder(space: spaceOf(id) ?? currentSpace, title: nil, tabIds: [id])
+    case "newFolder":
+      var ids = multi.filter { tabs[$0] != nil && kindOf($0) != "favorite" }
+      if !ids.contains(id) { ids.insert(id, at: 0) }
+      _ = createFolder(space: spaceOf(id) ?? currentSpace, title: nil, tabIds: ids, rename: true)
+    case "removeFromFolder":
+      guard let (b, _) = locate(splitOf(id) ?? id), case let .folder(f) = b, let (fb, fi) = locate(f) else { return }
+      checkpoint()
+      place(splitOf(id) ?? id, fb, index: fi + 1)
+    case "copyMarkdown":
+      if let t = tabs[id] {
+        env.call("app", "copy", ["text": .string("[" + t.displayTitle + "](" + t.url + ")")])
+        env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Copied Link as Markdown", "icon": "sf:link"]])
+      }
+    case "closeOthers": closeMany(id, "others")
+    case "closeBelow": closeMany(id, "below")
+    case "closeAbove": closeMany(id, "above")
     case "close": close(id)
     default:
       if splitMenuPicked(item) { return }

@@ -11,6 +11,9 @@ Where Arc and Safari disagree, den follows Arc, and keeps Safari's key as a seco
 | New tab (command bar) | ⌘T |
 | Edit the address (command bar) | ⌘L |
 | Close tab (Today tabs go to the Library) | ⌘W |
+| Close other Today tabs | ⌥⌘W |
+| New tab in the current group | ⌥⌘T |
+| New folder with the selected tabs | ⌃⌘N |
 | Reopen closed tab | ⇧⌘T |
 | Next / previous tab | ⌥⌘↓ / ⌥⌘↑, or ⇧⌘] / ⇧⌘[ |
 | Last-used tab / least-recent tab | ⌃Tab / ⌃⇧Tab |
@@ -100,6 +103,10 @@ While the mini player is the active window:
 | Quit | ⌘Q (asks first; turn that off in Settings ▸ General) |
 
 Plus the standard text shortcuts: ⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌥⇧⌘V, ⌘A.
+
+## Other keyboard layouts
+
+Shortcuts go by the character a key types, so on Dvorak ⌘W is the key labelled W on your layout, and on QWERTZ ⌘Z is the Z key. When your layout can't type a shortcut's character without extra keys (AZERTY's number row, where ⌃1 is ⌃&; brackets behind a dead key; every letter on Cyrillic, Greek or Hebrew layouts), den uses that key's position on a US keyboard instead, like Chrome and Firefox. Your layout's own shortcut always wins.
 
 ## Change any shortcut
 

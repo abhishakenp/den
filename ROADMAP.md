@@ -77,7 +77,8 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
 - ✅ Tab suspension, two levels: WebKit's built-in suspend when a tab leaves the window, then full discard after 5 min (state kept, snapshot on disk, web view and WebContent process gone; the snapshot shows at once on restore). Media, PiP, camera/mic and unsaved input are never discarded
 - 🟡 Session restore and crash recovery
   - ✅ spaces, tabs and selection come back after quit, relaunch and updates (plugin storage); discarded tabs keep `interactionState`
-  - ⏳ crash recovery; a "Page crashed · Reload" view
+  - ✅ a "This page crashed · Reload" view when a page's web process dies (never reloads by itself)
+  - ⏳ crash recovery of den itself
 - ⏳ Apple Pay exception: skip den's injected scripts on checkout pages, since any injection disables Apple Pay
 - ⏳ Web push notifications: not supported in `WKWebView`; decide on a workaround or skip
 - ⏳ Downloads: `WKDownload`, Arc-style downloads in the sidebar and Library, auto-archive
@@ -96,7 +97,8 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
 - ✅ Error pages (offline, host not found, timeout, can't connect, not private) with Try Again
 - ✅ Google sign-in: Safari's user agent
 - ✅ Link clicks: ⌘-click / middle-click background tab, ⌘⇧-click front tab
-- ⏳ No white flash on tab switch or load
+- ✅ No white flash on tab switch or load: the previous page is held until the new one paints (≤ 1 s), and an unpainted page shows its own last colour
+- ✅ JS dialog loop protection: from the fourth alert/confirm/prompt in a page load, "Stop this page from showing dialogs"
 - ⏳ Protection against pages opening endless alerts
 
 ## UI (Arc-style)
@@ -117,18 +119,19 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - 🟡 Folders, including live folders fed by GitHub or RSS (from Zen)
   - ✅ nested folders: create, rename, delete (archives the tabs), collapse, hover card listing their tabs
   - ⏳ live folders: unread pip, done items into an "N ✓" recently-closed popover, PR stacks, reauth cue
-  - ⏳ a collapsed folder keeps its active tab visible; hover flyout with "+ New Tab"
-  - ⏳ folder shortcuts: ⌃⌘N folder from selection, ⌥⌘T new tab in folder, drag onto folder, rename on create, undo
-- ⏳ ⌘-click grouping (Dia): background tab under its source, both grouped in a today-section folder named after the site; later ⌘-clicks from either join; dissolves at one tab
+  - ✅ folders in Today (groups), with Dia's panel look
+  - ✅ a collapsed folder keeps its active tab visible; its hover card switches to a tab and has "New Tab"
+  - ✅ folder shortcuts: ⌃⌘N folder from selection (⌘/⇧-click to pick), ⌥⌘T new tab in folder, drag onto folder, rename on create, undo
+- ✅ ⌘-click grouping (Dia): background tab grouped with its source in Today, named after the sites (a better name from the on-device model when available); later ⌘-clicks join in opener order; dissolves at one tab; ⌃Z ungroups; a setting turns it off
 - 🟡 Icon and title fallbacks: never "data:" or blank
   - ✅ sharp letter/globe fallback favicons
   - 🟡 title fallbacks and the rest of the sweep
 - 🟡 Tab mute: click the speaker icon, badge on favorites, "Mute Tab" in the menu
   - ✅ speaker icon on tabs and favorites playing audio
   - 🟡 muting
-- ⏳ Faster tab close: show the next tab first
-- ⏳ Tab menu shows shortcuts and ⌥ alternates (Copy as Markdown, Close Tabs Above), Close Other/Below
-- ⏳ Split modifiers: ⇧⌥-click a link → right split; ⌥-click + → new tab in a split
+- ✅ Faster tab close: the next tab goes on screen first, one render, one snapshot
+- ✅ Tab menu shows shortcuts and ⌥ alternates (Copy Link as Markdown, Close Other Tabs, Close Tabs Above), Close Tabs Below
+- ✅ Split modifiers: ⇧⌥-click a link → right split; ⌥-click New Tab → new tab in a split
 - ⏳ Resize split panes by dragging
 
 ### Spaces and themes
@@ -160,7 +163,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ⏳ Boosts: per-site CSS/JS customization
 - ⏳ Web apps (PWA) support, and web apps in the Dock
 - ✅ Keyboard shortcuts, fully remappable, Arc defaults (`[shortcuts]` in `config.toml`)
-- ⏳ Non-US keyboard layouts for shortcuts; Chinese/Japanese/Korean input in the command bar
+- ✅ Non-US keyboard layouts for shortcuts (US-position fallback for keys a layout can't type); Chinese/Japanese/Korean input in the command bar
 
 ### Hover previews
 
@@ -179,7 +182,8 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - 🟡 Shortcuts shown on every surface where the action appears
   - ✅ menu bar, command bar rows
   - ✅ hover-card button tooltips (and the shortcuts act on the hovered tab while its card is open)
-  - ⏳ tab, space, link and page context menus; icon-button tooltips; Settings rows
+  - ✅ tab context menu (with ⌥ alternates)
+  - ⏳ space, link and page context menus; icon-button tooltips; Settings rows
 - ✅ No row tooltips: tab rows, tiles, split rows and list rows show hover cards instead
 - ✅ User guide ([docs/guide](docs/guide/)), with Tips & hidden gems
 - ⏳ Detail audit: every interaction compared with Arc/Dia (hover states, click targets, tooltips, context menus, animations, empty states, error pages, keyboard coverage) and fixed, plus Dia's micro-interactions
@@ -297,9 +301,9 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 ## Energy
 
 - 🟡 Zero-resource inactive tabs: aggressive discard, snapshot on disk, instant restore; never discard audio/video/PiP tabs
-  - ✅ idle tabs discarded after 5 min in the background (configurable), tabs playing audio and on-screen tabs never discarded
+  - ✅ idle tabs discarded after 5 min of den-frontmost time (configurable), tabs playing audio and on-screen tabs never discarded
   - 🟡 near-zero per-tab cost (80 KB measured today against an 8 KB budget), snapshot on disk
-- ⏳ Protect recently used tabs from discard; idle time counts only while den is frontmost
+- ✅ Protect recently used tabs from discard (the last 5); idle time counts only while den is frontmost
 - ⏳ Battery saver: sooner discards, pause background media and autoplay when unplugged or in Low Power Mode
 - ⏳ Never discard tabs with unsaved input, camera/mic in use, or on an "always keep active" list
 - ⏳ Dimmed icon on discarded tabs

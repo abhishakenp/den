@@ -12,6 +12,11 @@ Everything in den that you won't find by looking at it. One line each, with a li
 - **⌃Tab** jumps to the tab you used last, even in another space. **⌃⇧Tab** goes the other way. [Shortcuts](shortcuts.md#tabs)
 - **⌘9** always goes to the last tab; ⌘1…8 count favorites first. [Sidebar](sidebar-and-tabs.md#switching-tabs)
 - **⌘W on a pinned tab or favorite** only unloads it: it stays in the sidebar. [Sidebar](sidebar-and-tabs.md#the-three-kinds-of-tabs)
+- **⌘-click links** to keep them in a group with the tab they came from; a group of one tab dissolves by itself. [Sidebar](sidebar-and-tabs.md#groups)
+- **⌥⌘T** opens a new tab inside the current group. [Sidebar](sidebar-and-tabs.md#groups)
+- **⌘-click or ⇧-click tabs in the sidebar**, then **⌃⌘N**, to put them in a new folder. [Sidebar](sidebar-and-tabs.md#folders)
+- **A collapsed folder still shows the tab you're on**; hover it to jump to any tab inside. [Sidebar](sidebar-and-tabs.md#folders)
+- **Hold ⌥ in a tab's menu** for Copy Link as Markdown, Close Other Tabs (⌥⌘W) and Close Tabs Above. [Sidebar](sidebar-and-tabs.md#right-click-a-tab)
 - **Drop a tab on the middle of a folder** to put it inside; near the edge it goes beside it. [Sidebar](sidebar-and-tabs.md#folders)
 - **Drop a tab on a space icon** in the footer to move it to that space. [Sidebar](sidebar-and-tabs.md#drag-and-drop)
 - **Drop a tab on the page** to split: the left third puts it on the left, the rest on the right. [Split view](peek-split-little-arc.md#split-view)
@@ -42,6 +47,7 @@ Everything in den that you won't find by looking at it. One line each, with a li
 - **⌘Z within 15 s** of closing a Peek brings it back. [Peek](peek-split-little-arc.md#peek)
 - **⌘O** turns a Peek or a Little Arc window into a real tab. [Peek](peek-split-little-arc.md#peek)
 - **⌘-click** a link for a background tab; **⌘⇧-click** to open it in front. [Sidebar](sidebar-and-tabs.md#opening-links)
+- **⇧⌥-click** a link to open it in a split to the right; **⌥-click New Tab** for a new split pane. [Sidebar](sidebar-and-tabs.md#opening-links)
 - **⌃⇧1…4** focus split panes; **⌃⇧-** closes the focused one; **⌃⇧=** adds one. [Split view](peek-split-little-arc.md#split-view)
 - **Hover a split pane** for its close and "separate" buttons. [Split view](peek-split-little-arc.md#split-view)
 - **Right-click a split's row** to switch between side by side, top and bottom, and grid. [Split view](peek-split-little-arc.md#split-view)
@@ -56,6 +62,8 @@ Everything in den that you won't find by looking at it. One line each, with a li
 - **Hover a folder** to see its tabs without opening it. [Hover previews](hover-previews.md#what-the-cards-show)
 
 ## Command bar
+
+- **Typing Chinese, Japanese or Korean** works: the bar waits for the input method to commit before it searches, and Return picks the candidate. [Command bar](command-bar.md#typing)
 
 - **Type a setting's name** and press Return to flip it, right there. [Command bar](command-bar.md#settings-from-the-bar)
 - **Tab after a site keyword** (`yt`, `gh`, `w`, `maps`, `x`, `g`) searches that site. [Command bar](command-bar.md#site-search-keywords)
@@ -75,6 +83,8 @@ Everything in den that you won't find by looking at it. One line each, with a li
 - **Type "dark"** in the command bar to force a site dark or light. [Privacy](privacy-and-passwords.md#dark-mode-for-every-website)
 
 ## Settings & config
+
+- **Shortcuts work on AZERTY, QWERTZ, Dvorak and non-Latin keyboards**: a key your layout can't type as the shortcut's character (⌃1 on AZERTY, ⌘W on a Russian layout) works by its position. [Shortcuts](shortcuts.md#other-keyboard-layouts)
 
 - **⇧⌘B** opens the daily briefing, and you can change that key in Settings ▸ Briefing. [Briefing](connections-and-briefing.md#the-briefing)
 - **"Always quit"** in the quit dialog turns it off for good; the **Ask Before Quitting** command turns it back on. [Shortcuts](shortcuts.md#app)

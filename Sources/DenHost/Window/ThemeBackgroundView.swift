@@ -93,6 +93,9 @@ public final class CardView: NSView {
   /// Split panes show close/separate controls on hover.
   public var showsPaneControls = false { didSet { if !showsPaneControls { controls.isHidden = true } } }
   public var onPaneAction: ((String) -> Void)?
+  /// What shows behind a page that hasn't painted yet: the page's last known background colour
+  /// (nil: den's plain card colour for the appearance). Never white in dark mode.
+  public var pageColor: CGColor? { didSet { if pageColor != oldValue { updateColors() } } }
   let ring = NSView()
   let controls = PaneControlsView()
 
@@ -144,7 +147,7 @@ public final class CardView: NSView {
 
   private func updateColors() {
     let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    clip.layer?.backgroundColor = (dark ? NSColor(white: 0.13, alpha: 1) : NSColor.white).cgColor
+    clip.layer?.backgroundColor = pageColor ?? (dark ? NSColor(white: 0.13, alpha: 1) : NSColor.white).cgColor
     clip.layer?.borderColor = NSColor(white: dark ? 1 : 0, alpha: Tokens.cardBorderOpacity * (dark ? 1.5 : 1) * (focused ? 4 : 1)).cgColor
     clip.layer?.borderWidth = focused ? 1.5 : 0.5
     ring.isHidden = !(focused && focusColor != nil)

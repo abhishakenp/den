@@ -4,7 +4,8 @@ import CordisValue
 /// Native context menus built from a node's `menu` field.
 ///
 /// Item shapes:
-///   {id, title, icon?, key?, destructive?, enabled=true, checked?, items?: [item]}   (items = submenu)
+///   {id, title, icon?, key?, alternate?, destructive?, enabled=true, checked?, items?: [item]}   (items = submenu)
+/// - `alternate`: shown instead of the item above it while ⌥ is held (NSMenuItem.isAlternate).
 ///   {separator: true}
 ///   {header: "Title"}                                                                 (section header)
 /// - `icon`: `sf:<symbol>` (tinted red when destructive).
@@ -45,6 +46,14 @@ enum ContextMenu {
         if chord.mods.contains(.opt) { mask.insert(.option) }
         if chord.mods.contains(.ctrl) { mask.insert(.control) }
         mi.keyEquivalentModifierMask = mask
+      } else {
+        // No shortcut: an empty mask, so an ⌥ alternate below can differ from it by ⌥ alone.
+        mi.keyEquivalentModifierMask = it.flag("alternate") ? [.option] : []
+      }
+      // `alternate`: replaces the item above it while ⌥ is held (same key, ⌥ added to its mask).
+      if it.flag("alternate") {
+        mi.isAlternate = true
+        mi.keyEquivalentModifierMask.insert(.option)
       }
       let sub = it.list("items")
       if !sub.isEmpty {

@@ -15,7 +15,13 @@ enum WebErrorPage {
     let title: String
     let message: String
     let symbol: String  // an emoji-free inline SVG name below
+    var button = "Try Again"
   }
+
+  /// The page for a tab whose web process died (Dia 0.45): calm, one button, no auto-reload
+  /// (a page that keeps crashing must not loop).
+  static let crashed = Page(kind: "crashed", title: "This page crashed", message: "Its web content stopped unexpectedly. Reload to try again.",
+                            symbol: "crash", button: "Reload")
 
   /// nil for failures that aren't the user's problem to see: a navigation that was cancelled or
   /// replaced (NSURLErrorCancelled, WebKit's "frame load interrupted" 102 and "plug-in handled
@@ -58,6 +64,7 @@ enum WebErrorPage {
     "lock": "<rect x='5.5' y='10.5' width='13' height='9.5' rx='2.5'/><path d='M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5'/>",
     "warn": "<path d='M12 4l9 15.5H3z'/><path d='M12 10v4.5'/><circle cx='12' cy='17.3' r='.8' fill='currentColor' stroke='none'/>",
     "shield": "<path d='M12 3.5l7 2.8v5.2c0 4.4-3 7.9-7 9-4-1.1-7-4.6-7-9V6.3z'/><path d='M12 8.5v4.5'/><circle cx='12' cy='16' r='.8' fill='currentColor' stroke='none'/>",
+    "crash": "<rect x='3.5' y='4.5' width='17' height='15' rx='2.5'/><path d='M3.5 8.5h17'/><path d='M9.5 12.5l5 4.5M14.5 12.5l-5 4.5'/>",
   ]
 
   /// The current space's colors as CSS values (from den's `Palette`), so the page matches the
@@ -161,7 +168,7 @@ enum WebErrorPage {
       </style></head><body data-den-error="\(p.kind)"><main>
       <svg viewBox="0 0 24 24" aria-hidden="true">\(icon)</svg>
       <h1>\(escape(p.title))</h1><p>\(escape(p.message))</p><p class="url">\(shown)</p>
-      <button id="retry" onclick="location.reload()">Try Again</button>
+      <button id="retry" onclick="location.reload()">\(escape(p.button))</button>
       </main></body></html>
       """
   }

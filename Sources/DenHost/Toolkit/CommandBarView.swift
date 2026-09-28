@@ -388,7 +388,9 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     if lastHoverPoint == nil { lastHoverPoint = NSEvent.mouseLocation }
     let q = v.str("query")
     // Don't fight the user's typing: only replace text the plugin changed on purpose.
-    if input.currentEditor() == nil || v.flag("replaceQuery") || input.stringValue.isEmpty { input.stringValue = q }
+    // Never while an input method is composing (Chinese, Japanese, Korean): that would drop the
+    // marked text.
+    if !composing, input.currentEditor() == nil || v.flag("replaceQuery") || input.stringValue.isEmpty { input.stringValue = q }
     placeholder = v.str("placeholder", "Search or Enter URL…")
     // Rows are reused by position, so a keystroke that keeps the same rows doesn't rebuild views.
     let specs = v.list("sections").flatMap { $0.list("rows") }
@@ -565,12 +567,19 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
     emit(barId, "submit", ["row": .string(row), "query": .string(input.stringValue), "modifiers": .array(modifiers)])
   }
 
+  /// An input method has marked (uncommitted) text in the field: CJK composition. Keystrokes
+  /// then belong to the input method; the bar searches only for committed text.
+  var composing: Bool { (input.currentEditor() as? NSTextView)?.hasMarkedText() ?? false }
+
   func controlTextDidChange(_ obj: Notification) {
     applyCaret()
+    guard !composing else { return }
     emit(barId, "input", ["text": .string(input.stringValue)])
   }
 
   func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+    // Return, arrows, Tab and Esc while composing pick or cancel candidates: not the bar's.
+    if textView.hasMarkedText() { return false }
     switch sel {
     case #selector(NSResponder.moveDown(_:)): move(1)
     case #selector(NSResponder.moveUp(_:)): move(-1)

@@ -9,12 +9,15 @@ Rows marked **changed** were annoying defaults and have been fixed.
 | Setting | Default | Why |
 |---|---|---|
 | Archive Today tabs after | **24 hours** (changed, was 12 h) | Arc uses 12 h, and losing tabs is the most common complaint about Arc. At 12 h, a tab you open at 6 pm is gone by 6 am, before you're back at your desk. 24 h keeps yesterday's tabs through today and still clears the pile daily. Archived tabs stay in the Library, and ⇧⌘T brings the last one back. Pinned tabs, favorites, the selected tab and tabs playing audio are never archived |
-| Unload idle tabs after | 5 min | Background tabs are den's biggest memory cost. A suspended tab keeps its history and scroll position (`interactionState`) and a snapshot, and reloads when you come back. Tabs on screen (including every pane of a split), playing media or in picture in picture, using the camera or mic, or holding unsaved form input never unload. 0 turns it off |
+| Unload idle tabs after | 5 min of den-frontmost time | Background tabs are den's biggest memory cost. A suspended tab keeps its history and scroll position (`interactionState`) and a snapshot, and reloads when you come back. Time in other apps doesn't count (Dia 1.8), so tabs you left before lunch don't reload after it. Tabs on screen (including every pane of a split), playing media or in picture in picture, using the camera or mic, or holding unsaved form input never unload. 0 turns it off |
+| Never unload the most recently used tabs | the last 5 (not a setting) | Dia 1.5. Switching back to a tab you used a minute ago should never reload it. Five is den's choice: it covers a working set of a few tabs plus a split; it was not tuned by measurement |
 | ⌘W on a Today tab | archives it (Arc) | Nothing is lost: it's in the Library, and ⇧⌘T reopens it |
 | Clear Today tabs (⇧⌘K) | instant, with an "Undo ⌃Z" toast | Arc does the same. An undo toast beats a confirmation dialog |
 | New tab (⌘T) | the command bar | Arc |
 | ⌘-click / middle-click a link | background tab; ⌘⇧-click opens it in front | What every browser does |
 | Mini player when you leave a playing video | on | Arc's "Picture in Picture when you leave a video tab". Only an audible video that's playing triggers it; the page is never reloaded. Toggle it from the command bar ("Mini player when you leave a playing video") |
+| Group ⌘-clicked links | on | Dia. A ⌘-clicked link from a Today tab joins that tab in a group, so research stays together, and a group of one dissolves by itself. ⌃Z right after takes the group away; off gives Arc's plain background tab |
+| Name groups with the on-device model | when Apple Intelligence is available | The site-based name ("WebKit & Apple") shows at once; the model's name replaces it a moment later unless you renamed the group. Nothing waits for it and nothing leaves the Mac |
 
 ## Links
 

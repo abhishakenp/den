@@ -363,6 +363,12 @@ final class PreviewsCore {
     } else if Text.hasPrefix(id, "previews.pr:") {
       prAction(Text.dropPrefix(id, "previews.pr:"), value)
     } else if Text.hasPrefix(id, "previews.open:") {
+      // A folder card: a row switches to its tab; "New Tab" adds one at the end of the folder.
+      if let tab = value.sOpt("tab"), !env.call("tabs", "select", ["id": .string(tab)]).isErr { return hide() }
+      if value.s("action") == "newTab", let c = current {
+        env.call("tabs", "newTab", ["folderId": .string(c.anchor)])
+        return hide()
+      }
       open(value.s("url"))
     }
   }

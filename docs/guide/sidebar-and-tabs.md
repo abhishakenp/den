@@ -50,16 +50,39 @@ The Library keeps your last 500 tabs.
 
 ⌃Z undoes the last sidebar action: closing, clearing, moving, deleting a folder, and so on, up to 30 steps. It's Tabs ▸ **Undo Sidebar Action**. (⌘Z stays the normal Undo for text.)
 
+## Groups
+
+⌘-click (or middle-click) a link in a Today tab and den keeps the two together: the link opens **in the background**, and your tab and the new one become a **group** where your tab was. The group sits on a lighter rounded panel, its tabs indented under a bold name.
+
+<p align="center">
+  <img src="../screenshots/group-created.png" alt="A group made by ⌘-clicking two links" width="400">
+  <img src="../screenshots/group-created-dark.png" alt="The same group in dark mode" width="400">
+</p>
+
+- More ⌘-clicks from the same tab join the group, after the links it already opened. A ⌘-click from a tab inside the group lands right after that tab.
+- The group is named after the sites ("WebKit & Apple"). When Apple Intelligence is on, the on-device model suggests a better name a moment later: the name shimmers while it thinks, then the new one sweeps in. Nothing waits for it, and it never renames a group you named yourself.
+- A group made this way **dissolves** when it's down to one tab. Rename it, or make it yourself (below), and it stays.
+- **⌥⌘T** opens a new tab at the end of the current tab's group.
+- **⌃Z** right after a ⌘-click takes the group away and leaves both tabs.
+- Don't want groups? Settings ▸ Tabs ▸ **Group ⌘-clicked links** off gives you a plain background tab at the top of Today.
+
 ## Folders
 
-Folders live with your pinned tabs.
+Folders live with your pinned tabs, and in Today as groups.
 
-- Right-click a tab ▸ **New Folder with Tab**, or right-click a folder ▸ **New Folder Inside**. Folders nest.
-- Click a folder to open or close it.
+- **⌃⌘N** makes a folder of the current tab, plus any tabs you **⌘-click** (or **⇧-click** for a range) in the sidebar first. Its name is ready to type over; Return keeps it. Right-click a tab ▸ **New Folder with Tab** (**New Group with Tab** in Today) does the same.
+- In the pinned section, right-click a folder ▸ **New Folder Inside**. Folders nest.
+- Click a folder to open or close it. **A closed folder still shows the tab you're on** under its name, so you never lose your place.
 - Drop a tab onto the **middle** of a folder's row to put it inside. Near its top or bottom edge, the tab goes before or after the folder instead.
-- Right-click ▸ **Rename Folder…** to rename it in place.
-- Right-click ▸ **Delete Folder…** archives the tabs inside (⌃Z brings them back).
-- Hover a folder to see what's in it (see [Hover previews](hover-previews.md)).
+- Right-click ▸ **Rename Folder…** (or **Rename Group…**) to rename it in place.
+- Right-click ▸ **Delete Folder…** (a group: **Close Group…**) archives the tabs inside, and **Ungroup Tabs** puts a group's tabs back in Today. ⌃Z undoes either.
+- A Today folder goes away when its last tab does; a pinned folder stays, even empty.
+- Hover a folder to see its tabs: click one to switch to it, or **New Tab** to add one (see [Hover previews](hover-previews.md)).
+
+<p align="center">
+  <img src="../screenshots/group-collapsed.png" alt="A collapsed group still shows its active tab" width="400">
+  <img src="../screenshots/group-collapsed-dark.png" alt="The same, in dark mode" width="400">
+</p>
 
 <p align="center"><img src="../screenshots/dialog-delete-folder-dark.png" alt="Delete folder dialog" width="520"></p>
 
@@ -92,9 +115,15 @@ Drag links, URLs or files from other apps onto the sidebar and they open as Toda
 
 ## Right-click a tab
 
-<p align="center"><img src="../screenshots/context-menu-dark.png" alt="Tab context menu" width="320"></p>
+**Copy Link**, **Duplicate**, **Rename…**, **Mute Tab** / **Unmute Tab** (while it plays audio), **Pin Tab** / **Unpin Tab** / **Remove from Favorites**, **Add to Favorites**, **New Folder with Tab** (or **Remove from Folder**), **Move to \<space\>** for each other space, and **Archive Tab** (Today) or **Close Tab**, then **Close Tabs Below** for Today tabs.
 
-**Copy Link**, **Duplicate**, **Rename…**, **Mute Tab** / **Unmute Tab** (while it plays audio), **Pin Tab** / **Unpin Tab** / **Remove from Favorites**, **Add to Favorites**, **New Folder with Tab**, **Move to \<space\>** for each other space, and **Archive Tab** (Today) or **Close Tab**.
+Every item with a shortcut shows it on the right. **Hold ⌥** while the menu is open for the alternates: **Copy Link as Markdown** (⌥⇧⌘C), **Close Other Tabs** (⌥⌘W) and **Close Tabs Above**. Closing several tabs at once is one ⌃Z.
+
+<p align="center">
+  <img src="../screenshots/tab-menu-shortcuts.png" alt="The tab menu with its shortcuts, and with ⌥ held" width="560">
+</p>
+
+(A native menu is a window of its own, so this picture is drawn from the menu's own items rather than captured from the screen.)
 
 ## Switching tabs
 
@@ -111,9 +140,12 @@ Drag links, URLs or files from other apps onto the sidebar and they open as Toda
 | Click | Opens |
 |---|---|
 | click | here |
-| ⌘-click or middle-click | a background tab at the top of Today |
-| ⌘⇧-click | a new tab, in front |
+| ⌘-click or middle-click | a background tab, grouped with this one (from a Today tab; see [Groups](#groups)) |
+| ⌘⇧-click | a new tab, in front (grouped the same way) |
 | ⇧-click or ⌥-click | a [Peek](peek-split-little-arc.md) |
+| ⇧⌥-click | a split view: the link opens to the right of this tab |
+
+⌥-click **New Tab** in the sidebar to open the new tab as a split with the current one.
 
 **Middle-click a tab in the sidebar** to close it.
 
@@ -132,7 +164,18 @@ Drag links, URLs or files from other apps onto the sidebar and they open as Toda
 
 ## Memory
 
-Background tabs you haven't used for 5 minutes are unloaded: they keep their history, scroll position and a snapshot, and reload when you click them. Tabs on screen, tabs playing media or in picture in picture, tabs using the camera or microphone, and tabs with unsaved form input are never unloaded. Settings ▸ Tabs ▸ **Unload idle tabs** changes it (0 turns it off). See [Performance](performance.md).
+Background tabs you haven't used for 5 minutes **of time in den** are unloaded: they keep their history, scroll position and a snapshot, and reload when you click them. Time you spend in other apps doesn't count, so the tabs you left before lunch are still there when you come back. Your **5 most recently used tabs** are never unloaded, and neither are tabs on screen, tabs playing media or in picture in picture, tabs using the camera or microphone, or pages with unsaved form input. Settings ▸ Tabs ▸ **Unload idle tabs** changes the time (0 turns it off). See [Performance](performance.md).
+
+## When a page misbehaves
+
+- **No white flash.** Switching to a tab that hasn't drawn yet keeps the previous page on screen until the new one paints (at most a second), and the card behind it takes the page's own colour, so dark sites never flash white.
+- **A crashed page** shows "This page crashed" with a **Reload** button instead of a blank card. den never reloads it by itself, so a page that keeps crashing can't loop.
+- **A page that keeps showing alerts**: from the fourth dialog, it offers **Stop this page from showing dialogs**. Tick it and the page gets no more until you reload or leave it.
+
+<p align="center">
+  <img src="../screenshots/crash-page.png" alt="This page crashed, with Reload" width="400">
+  <img src="../screenshots/dialog-loop-dark.png" alt="The fourth alert offers to stop the page's dialogs" width="400">
+</p>
 
 ## Settings ▸ Tabs
 

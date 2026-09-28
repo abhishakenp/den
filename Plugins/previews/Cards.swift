@@ -324,7 +324,9 @@ enum Cards {
         if !r.s("status").isEmpty { item.put("tone", .string(tone(r.s("status")))) }
         if !r.s("url").isEmpty {
           item.put("id", .string("previews.open:" + String(n)))
-          item.put("value", ["url": r["url"]])
+          var v: Value = ["url": r["url"]]
+          if !r.s("tab").isEmpty { v.put("tab", r["tab"]) }  // a folder card's row: switch to that tab
+          item.put("value", v)
           n += 1
         }
         rows.append(item)
@@ -341,7 +343,7 @@ enum Cards {
     if !acts.isEmpty {
       body.append(stack(acts.enumerated().map { (i, a) in
         action("previews.open:a" + String(i), icon: a.s("icon"), tooltip: a.s("title"), title: a.s("title"), pill: true,
-               tone: a.s("style") == "primary" ? "primary" : "", value: ["url": a["url"]])
+               tone: a.s("style") == "primary" ? "primary" : "", value: ["url": a["url"], "action": a["id"]])
       }, axis: "h", spacing: 6))
     }
     if let f = data.sOpt("footer"), !f.isEmpty { body.append(label(f, size: 11, tone: "secondary")) }
@@ -363,8 +365,9 @@ enum Cards {
     var rows: [Value] = []
     for item in req.items.prefix(6) {
       let url = item.s("url")
+      // A row with a url is clickable: it switches to that tab (PreviewsCore.action).
       var row: Value = ["id": item["id"], "title": .string(URLs.pageTitle(item.s("title"), url)), "subtitle": .string(URLs.display(url)),
-                        "icon": .string(item.sOpt("icon") ?? "sf:globe")]
+                        "icon": .string(item.sOpt("icon") ?? "sf:globe"), "url": .string(url), "tab": item["id"]]
       if let d = cached(url), !d["summary"].isNull {
         row.put("accessory", d["summary"]["text"])
         row.put("status", d["summary"]["style"])
@@ -377,6 +380,8 @@ enum Cards {
       "sections": .array(rows.isEmpty ? [] : [["rows": .array(rows)]]),
     ]
     if n > 6 { data.put("footer", .string("and " + String(n - 6) + " more")) }
+    // Dia 1.28's flyout: "+ New Tab" at the end of the group.
+    data.put("actions", [["id": "newTab", "title": "New Tab", "icon": "sf:plus", "style": "secondary"]])
     if n == 0 { data.put("empty", "This folder is empty.") }
     return fragment(req, data, loading: false, actions: [])
   }

@@ -86,7 +86,18 @@ public final class KeysService: NSObject, HostService, NSMenuItemValidation {
   /// item id -> its original key equivalent and mask, while remapped.
   var remapped: [String: (key: String, mask: NSEvent.ModifierFlags, chord: String)] = [:]
 
-  public init(host: ServiceHost) { self.host = host }
+  private var layoutMonitor: Any?
+
+  public init(host: ServiceHost) {
+    self.host = host
+    super.init()
+    // Non-US keyboards: keys a layout can't type as the shortcut's character run by their US
+    // position (KeyLayoutFallback). Costs one dictionary lookup per ⌘/⌃ key press.
+    layoutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+      nonisolated(unsafe) let ev = e
+      return MainActor.assumeIsolated { KeyLayoutFallback.perform(ev) } ? nil : e
+    }
+  }
 
   public func handle(method: String, args: Value) -> Value {
     switch method {
@@ -216,7 +227,7 @@ public final class KeysService: NSObject, HostService, NSMenuItemValidation {
 ///   relaunch {background?}       -> quits cleanly (no quit dialog) and relaunches; `background` doesn't take focus
 ///   setAbout {credits}           -> text shown in the About panel
 ///   showAbout                    -> shows the About panel
-/// Events: app.quitRequested, app.closeRequested, app.openURL {urls: [string]}, app.activate
+/// Events: app.quitRequested, app.closeRequested, app.openURL {urls: [string]}, app.active {active}
 @MainActor
 public final class AppService: HostService {
   public let name = "app"
@@ -237,6 +248,13 @@ public final class AppService: HostService {
   public init(host: ServiceHost, window: DenWindowController?) {
     self.host = host
     self.wc = window
+    // `app.active {active}`: den became (or stopped being) the frontmost app. Plugins that count
+    // time only while den is in use (idle tab discard) follow it.
+    for (name, on) in [(NSApplication.didBecomeActiveNotification, true), (NSApplication.didResignActiveNotification, false)] {
+      NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated { self?.host.emit("app.active", ["active": .bool(on)]) }
+      }
+    }
   }
 
   public func handle(method: String, args: Value) -> Value {

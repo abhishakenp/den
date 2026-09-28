@@ -59,6 +59,9 @@ public struct Palette: Equatable {
   public var pillHoverFill: NSColor { dark ? Self.snow(0.15) : Self.ink(0.10) }  // SidebarItemHoveredBackground
   public var tileFill: NSColor { dark ? Self.snow(0.10) : Self.ink(0.05) }  // estimate: favorites use SidebarItemBackground
   public var divider: NSColor { NSColor(white: dark ? 1 : 0, alpha: 0.15) }  // SidebarSeparator
+  /// A Today group's container panel: a step lighter than the sidebar, under row hover and
+  /// selection (dia-ui-spec §6: dark about 8% white; the light value is den's estimate).
+  public var groupFill: NSColor { dark ? Self.snow(0.06) : NSColor(white: 1, alpha: 0.24) }
   /// The theme's accent (Arc's #3139FB is the no-theme default's cousin), with `onAccent` on it.
   public var primaryButton: NSColor { tokens.accent.ns }
   public var destructive: NSColor { tokens.destructive.ns }  // DestructiveButtonFace, darkened for a white label

@@ -281,13 +281,12 @@ struct TabsTests {
     #expect(h.rt.call("webviews", "get", ["id": .string(today[1])])["live"] == true)
     // The page that left the screen waits in the window while its snapshot is taken.
     _ = await Wait.until("h.rt.webviews.record(today[1])?.webView?.window != nil") { !(h.rt.webviews.record(today[1])?.webView?.window != nil) }
-    // 4 minutes idle: kept. 6 minutes (default 5): the background tab is discarded, the visible one is not.
-    h.clock += 4 * 60_000
+    // Idle discard (default 5 min of den-frontmost time) spares the most recently used tabs:
+    // this one was just used, so it stays (GroupTests.idleDiscard… covers the discard itself).
+    h.rt.plugins.emit("app.active", ["active": true])
+    h.clock += 6 * 60_000
     core.tick()
     #expect(h.rt.call("webviews", "get", ["id": .string(today[1])])["live"] == true)
-    h.clock += 2 * 60_000
-    core.tick()
-    #expect(await h.waitUnloaded(today[1]))
     #expect(h.rt.call("webviews", "get", ["id": .string(today[0])])["live"] == true)
     // 25 hours idle (the default is 24 h, docs/defaults.md): every today tab but the selected one is archived, with a toast.
     h.clock += 25 * 3_600_000

@@ -141,6 +141,9 @@ final class PeekCore {
       return env.call("tabs", "split", ["ids": .array(ids), "layout": .string(args.sOpt("layout") ?? "horizontal"), "focus": args["focus"]])
     case "unsplit":
       return env.call("tabs", "unsplit", ["id": args["id"]])
+    case "addSplit":
+      // A new tab as a split with the selected one (Option-click on New Tab), then the bar picks its page.
+      return addSplit() ? .okay : .err("peek: no tab to split")
     case "reopen":
       guard let c = closed, c.at >= args.i("after") else { return .err("peek: nothing to reopen") }
       return open(c.url, source: c.source)
@@ -173,7 +176,10 @@ final class PeekCore {
   static let modifierRules: [Value] = [
     ["when": "any", "modifiers": ["shift"], "event": .string(linkEvent)],
     ["when": "any", "modifiers": ["opt"], "event": .string(linkEvent)],
+    // Shift-Option-click: the link opens in a split to the right of its tab (Dia 0.44).
+    ["when": "any", "modifiers": ["shift", "opt"], "event": .string(splitLinkEvent)],
   ]
+  static let splitLinkEvent = "peek.splitLink"
   static let pinnedRules: [Value] = [["when": "crossSite", "event": .string(linkEvent)]] + modifierRules
 
   /// Pinned and favorite tab ids in every space (inside folders and splits too).
@@ -315,19 +321,33 @@ final class PeekCore {
   func layoutOf(_ id: String) -> String? { splitContaining(id)?.1 }
 
   /// Ctrl-Shift-=: a new pane next to the focused one, then the command bar to pick its page.
-  func addSplit() {
-    guard let sel = env.call("tabs", "selected")["id"].string else { return }
+  @discardableResult
+  func addSplit() -> Bool {
+    guard let sel = env.call("tabs", "selected")["id"].string else { return false }
     if let (_, _, kids) = splitContaining(sel), kids.count >= 4 {
       env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Split View holds up to 4 tabs", "icon": "sf:rectangle.split.2x2"]])
-      return
+      return true
     }
-    guard let id = env.call("tabs", "open", ["url": "about:blank", "background": true])["id"].string else { return }
+    guard let id = env.call("tabs", "open", ["url": "about:blank", "background": true])["id"].string else { return false }
     let r = env.call("tabs", "split", ["ids": [.string(sel), .string(id)], "layout": .string(layoutOf(sel) ?? "horizontal"), "focus": .string(id)])
     if r.isErr {
       env.call("tabs", "close", ["id": .string(id)])
-      return
+      return false
     }
     env.call("commands", "open", ["mode": "edit", "query": ""])
+    return true
+  }
+
+  /// Shift-Option-click on a link: it opens in a new tab split to the right of the tab it came
+  /// from (or joins that tab's split). From a page that isn't a tab (a peek, Little Arc) it peeks.
+  func splitLink(_ url: String, from source: String) {
+    guard Text.hasPrefix(source, "tab-"), let id = env.call("tabs", "open", ["url": .string(url), "background": true])["id"].string else {
+      _ = open(url, source: source)
+      return
+    }
+    let r = env.call("tabs", "split", ["ids": [.string(source), .string(id)], "layout": .string(layoutOf(source) ?? "horizontal"), "focus": .string(id)])
+    // A full split (4 panes): the link stays a tab of its own, in front.
+    if r.isErr { env.call("tabs", "select", ["id": .string(id)]) }
   }
 
   /// Ctrl-Shift--: the focused pane leaves the split. A today tab is archived, a pinned one is
@@ -474,6 +494,7 @@ final class PeekCore {
       if let w = key?["id"].string { littleArcToSpace(w) }
     }
     env.on("peek.key.addSplit") { [self] _ in addSplit() }
+    env.on(Self.splitLinkEvent) { [self] v in splitLink(v.s("url"), from: v.s("id")) }
     env.on("peek.key.closePane") { [self] _ in closePane() }
     // The pane's hover pill (host split chrome): close, or separate into its own tab.
     env.on("content.paneAction") { [self] v in

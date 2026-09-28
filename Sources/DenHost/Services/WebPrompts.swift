@@ -22,7 +22,11 @@ public final class WebPrompts {
     weak var webView: WKWebView?
     let answer: (_ button: String, _ fields: [String: String]) -> Void
     let cancel: () -> Void
+    var id = 0
+    /// A page script's alert / confirm / prompt (silencing a page drops these).
+    var scripted = false
   }
+  private var nextRequest = 1
 
   /// Where a dialog for `webView` goes: the main window's overlay layer, or a Little Arc panel.
   weak var window: DenWindowController?
@@ -35,6 +39,13 @@ public final class WebPrompts {
   public private(set) var mediaDecisions: [String: Bool] = [:]
   /// Drops one remembered camera/microphone answer (`"<origin> <device>"`), e.g. "forget this site".
   func forgetMedia(_ key: String) { mediaDecisions[key] = nil }
+  /// JavaScript dialogs per page load, and pages the user stopped from showing more (Dia 1.15):
+  /// from the fourth dialog on, the dialog offers "Stop this page from showing dialogs". Both
+  /// reset when the page navigates.
+  public private(set) var dialogCounts: [ObjectIdentifier: Int] = [:]
+  public private(set) var silenced: Set<ObjectIdentifier> = []
+  public static let dialogsBeforeOffer = 3
+  static let checkedKey = "\u{1}checked"
 
   init(window: DenWindowController?, palette: @escaping () -> Palette?) {
     self.window = window
@@ -58,22 +69,52 @@ public final class WebPrompts {
   }
 
   func alert(_ message: String, frame: WKFrameInfo?, webView: WKWebView, done: @escaping () -> Void) {
-    enqueue(["title": .string(Self.says(frame, webView)), "message": .string(message),
-             "buttons": [["id": "ok", "title": "OK", "style": "default"]]], webView,
-            answer: { _, _ in done() }, cancel: done)
+    script(["title": .string(Self.says(frame, webView)), "message": .string(message),
+            "buttons": [["id": "ok", "title": "OK", "style": "default"]]], webView,
+           answer: { _, _ in done() }, cancel: done)
   }
 
   func confirm(_ message: String, frame: WKFrameInfo?, webView: WKWebView, done: @escaping (Bool) -> Void) {
-    enqueue(["title": .string(Self.says(frame, webView)), "message": .string(message),
-             "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "ok", "title": "OK", "style": "default"]]], webView,
-            answer: { b, _ in done(b == "ok") }, cancel: { done(false) })
+    script(["title": .string(Self.says(frame, webView)), "message": .string(message),
+            "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "ok", "title": "OK", "style": "default"]]], webView,
+           answer: { b, _ in done(b == "ok") }, cancel: { done(false) })
   }
 
   func prompt(_ message: String, defaultText: String?, frame: WKFrameInfo?, webView: WKWebView, done: @escaping (String?) -> Void) {
-    enqueue(["title": .string(Self.says(frame, webView)), "message": .string(message),
-             "fields": [["id": "text", "value": .string(defaultText ?? "")]],
-             "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "ok", "title": "OK", "style": "default"]]], webView,
-            answer: { b, f in done(b == "ok" ? (f["text"] ?? "") : nil) }, cancel: { done(nil) })
+    script(["title": .string(Self.says(frame, webView)), "message": .string(message),
+            "fields": [["id": "text", "value": .string(defaultText ?? "")]],
+            "buttons": [["id": "cancel", "title": "Cancel", "style": "cancel"], ["id": "ok", "title": "OK", "style": "default"]]], webView,
+           answer: { b, f in done(b == "ok" ? (f["text"] ?? "") : nil) }, cancel: { done(nil) })
+  }
+
+  /// alert / confirm / prompt, with loop protection: a silenced page gets the cancel answer at
+  /// once; past `dialogsBeforeOffer` dialogs in one page load, the dialog offers to silence it.
+  func script(_ tree: Value, _ webView: WKWebView, answer: @escaping (String, [String: String]) -> Void, cancel: @escaping () -> Void) {
+    let key = ObjectIdentifier(webView)
+    if silenced.contains(key) { return cancel() }
+    let n = (dialogCounts[key] ?? 0) + 1
+    dialogCounts[key] = n
+    var t = tree
+    if n > Self.dialogsBeforeOffer { t = t.with("checkbox", ["id": "silence", "title": "Stop this page from showing dialogs", "checked": false]) }
+    enqueue(t, webView, scripted: true, answer: { [weak self, weak webView] b, f in
+      if f[Self.checkedKey] == "1", let webView { self?.silence(webView) }
+      answer(b, f)
+    }, cancel: cancel)
+  }
+
+  /// No more dialogs from this page until it navigates; its queued ones get their cancel answers.
+  func silence(_ webView: WKWebView) {
+    silenced.insert(ObjectIdentifier(webView))
+    let gone = queue.filter { $0.webView === webView && $0.scripted }
+    queue.removeAll { $0.webView === webView && $0.scripted }
+    gone.forEach { $0.cancel() }
+  }
+
+  /// A new page in `webView` (a main-frame navigation committed): the counts start over.
+  public func pageChanged(_ webView: WKWebView) {
+    let key = ObjectIdentifier(webView)
+    dialogCounts[key] = nil
+    silenced.remove(key)
   }
 
   /// HTTP Basic / Digest / NTLM sign-in. `done(nil)` means Cancel.
@@ -120,8 +161,9 @@ public final class WebPrompts {
 
   // MARK: Presentation
 
-  func enqueue(_ tree: Value, _ webView: WKWebView, answer: @escaping (String, [String: String]) -> Void, cancel: @escaping () -> Void) {
-    queue.append(Request(tree: tree.with("id", "webPrompt"), webView: webView, answer: answer, cancel: cancel))
+  func enqueue(_ tree: Value, _ webView: WKWebView, scripted: Bool = false, answer: @escaping (String, [String: String]) -> Void, cancel: @escaping () -> Void) {
+    queue.append(Request(tree: tree.with("id", "webPrompt"), webView: webView, answer: answer, cancel: cancel, id: nextRequest, scripted: scripted))
+    nextRequest += 1
     showNext()
   }
 
@@ -136,6 +178,7 @@ public final class WebPrompts {
 
   /// A web view is going away: its pending dialogs get their cancel answers.
   func cancel(for webView: WKWebView) {
+    pageChanged(webView)
     let gone = queue.filter { $0.webView === webView || $0.webView == nil }
     queue.removeAll { $0.webView === webView || $0.webView == nil }
     gone.forEach { $0.cancel() }
@@ -156,6 +199,7 @@ public final class WebPrompts {
       guard action == "button" else { return }
       var f: [String: String] = [:]
       if case let .object(pairs) = value["fields"] { for (k, v) in pairs { f[k] = v.string ?? "" } }
+      if value.flag("checked") { f[Self.checkedKey] = "1" }
       self?.press(value.str("button"), fields: f)
     }
     d.update(r.tree, palette: p)

@@ -20,6 +20,9 @@ Chords are `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f
 |---|---|---|---|---|---|
 | New tab (command bar) | ⌘T | ⌘T | ⌘T | ⌘T | `file.newTab` |
 | Close tab | ⌘W | ⌘W | ⌘W (Archive Tab) | ⌘W (a Today tab goes to the Library) | `file.closeTab` |
+| Close other tabs | ⌥⌘W | – | – | ⌥⌘W (Today tabs; ⌃Z brings them back) | `file.closeOthers` |
+| New tab in group | – | – | – (Dia: ⌥⌘T) | ⌥⌘T | `file.newTabInGroup` |
+| New folder with selected tabs | – | – | – (Dia: ⌃⌘N) | ⌃⌘N | `tabs.newFolder` |
 | Reopen closed tab | ⇧⌘T | ⇧⌘T | ⇧⌘T | ⇧⌘T | `file.reopenTab` |
 | Next tab | ⇧⌘], ⌃Tab | ⌥⌘→, ⌃Tab | ⌥⌘↓ | ⌥⌘↓, ⇧⌘] | `tabs.next` |
 | Previous tab | ⇧⌘[, ⌃⇧Tab | ⌥⌘←, ⌃⇧Tab | ⌥⌘↑ | ⌥⌘↑, ⇧⌘[ | `tabs.prev` |
@@ -31,6 +34,8 @@ Chords are `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f
 | Open Peek / mini window in space | – | – | ⌘O | ⌘O | `file.openInSpace` |
 | New window | ⌘N | ⌘N | ⌘N | – | den has one window with every space in it (Arc's windows share spaces too). Not planned yet |
 | New private window | ⇧⌘N | ⇧⌘N | ⇧⌘N | – | Needs private tabs; the `private` web profile exists, the UI doesn't yet |
+
+**Non-US keyboards.** Shortcuts match the character a key types (Dvorak and QWERTZ letters keep their own keys). A key whose layout can't type the shortcut's character (AZERTY's ⌃& for ⌃1, the ⌘^ dead key for ⌘[, any Cyrillic, Greek or Hebrew letter) runs the shortcut at that key's US position, as Chrome and Firefox do, unless the typed character is itself a shortcut (`KeyLayoutFallback`, tested with the French, Russian, Dvorak and German layouts in `PageSafetyTests`).
 
 `⌃Tab` in Safari and Chrome is next tab; Arc wins, so in den it's the recent-tab switch (Arc's tab switcher), and next/previous tab keep Safari's ⇧⌘] / ⇧⌘[.
 

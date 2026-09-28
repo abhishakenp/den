@@ -45,6 +45,12 @@ public final class ContentService: HostService {
   private var covers: [String: NSView] = [:]
   /// Longest a restore placeholder stays up.
   public var coverTimeout: TimeInterval = 1.5
+  /// The previous page, kept on screen over a new one until the new one first paints (no white
+  /// flash on a tab switch). It takes no clicks.
+  private let holding = HoldView()
+  public private(set) var held: String?
+  /// Longest the previous page is held.
+  public var holdTimeout: TimeInterval = Tokens.paintHoldTimeout
 
   public init(host: ServiceHost, webviews: WebViewsService, window: DenWindowController) {
     self.host = host
@@ -62,6 +68,10 @@ public final class ContentService: HostService {
     host.on("webviews.detached") { [weak self] v in self?.cards[v.str("id")]?.clip.subviews.forEach { $0.removeFromSuperview() } }
     let prevFinish = webviews.onFinish
     webviews.onFinish = { [weak self] id in prevFinish?(id); self?.uncover(id) }
+    let prevPainted = webviews.onPainted
+    webviews.onPainted = { [weak self] id in prevPainted?(id); self?.painted(id) }
+    holding.isHidden = true
+    wc.contentArea.addSubview(holding)
     clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] e in
       MainActor.assumeIsolated { self?.noteClick(e) }
       return e
@@ -90,6 +100,10 @@ public final class ContentService: HostService {
 
   func show(_ ids: [String], orientation o: SplitOrientation, ratios r: [CGFloat], focus f: String?) {
     let old = Set(panes)
+    releaseHold()
+    // One page replacing another (a tab switch): the old one may be held until the new paints.
+    let switching = old.count == 1 && ids.count == 1 && !old.contains(ids[0]) && peekId == nil
+    var leaving: (id: String, view: WKWebView, frame: NSRect)?
     panes = ids
     orientation = o
     ratios = r
@@ -105,6 +119,8 @@ public final class ContentService: HostService {
         guard let self, let w, w.superview === self.parking else { return }
         w.removeFromSuperview()
       }
+      // Still waiting in the window for its snapshot: it can be held on screen instead.
+      if switching, w.superview === parking { leaving = (id, w, parking.frame) }
     }
     for id in ids {
       let card = cards[id] ?? CardView()
@@ -123,7 +139,15 @@ public final class ContentService: HostService {
           card.clip.addSubview(w)
           if !wasLive { cover(id, in: card) }
         }
+        webviews.showCrashPageIfNeeded(id)
+        // Behind a page that hasn't painted: its own colour, never a white card.
+        card.pageColor = webviews.record(id)?.painted == true ? nil : webviews.expectedBackground(id)
       }
+    }
+    // Hold the previous page over a new one that hasn't painted (and has no snapshot cover).
+    // (A blank page has nothing to paint and nothing to flash: it isn't waited for.)
+    if let l = leaving, let new = ids.first, let nr = webviews.record(new), !nr.painted, nr.url != "about:blank", covers[new] == nil, !holdWebViews {
+      hold(l.id, l.view, frame: l.frame)
     }
     emptyCard.isHidden = !ids.isEmpty
     layout()
@@ -154,6 +178,36 @@ public final class ContentService: HostService {
 
   /// Whether a restore placeholder is up (tests, scenarios).
   public func isCovered(_ id: String) -> Bool { covers[id] != nil }
+
+  private func hold(_ id: String, _ w: WKWebView, frame: NSRect) {
+    held = id
+    holding.frame = frame
+    holding.isHidden = false
+    wc.contentArea.addSubview(holding, positioned: .above, relativeTo: nil)
+    holding.addSubview(w)
+    w.frame = holding.bounds
+    DispatchQueue.main.asyncAfter(deadline: .now() + holdTimeout) { [weak self] in
+      MainActor.assumeIsolated { if self?.held == id { self?.releaseHold() } }
+    }
+  }
+
+  /// Lets go of the held page: back to parking while its snapshot is still being taken (the
+  /// snapshot's completion takes it out of the window), else out of the window now.
+  func releaseHold() {
+    guard let id = held else { return }
+    held = nil
+    holding.isHidden = true
+    let capturing = webviews.record(id)?.isCapturingSnapshot ?? false
+    for w in holding.subviews {
+      if capturing { parking.addSubview(w) } else { w.removeFromSuperview() }
+    }
+  }
+
+  /// A page drew its first frame: it no longer needs the held page or its placeholder colour.
+  func painted(_ id: String) {
+    cards[id]?.pageColor = nil
+    if panes.contains(id), held != nil { releaseHold() }
+  }
 
   /// Takes a pane's live web view out of its card (the mini player shows it while den's window
   /// isn't visible); `reattach` puts it back.
@@ -215,6 +269,7 @@ public final class ContentService: HostService {
   }
 
   func forget(_ id: String) {
+    if held == id { releaseHold() }
     cards[id]?.removeFromSuperview()
     cards[id] = nil
     if panes.contains(id) {
@@ -259,6 +314,19 @@ public final class ContentService: HostService {
   }
 }
 
+/// The previous page, held over a new one until it paints. Clicks go through to the new page.
+final class HoldView: FlippedView {
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+    layer?.cornerRadius = Tokens.cardCornerRadius
+    layer?.cornerCurve = .continuous
+    layer?.masksToBounds = true
+  }
+  required init?(coder: NSCoder) { fatalError() }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// A discarded page's last snapshot, standing in for it while the restored page loads. It never
 /// takes clicks (they go to the live page underneath).
 final class SnapshotCover: NSView {
@@ -267,7 +335,8 @@ final class SnapshotCover: NSView {
     wantsLayer = true
     layer?.contents = image
     layer?.contentsGravity = .resizeAspectFill
-    layer?.backgroundColor = NSColor.white.cgColor
+    // Where the image doesn't reach: the page's own colour (sampled from it), never white.
+    layer?.backgroundColor = WebViewsService.backgroundColor(of: image) ?? NSColor.clear.cgColor
   }
   required init?(coder: NSCoder) { fatalError() }
   override var isFlipped: Bool { true }

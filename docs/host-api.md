@@ -77,7 +77,7 @@ Events:
 - `webviews.muted {id,muted}`
 - `webviews.media {id,playing,pip,dirty}`: den's page script (its own content world, every frame) reports media and unsaved input when they change; no polling
 - `webviews.newWindow {id,url}`
-- `webviews.crashed {id}`
+- `webviews.crashed {id}`: the page's web process died. The host shows den's "This page crashed" page with **Reload** in its place (at once when on screen, else the next time it's shown), keeping the URL; it never reloads by itself
 - `webviews.suspended {id}`
 - `webviews.detached {id}`
 - `webviews.closed {id}`
@@ -145,6 +145,8 @@ Events: `content.focus {id}`, `content.peekAction {action: close|expand|split, w
 - Hovering a pane shows a small dark pill at its top center with **close** and **separate** buttons. They emit `content.paneAction`; the owning plugin closes the pane or moves the page back into its own tab.
 - Dragging a tab (`tabRow`/`favoriteTile`) over the content shows a theme-tinted drop zone: the left or right half, or the whole card for the middle third. Dropping emits `dropOnContent {source, side}`, and a haptic tick marks each side change.
 
+**No white flash.** A new web view draws no background of its own until its first visually non-empty paint (WebKit's `_drawsBackground` and rendering-progress events, checked with `responds(to:)`; a finished load counts too), so the card behind it shows: the page's own colour, sampled from its last snapshot (or its host's), else den's card colour for the appearance. When one page replaces another (a tab switch), the old page stays on screen above the new one until it paints, at most `Tokens.paintHoldTimeout` (1 s); it takes no clicks. Snapshot placeholders use the snapshot's own colour behind the image, never white.
+
 Web views that aren't shown are detached from the window, which lets WebKit suspend them. On the way out a page waits invisibly in the window for a moment while a snapshot is taken (WebKit only snapshots a view in a window): 1280 px wide, JPEG at quality 0.55, written off the main thread to a per-process temporary folder that is removed at quit. It is never kept in memory. When a discarded page is shown again, that snapshot covers the new web view at once and fades out when the page has loaded (at most 1.5 s).
 
 A leaving page whose video is playing goes to the mini player instead (see [media](#media)).
@@ -176,7 +178,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 
 | Page asks for | den shows |
 |---|---|
-| `alert()` / `confirm()` / `prompt()` | "<host> says", the message, OK (↩) / Cancel (esc); `prompt()` adds a text field holding the default text |
+| `alert()` / `confirm()` / `prompt()` | "<host> says", the message, OK (↩) / Cancel (esc); `prompt()` adds a text field holding the default text. From the fourth in one page load, a checkbox "Stop this page from showing dialogs": ticked, the page's later dialogs get the cancel answer at once until it navigates (Dia 1.15) |
 | HTTP Basic, Digest or NTLM sign-in | "Sign in to <host>", the realm, Username and Password fields, Cancel / Sign In. A wrong password asks again ("That didn’t work."); plain http says the password is sent unencrypted. The credential goes to WebKit for the session only; den never logs or stores it. Cancel shows the server's own 401 page |
 | Camera / microphone (`getUserMedia`) | "Allow <host> to use your camera (and microphone)?", Don’t Allow / Allow. The answer is kept per origin and device until den quits. The app declares `NSCameraUsageDescription`, `NSMicrophoneUsageDescription` and the hardened-runtime camera / audio-input entitlements, so macOS asks once for den itself |
 | `<input type=file>` | An open panel as a sheet on the page's window, with the input's multiple / directory options |
@@ -221,9 +223,9 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `spaceTitle` | `id`, `title`, `icon?`, `editing?`, `editText?` | `click`, `doubleClick`, `more`, `rename {title}`, `renameCancel` |
 | `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected`, `spaceId?` (makes it a drop target for dragged rows), `reorderable?` | `click`, `move {index}` (after a drag-reorder, see [Space icon reorder](#space-icon-reorder)) |
 | `iconPicker` | `id`, `anchor?`, `title?`, `selected?` (popover slot) | `pick {icon}` (`sf:<name>`, an emoji, or "" to remove), `dismiss {reason?}` |
-| `tabRow` | `id`, `title`, `icon`, `selected`, `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `closeTitle?` (the X's tooltip), `indent?`, `draggable=true`, `editing?`, `editText?`, `hoverIntent?`, `dropInto?`, `dropIntoIcon?` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel`, `hover` (see [ui.card](#uicard-popover-cards-and-hover-intent)) |
+| `tabRow` | `id`, `title`, `icon`, `selected`, `highlighted?` (picked into a multi-selection; drawn like selected), `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `closeTitle?` (the X's tooltip), `indent?`, `draggable=true`, `editing?`, `editText?`, `hoverIntent?`, `dropInto?`, `dropIntoIcon?` | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel`, `hover` (see [ui.card](#uicard-popover-cards-and-hover-intent)) |
 | `splitRow` | `id`, `selected` (the split is shown), `layout?`, `panes: [{id, title, icon, selected}]` (`selected` = focused pane), `closable=true`, `indent?` | `click {pane}`, `close` (hover X), `reorder` (as target, a tab row can drop `into` it), `dropOnSpace` |
-| `folder` | `id`, `title`, `icon?`, `open`, `children`, `editing?` | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel` |
+| `folder` | `id`, `title`, `icon?`, `open`, `children`, `closedChildren?` (rows still shown while closed: its active tab), `style?: "group"` (a lighter rounded panel behind the header and rows, bold name: Dia's groups), `pending?` (a shimmer runs across the title; Reduce Motion dims it), `reveal?` (a one-time colour sweep across a title that just changed, 0.4 s), `editing?` | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel` |
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
 | `newTabRow` | `id`, `title?` | `click` |
 | `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `headers?` (default true; false draws one flat list), `inputMode?: search\|go` (caret color), `banner?: {text, secondary, primary}` (the default-browser banner), `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?, shortcut?, toggle?}]}]`. `shortcut` ("⇧⌘C") is drawn one keycap per key; `toggle` (bool) draws a switch | `input {text}`, `select {row}` (arrow keys, or hovering a row after the mouse moves), `submit {row, query, modifiers}`, `tab {query}`, `right {row, query}` (→ with the caret at the end), `back` (Backspace in an empty field), `dismiss`, `banner {button: try\|set\|close}` |
@@ -235,7 +237,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 **Details that apply to several nodes:**
 - **Icons.** A node icon can be `sf:<symbol>`, an http(s) or `data:` image URL (cached), an absolute image file path (extension icons), `app:icon`, `site:<domain>`, or text/emoji. In a `dialog`, an image icon draws at 62 pt like `app:icon`; only `sf:` symbols get the hero disc. `site:<domain>` draws an Arc-style letter tile: the domain's first letter ("www." skipped), white on a color derived from the domain (hash → hue), or a globe when the domain is empty (`site:`, for data:, file: and about: pages). A remote image that fails, answers non-2xx, or is Google s2's 16 px placeholder globe falls back to the `site:` tile for the domain it names (s2's `domain=`, else the image's host).
 - **Context menus.** Any node can carry `menu: [item]`, shown as a native context menu. Picking an item emits `menu` with its id (submenu items included). Item shapes:
-  - `{id, title, icon?, key?, destructive?, enabled=true, checked?, items?}`. `icon` is an `sf:` symbol. `key` is a chord hint drawn on the right (`cmd+w`), display only; the real binding lives in `keys`. `destructive` draws the title and icon in DestructiveButtonFace red (#F53714). `items` makes it a submenu ("Move to Space ▸").
+  - `{id, title, icon?, key?, alternate?, destructive?, enabled=true, checked?, items?}`. `icon` is an `sf:` symbol. `key` is a chord hint drawn on the right (`cmd+w`), display only; the real binding lives in `keys`. `alternate: true` shows the item instead of the one above it while ⌥ is held (`NSMenuItem.isAlternate`; same key, ⌥ added). `destructive` draws the title and icon in DestructiveButtonFace red (#F53714). `items` makes it a submenu ("Move to Space ▸").
   - `{separator: true}` and `{header: "Title"}` (section header).
 - **Inline rename.** `editing: true` on a `tabRow` or `folder` swaps its title for a text field holding `editText` (default: `title`), all selected and focused. Return or a click elsewhere emits `rename {title}` (trimmed; may be empty), Esc emits `renameCancel`. The plugin then sends the node without `editing`.
 - **Speaker.** A `tabRow` or `favoriteTile` with `audio` or `muted` shows a speaker (a round badge on tiles): a button with a hover fill, a tooltip ("Mute Tab" / "Unmute Tab") and a cross-fade when it flips. A click emits `mute`; the owner calls `webviews.setMuted`.
@@ -527,7 +529,9 @@ Lets a plugin hide features whose provider isn't loaded.
 | `paths` | – | `{home, downloads, pictures, desktop}` |
 | `chooseFolder` | `request?`, `message?`, `prompt?` | `{pending}`. An open panel (a sheet on den's window); emits `app.folder {request, path}` (`""` when cancelled) |
 
-Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`, `app.folder`.
+Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`, `app.folder`, `app.active {active}` (den became or stopped being the frontmost app).
+
+**Non-US keyboards** (`KeyLayoutFallback`). Key equivalents match the character a key types. A ⌘/⌃ key whose character matches no menu item, and that is either not ASCII (Cyrillic, Greek, é) or ASCII punctuation where a US keyboard has a digit or symbol (AZERTY's number row, a dead key), runs the menu item at that key's US position instead: ⌃& on AZERTY is ⌃1, ⌘ц on a Russian layout is ⌘W. A Latin letter or digit typed as itself never falls back (Dvorak, QWERTZ). One dictionary lookup per ⌘/⌃ key press.
 
 ## speech
 

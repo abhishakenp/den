@@ -7,7 +7,8 @@ class HoverNode: NodeView, Hoverable {
   var hovering = false {
     didSet { if hovering != oldValue { needsDisplay = true; hoverChanged() } }
   }
-  var selected: Bool { node.flag("selected") }
+  /// `highlighted`: picked into a multi-selection (⌘/⇧-click); drawn like the selected row.
+  var selected: Bool { node.flag("selected") || node.flag("highlighted") }
   var cornerRadius: CGFloat { Tokens.tabRowCornerRadius }
   var fillRect: NSRect { bounds }
   var baseFill: NSColor? { nil }
@@ -19,9 +20,9 @@ class HoverNode: NodeView, Hoverable {
   func hoverChanged() {}
 
   override func update(_ v: Value) {
-    let wasSel = node.flag("selected")
+    let wasSel = selected
     super.update(v)
-    if wasSel != v.flag("selected") { needsDisplay = true }
+    if wasSel != selected { needsDisplay = true }
   }
 
   override func draw(_ dirtyRect: NSRect) {
@@ -904,22 +905,35 @@ final class SplitRowNode: HoverNode {
   }
 }
 
-/// {type:"folder", id, title, icon?, open, children, editing?}  actions: toggle, click, reorder (as target: position "into"),
-/// rename {title} / renameCancel (while `editing`)
+/// {type:"folder", id, title, icon?, open, children, closedChildren?, style?: "group", pending?, reveal?, editing?}
+/// - `closedChildren`: rows still shown while the folder is collapsed (its active tab).
+/// - `style: "group"`: a Today group, drawn as a lighter rounded panel around the header and its
+///   rows, with a bold name (dia-ui-spec §6).
+/// - `pending`: a better name is on its way; a soft shimmer runs across the title (Reduce Motion:
+///   the title dims instead). `reveal`: the new name just arrived; a colour sweep crosses it once.
+/// actions: toggle, click, reorder (as target: position "into"), rename {title} / renameCancel (while `editing`)
 final class FolderNode: NodeView {
   final class Header: HoverNode {
     let chevron = IconView()
     let icon = IconView()
     let label = makeLabel()
     lazy var rename = RenameSupport(owner: self, label: label)
+    private(set) var shimmer: CAGradientLayer?
     override var draggable: Bool { !rename.active }
     override var fillRect: NSRect { bounds.insetBy(dx: 0, dy: (bounds.height - 36) / 2) }
     required init(renderer: Renderer) {
       super.init(renderer: renderer)
+      wantsLayer = true
       [chevron, icon, label].forEach { addSubview($0) }
     }
     required init?(coder: NSCoder) { fatalError() }
-    override func apply(_ p: Palette) { label.textColor = p.text; icon.tint = p.text; chevron.tint = p.secondaryText; needsDisplay = true }
+    override func apply(_ p: Palette) {
+      label.textColor = p.text
+      label.font = .systemFont(ofSize: Tokens.tabRowFontSize, weight: node.str("style") == "group" ? .semibold : .regular)
+      icon.tint = p.text
+      chevron.tint = p.secondaryText
+      needsDisplay = true
+    }
     override func height(for w: CGFloat) -> CGFloat { Tokens.tabRowHeight }
     override func clicked(at p: NSPoint, event: NSEvent) { emit("toggle") }
     override func layout() {
@@ -929,17 +943,95 @@ final class FolderNode: NodeView {
       label.frame = NSRect(x: x + s + 8, y: (h - 17) / 2, width: bounds.width - x - s - 34, height: 17)
       chevron.frame = NSRect(x: bounds.width - 22, y: (h - 10) / 2, width: 10, height: 10)
       rename.layout()
+      if let g = shimmer { g.frame = textRect; g.mask?.frame = CGRect(origin: .zero, size: textRect.size) }
     }
+
+    /// Where the title's glyphs are (the label is wider than its text).
+    var textRect: CGRect {
+      let w = min(label.frame.width, ceil(label.attributedStringValue.size().width) + 2)
+      return CGRect(x: label.frame.minX, y: label.frame.minY, width: max(1, w), height: label.frame.height)
+    }
+
+    /// The title's glyphs as a mask, so effects tint only the text.
+    func textMask() -> CALayer? {
+      let r = CGRect(origin: .zero, size: textRect.size)
+      guard r.width > 1, let rep = label.bitmapImageRepForCachingDisplay(in: r) else { return nil }
+      label.cacheDisplay(in: r, to: rep)
+      let m = CALayer()
+      m.contents = rep.cgImage
+      m.frame = r
+      // The header's layer is flipped (a flipped view): draw the bitmap the right way up.
+      if layer?.isGeometryFlipped == true || isFlipped { m.setAffineTransform(CGAffineTransform(scaleX: 1, y: -1)) }
+      return m
+    }
+
+    func setPending(_ on: Bool) {
+      let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+      label.alphaValue = on && reduce ? 0.55 : 1
+      guard on, !reduce else { shimmer?.removeFromSuperlayer(); shimmer = nil; return }
+      layoutSubtreeIfNeeded()
+      guard shimmer == nil, let layer, let mask = textMask() else { return }
+      let g = CAGradientLayer()
+      let hi = palette.dark ? NSColor(white: 1, alpha: 0.9) : NSColor(white: 1, alpha: 0.95)
+      g.colors = [NSColor.clear.cgColor, hi.cgColor, NSColor.clear.cgColor]
+      g.startPoint = CGPoint(x: 0, y: 0.5)
+      g.endPoint = CGPoint(x: 1, y: 0.5)
+      g.frame = textRect
+      g.mask = mask
+      g.locations = [1, 1.3, 1.6]  // at rest the band is past the text: a still frame shows the plain title
+      let a = CABasicAnimation(keyPath: "locations")
+      a.fromValue = [-0.6, -0.3, 0]
+      a.toValue = [1, 1.3, 1.6]
+      a.duration = Tokens.groupShimmerDuration
+      a.repeatCount = .infinity
+      g.add(a, forKey: "shimmer")
+      layer.addSublayer(g)
+      shimmer = g
+    }
+
+    /// The new name crosses in a sweep of colour, once (dia-ui-spec §6: about 0.4 s).
+    func playReveal() {
+      guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let layer else { return }
+      layoutSubtreeIfNeeded()
+      guard let mask = textMask() else { return }
+      let g = CAGradientLayer()
+      g.colors = [NSColor.clear, .systemPink, .systemOrange, .systemPurple, .systemBlue, .clear].map(\.cgColor)
+      g.startPoint = CGPoint(x: 0, y: 0.5)
+      g.endPoint = CGPoint(x: 1, y: 0.5)
+      g.frame = textRect
+      g.mask = mask
+      g.locations = [1, 1.1, 1.2, 1.3, 1.4, 1.5]
+      let a = CABasicAnimation(keyPath: "locations")
+      a.fromValue = [-0.5, -0.4, -0.3, -0.2, -0.1, 0]
+      a.toValue = [1, 1.1, 1.2, 1.3, 1.4, 1.5]
+      a.duration = Tokens.groupRevealDuration
+      a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+      layer.addSublayer(g)
+      CATransaction.begin()
+      CATransaction.setCompletionBlock { g.removeFromSuperlayer() }
+      g.add(a, forKey: "reveal")
+      CATransaction.commit()
+    }
+    /// Whether the shimmer is running (tests, snapshots).
+    var shimmering: Bool { shimmer != nil }
   }
   lazy var header = Header(renderer: r)
+  let panel = NSView()
   var kids: [NodeView] = []
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
+    panel.wantsLayer = true
+    panel.layer?.cornerRadius = Tokens.groupCornerRadius
+    panel.layer?.cornerCurve = .continuous
+    panel.isHidden = true
+    addSubview(panel)
     addSubview(header)
   }
   required init?(coder: NSCoder) { fatalError() }
   var open: Bool { node.flag("open") }
+  var group: Bool { node.str("style") == "group" }
   override func update(_ v: Value) {
+    let wasPending = node.flag("pending"), wasReveal = node.flag("reveal"), oldTitle = node.str("title")
     super.update(v)
     header.update(v)
     header.label.stringValue = v.str("title", "Folder")
@@ -947,11 +1039,22 @@ final class FolderNode: NodeView {
     header.icon.spec = v.str("icon", open ? "sf:folder" : "sf:folder.fill")
     header.chevron.spec = open ? "sf:chevron.down" : "sf:chevron.right"
     let indent = v.num("indent", 0) + 1
-    let children = open ? v.list("children").map { $0.with("indent", .double(indent)) } : []
+    let children = (open ? v.list("children") : v.list("closedChildren")).map { $0.with("indent", .double(indent)) }
     kids = r.reconcile(children, existing: kids, in: self)
+    panel.isHidden = !group
+    apply(r.palette)
+    header.needsLayout = true
+    if v.flag("pending") != wasPending || (v.flag("pending") && oldTitle != v.str("title")) {
+      header.setPending(false)
+      if v.flag("pending") { header.setPending(true) }
+    }
+    if v.flag("reveal") && !wasReveal { header.playReveal() }
     needsLayout = true
   }
-  override func apply(_ p: Palette) { header.apply(p) }
+  override func apply(_ p: Palette) {
+    header.apply(p)
+    panel.layer?.backgroundColor = p.groupFill.cgColor
+  }
   override func height(for w: CGFloat) -> CGFloat {
     Tokens.tabRowHeight + kids.map { $0.height(for: w) + Tokens.tabRowSpacing }.reduce(0, +)
   }
@@ -963,6 +1066,9 @@ final class FolderNode: NodeView {
       k.frame = NSRect(x: 0, y: y, width: bounds.width, height: h)
       y += h + Tokens.tabRowSpacing
     }
+    // The panel spans the header's highlight top to the last row's highlight bottom.
+    let inset = (Tokens.tabRowHeight - 36) / 2
+    panel.frame = NSRect(x: 0, y: inset, width: bounds.width, height: max(0, y - Tokens.tabRowSpacing - 2 * inset))
   }
 }
 

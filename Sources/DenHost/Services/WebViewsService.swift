@@ -50,6 +50,20 @@ public final class WebRecord {
   public fileprivate(set) var discarding = false
   public fileprivate(set) var webView: WKWebView?
   fileprivate var observers: [NSKeyValueObservation] = []
+  /// Set while a snapshot is being taken: what runs when it's done.
+  fileprivate var snapshotWaiters: [@MainActor () -> Void]?
+  /// A snapshot of the page is being taken right now.
+  public var isCapturingSnapshot: Bool { snapshotWaiters != nil }
+  /// The web process died (`webViewWebContentProcessDidTerminate`): the crash page shows the
+  /// next time the page is on screen, and Reload brings the page back.
+  public fileprivate(set) var crashed = false
+  /// The page has painted (its first visually non-empty layout) since this view was created.
+  /// Until then the view draws no background of its own, so the card's colour shows instead of
+  /// WebKit's white.
+  public fileprivate(set) var painted = false
+  /// The page's background colour, sampled from its last snapshot (the card shows it while a
+  /// restored or reloaded view has nothing to draw yet).
+  public var backgroundColor: CGColor?
 
   init(id: String, profile: String, url: String) { (self.id, self.profile, self.url) = (id, profile, url) }
 
@@ -259,6 +273,14 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     w.allowsMagnification = true
     w.isInspectable = true
     w.underPageBackgroundColor = .clear
+    // No white flash: until the page paints, the view draws nothing, so the card behind it (the
+    // page's last known colour, or den's surface) shows instead of WebKit's white. WebKit's
+    // `_drawsBackground` and rendering-progress events are SPI, checked before use.
+    r.painted = false
+    if w.responds(to: NSSelectorFromString("_setDrawsBackground:")) { w.setValue(false, forKey: "drawsBackground") }
+    if w.responds(to: NSSelectorFromString("_setObservedRenderingProgressEvents:")) {
+      w.setValue(NSNumber(value: Self.paintEvents), forKey: "observedRenderingProgressEvents")
+    }
     r.webView = w
     r.discarding = false
     observe(r, w)
@@ -417,11 +439,20 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   /// (at most 3 s later).
   public func captureSnapshot(_ r: WebRecord, then: (@MainActor () -> Void)? = nil) {
     guard let w = r.webView, w.window != nil, w.bounds.width > 1, w.url != nil else { then?(); return }
+    // One capture at a time: a page closed right after it left the screen (⌘W) waits for the
+    // snapshot already being taken instead of taking a second one.
+    if r.snapshotWaiters != nil {
+      if let then { r.snapshotWaiters?.append(then) }
+      return
+    }
+    r.snapshotWaiters = then.map { [$0] } ?? []
     var done = false
     let finish: @MainActor () -> Void = {
       guard !done else { return }
       done = true
-      then?()
+      let waiters = r.snapshotWaiters ?? []
+      r.snapshotWaiters = nil
+      waiters.forEach { $0() }
     }
     // WebKit usually answers in tens of ms; under heavy load it can take seconds.
     DispatchQueue.main.asyncAfter(deadline: .now() + 3) { MainActor.assumeIsolated { finish() } }
@@ -433,7 +464,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     config.snapshotWidth = NSNumber(value: Double(min(w.bounds.width, snapshotMaxWidth / scale)))
     let path = snapshotDir.appendingPathComponent("\(r.id).jpg")
     let maxPx = snapshotMaxWidth, dir = snapshotDir
-    w.takeSnapshot(with: config) { img, _ in
+    w.takeSnapshot(with: config) { [weak self] img, _ in
       MainActor.assumeIsolated {
         guard let cg = img.flatMap(Self.cgImage) else { return finish() }
         finish()  // the view may go now; the encode doesn't need it
@@ -441,10 +472,22 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
         DispatchQueue.global(qos: .userInitiated).async {
           try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
           let ok = autoreleasepool { Self.writeSnapshot(cg, maxWidth: maxPx, to: path) }
+          let bg = Self.backgroundColor(of: cg)
           // Give the freed bitmap and encoder buffers back to the system now rather than under
           // memory pressure (a moment later: the image is released when this block is).
           DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 0.5) { malloc_zone_pressure_relief(nil, 0) }
-          DispatchQueue.main.async { MainActor.assumeIsolated { if ok { r.snapshotPath = path.path } } }
+          DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+              if ok { r.snapshotPath = path.path }
+              if let bg {
+                r.backgroundColor = bg
+                if let host = URL(string: r.url)?.host?.lowercased(), let self {
+                  if self.hostBackgrounds.count >= 300 { self.hostBackgrounds.removeAll() }  // a small bounded cache
+                  self.hostBackgrounds[host] = bg
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -746,6 +789,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
     if let sp = sitePolicy, let r = recordFor(webView) { sp.committed(r, webView) }
+    // A new page may show dialogs again (loop protection counts per page load).
+    prompts?.pageChanged(webView)
     // A new document: its script reports afresh.
     guard let r = recordFor(webView), !r.frames.isEmpty else { return }
     r.frames = [:]
@@ -754,6 +799,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     guard let r = recordFor(webView) else { return }
+    markPainted(r, webView)  // without WebKit's paint events, a finished load counts
     extensionHooks?.pageChanged(webView)
     onFinish?(r.id)
     webView.evaluateJavaScript(PageScripts.favicon) { [weak self] result, _ in
@@ -766,14 +812,83 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   }
 
   public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-    if let r = recordFor(webView) { onFinish?(r.id) }
+    if let r = recordFor(webView) { markPainted(r, webView); onFinish?(r.id) }
   }
 
   public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
     guard let r = recordFor(webView) else { return }
     r.frames = [:]
     mediaChanged(r)
+    r.crashed = true
+    // On screen: the crash page at once. Off screen: when it's next shown (`showCrashPageIfNeeded`),
+    // so a background crash starts no new web process.
+    if webView.window != nil { showCrashPageIfNeeded(r.id) }
     host.emit("webviews.crashed", ["id": .string(r.id)])
+  }
+
+  /// den's "This page crashed · Reload" page in place of a dead page (Dia 0.45). The tab keeps
+  /// its URL, so Reload (the button, ⌘R) loads the real page again. Never reloads by itself.
+  public func showCrashPageIfNeeded(_ id: String) {
+    guard let r = records[id], r.crashed, let w = r.webView else { return }
+    r.crashed = false
+    let url = w.url ?? URL(string: r.url) ?? URL(string: "about:blank")!
+    w.loadSimulatedRequest(URLRequest(url: url), responseHTML: WebErrorPage.html(WebErrorPage.crashed, url: url, colors: prompts?.errorPageColors))
+  }
+
+  // MARK: First paint (no white flash)
+
+  /// _WKRenderingProgressEvents: first visually non-empty layout, first paint with significant
+  /// area, first paint (WebKit SPI; any of them means the page has drawn something).
+  static let paintEvents: UInt = (1 << 1) | (1 << 2) | (1 << 6)
+  /// A page painted for the first time since its view was created (the content area stops
+  /// holding the previous page and lets the view draw its own background).
+  public var onPainted: ((String) -> Void)?
+
+  @objc(_webView:renderingProgressDidChange:)
+  public func webView(_ webView: WKWebView, renderingProgressDidChange events: UInt) {
+    guard events & Self.paintEvents != 0, let r = recordFor(webView) else { return }
+    markPainted(r, webView)
+  }
+
+  func markPainted(_ r: WebRecord, _ w: WKWebView) {
+    guard !r.painted else { return }
+    r.painted = true
+    if w.responds(to: NSSelectorFromString("_setDrawsBackground:")) { w.setValue(true, forKey: "drawsBackground") }
+    onPainted?(r.id)
+  }
+
+  /// The colour a page's background most likely is, from a snapshot: the median-luminance pixel
+  /// of an 8x8 reduction (headers and images rarely win it). Also kept per host, for new tabs.
+  nonisolated static func backgroundColor(of image: CGImage) -> CGColor? {
+    let n = 8
+    var px = [UInt8](repeating: 0, count: n * n * 4)
+    let ok: Bool = px.withUnsafeMutableBytes { buf in
+      guard let ctx = CGContext(data: buf.baseAddress, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+      ctx.interpolationQuality = .medium
+      ctx.draw(image, in: CGRect(x: 0, y: 0, width: n, height: n))
+      return true
+    }
+    guard ok else { return nil }
+    var samples: [(Double, Int)] = []
+    for i in 0..<(n * n) {
+      let l = 0.2126 * Double(px[i * 4]) + 0.7152 * Double(px[i * 4 + 1]) + 0.0722 * Double(px[i * 4 + 2])
+      samples.append((l, i))
+    }
+    samples.sort { $0.0 < $1.0 }
+    let i = samples[samples.count / 2].1
+    return CGColor(srgbRed: CGFloat(px[i * 4]) / 255, green: CGFloat(px[i * 4 + 1]) / 255, blue: CGFloat(px[i * 4 + 2]) / 255, alpha: 1)
+  }
+
+  /// Last known background colour per host (from snapshots), for pages that have no snapshot yet.
+  public private(set) var hostBackgrounds: [String: CGColor] = [:]
+
+  /// The colour to show behind a page that hasn't painted: its own, else its host's.
+  public func expectedBackground(_ id: String) -> CGColor? {
+    guard let r = records[id] else { return nil }
+    if let c = r.backgroundColor { return c }
+    guard let host = URL(string: r.url)?.host?.lowercased() else { return nil }
+    return hostBackgrounds[host]
   }
 
   public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {

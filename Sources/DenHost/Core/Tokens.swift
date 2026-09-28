@@ -53,6 +53,12 @@ public enum Tokens {
   public static let tabRowPaddingX: CGFloat = 9  // spec §1: favicon at x = 17 (8 sidebar padding + 9)
   public static let tabRowFontSize: CGFloat = 13.5  // spec §1 (derived from cap height)
   public static let folderIndent: CGFloat = 14  // estimate
+  public static let groupCornerRadius: CGFloat = 12  // estimate: the row highlight's radius (Dia's group panel is "rounded", dia-ui-spec §6)
+  public static let groupShimmerDuration: CFTimeInterval = 1.4  // estimate (Dia shows a skeleton, not a shimmer over text)
+  public static let groupRevealDuration: CFTimeInterval = 0.4  // dia-ui-spec §6: the gradient sweep, about 0.4 s
+  /// Longest the previous page stays on screen while a new one hasn't painted (den's choice:
+  /// long enough for a warm page, short enough that a slow one shows its own progress).
+  public static let paintHoldTimeout: TimeInterval = 1.0
   public static let dividerHeight: CGFloat = 24  // estimate (line itself: 0.5 pt, spec §1)
   public static let spaceTitleHeight: CGFloat = 38  // estimate (icon 26 at x 13, name at x 41: spec §1)
 
