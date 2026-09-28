@@ -3,7 +3,7 @@
 #endif
 
 /// Tidy Tabs (Arc Max's "Tidy"): Apple's on-device model sorts a space's loose Today tabs into
-/// named groups. Off by default (Settings ▸ Tabs ▸ "Tidy tabs with Apple Intelligence"); then a
+/// named groups. Off by default (Settings ▸ Tabs ▸ "Tidy tabs using Apple Intelligence"); then a
 /// "Tidy" button shows on the Today divider while it's hovered, in the divider's menu, as the
 /// "Tidy Tabs" command and on ⌃⇧T. It never runs by itself unless "Tidy automatically" is on too.
 /// One ⌃Z (or the toast's Undo) puts every tab back. Nothing here runs while the setting is off:
@@ -28,7 +28,7 @@ extension TabsCore {
 
   func tidyControls() -> [Value] {
     [
-      ["key": "tidy", "type": "toggle", "title": "Tidy tabs with Apple Intelligence",
+      ["key": "tidy", "type": "toggle", "title": "Tidy tabs using Apple Intelligence",
        "subtitle": .string(tidySubtitle), "default": false,
        "keywords": ["tidy", "organize", "sort", "group", "folders", "ai", "apple intelligence"]],
       ["key": "tidyAuto", "type": "toggle", "title": "Tidy automatically",
