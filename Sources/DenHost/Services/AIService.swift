@@ -88,9 +88,9 @@ public final class AIService: HostService {
 
   // MARK: Map-reduce
 
-  static let summaryInstructions = "You summarize a person's work notifications. Be brief, concrete and neutral. Mention people and what they need. Never invent facts."
-  static let briefInstructions = "You write a short morning briefing from per-source summaries: at most 3 short sentences, most important first. Mention each item once. Plain text, no lists, no greeting."
-  static let todoInstructions = "You turn one work notification into a todo for the user. Decide whether it needs them to act (reply, review, fix, answer); thanks, FYIs and announcements do not. The todo is a short imperative phrase under 70 characters that names the person and the thing. Use only words and facts from the notification; never add details that are not in it."
+  static let summaryInstructions = "You summarize a person's work notifications. Keep every notification that asks something of the user: never drop one. For each, say who needs what, and where (channel, repo, PR or issue number). Merge only true duplicates. Group pure FYIs into one short line with a count. Be concrete and neutral. Never invent facts."
+  static let briefInstructions = "You write a morning briefing from per-source summaries. Cover every item that needs the user, most urgent first, one short sentence per item; then one line counting the FYIs. Mention each item once. Plain text, no lists, no greeting. Never invent facts."
+  static let todoInstructions = "You turn one work notification into a todo for the user. Decide whether it needs them to act (reply, review, fix, answer, decide); thanks, FYIs and announcements do not. Write one imperative sentence under 110 characters that names the person, the action and where it lives (channel, repo, PR or issue number), plus any deadline stated. Use only words and facts from the notification; never add details that are not in it."
 
   /// Characters of input that fit in one request.
   public var chunkBudget: Int { max(800, (generator.contextSize - reservedTokens) * charsPerToken) }
@@ -203,7 +203,7 @@ public protocol AIGenerator {
 struct GeneratedTodo {
   @Guide(description: "True only if the user has to do something: reply, review, fix, decide or answer. False for thanks, FYIs and announcements.")
   var actionable: Bool
-  @Guide(description: "A short imperative todo under 70 characters naming the person and the thing")
+  @Guide(description: "One imperative sentence under 110 characters naming the person, the action and where it lives (channel, repo, PR or issue number)")
   var title: String
 }
 
