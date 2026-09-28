@@ -250,7 +250,8 @@ struct ExtensionCompatTests {
     let codes: [Character: UInt16] = ["a": 0, "s": 1, "d": 2, "f": 3, "j": 38, "k": 40, "l": 37, "g": 5, "h": 4]
     for ch in first.lowercased() { press(w, String(ch), codes[ch] ?? 0) }
     ok["F opens a new tab"] = await wait(10) { h.ids("today").count > tabsBefore }
-    notes.append("F first=\(first) tabs \(tabsBefore)->\(h.ids("today").count)")
+    let newWindows = h.events.filter { $0.0 == "webviews.newWindow" }.map { $0.1.s("url") }
+    notes.append("F first=\(first) tabs \(tabsBefore)->\(h.ids("today").count) newWindow=\(newWindows) pageURL=\(w.url?.absoluteString ?? "?")")
 
     await fresh()
     press(w, "o", 31)
@@ -326,7 +327,7 @@ struct ExtensionCompatTests {
     mock.page("/links", Self.linksPage)
     let h = Harness()
     h.startTabs()
-    h.record(["webext.installed", "webext.failed"])
+    h.record(["webext.installed", "webext.failed", "webviews.newWindow"])
     var viaPill = await installFromPill(h, url: "https://chromewebstore.google.com/detail/vimium/\(Self.vimium)", storeId: Self.vimium)
     if viaPill == nil { viaPill = await install(h, source: "chrome", id: Self.vimium) }
     let id = try #require(viaPill)
@@ -343,7 +344,7 @@ struct ExtensionCompatTests {
     mock.page("/links", Self.linksPage)
     let h = Harness()
     h.startTabs()
-    h.record(["webext.installed", "webext.failed"])
+    h.record(["webext.installed", "webext.failed", "webviews.newWindow"])
     let id = try #require(await install(h, source: "firefox", id: "vimium-ff"))
     await report(h, id)
     _ = await probe(h, id, page: "pages/options.html", Self.apiProbe)
@@ -358,7 +359,7 @@ struct ExtensionCompatTests {
     mock.page("/data.json", #"{"name": "den", "list": [1, 2, 3], "nested": {"ok": true}}"#, type: "application/json")
     let h = Harness()
     h.startTabs()
-    h.record(["webext.installed", "webext.failed"])
+    h.record(["webext.installed", "webext.failed", "webviews.newWindow"])
     for (source, id, label) in [("chrome", "nngceckbapebfimnlniiiahkandclblb", "Bitwarden"), ("chrome", "bcjindcccaagfpapjjmafapmmgkkhgoa", "JSON Formatter"),
                                 ("chrome", "eimadpbcbfnmbkopoojfekhnkhdbieeh", "Dark Reader (Chrome)")] {
       print("compat === \(label)")
