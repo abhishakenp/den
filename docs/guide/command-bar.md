@@ -87,7 +87,7 @@ Plugins add more:
 | Theme | **Theme…**, **Use Recent Theme N**, **Theme: \<name\>** for each file in `~/.den/themes` |
 | Dark mode | **Dark Mode: Follow den on This Site** / **Always Dark** / **Always Light** / **Off for This Site**, **Dark Mode for Websites: On/Off** |
 | Passwords | **Passwords…** |
-| Page tools | **Toggle Reader** ⌃⌘R, **Always Use Reader on This Site**, **Read Aloud**, **Translate Page**, **Show Original Page**, **Capture Region** ⇧⌘2 / **Element** / **Visible Area** / **Full Page**, **Copy Captures to Clipboard**, **Save Captures to Folder…**, **Zap Elements**, **Remove Sticky Headers**, **Show Zapped Elements on This Site**, **Copy Link to Highlight** |
+| Page tools | **Toggle Reader** ⌃⌘R, **Always Use Reader on This Site**, **Read Aloud**, **Translate Page**, **Show Original Page**, **Capture Region** ⇧⌘2 / **Element** / **Visible Area** / **Full Page**, **Copy Captures to Clipboard**, **Save Captures to Folder…**, **Zap Elements**, **Remove Sticky Headers**, **Show Zapped Elements on This Site**, **Copy Link to Highlight**, **Share…**, **QR Code for This Page** |
 | Extensions | **Get Extensions**, **Install Extension from File…** |
 | Connections | **Connections…**, **Connect GitHub**, **Connect Slack** (or **Disconnect …**) |
 | Briefing | **Daily Briefing** ⇧⌘B |

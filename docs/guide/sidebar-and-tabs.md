@@ -115,7 +115,7 @@ Drag links, URLs or files from other apps onto the sidebar and they open as Toda
 
 ## Right-click a tab
 
-**Copy Link**, **Duplicate**, **Rename…**, **Mute Tab** / **Unmute Tab** (while it plays audio), **Pin Tab** / **Unpin Tab** / **Remove from Favorites**, **Add to Favorites**, **New Folder with Tab** (or **Remove from Folder**), **Move to \<space\>** for each other space, and **Archive Tab** (Today) or **Close Tab**, then **Close Tabs Below** for Today tabs.
+**Copy Link**, **Share…** (a web page), **Duplicate**, **Rename…**, **Mute Tab** / **Unmute Tab** (while it plays audio), **Pin Tab** / **Unpin Tab** / **Remove from Favorites**, **Add to Favorites**, **New Folder with Tab** (or **Remove from Folder**), **Move to \<space\>** for each other space, and **Archive Tab** (Today) or **Close Tab**, then **Close Tabs Below** for Today tabs.
 
 Every item with a shortcut shows it on the right. **Hold ⌥** while the menu is open for the alternates: **Copy Link as Markdown** (⌥⇧⌘C), **Close Other Tabs** (⌥⌘W) and **Close Tabs Above**. Closing several tabs at once is one ⌃Z.
 

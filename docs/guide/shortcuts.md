@@ -83,6 +83,9 @@ While the mini player is the active window:
 |---|---|
 | Copy the page's URL | ⇧⌘C |
 | Copy the page's URL as Markdown `[title](url)` | ⌥⇧⌘C |
+| Share the page (AirDrop, Messages…) | File ▸ Share…, no key |
+| QR code for the page | File ▸ QR Code for This Page, no key |
+| Paste and Go / Paste and Search | right-click the URL pill or the command bar field |
 
 ## Spaces
 

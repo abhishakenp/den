@@ -28,6 +28,22 @@ The everyday things you do to a page.
 
 The link button in the URL pill copies the URL too, and so does **Copy Link** in a tab's right-click menu.
 
+A short message at the top right says exactly what went on the clipboard: "Copied link · example.com/path…", "Copied Markdown link · …", "Copied image · 1280 × 800 px" for a capture, "Copied link to highlight · “the words…”", and "Copied password for ada on example.com · clears in 60 s".
+
+## Paste and Go
+
+Right-click the URL pill, or the command bar's text field, for **Paste and Go** when the clipboard holds a web address, or **Paste and Search** when it holds other text. The pill's version opens it in the current tab; the command bar's does what pressing Return would. The item only appears when there's one line of text to paste.
+
+## Share and QR code
+
+**Share…** opens macOS's share sheet for the page: AirDrop, Messages, Mail, Notes, Reminders and the rest. It's in the File menu, the command bar, the URL pill's right-click menu and a tab's right-click menu.
+
+**QR Code for This Page** (File menu or command bar) shows a QR code next to the URL pill: point your phone's camera at it to open the page there. **Copy Image** copies it, **Save…** saves it as a PNG. Esc or a click elsewhere closes it.
+
+<p align="center">
+  <img src="../screenshots/qr-code-dark.png" alt="QR code for the page, beside the URL pill" width="640">
+</p>
+
 ## Save, print, inspect
 
 | Keys | |
@@ -43,7 +59,10 @@ The link button in the URL pill copies the URL too, and so does **Copy Link** in
 
 den shows a plain page saying why, with **Try Again**, and the tab keeps the address so nothing's lost: you're offline, the host can't be found, it's taking too long, the connection failed, or the connection isn't private.
 
+When the site itself is the problem (it can't be found, refuses the connection or doesn't answer), the page also has **View on the Web Archive**: the Internet Archive's most recent copy of that address. It isn't offered when you're offline (the archive is out of reach too) or when a connection isn't private (that can mean someone on your network is interfering, and den doesn't route around it).
+
 <p align="center">
+  <img src="../screenshots/error-host-dark.png" alt="Host not found, with View on the Web Archive" width="400">
   <img src="../screenshots/error-offline-dark.png" alt="Offline error page" width="400">
   <img src="../screenshots/error-secure-dark.png" alt="Not private error page" width="400">
 </p>
