@@ -72,7 +72,7 @@ When the site itself is the problem (it can't be found, refuses the connection o
 When a page is an article, a Reader button appears in the URL pill. Click it (or press ⌃⌘R) and the article opens over the page in den's colors, without the clutter. The toolbar at the top switches Serif and Sans, makes the text smaller or larger, and has **Always**: that site then opens in Reader every time. Esc or ⌃⌘R goes back to the page.
 
 <p align="center">
-  <img src="../screenshots/pagetools-reader.png" alt="Reader" width="400">
+  <img src="../screenshots/pagetools-reader-dark.png" alt="Reader" width="400">
   <img src="../screenshots/pagetools-read-aloud-dark.png" alt="Read aloud, dark" width="400">
 </p>
 
@@ -82,7 +82,7 @@ When a page is an article, a Reader button appears in the URL pill. Click it (or
 
 When a page is in another language, a Translate button appears in the URL pill. Click it and the page is translated on your Mac, with Apple's translation models: nothing is sent anywhere. The text you're looking at changes first, then the rest of the page. Click the button again for the original. If a language isn't downloaded yet, macOS asks first.
 
-<p align="center"><img src="../screenshots/pagetools-translated.png" alt="A French page translated" width="620"></p>
+<p align="center"><img src="../screenshots/pagetools-translated-dark.png" alt="A French page translated" width="620"></p>
 
 ## Capture
 
@@ -98,6 +98,6 @@ When a page is in another language, a Translate button appears in the URL pill. 
 
 Select some text, right-click, **Copy Link to Highlight**. Anyone who opens the link lands on that text, highlighted (den, Safari and Chrome all open these).
 
-<p align="center"><img src="../screenshots/pagetools-highlight-link.png" alt="A link to a highlight, opened" width="620"></p>
+<p align="center"><img src="../screenshots/pagetools-highlight-link-dark.png" alt="A link to a highlight, opened" width="620"></p>
 
 Settings > Reading keeps the reader's font, size and speed, the sites that always open in Reader, where captures go, and the zapped sites.

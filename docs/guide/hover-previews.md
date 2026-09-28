@@ -3,8 +3,7 @@
 **Rest the pointer on a tab in the sidebar** and a small card opens beside it: the page's title and site, a compact snapshot, and buttons for what you'd otherwise right-click for. A pull request tab shows its checks, diff size and conflicts. **Hold ⇧ over any link on a web page** and you get a card for where it goes.
 
 <p align="center">
-  <img src="../screenshots/card-tab.png" alt="Hover card for a tab: title, site and a row of action buttons" width="360">
-  <img src="../screenshots/card-tab-dark.png" alt="The same card in a dark space" width="360">
+  <img src="../screenshots/card-tab-dark.png" alt="Hover card for a tab: title, site and a row of action buttons" width="360">
 </p>
 
 ## How it behaves
@@ -36,9 +35,9 @@ The card's buttons do what the right-click menu does, on the tab you're pointing
 The card is 170 to 200 pt wide like Dia's, and a little wider when it has more than five buttons.
 
 <p align="center">
-  <img src="../screenshots/card-pinned.png" alt="A pinned tab's card with Back to Pinned URL and Unpin" width="240">
-  <img src="../screenshots/card-playing.png" alt="The card of a tab playing sound, with a Mute button" width="240">
-  <img src="../screenshots/card-split.png" alt="A split row's card listing both tabs" width="240">
+  <img src="../screenshots/card-pinned-dark.png" alt="A pinned tab's card with Back to Pinned URL and Unpin" width="240">
+  <img src="../screenshots/card-playing-dark.png" alt="The card of a tab playing sound, with a Mute button" width="240">
+  <img src="../screenshots/card-split-dark.png" alt="A split row's card listing both tabs" width="240">
 </p>
 
 ## The GitHub PR peek
@@ -52,7 +51,7 @@ Hover a pull request tab to see it without opening it:
 - **Show N failures** and **Show comments**, or **Resolve conflicts** when the branch conflicts with its base
 
 <p align="center">
-  <img src="../screenshots/pr-peek-failing.png" alt="PR peek with two failing checks, a conflict and Show 2 failures" width="360">
+  <img src="../screenshots/pr-peek-failing-dark.png" alt="PR peek with two failing checks, a conflict and Show 2 failures" width="360">
   <img src="../screenshots/pr-peek-passing-dark.png" alt="PR peek with all checks passed, dark" width="360">
 </p>
 
@@ -61,8 +60,8 @@ Hover a pull request tab to see it without opening it:
 For a **private repository**, the card says what's missing and has a **Connect GitHub** button. It opens github.com's sign-in in a tab; once you're signed in there, the card fills in by itself, even while it's open. GitHub doesn't share a private PR's checks or diff outside its page, so those stay on the PR itself.
 
 <p align="center">
-  <img src="../screenshots/pr-peek-conflicts.png" alt="PR peek with a merge conflict and Resolve conflicts" width="360">
-  <img src="../screenshots/pr-peek-private.png" alt="PR peek for a private repository with a Connect GitHub button" width="360">
+  <img src="../screenshots/pr-peek-conflicts-dark.png" alt="PR peek with a merge conflict and Resolve conflicts" width="360">
+  <img src="../screenshots/pr-peek-private-dark.png" alt="PR peek for a private repository with a Connect GitHub button" width="360">
 </p>
 
 ## Link previews: hold ⇧ over a link
@@ -70,8 +69,7 @@ For a **private repository**, the card says what's missing and has a **Connect G
 On any web page, **hold ⇧ and rest on a link** for a card with the target page's picture, title, summary and site. Its buttons are **Open in Peek** (same as ⇧-clicking the link), **Open as Split** (⌃⇧=) and **Copy Link** (⇧⌘C).
 
 <p align="center">
-  <img src="../screenshots/link-card.png" alt="Link preview card with an image, title, description and three buttons" width="360">
-  <img src="../screenshots/link-card-dark.png" alt="The link card in dark" width="360">
+  <img src="../screenshots/link-card-dark.png" alt="Link preview card with an image, title, description and three buttons" width="360">
 </p>
 
 - den reads only the linked page's `<head>`: it asks for the first 256 KB and stops at `</head>`. Your cookies aren't sent. Each link is fetched once and kept for 10 minutes.

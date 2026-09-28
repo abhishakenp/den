@@ -6,7 +6,7 @@ First run gives you three: **Personal**, **Work** and **Side Project**, each wit
 
 <p align="center">
   <img src="../screenshots/main-dark.png" alt="The Personal space" width="400">
-  <img src="../screenshots/space-2.png" alt="The Work space" width="400">
+  <img src="../screenshots/space-2-dark.png" alt="The Work space" width="400">
 </p>
 
 ## Switching
@@ -19,7 +19,7 @@ First run gives you three: **Personal**, **Work** and **Side Project**, each wit
 | ⌥⌘→ / ⌥⌘← | next / previous space |
 | ⌃Tab | the last tab you used, even if it's in another space |
 
-<p align="center"><img src="../screenshots/space-swipe.png" alt="Mid-swipe between two spaces" width="620"></p>
+<p align="center"><img src="../screenshots/space-swipe-dark.png" alt="Mid-swipe between two spaces" width="620"></p>
 
 ## Creating and arranging
 
@@ -75,7 +75,7 @@ The window previews every change live. **Click outside** (or switch spaces) to k
 
 Your last three themes are in the command bar as **Use Recent Theme 1/2/3**. For themes of your own, drop a file in `~/.den/themes` and it appears as **Theme: \<name\>** ([~/.den](den-home.md#themes)).
 
-<p align="center"><img src="../screenshots/theming-grid.png" alt="Dialogs, the command bar, toasts and hover cards in four themes, light and dark" width="720"></p>
+<p align="center"><img src="../screenshots/theming-grid-dark.png" alt="Dialogs, the command bar, toasts and hover cards in four themes, light and dark" width="720"></p>
 
 ## Accent color
 

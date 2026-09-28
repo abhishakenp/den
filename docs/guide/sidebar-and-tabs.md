@@ -55,8 +55,7 @@ The Library keeps your last 500 tabs. Its **Downloads** tab (⌥⌘L) lists your
 ⌘-click (or middle-click) a link in a Today tab and den keeps the two together: the link opens **in the background**, and your tab and the new one become a **group** where your tab was. The group sits on a lighter rounded panel, its tabs indented under a bold name.
 
 <p align="center">
-  <img src="../screenshots/group-created.png" alt="A group made by ⌘-clicking two links" width="400">
-  <img src="../screenshots/group-created-dark.png" alt="The same group in dark mode" width="400">
+  <img src="../screenshots/group-created-dark.png" alt="A group made by ⌘-clicking two links" width="400">
 </p>
 
 - More ⌘-clicks from the same tab join the group, after the links it already opened. A ⌘-click from a tab inside the group lands right after that tab.
@@ -80,8 +79,7 @@ Folders live with your pinned tabs, and in Today as groups.
 - Hover a folder to see its tabs: click one to switch to it, or **New Tab** to add one (see [Hover previews](hover-previews.md)).
 
 <p align="center">
-  <img src="../screenshots/group-collapsed.png" alt="A collapsed group still shows its active tab" width="400">
-  <img src="../screenshots/group-collapsed-dark.png" alt="The same, in dark mode" width="400">
+  <img src="../screenshots/group-collapsed-dark.png" alt="A collapsed group still shows its active tab" width="400">
 </p>
 
 <p align="center"><img src="../screenshots/dialog-delete-folder-dark.png" alt="Delete folder dialog" width="520"></p>
@@ -120,7 +118,7 @@ Drag links, URLs or files from other apps onto the sidebar and they open as Toda
 Every item with a shortcut shows it on the right. **Hold ⌥** while the menu is open for the alternates: **Copy Link as Markdown** (⌥⇧⌘C), **Close Other Tabs** (⌥⌘W) and **Close Tabs Above**. Closing several tabs at once is one ⌃Z.
 
 <p align="center">
-  <img src="../screenshots/tab-menu-shortcuts.png" alt="The tab menu with its shortcuts, and with ⌥ held" width="560">
+  <img src="../screenshots/tab-menu-shortcuts-dark.png" alt="The tab menu with its shortcuts, and with ⌥ held" width="560">
 </p>
 
 (A native menu is a window of its own, so this picture is drawn from the menu's own items rather than captured from the screen.)
@@ -156,8 +154,8 @@ Every item with a shortcut shows it on the right. **Hold ⌥** while the menu is
 - Full screen hides it too, and brings it back when you leave.
 
 <p align="center">
-  <img src="../screenshots/sidebar-hidden.png" alt="Sidebar hidden" width="400">
-  <img src="../screenshots/sidebar-hover-reveal.png" alt="Sidebar revealed from the left edge" width="400">
+  <img src="../screenshots/sidebar-hidden-dark.png" alt="Sidebar hidden" width="400">
+  <img src="../screenshots/sidebar-hover-reveal-dark.png" alt="Sidebar revealed from the left edge" width="400">
 </p>
 
 **Resize** it by dragging its edge (180–420 pt). **Double-click the edge** to reset it to 228 pt. Drag it narrow enough and it hides.
@@ -173,7 +171,7 @@ Background tabs you haven't used for 5 minutes **of time in den** are unloaded: 
 - **A page that keeps showing alerts**: from the fourth dialog, it offers **Stop this page from showing dialogs**. Tick it and the page gets no more until you reload or leave it.
 
 <p align="center">
-  <img src="../screenshots/crash-page.png" alt="This page crashed, with Reload" width="400">
+  <img src="../screenshots/crash-page-dark.png" alt="This page crashed, with Reload" width="400">
   <img src="../screenshots/dialog-loop-dark.png" alt="The fourth alert offers to stop the page's dialogs" width="400">
 </p>
 
