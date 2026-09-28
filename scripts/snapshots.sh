@@ -69,6 +69,7 @@ shot main-dark main dark
 shot sidebar-hidden hidden light
 shot sidebar-hover-reveal reveal light
 shot space-2 space2 light
+shot empty-space emptySpace light
 shot toast toast light 4.5
 shot space-swipe swipe light
 # Media (NowPlayingScenarios, MediaScenarios): the now-playing dock with a row's hover playback
