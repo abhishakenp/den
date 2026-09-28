@@ -147,17 +147,18 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
       addSubview(keycap)
     }
     required init?(coder: NSCoder) { fatalError() }
-    var preferredWidth: CGFloat { 12 + ceil(label.textWidth) + (keycap.text.isEmpty ? 10 : 6 + keycap.preferredWidth + 8) }
+    /// The label's text plus the field cell's own inset (without it the title truncates).
+    var labelWidth: CGFloat { ceil(label.textWidth) + 6 }
+    var preferredWidth: CGFloat { 12 + labelWidth + (keycap.text.isEmpty ? 10 : 4 + keycap.preferredWidth + 8) }
     override func draw(_ dirtyRect: NSRect) {
       guard selected else { return }
       fill.setFill()
       NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
     }
     override func layout() {
-      let lw = ceil(label.textWidth)
-      label.frame = NSRect(x: 12, y: (bounds.height - 18) / 2, width: lw, height: 18)
+      label.frame = NSRect(x: 12, y: (bounds.height - 18) / 2, width: labelWidth, height: 18)
       keycap.isHidden = keycap.text.isEmpty
-      keycap.frame = NSRect(x: label.frame.maxX + 6, y: (bounds.height - 18) / 2, width: keycap.preferredWidth, height: 18)
+      keycap.frame = NSRect(x: label.frame.maxX + 4, y: (bounds.height - 18) / 2, width: keycap.preferredWidth, height: 18)
     }
     override var mouseDownCanMoveWindow: Bool { false }
     override func mouseDown(with event: NSEvent) {}
