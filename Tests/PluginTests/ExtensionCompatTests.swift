@@ -132,6 +132,9 @@ struct ExtensionCompatTests {
       .map(f => f.className + ':' + getComputedStyle(f).display))
     """
 
+  /// Key codes of Vimium's hint characters (US layout).
+  static let hintKeys: [Character: UInt16] = ["a": 0, "s": 1, "d": 2, "f": 3, "g": 5, "h": 4, "j": 38, "k": 40, "l": 37]
+
   static let contentProbe = """
     const tabs = await chrome.tabs.query({});
     const t = tabs.find(t => /\\/links$/.test(t.url || ''));
@@ -242,13 +245,21 @@ struct ExtensionCompatTests {
     press(w, "\u{1b}", 53)
     ok["Esc leaves hints"] = await wait(5) { await markers() <= 0 }
 
+    // f, then a hint: the link opens in this tab.
+    await fresh()
+    press(w, "f", 3)
+    _ = await wait(10) { await markers() > 0 }
+    let hintA = await Wait.js(w, "document.querySelector('.vimiumHintMarker')?.textContent || ''") as? String ?? ""
+    for ch in hintA.lowercased() { press(w, String(ch), Self.hintKeys[ch] ?? 0) }
+    ok["f follows a link"] = await wait(10) { w.url?.query != nil }
+    notes.append("f \(hintA) -> \(w.url?.absoluteString ?? "?")")
+
     await fresh()
     let tabsBefore = h.ids("today").count
     press(w, "F", 3, shift: true)
     ok["F link hints"] = await wait(10) { await markers() > 0 }
     let first = await Wait.js(w, "document.querySelector('.vimiumHintMarker')?.textContent || ''") as? String ?? ""
-    let codes: [Character: UInt16] = ["a": 0, "s": 1, "d": 2, "f": 3, "j": 38, "k": 40, "l": 37, "g": 5, "h": 4]
-    for ch in first.lowercased() { press(w, String(ch), codes[ch] ?? 0) }
+    for ch in first.lowercased() { press(w, String(ch), Self.hintKeys[ch] ?? 0) }
     ok["F opens a new tab"] = await wait(10) { h.ids("today").count > tabsBefore }
     let newWindows = h.events.filter { $0.0 == "webviews.newWindow" }.map { $0.1.s("url") }
     notes.append("F first=\(first) tabs \(tabsBefore)->\(h.ids("today").count) newWindow=\(newWindows) pageURL=\(w.url?.absoluteString ?? "?")")
