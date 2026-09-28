@@ -212,7 +212,8 @@ struct CardTests {
     #expect(abs(card.frame.midY - row.midY) <= 1)
     // Dia's measured sizes: a short 1-line title → 170 × 93 (spec §2.3).
     #expect(card.frame.width == 170 && card.frame.height == 93)
-    #expect(card.layer?.animation(forKey: "cardIn") != nil)
+    // No entrance animation with Reduce Motion on (as on GitHub's macOS runners).
+    #expect((card.layer?.animation(forKey: "cardIn") != nil) == !PopoverCard.reduceMotion)
     // A 2-line title: 200 wide (clamped), 109 tall; no actions (a New Tab): 65.
     _ = rt.call("ui", "card", ["id": "c", "anchor": "t2", "tree": Self.tabCard("A very long page title that has to wrap onto a second line in the card")])
     #expect(card.frame.width == 200 && card.frame.height == 109, "\(card.frame)")

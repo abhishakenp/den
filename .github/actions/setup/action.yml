@@ -33,6 +33,7 @@ runs:
         swift --version
         xcrun --show-sdk-path
         sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize
+        echo "reduceMotion=$(defaults read com.apple.universalaccess reduceMotion 2>/dev/null || echo unset)"
         echo "CORDIS_TOOLCHAIN=$HOME/toolchains/swift-$SWIFT_TOOLCHAIN_VERSION-RELEASE.xctoolchain" >> "$GITHUB_ENV"
 
     - name: Restore swift.org toolchain
