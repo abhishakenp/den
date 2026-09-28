@@ -37,7 +37,7 @@ enum ContextMenu {
       mi.isEnabled = it.flag("enabled", true)
       mi.state = it.flag("checked") ? .on : .off
       let destructive = it.flag("destructive")
-      if it.str("icon").hasPrefix("sf:"), let img = NSImage(systemSymbolName: String(it.str("icon").dropFirst(3)), accessibilityDescription: nil) {
+      if it.str("icon").hasPrefix("sf:"), let img = IconView.symbol(String(it.str("icon").dropFirst(3))) {
         if destructive {
           let cfg = NSImage.SymbolConfiguration(paletteColors: [destructiveColor])
           mi.image = img.withSymbolConfiguration(cfg) ?? img

@@ -1757,7 +1757,7 @@ final class TabsCore {
     if l != "vertical" { m.append(["id": .string("layout:" + id + ":vertical"), "title": "Top and Bottom", "icon": "sf:rectangle.split.1x2"]) }
     if l != "grid" && (splits[id]?.children.count ?? 0) > 2 { m.append(["id": .string("layout:" + id + ":grid"), "title": "Grid", "icon": "sf:rectangle.split.2x2"]) }
     m.append(["separator": true])
-    m.append(["id": .string("separate:" + id), "title": "Separate All Tabs", "icon": "sf:rectangle.split.3x1.slash"])
+    m.append(["id": .string("separate:" + id), "title": "Separate All Tabs", "icon": "sf:rectangle.split.2x1.slash"])
     return m
   }
 
