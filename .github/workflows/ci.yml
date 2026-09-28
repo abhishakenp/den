@@ -29,7 +29,9 @@ permissions:
 # One run per ref: a newer push (or dispatch) to a ci/** or PR branch cancels the superseded run.
 # main queues instead, so every commit on main gets a verdict (and a den.app artifact).
 concurrency:
-  group: ci-${{ github.ref }}
+  # Every main commit gets its own run (releases and the updater gate on CI for that exact
+  # commit); ci/** scratch branches share one group so superseded runs cancel.
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
