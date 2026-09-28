@@ -1,4 +1,5 @@
 import Foundation
+import JavaScriptCore
 import DenTestSupport
 import Testing
 
@@ -145,6 +146,50 @@ struct ExtensionPackageTests {
     #expect(try ExtensionPackage.readManifest(d).name == "V")
     // A second load changes nothing.
     #expect(try !ExtensionShim.apply(to: d))
+  }
+
+  /// The shim itself, in JavaScriptCore against a WebKit-like `chrome`: a namespace that won't
+  /// take new keys and lacks two webNavigation events (what stopped Vimium's background).
+  @Test func shimFillsMissingEventsAndAPIs() throws {
+    let js = try #require(JSContext())
+    var errors: [String] = []
+    js.exceptionHandler = { _, e in errors.append(e?.toString() ?? "?") }
+    js.evaluateScript("""
+      var console = {log() {}, warn() {}, error() {}};
+      var fired = [], updated = [];
+      const ev = () => ({addListener: (f) => updated.push(f), removeListener() {}, hasListener() { return false; }});
+      var chrome = {
+        runtime: {getManifest: () => ({permissions: ['tabs', 'history', 'bookmarks', 'sessions', 'search', 'webNavigation']}), onMessage: ev()},
+        webNavigation: Object.preventExtensions({onCommitted: {addListener() {}}, getAllFrames() { return this === chrome.__nav ? 'bound' : 'unbound'; }}),
+        tabs: {onUpdated: ev(), onRemoved: {addListener() {}}, create: async (o) => ({id: 9, url: o.url}), query: async () => [{id: 1}], update: async () => ({})},
+        storage: {local: {get: async () => ({}), set: () => {}}, session: {}},
+      };
+      chrome.__nav = chrome.webNavigation;
+      var browser = chrome;
+      globalThis.__denBackground = true;
+      """)
+    js.evaluateScript(ExtensionShim.source)
+    #expect(errors.isEmpty, "\(errors)")
+    func eval(_ s: String) -> String { js.evaluateScript(s)?.toString() ?? "nil" }
+    // The two events exist (the namespace was wrapped), the real API still works on its own object.
+    #expect(eval("typeof chrome.webNavigation.onHistoryStateUpdated.addListener") == "function")
+    #expect(eval("typeof chrome.webNavigation.onReferenceFragmentUpdated.addListener") == "function")
+    #expect(eval("chrome.webNavigation.getAllFrames()") == "bound")
+    #expect(eval("JSON.stringify(__denShimReport.wrapped)") == #"["webNavigation"]"#)
+    // A pushState-style URL change (no load) fires onHistoryStateUpdated; a #fragment change the other one.
+    js.evaluateScript("""
+      chrome.webNavigation.onHistoryStateUpdated.addListener((d) => fired.push('history ' + d.url));
+      chrome.webNavigation.onReferenceFragmentUpdated.addListener((d) => fired.push('fragment ' + d.url));
+      const u = updated[updated.length - 1];
+      u(1, {url: 'https://a.test/x', status: 'loading'}, {status: 'loading'});
+      u(1, {url: 'https://a.test/y'}, {status: 'complete'});
+      u(1, {url: 'https://a.test/y#z'}, {status: 'complete'});
+      """)
+    #expect(eval("fired.join(',')") == "history https://a.test/y,fragment https://a.test/y#z")
+    // Stand-ins for missing APIs, and setAccessLevel.
+    #expect(eval("typeof chrome.bookmarks.getTree + typeof chrome.history.search + typeof chrome.sessions.restore + typeof chrome.search.query") == "functionfunctionfunctionfunction")
+    #expect(eval("typeof chrome.storage.session.setAccessLevel") == "function")
+    #expect(errors.isEmpty, "\(errors)")
   }
 
   @Test func shimClassicWorkerAndBackgroundScripts() throws {
