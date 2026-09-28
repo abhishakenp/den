@@ -250,7 +250,8 @@ struct GoogleNotionTests {
     #expect(rec.cards.last == .null)
     // Disconnect: countdown and card go away.
     h.rt.call("connections", "disconnect", ["id": "calendar"])
-    #expect(rec.badges.last == "")
+    #expect(await ct.until { rec.badges.last == "" })
+    #expect(cal.events.isEmpty)
   }
 
   @Test func calendarReadsTodayFromTheCalendarTab() async throws {

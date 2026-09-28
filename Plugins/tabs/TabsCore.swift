@@ -2106,7 +2106,9 @@ final class TabsCore {
     if splits[src] != nil, case .split = tb { return }
     var box = tb
     var index = pos == "after" ? ti + 1 : ti
-    if pos == "into", folders[dst] != nil {
+    if pos == "into", let f = folders[dst] {
+      // A live folder's rows come from its connection: tabs can't be dropped into it.
+      guard f.live.isEmpty else { return }
       box = .folder(dst)
       index = folders[dst]!.children.count
     }
