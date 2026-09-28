@@ -30,6 +30,7 @@ public enum SpaceScenarios {
       return rt.settings.window?.window
     }
     if name.hasPrefix("themeSample:") { return themeSample(name, rt) }
+    if name.hasPrefix("favorites:"), let n = Int(name.dropFirst(10)) { return favorites(n, rt) }
     guard names.contains(name) else { return nil }
     let w = rt.window.window
     guard let sid = rt.call("spaces", "current")["id"].string else { return w }
@@ -78,6 +79,27 @@ public enum SpaceScenarios {
     default: break
     }
     return w
+  }
+
+  /// `favorites:<n>`: exactly n favorites (1–12) through the tabs plugin's own calls, to show how
+  /// the grid fills the sidebar width (1 full width, 2 halves, … 5 = 4 + 1).
+  static func favorites(_ n: Int, _ rt: DenRuntime) -> NSWindow? {
+    let sites = ["github.com", "mail.google.com", "calendar.google.com", "youtube.com", "news.ycombinator.com", "webkit.org",
+                 "swift.org", "developer.apple.com", "linear.app", "figma.com", "wikipedia.org", "notion.so"]
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+      let have = (rt.call("tabs", "list")["favorites"].array ?? []).compactMap { $0["id"].string }
+      // Closing a favorite only unloads it: move it to Today first, then close (archive) it.
+      for id in have.dropFirst(max(0, n)) {
+        rt.call("tabs", "unpin", ["id": .string(id)])
+        rt.call("tabs", "close", ["id": .string(id)])
+      }
+      if have.count < n {
+        for s in sites.prefix(n).dropFirst(have.count) {
+          rt.call("tabs", "open", ["url": .string("https://" + s + "/"), "kind": "favorite", "background": true])
+        }
+      }
+    }
+    return rt.window.window
   }
 
   /// `themeSample:<theme>:<surface>`: every space gets the theme (appearance from --appearance), then

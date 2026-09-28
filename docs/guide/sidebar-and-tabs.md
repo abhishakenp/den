@@ -16,7 +16,7 @@ New tabs open at the top of Today. Anything you want to keep, pin (⌘D). Today 
 
 ### Favorites
 
-- Drag any tab onto the grid, or right-click ▸ **Add to Favorites**. Up to 12.
+- Drag any tab onto the grid, or right-click ▸ **Add to Favorites**. Up to 12, four to a row; the tiles always fill the width (one favorite is a full-width tile, two are halves).
 - Favorites are shared by every space. First run gives you GitHub, Gmail, Calendar and YouTube.
 - Drag tiles sideways to reorder them.
 

@@ -127,6 +127,8 @@ host quit-dialog-dark dialogQuit dark
 host find-bar findBar light
 host find-bar-dark findBar dark
 # Hover previews and the Library sheet, on the real plugin sidebar (PreviewScenarios.swift).
+# The favorites grid filling the sidebar width with 1, 2, 3, 4, 5 and 12 favorites (Arc).
+for n in 1 2 3 4 5 12; do shot favorites-$n-dark "favorites:$n" dark 4; done
 # The tab and split cards also render here, so the CI dark run catches a broken card icon.
 shot card-tab-dark previewTab dark 6
 shot card-split-dark previewSplit dark 6

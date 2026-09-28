@@ -292,12 +292,43 @@ final class URLPillNode: HoverNode {
 // MARK: - Favorites
 
 /// {type:"grid", id?, columns?, children:[favoriteTile]}
+/// {type:"grid", id, columns? (4), children}: Arc's favorites grid. Rows of up to `columns` tiles,
+/// and every row's tiles stretch to fill the width: 1 tile is full width, 2 are halves, 3 thirds;
+/// 5 tiles are a row of 4 and one full-width tile. Tile height is fixed. When the children change
+/// (added, removed, reordered) the tiles that stay spring into their new frames (none with Reduce
+/// Motion) with the reorder haptic; a resize relayouts at once.
 final class GridNode: NodeView {
   var kids: [NodeView] = []
   var columns: Int { max(1, Int(node.num("columns", Double(Tokens.favoriteColumns)))) }
+  private var animateNext = false
+
+  /// Frames for `count` tiles in `width` (top-left origin). Widths are whole points; the last
+  /// tile of each row takes the remainder, so every row ends exactly at `width` with no gap.
+  static func frames(count: Int, width: CGFloat, columns: Int, spacing sp: CGFloat = Tokens.favoriteTileSpacing,
+                     height h: CGFloat = Tokens.favoriteTileHeight) -> [NSRect] {
+    guard count > 0, columns > 0 else { return [] }
+    var out: [NSRect] = []
+    var i = 0, row = 0
+    while i < count {
+      let n = min(columns, count - i)
+      let w = ((width - sp * CGFloat(n - 1)) / CGFloat(n)).rounded(.down)
+      for c in 0..<n {
+        let x = CGFloat(c) * (w + sp)
+        let cw = c == n - 1 ? width - x : w
+        out.append(NSRect(x: x, y: CGFloat(row) * (h + sp), width: max(0, cw), height: h))
+      }
+      i += n
+      row += 1
+    }
+    return out
+  }
+
   override func update(_ v: Value) {
     super.update(v)
+    let before = kids.map { ObjectIdentifier($0) }
     kids = r.reconcile(v.list("children"), existing: kids, in: self)
+    // Only a change to the set or the order animates; a plain re-render (a title, a badge) doesn't.
+    if window != nil, !before.isEmpty, before != kids.map({ ObjectIdentifier($0) }) { animateNext = true }
     needsLayout = true
   }
   override func height(for w: CGFloat) -> CGFloat {
@@ -306,11 +337,23 @@ final class GridNode: NodeView {
     return CGFloat(rows) * Tokens.favoriteTileHeight + CGFloat(rows - 1) * Tokens.favoriteTileSpacing
   }
   override func layout() {
-    let c = CGFloat(columns), sp = Tokens.favoriteTileSpacing
-    let w = ((bounds.width - sp * (c - 1)) / c).rounded(.down)
-    for (i, k) in kids.enumerated() {
-      let col = CGFloat(i % columns), row = CGFloat(i / columns)
-      k.frame = NSRect(x: col * (w + sp), y: row * (Tokens.favoriteTileHeight + sp), width: w, height: Tokens.favoriteTileHeight)
+    let fs = Self.frames(count: kids.count, width: bounds.width, columns: columns)
+    let animate = animateNext && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    animateNext = false
+    guard animate else {
+      for (k, f) in zip(kids, fs) { k.frame = f }
+      return
+    }
+    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+    NSAnimationContext.runAnimationGroup { c in
+      // A short spring: a slight overshoot that settles (den's values; Arc's aren't measured).
+      c.duration = 0.32
+      c.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 1.36, 0.64, 1)
+      c.allowsImplicitAnimation = true
+      for (k, f) in zip(kids, fs) {
+        // A tile that just appeared starts at its final frame (it fades in with the row).
+        if k.frame.isEmpty { k.frame = f } else { k.animator().frame = f }
+      }
     }
   }
 }
