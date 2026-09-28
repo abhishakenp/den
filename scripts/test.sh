@@ -39,7 +39,7 @@ limit=${DEN_TEST_RUN_LIMIT:-1800}
 # WebKit leak guard: the tests log every WebContent pid they used (Tests/DenTestSupport/Leaks.swift).
 webkit_log=$(mktemp -t den-test-webkit)
 export DEN_TEST_WEBKIT_LOG=$webkit_log
-webcontent() { pgrep -x com.apple.WebKit.WebContent | wc -l | tr -d ' '; }
+webcontent() { { pgrep -x com.apple.WebKit.WebContent || true; } | wc -l | tr -d ' '; }  # none running (a CI runner) is 0, not a pipefail exit
 before=$(webcontent)
 trap 'rm -rf "$lock" "$webkit_log"' EXIT INT TERM
 start=$SECONDS
