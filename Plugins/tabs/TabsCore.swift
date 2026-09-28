@@ -1919,7 +1919,8 @@ final class TabsCore {
     env.on("webviews.nowPlaying") { [self] v in
       let id = v.s("id")
       guard tabs[id] != nil else { return }
-      let m: Value? = v["now"].isNull ? nil : v["now"]
+      var m: Value?
+      if !v["now"].isNull { m = v["now"] }
       // Only what the row shows: a new title or artwork doesn't re-render the sidebar.
       func shape(_ x: Value?) -> Value { x.map { ["paused": .bool($0.b("paused")), "acts": $0["acts"]] } ?? .null }
       let changed = shape(tabs[id]?.media) != shape(m)
