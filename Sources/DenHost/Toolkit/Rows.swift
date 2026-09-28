@@ -105,13 +105,13 @@ class HoverNode: NodeView, Hoverable {
 final class NavBarNode: NodeView {
   var buttons: [IconButton] = []
   /// (symbol, action, tooltip, menu bar item whose shortcut the tooltip shows).
-  static let buttons: [(String, String, String, String)] = [
+  static let specs: [(String, String, String, String)] = [
     ("sidebar.left", "toggleSidebar", "Toggle Sidebar", "view.sidebar"), ("arrow.left", "back", "Back", "history.back"),
     ("arrow.right", "forward", "Forward", "history.forward"), ("arrow.clockwise", "reload", "Reload Page", "view.reload"),
   ]
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
-    for (sym, act, tip, ref) in Self.buttons {
+    for (sym, act, tip, ref) in Self.specs {
       let b = IconButton(symbol: sym, size: Tokens.navButtonSize) { [weak self] in
         guard let self else { return }
         self.emit(act == "reload" && self.node.flag("loading") ? "stop" : act)

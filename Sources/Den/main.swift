@@ -465,6 +465,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.call("peek", "open", ["url": "https://www.swift.org"]) }
     case "space2":
       if let id = rt.call("spaces", "list")[1]["id"].string { rt.call("spaces", "switch", ["id": .string(id), "animated": false]) }
+    case "emptySpace":
+      // A new space with no tabs: the content card shows "Open a tab." with the ⌘T keycap.
+      if let id = rt.call("spaces", "create", ["name": "Reading", "icon": "📚"])["id"].string {
+        rt.call("spaces", "switch", ["id": .string(id), "animated": false])
+      }
     case "swipe", "swipeCommit":
       // In-process synthetic two-finger swipe over the sidebar (no other app is touched).
       let w = rt.window.window
