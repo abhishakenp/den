@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -10,7 +11,7 @@ import WebKit
 /// read exists until something watches, and only real changes on the watched domain are reported.
 /// The sign-ins are real: pages of the local fake GitHub/Slack (`MockServices`) set cookies in a tab.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct CookieWatchTests {
   func until(_ seconds: Double = 20, _ cond: () -> Bool) async -> Bool {
     let end = Date().addingTimeInterval(seconds)

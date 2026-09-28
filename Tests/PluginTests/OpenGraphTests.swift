@@ -1,10 +1,11 @@
 import CordisValue
+import DenTestSupport
 import Testing
 
 @testable import PluginCores
 
 /// `OpenGraph.parse`: link-preview metadata from real-world `<head>` markup.
-@Suite
+@Suite(.watchdog)
 struct OpenGraphTests {
   @Test func githubRepoHead() {
     let html = """

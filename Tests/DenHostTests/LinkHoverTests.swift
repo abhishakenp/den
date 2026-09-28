@@ -1,6 +1,7 @@
 import AppKit
 import CordisValue
 import Foundation
+import DenTestSupport
 import Testing
 import WebKit
 
@@ -8,7 +9,7 @@ import WebKit
 
 /// `webviews.watchLinks` (link under the pointer) and `net.fetch {stopAfter}`. (Tab mute: ServiceTests.)
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .watchdog)
 struct LinkHoverTests {
   func runtime() -> DenRuntime {
     _ = NSApplication.shared
