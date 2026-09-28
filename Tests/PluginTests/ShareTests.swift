@@ -159,8 +159,18 @@ struct ShareTests {
     let scale = rep.pixelsWide / (modules + 8)
     #expect(modules >= 21 && rep.pixelsWide == rep.pixelsHigh && rep.pixelsWide == (modules + 8) * scale && scale >= 8)
     func dark(_ x: Int, _ y: Int) -> Bool { (rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB)?.brightnessComponent ?? 1) < 0.5 }
-    #expect(!dark(1, 1) && !dark(4 * scale - 1, 4 * scale - 1))  // quiet zone
-    #expect(dark(4 * scale, 4 * scale) && dark(4 * scale + scale / 2, 4 * scale + scale / 2))  // finder pattern corner, no blur
+    // Quiet zone: at least 4 modules of white before the finder pattern's corner on the diagonal
+    // (CoreImage's own output may already carry a margin, so it's measured, not assumed).
+    let first = try #require((0..<rep.pixelsWide).first { dark($0, $0) })
+    #expect(first >= 4 * scale, "first dark pixel at \(first), module \(scale) px")
+    // Sharp: the finder's outer ring is one solid module thick, then white (no interpolation blur).
+    #expect(dark(first + scale - 1, first + scale - 1) && !dark(first + scale, first + scale))
+    // Nothing but black and white.
+    let grey = stride(from: 0, to: rep.pixelsWide, by: 7).contains { x in
+      let b = rep.colorAt(x: x, y: rep.pixelsHigh / 2)?.usingColorSpace(.sRGB)?.brightnessComponent ?? 0
+      return b > 0.05 && b < 0.95
+    }
+    #expect(!grey)
     let img = try #require(CIImage(contentsOf: URL(fileURLWithPath: path)))
     let found = CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: nil)?.features(in: img).compactMap { ($0 as? CIQRCodeFeature)?.messageString }
     #expect(found == [text])
