@@ -120,6 +120,7 @@ public final class DenRuntime {
     ui.onPalette = { [weak settings] _ in settings?.window?.applyAppearance() }
     GeneralSettings.install(self)
     MenuActions.install(self)
+    Self.onCreate?(self)
   }
 
   /// The `plugins` service: lets a plugin see which services, plugins and listeners exist, so it

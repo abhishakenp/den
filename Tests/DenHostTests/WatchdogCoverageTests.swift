@@ -1,4 +1,6 @@
 import AppKit
+import CordisValue
+@testable import DenHost
 import DenTestSupport
 import Foundation
 import Testing
@@ -63,6 +65,21 @@ struct WatchdogCoverageTests {
       #expect(abs(w.alphaValue - 0.7) < 0.001 && serverAlpha(w) == 0, "\(name): alpha after set")
       w.orderOut(nil)
     }
+  }
+
+  /// Teardown ends a runtime's WebContent processes, and den pages in tests are page-muted.
+  @Test @MainActor func tearDownEndsWebContentAndPagesAreMuted() async throws {
+    let rt = ServiceTests.runtime()
+    let id = rt.call("webviews", "create", ["id": "leak"])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    let web = try #require(rt.webviews.record(id)?.webView)
+    web.loadHTMLString("<p>x</p>", baseURL: URL(string: "https://leak.test/"))
+    #expect(await Wait.until("the page to load") { !web.isLoading && web.url != nil })
+    #expect(rt.webviews.pageMuted(id) == true)
+    let pid = try #require(WebViewsService.webProcessId(web))
+    let pids = rt.tearDown()
+    #expect(pids.contains(pid))
+    #expect(await Wait.until("WebContent \(pid) to exit", seconds: 20) { kill(pid, 0) != 0 })
   }
 
   // Self-tests of the watchdog, off by default (they fail on purpose):

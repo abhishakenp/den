@@ -64,6 +64,13 @@ public final class SessionService: NSObject, HostService, WKNavigationDelegate {
   }
 
   public var inFlight: Int { pending.count }
+  /// The hidden views of requests in flight.
+  var liveViews: [WKWebView] { pending.values.map(\.view) }
+
+  /// Ends every request in flight (as cancelled) and releases its hidden view.
+  func cancelAll() {
+    for id in Array(pending.keys) { finish(id, .error("session: cancelled")) }
+  }
 
   public func handle(method: String, args: Value) -> Value {
     let plugin = args.str("plugin")

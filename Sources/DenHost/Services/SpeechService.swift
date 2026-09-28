@@ -30,6 +30,11 @@ public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDele
   private(set) var state = "stopped"
   /// Scenarios mute speech (read-aloud snapshots shouldn't talk).
   public var volumeOverride: Float?
+  /// No audio device at all: utterances are synthesized to buffers (`write`) and dropped, with
+  /// the same progress and state events. On under tests, so a test run never plays sound or
+  /// holds an audio session open in coreaudiod.
+  public var silent = TestMode.active
+  private var silentQueue: [AVSpeechUtterance] = []
 
   public init(host: ServiceHost) { self.host = host }
 
@@ -63,6 +68,7 @@ public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDele
       synth?.delegate = nil
       synth?.stopSpeaking(at: .immediate)
       synth = nil
+      silentQueue = []
       start(at: index)
       if paused { _ = handle(method: "pause", args: .null) }
     case "state":
@@ -85,13 +91,34 @@ public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDele
       u.volume = volumeOverride ?? volume
       if let voice { u.voice = voice }
       keys[ObjectIdentifier(u)] = i
-      s.speak(u)
+      if silent { silentQueue.append(u) } else { s.speak(u) }
     }
     index = first
     publish("playing")
+    if silent { writeNext(s) }
+  }
+
+  /// Silent mode: synthesizes the next queued utterance to buffers; a zero-length buffer ends it.
+  private func writeNext(_ s: AVSpeechSynthesizer) {
+    guard synth === s, !silentQueue.isEmpty else { return }
+    let u = silentQueue.removeFirst()
+    let key = ObjectIdentifier(u)
+    started(key)
+    nonisolated(unsafe) let synthRef = s
+    nonisolated(unsafe) var ended = false
+    s.write(u) { [weak self] buffer in
+      guard !ended, (buffer as? AVAudioPCMBuffer)?.frameLength ?? 0 == 0 else { return }
+      ended = true
+      Task { @MainActor in
+        guard let self, self.synth === synthRef, self.state == "playing" || self.state == "paused" else { return }
+        self.finished(key)
+        self.writeNext(synthRef)
+      }
+    }
   }
 
   private func stop(emit: Bool) {
+    silentQueue = []
     guard let synth else { return }
     synth.delegate = nil
     synth.stopSpeaking(at: .immediate)

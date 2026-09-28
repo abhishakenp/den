@@ -340,8 +340,19 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     ["playing": .bool(m.playing), "pip": .bool(m.pip), "dirty": .bool(m.dirty), "video": m.video ?? .null]
   }
 
+  /// Tests only: WebContent pids of every web view destroyed so far, so a test harness can check
+  /// they exited (see `DenRuntime.tearDown`).
+  public private(set) var destroyedProcessIds = Set<pid_t>()
+
+  static func webProcessId(_ w: WKWebView) -> pid_t? {
+    guard w.responds(to: NSSelectorFromString("_webProcessIdentifier")),
+          let p = (w.value(forKey: "_webProcessIdentifier") as? NSNumber)?.int32Value, p > 0 else { return nil }
+    return p
+  }
+
   func destroyView(_ r: WebRecord) {
     guard let w = r.webView else { return }
+    if TestMode.active, let p = Self.webProcessId(w) { destroyedProcessIds.insert(p) }
     willDestroy?(r.id)
     links.forget(w)
     r.observers.forEach { $0.invalidate() }

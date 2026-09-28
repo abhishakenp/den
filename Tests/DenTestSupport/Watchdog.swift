@@ -18,6 +18,7 @@ public struct Watchdog: TestTrait, SuiteTrait, TestScoping {
   public func provideScope(for test: Test, testCase: Test.Case?, performing function: @Sendable () async throws -> Void) async throws {
     // Suites pass through; the trait is recursive, so each test case gets its own scope.
     Invisible.install()
+    await MainActor.run { Leaks.install() }
     guard testCase != nil, !test.isSuite else { return try await function() }
     let name = "\(test.id)"
     let limit = seconds
@@ -25,6 +26,8 @@ public struct Watchdog: TestTrait, SuiteTrait, TestScoping {
     defer { WatchdogMonitor.shared.end(token) }
     try await Wait.$token.withValue(token) {
       try await withoutActuallyEscaping(function) { body in
+        var failure: Error?
+        do {
         try await withThrowingTaskGroup(of: Bool.self) { group in
           group.addTask { try await body(); return true }
           group.addTask {
@@ -42,6 +45,10 @@ public struct Watchdog: TestTrait, SuiteTrait, TestScoping {
           // Waits for the body to unwind (bounded by the monitor thread's grace period).
           while let next = try? await group.next() { _ = next }
         }
+        } catch { failure = error }
+        // Whatever the outcome: nothing the test started outlives it.
+        await MainActor.run { Leaks.tearDown(test: name) }
+        if let failure { throw failure }
       }
     }
   }
