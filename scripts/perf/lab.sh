@@ -73,10 +73,10 @@ for s in $scenarios; do
     fresh $src
     # The ubo store's extensions.json points at its own folder: rewrite for the copy.
     [[ -f $tmp/store/extensions/extensions.json ]] && sed -i '' "s#$tmp/ubo/#$tmp/store/#g" $tmp/store/extensions/extensions.json
-    exec_cmd=""
+    exec_args=()
     # First run: heap, vmmap, footprint, and the power assertions held while den idles.
-    (( i == 1 )) && exec_cmd="heap -s \$PERF_PID > '$out/$s.heap.txt' 2>&1; vmmap -summary \$PERF_PID > '$out/$s.vmmap.txt' 2>&1; footprint -p \$PERF_PID > '$out/$s.footprint.txt' 2>&1; pmset -g assertions > '$out/$s.assertions.txt' 2>&1; true"
-    $probe mem $app --settle $settle $url ${exec_cmd:+--exec "$exec_cmd"} -- --storage $tmp/store > $tmp/log 2>&1 || true
+    (( i == 1 )) && exec_args=(--exec "heap -s \$PERF_PID > '$out/$s.heap.txt' 2>&1; vmmap -summary \$PERF_PID > '$out/$s.vmmap.txt' 2>&1; footprint -p \$PERF_PID > '$out/$s.footprint.txt' 2>&1; pmset -g assertions > '$out/$s.assertions.txt' 2>&1; true")
+    $probe mem $app --settle $settle $url $exec_args -- --storage $tmp/store > $tmp/log 2>&1 || true
     cat $tmp/log >> $out/$s.log
     hosts+=($(awk '$1 == "mem.hostMB" {print $2}' $tmp/log)) totals+=($(awk '$1 == "mem.totalMB" {print $2}' $tmp/log))
   done
