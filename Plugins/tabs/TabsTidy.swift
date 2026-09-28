@@ -136,6 +136,16 @@ extension TabsCore {
 
   // MARK: Tidying
 
+  /// "https://www.example.com/a/b?q" -> "example.com/a/b?q" (no trailing "/").
+  static func tidyAddress(_ url: String) -> String {
+    var s = url
+    for p in ["https://", "http://"] where Text.hasPrefix(Text.lower(s), p) { s = Text.dropPrefix(s, p) }
+    if Text.hasPrefix(s, "www.") { s = Text.dropPrefix(s, "www.") }
+    var b = Array(s.utf8)
+    while b.last == 47 { b.removeLast() }  // "/"
+    return String(decoding: b, as: UTF8.self)
+  }
+
   /// Tabs sitting directly in Today (not in a group or a split).
   func looseToday(_ sid: String) -> [String] { (today[sid] ?? []).filter { tabs[$0] != nil } }
 
@@ -164,7 +174,9 @@ extension TabsCore {
     }
     let items: [Value] = loose.compactMap { id in
       guard let t = tabs[id] else { return nil }
-      return ["id": .string(id), "text": .string(t.displayTitle + " — " + URLs.display(t.url))]
+      // The address without its scheme: a background tab that never loaded has only its URL,
+      // and the path often says what it's about (/wiki/Lisbon).
+      return ["id": .string(id), "text": .string(t.displayTitle + " — " + Self.tidyAddress(t.url))]
     }
     let r = env.call("ai", "group", ["id": .string(Self.tidyRequestPrefix + sid), "items": .array(items),
                                      "instructions": .string(Self.tidyInstructions), "maxGroups": .int(Int64(Self.tidyMaxGroups))])
