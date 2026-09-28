@@ -147,6 +147,8 @@ public final class WebRecord {
 ///   watchLinks {modifier: shift|none|off, yieldTo?: [css selector]}  (all web views; LinkHover.swift)
 ///                                             -> events webviews.linkHover {id, url, text, rect: {x,y,w,h} (window pt,
 ///                                                top-left origin), yield} and webviews.linkHoverEnd {id}
+///   watchStatus {enabled}                     -> events webviews.linkStatus {id, url} on plain hover or keyboard focus
+///                                                (url "" when the pointer leaves the link); same script as watchLinks
 ///
 /// Events: webviews.title {id,title}  webviews.url {id,url}  webviews.favicon {id,url}
 ///   webviews.progress {id,progress,loading}  webviews.state {id,canGoBack,canGoForward}
@@ -212,6 +214,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if method == "create" { return create(args) }
     if method == "list" { return .array(order.map { .string($0) }) }
     if method == "watchLinks" { return watchLinks(args) }
+    if method == "watchStatus" { return watchStatus(args) }
     if method == "setLinkPolicy", args.str("id") == "*" {
       defaultRules = args.list("rules").compactMap(LinkRule.init)
       return .ok
@@ -1125,11 +1128,22 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     guard links.configure(modifier: args.str("modifier", "shift"), yieldTo: args.list("yieldTo").compactMap(\.string)) else {
       return .error("webviews: modifier must be shift, none or off")
     }
+    applyLinks()
+    return .ok
+  }
+
+  func watchStatus(_ args: Value) -> Value {
+    links.configureStatus(args.flag("enabled", true))
+    applyLinks()
+    return .ok
+  }
+
+  /// Installs (or updates, or removes) the link script in every live web view.
+  func applyLinks() {
     for r in records.values {
       guard let w = r.webView else { continue }
       if links.enabled { links.install(w, handler: scriptHandler) } else { links.uninstall(w) }
     }
-    return .ok
   }
 
   func mediaChanged(_ r: WebRecord) {

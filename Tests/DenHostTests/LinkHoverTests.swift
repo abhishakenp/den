@@ -127,6 +127,131 @@ struct LinkHoverTests {
     #expect((gone as? Bool) == false)
   }
 
+  // MARK: Link status (watchStatus + the ui `status` pill)
+
+  @Test func statusMessagesMapToLinkStatus() {
+    let ident: (CGRect) -> CGRect = { $0 }
+    let e = LinkHover.event(id: "tab-2", body: ["t": "status", "url": "https://example.org/a?b", "id": "evil"], toWindow: ident)
+    #expect(e?.0 == "webviews.linkStatus" && e?.1["id"] == "tab-2" && e?.1["url"] == "https://example.org/a?b")
+    // Any scheme a link can have, except script; "" = no link.
+    #expect(LinkHover.event(id: "t", body: ["t": "status", "url": "mailto:a@b.org"], toWindow: ident)?.1["url"] == "mailto:a@b.org")
+    for bad in ["", "javascript:alert(1)", "JavaScript:x", "not a url", "data:text/plain," + String(repeating: "x", count: 9000)] {
+      let v = LinkHover.event(id: "t", body: ["t": "status", "url": bad], toWindow: ident)
+      #expect(v?.0 == "webviews.linkStatus" && v?.1["url"] == "")
+    }
+  }
+
+  @Test func watchStatusInstallsTheScriptOnItsOwn() {
+    let rt = runtime()
+    let (_, w) = page(rt)
+    #expect(rt.call("webviews", "watchStatus", ["enabled": true]) == .ok)
+    #expect(hasLinkScript(w) && rt.webviews.links.status && rt.webviews.links.modifier == "off")
+    #expect(rt.webviews.links.script.contains("\"s\":true"))
+    // Link previews switching off keeps the status script; status off too removes it.
+    #expect(rt.call("webviews", "watchLinks", ["modifier": "shift"]) == .ok)
+    #expect(rt.call("webviews", "watchLinks", ["modifier": "off"]) == .ok)
+    #expect(hasLinkScript(w))
+    #expect(rt.call("webviews", "watchStatus", ["enabled": false]) == .ok)
+    #expect(!hasLinkScript(w) && !rt.webviews.links.isInstalled(w))
+  }
+
+  @Test func plainHoverReportsStatusWhileShiftModeStaysQuiet() async {
+    let rt = runtime()
+    let (id, w) = page(rt)
+    var status: [String] = []
+    var hovers = 0
+    rt.host.on("webviews.linkStatus") { v in
+      #expect(v["id"] == .string(id))
+      status.append(v.str("url"))
+    }
+    rt.host.on("webviews.linkHover") { _ in hovers += 1 }
+    #expect(rt.call("webviews", "watchLinks", ["modifier": "shift"]) == .ok)
+    #expect(rt.call("webviews", "watchStatus", ["enabled": true]) == .ok)
+    w.loadHTMLString("<a id=l href='https://example.org/x'>Example</a> <a id=m href='mailto:hi@example.org'>Mail</a> <a id=j href='javascript:void 0'>JS</a><p id=p>text</p>",
+                     baseURL: URL(string: "https://page.test/"))
+    var loaded = false
+    for _ in 0..<160 where !loaded {
+      try? await Task.sleep(for: .milliseconds(50))
+      let r = try? await w.evaluateJavaScript("!!window.__denLinks && !!document.getElementById('l')", in: nil, contentWorld: LinkHover.world)
+      loaded = (r as? Bool) == true
+    }
+    #expect(loaded)
+    func js(_ s: String) async { _ = try? await w.evaluateJavaScript(s, in: nil, contentWorld: .page) }
+    func over(_ el: String) async {
+      await js("document.getElementById('\(el)').dispatchEvent(new MouseEvent('mouseover',{bubbles:true}))")
+    }
+    await over("l")
+    #expect(await wait { status == ["https://example.org/x"] })
+    // Straight onto the next link: no "" in between (no flicker).
+    await js("document.getElementById('l').dispatchEvent(new MouseEvent('mouseout',{bubbles:true,relatedTarget:document.getElementById('m')}))")
+    await over("m")
+    #expect(await wait { status.count == 2 })
+    #expect(status.last == "mailto:hi@example.org")
+    // Off the links: "".
+    await js("document.getElementById('m').dispatchEvent(new MouseEvent('mouseout',{bubbles:true,relatedTarget:document.getElementById('p')}))")
+    #expect(await wait { status.count == 3 })
+    #expect(status.last == "")
+    // A script link says nothing.
+    await over("j")
+    try? await Task.sleep(for: .milliseconds(250))
+    #expect(status.count == 3)
+    // Keyboard focus on a link shows it too.
+    await js("document.getElementById('l').focus()")
+    #expect(await wait { status.count == 4 })
+    #expect(status.last == "https://example.org/x")
+    #expect(hovers == 0)  // the ⇧-hover report still waits for Shift
+  }
+
+  @Test func statusPillSitsBottomLeftAndDodgesThePointer() {
+    let rt = runtime()
+    let (id, _) = page(rt)
+    let pill = rt.ui.statusPill
+    #expect(!pill.showing && pill.isHidden)
+    #expect(rt.call("ui", "set", ["slot": "status", "tree": ["webview": .string(id), "lead": "example.org", "text": "/docs/start"]]) == .ok)
+    #expect(pill.showing && !pill.isHidden)
+    #expect(pill.shownText == "example.org/docs/start")
+    let area = rt.ui.statusArea()
+    // Bottom-left of the page, inside it (flipped overlay coordinates).
+    #expect(abs(pill.frame.minX - (area.minX + Tokens.statusPillInset)) <= 1)
+    #expect(abs(pill.frame.maxY - (area.maxY - Tokens.statusPillInset)) <= 1)
+    #expect(pill.frame.height == Tokens.statusPillHeight && pill.frame.width < area.width)
+    #expect(rt.ui.handle(method: "get", args: .null)["overlays"].array?.contains("status") == true)
+    // The pointer comes near: it moves to the bottom-right, and stays there until the pointer
+    // comes near that corner instead.
+    pill.pointerAt(NSPoint(x: pill.frame.midX, y: pill.frame.midY))
+    #expect(pill.onRight)
+    #expect(abs(pill.frame.maxX - (area.maxX - Tokens.statusPillInset)) <= 1)
+    pill.pointerAt(NSPoint(x: area.midX, y: area.midY))
+    #expect(pill.onRight)
+    pill.pointerAt(NSPoint(x: pill.frame.midX, y: pill.frame.midY))
+    #expect(!pill.onRight)
+    // A long address is capped to the page.
+    _ = rt.call("ui", "set", ["slot": "status", "tree": ["webview": .string(id), "lead": "example.org", "text": .string("/" + String(repeating: "abc/", count: 400))]])
+    #expect(pill.frame.width <= area.width - 2 * Tokens.statusPillInset + 0.5)
+    // null hides it; modal UI hides it.
+    _ = rt.call("ui", "set", ["slot": "status", "tree": .null])
+    #expect(!pill.showing)
+    _ = rt.call("ui", "set", ["slot": "status", "tree": ["lead": "a.org", "text": ""]])
+    #expect(pill.showing)
+    _ = rt.call("ui", "set", ["slot": "dialog", "tree": ["type": "dialog", "id": "d", "title": "T", "buttons": [["id": "ok", "title": "OK"]]]])
+    #expect(!pill.showing)
+    _ = rt.call("ui", "set", ["slot": "status", "tree": ["lead": "a.org", "text": ""]])
+    #expect(!pill.showing)  // not over a dialog
+  }
+
+  @Test func statusPillCornerMath() {
+    let a = NSRect(x: 300, y: 0, width: 900, height: 700)
+    let s = CGSize(width: 200, height: Tokens.statusPillHeight)
+    let left = StatusPillView.frame(area: a, size: s, right: false)
+    #expect(left.minX == 306 && left.maxY == 694)
+    #expect(StatusPillView.frame(area: a, size: s, right: true).maxX == 1194)
+    #expect(!StatusPillView.onRight(pointer: NSPoint(x: 700, y: 300), area: a, size: s, current: false))
+    #expect(StatusPillView.onRight(pointer: NSPoint(x: left.midX, y: left.minY - 10), area: a, size: s, current: false))
+    // A pane too narrow for both corners to be apart: it stays where it is.
+    let narrow = NSRect(x: 0, y: 0, width: 220, height: 400)
+    #expect(!StatusPillView.onRight(pointer: NSPoint(x: 100, y: 385), area: narrow, size: s, current: false))
+  }
+
   // MARK: net.fetch {stopAfter}
 
   final class Stub: URLProtocol {

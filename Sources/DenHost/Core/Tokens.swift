@@ -125,6 +125,18 @@ public enum Tokens {
   public static let toastRightInset: CGFloat = 20  // estimate
   public static let toastDefaultDurationMs = 2200  // estimate
 
+  // MARK: Link status pill (Arc: the hovered link's address, bottom of the page; arc.md "Status pill")
+  public static let statusPillHeight: CGFloat = 22  // estimate
+  public static let statusPillCornerRadius: CGFloat = 7  // estimate
+  public static let statusPillInset: CGFloat = 6  // estimate: from the page's bottom-left (or bottom-right) corner
+  public static let statusPillPadding: CGFloat = 9  // estimate: text inset on each side
+  public static let statusPillFontSize: CGFloat = 11.5  // estimate
+  /// The pill moves to the other corner when the pointer comes this close (pt).
+  public static let statusPillAvoid: CGFloat = 16  // estimate
+  public static let statusPillFadeIn: TimeInterval = 0.10  // estimate
+  public static let statusPillFadeOut: TimeInterval = 0.16  // estimate
+  public static let statusPillMove: TimeInterval = 0.18  // estimate
+
   // MARK: Archive / Library sheet (Arc's archive view is UNVERIFIED, spec §12: all estimates)
   public static let libraryWidth: CGFloat = 640  // estimate
   public static let libraryInset: CGFloat = 40  // estimate: from the content area's edges
