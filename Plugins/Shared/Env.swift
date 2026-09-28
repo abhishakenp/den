@@ -133,6 +133,19 @@ enum URLs {
     return IDN.display(host(url))
   }
 
+  /// "https://github.com/a/b/?q=1#x" -> "/a/b" (no query, fragment or trailing slash); "" for a
+  /// site's root or a non-URL.
+  static func path(_ url: String) -> String {
+    let bytes = Array(url.utf8)
+    guard let r = find(bytes, Array("://".utf8)) else { return "" }
+    var i = r + 3
+    while i < bytes.count, bytes[i] != 47, bytes[i] != 63, bytes[i] != 35 { i += 1 }
+    var out: [UInt8] = []
+    while i < bytes.count, bytes[i] != 63, bytes[i] != 35 { out.append(bytes[i]); i += 1 }
+    while out.last == 47 { out.removeLast() }
+    return String(decoding: out, as: UTF8.self)
+  }
+
   static func isWeb(_ url: String) -> Bool {
     let l = lower(url)
     return Text.hasPrefix(l, "http://") || Text.hasPrefix(l, "https://")

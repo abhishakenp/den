@@ -400,6 +400,17 @@ enum Cards {
   }
 
   /// OpenGraph data (`OpenGraph.parse`): image, site, title, description.
+  /// The card's title: the page's og:title or `<title>` (OpenGraph.parse falls back to it), else
+  /// the link's own text; never just the domain again: then the URL path ("abhishakenp/den").
+  static func linkTitle(url: String, og: Value, site: String) -> String {
+    let t = og.s("title")
+    let l = Text.lower(t)
+    let domainOnly = l.isEmpty || l == Text.lower(site) || l == Text.lower(URLs.display(url)) || l == Text.lower(URLs.host(url))
+    if !domainOnly { return t }
+    let p = Text.dropPrefix(URLs.path(url), "/")
+    return p.isEmpty ? URLs.display(url) : p
+  }
+
   static func link(url: String, og: Value, loading: Bool) -> Value {
     var kids: [Value] = []
     if !og.s("image").isEmpty {
@@ -412,8 +423,7 @@ enum Cards {
     text.append(stack([["type": "icon", "spec": .string(icon.isEmpty ? URLs.favicon(url) : icon), "size": 14, "letter": .string(site)],
                        label(site, size: 12, tone: "secondary")], axis: "h", spacing: 6, align: "center", height: 16))
     text.append(spacer(4))
-    let title = og.sOpt("title") ?? URLs.display(url)
-    text.append(label(title, weight: "semibold", lines: 2))
+    text.append(label(linkTitle(url: url, og: og, site: site), weight: "semibold", lines: 2))
     if loading {
       text.append(spacer(2))
       text.append(label("Loading preview…", size: 12, tone: "secondary"))
