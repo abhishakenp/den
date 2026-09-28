@@ -104,6 +104,32 @@ struct ServiceTests {
     #expect(rt.call("window", "get")["width"] == .double(Double(Tokens.sidebarMaxWidth)))
   }
 
+  /// A long Today list only has views for the rows near the screen; scrolling makes the rest and
+  /// drops the ones far away (a discarded tab costs its record, not a row of views).
+  @Test func longListsAreVirtualized() throws {
+    let rt = Self.runtime()
+    let rows: [Value] = (0..<200).map { ["type": "tabRow", "id": .string("t\($0)"), "title": .string("Tab \($0)"), "icon": "sf:globe"] }
+    _ = rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "children": .array([["type": "divider", "id": "d"]] + rows)]])
+    rt.window.window.contentView?.layoutSubtreeIfNeeded()
+    rt.ui.sidebarView.layoutSubtreeIfNeeded()
+    let list = try #require(rt.ui.sidebarView.slot("sidebar.today", page: 0)?.root as? StackNode)
+    list.layoutSubtreeIfNeeded()
+    let made = { list.kids.compactMap { $0 as? TabRowNode }.map(\.nodeId) }
+    print("virtualized rows made: \(made().count) of 200")
+    #expect(made().count > 10 && made().count < 80)
+    #expect(made().contains("t0") && !made().contains("t199"))
+    #expect(list.height(for: list.bounds.width) >= 200 * Tokens.tabRowHeight)
+    // Scroll to the end: the last rows exist, the first ones are gone.
+    let scroll = try #require(list.enclosingScrollView)
+    scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, scroll.documentView!.frame.height - scroll.contentView.bounds.height)))
+    scroll.reflectScrolledClipView(scroll.contentView)
+    #expect(made().contains("t199") && !made().contains("t0"))
+    // Updates reach rows with views; rows without one get theirs from the new value later.
+    let r1: [Value] = (0..<200).map { ["type": "tabRow", "id": .string("t\($0)"), "title": .string($0 == 199 ? "Last" : "Tab \($0)"), "icon": "sf:globe"] }
+    _ = rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "children": .array([["type": "divider", "id": "d"]] + r1)]])
+    #expect((list.kids.first { $0.nodeId == "t199" } as? TabRowNode)?.label.stringValue == "Last")
+  }
+
   @Test func uiRendersTreesAndReusesViews() {
     let rt = Self.runtime()
     var actions: [Value] = []

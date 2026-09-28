@@ -139,10 +139,33 @@ public final class UIService: HostService {
       return r
     case "hoverIntent":
       if let b = args["redwell"].bool { cards.intent.redwell = b }
+    case "menu":
+      return showMenu(args.str("id"), args.list("items"))
     default:
       return .error("ui: unknown method '\(method)'")
     }
     return .ok
+  }
+
+  /// `menu {id, items}`: the context menu of a node that carries no `menu` of its own (a right-click
+  /// on it emitted `contextMenu`), built by the plugin only when asked, so a sidebar of hundreds of
+  /// rows holds no menus. Shown at the pointer on the next turn; a pick emits the node's `menu`.
+  var lastMenu: NSMenu?
+  func showMenu(_ id: String, _ items: [Value]) -> Value {
+    guard !items.isEmpty, let n = Self.node(id, in: sidebarView) else { return .error("ui: no node '\(id)'") }
+    let m = ContextMenu.build(items, target: n, action: #selector(NodeView.menuPicked(_:)))
+    lastMenu = m
+    DispatchQueue.main.async { [weak n] in
+      guard let n, let w = n.window, !TestMode.active else { return }
+      m.popUp(positioning: nil, at: n.convert(w.mouseLocationOutsideOfEventStream, from: nil), in: n)
+    }
+    return ["shown": true]
+  }
+
+  static func node(_ id: String, in v: NSView) -> NodeView? {
+    if let n = v as? NodeView, n.nodeId == id { return n }
+    for s in v.subviews { if let f = node(id, in: s) { return f } }
+    return nil
   }
 
   func set(_ slot: String, _ tree: Value, page: Int?) -> Value {

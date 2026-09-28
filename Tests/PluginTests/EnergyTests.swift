@@ -59,12 +59,15 @@ struct EnergyTests {
     let core = h.startTabs()
     let ids = await sevenTabs(h) { $0 == 0 ? "example.org" : "example.com" }
     let kept = ids[0], other = ids[1]
-    // The tab menu toggles the site; the row's menu shows it checked, the setting lists it.
+    // The tab menu toggles the site; the menu shows it checked, the setting lists it.
     h.action(kept, "menu", "keepActive")
     #expect(h.tabs("keepActive") == ["example.org"])
     #expect(h.storage("tabs", "energy")["keepActive"] == ["example.org"])
-    let row = h.tree("sidebar.today", 0)["children"].array?.first { $0.s("id") == kept } ?? .null
-    #expect(row["menu"].array?.first { $0.s("id") == "keepActive" }?["checked"] == true)
+    #expect(h.tabs("menu", ["id": .string(kept)]).array?.first { $0.s("id") == "keepActive" }?["checked"] == true)
+    // Rows carry no menu; a right-click builds it (ui.menu).
+    #expect(h.tree("sidebar.today", 0)["children"].array?.first { $0.s("id") == kept }?["menu"] == .null)
+    h.action(kept, "contextMenu")
+    #expect(h.rt.ui.lastMenu?.items.first { $0.title == "Keep Site Active" }?.state == .on)
     h.clock += 6 * 60_000
     core.tick()
     #expect(await h.waitUnloaded(other))

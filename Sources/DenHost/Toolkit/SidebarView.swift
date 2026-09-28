@@ -43,6 +43,16 @@ final class SidebarPage: NSScrollView {
   }
   required init?(coder: NSCoder) { fatalError() }
 
+  /// Moved into view by the pager: virtualized lists make the rows now near the screen (scrolling
+  /// is followed by each `StackNode` itself).
+  func visibleChanged() {
+    func walk(_ v: NSView) {
+      if let s = v as? StackNode { s.materialize() }
+      for c in v.subviews where c is StackNode || c is SlotView || c is FolderNode { walk(c) }
+    }
+    for s in [pinned, today] { walk(s) }
+  }
+
   func slot(_ name: String) -> SlotView? {
     switch name {
     case "sidebar.spaceHeader": return spaceHeader
@@ -208,7 +218,10 @@ final class SidebarPager: FlippedView {
       let visible = x > -w && x < w
       p.isHidden = !visible
       let f = NSRect(x: x.rounded(), y: 0, width: w, height: bounds.height)
-      if p.frame != f { p.frame = f }
+      if p.frame != f {
+        p.frame = f
+        if visible { p.visibleChanged() }
+      }
     }
   }
 }

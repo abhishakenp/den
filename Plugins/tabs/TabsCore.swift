@@ -497,6 +497,10 @@ final class TabsCore {
       changed(spaceOf(id))
     case "clearToday":
       clearToday(args.sOpt("spaceId") ?? currentSpace)
+    case "menu":
+      // {id}: the tab's context menu, as a right-click shows it.
+      guard tabs[args.s("id")] != nil else { return .err("tabs: no tab '" + args.s("id") + "'") }
+      return .array(contextMenu(args.s("id")))
     case "unloadSpace":
       return ["unloaded": .int(Int64(unloadSpace(args.sOpt("spaceId") ?? currentSpace)))]
     case "keepActive":
@@ -1625,7 +1629,7 @@ final class TabsCore {
       let id = splits[fid]?.children.first ?? fid
       guard let t = tabs[id] else { return nil }
       return ["type": "favoriteTile", "id": .string(id), "icon": .string(t.icon), "title": .string(t.displayTitle), "selected": .bool(id == sel),
-              "audio": .bool(t.audio), "muted": .bool(t.muted), "menu": .array(menu(for: id, box: .favorites)), "dropInto": true,
+              "audio": .bool(t.audio), "muted": .bool(t.muted), "dropInto": true,
               "hoverIntent": .int(Self.tileCardDelayMs)]
     })]])
   }
@@ -1633,7 +1637,7 @@ final class TabsCore {
   func row(_ id: String, _ sid: String, box: Box) -> Value {
     let t = tabs[id]!
     var r: Value = ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(selected[sid] == id),
-                    "audio": .bool(t.audio), "muted": .bool(t.muted), "drift": .bool(kind(of: box) != "today" && t.drift), "menu": .array(menu(for: id, box: box)),
+                    "audio": .bool(t.audio), "muted": .bool(t.muted), "drift": .bool(kind(of: box) != "today" && t.drift),
                     "closeTitle": .string(kind(of: box) == "today" ? "Archive Tab" : "Close Tab"),
                     "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1",
                     "hoverIntent": .int(Self.rowCardDelayMs)]
@@ -1708,6 +1712,13 @@ final class TabsCore {
   /// Every item that has a shortcut shows it on the right; holding ⌥ swaps in the alternates
   /// (Copy Link ↔ Copy Link as Markdown, Archive Tab ↔ Close Other Tabs, Close Tabs Below ↔
   /// Above; dia-ui-spec §4).
+  /// The menu a right-click on tab `id` (row or favorite tile) shows.
+  func contextMenu(_ id: String) -> [Value] {
+    guard let (b, _) = locate(id) else { return [] }
+    if case .split = b { return [] }
+    return menu(for: id, box: b)
+  }
+
   func menu(for id: String, box: Box) -> [Value] {
     guard let t = tabs[id] else { return [] }
     func item(_ id: String, _ title: String, _ icon: String, _ event: String? = nil) -> Value {
@@ -2089,6 +2100,8 @@ final class TabsCore {
           env.call("peek", "split", ["ids": side == "left" ? [.string(id), .string(sel)] : [.string(sel), .string(id)], "layout": "horizontal"])
         }
       case "menu": menuPicked(id, value.string ?? "")
+      // Rows carry no menu (hundreds of rows would each hold one): it's built on right-click.
+      case "contextMenu": env.call("ui", "menu", ["id": .string(id), "items": .array(contextMenu(id))])
       default: break
       }
       return

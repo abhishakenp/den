@@ -16,6 +16,9 @@ class HoverNode: NodeView, Hoverable {
   private var downPoint: NSPoint?
   private var dragging = false
   var draggable: Bool { false }
+  override var busy: Bool {
+    hovering || downPoint != nil || (window?.firstResponder as? NSView)?.isDescendant(of: self) == true
+  }
 
   func hoverChanged() {}
 
@@ -734,6 +737,8 @@ final class TabRowNode: HoverNode {
   lazy var close = IconButton(symbol: "xmark", size: 22) { [weak self] in self?.emit("close") }
   lazy var rename = RenameSupport(owner: self, label: label)
   override var draggable: Bool { node.flag("draggable", true) && !rename.active }
+  override class func fixedHeight(_ v: Value) -> CGFloat? { Tokens.tabRowHeight }
+  override var busy: Bool { super.busy || rename.active }
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
     [icon, drift, label, audio, close].forEach { addSubview($0) }
@@ -815,6 +820,7 @@ final class SplitRowNode: HoverNode {
   static let chipInset: CGFloat = 4
   override var draggable: Bool { true }
   override var fillRect: NSRect { bounds.insetBy(dx: 0, dy: (bounds.height - 36) / 2) }
+  override class func fixedHeight(_ v: Value) -> CGFloat? { Tokens.tabRowHeight }
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
     addSubview(close)

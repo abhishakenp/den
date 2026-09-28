@@ -101,7 +101,7 @@ struct SpaceMenuTests {
   @Test func titleAndFooterIconShareArcsSpaceMenu() {
     let h = Harness()
     h.startSpaces()
-    let expected = ["rename", "icon", "theme", "profile", "", "duplicate", "moveLeft", "moveRight", "", "new", "", "delete"]
+    let expected = ["rename", "icon", "theme", "profile", "", "duplicate", "moveLeft", "moveRight", "", "unload", "", "new", "", "delete"]
     let title = h.tree("sidebar.spaceHeader", 0)
     #expect(menuIds(title) == expected)
     let footer = h.rt.ui.sidebarView.footer.root?.node ?? .null
@@ -115,7 +115,7 @@ struct SpaceMenuTests {
     // Profile submenu: Default (checked), then New Profile.
     #expect(m0[3]["items"][0]["id"] == "profile:default" && m0[3]["items"][0]["checked"] == true)
     #expect(m0[3]["items"].array?.last?["id"] == "profile.new")
-    #expect(m0[11]["destructive"] == true)
+    #expect(m0[13]["destructive"] == true)
   }
 
   @Test func renameInPlaceFromMenuAndDoubleClick() {

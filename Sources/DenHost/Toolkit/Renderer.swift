@@ -19,6 +19,10 @@ public class NodeView: FlippedView, Themable {
   /// Called with each new node value; views update in place.
   func update(_ v: Value) { node = v }
   func height(for width: CGFloat) -> CGFloat { 0 }
+  /// The height of every node of this type, known without a view (lets `StackNode` virtualize).
+  class func fixedHeight(_ v: Value) -> CGFloat? { nil }
+  /// In use (hovered, focused, being edited): a virtualized list keeps its view.
+  var busy: Bool { false }
   /// Width when placed in a `row`; nil = flexible.
   var preferredWidth: CGFloat? { nil }
   /// Natural (untruncated) width, for content-fitted containers such as cards; nil = no opinion.
@@ -87,6 +91,8 @@ public final class Renderer {
     return n
   }
 
+  static func fixedHeight(_ v: Value) -> CGFloat? { registry[v.str("type")]?.fixedHeight(v) }
+
   static func key(_ v: Value, _ index: Int) -> String {
     let id = v.str("id")
     return v.str("type") + ":" + (id.isEmpty ? "#\(index)" : id)
@@ -116,27 +122,100 @@ public final class Renderer {
 // MARK: - Containers
 
 /// Vertical stack. {type:"list", children, spacing?, padding?}
+///
+/// Virtualized for rows of a known height (tab and split rows, `NodeView.fixedHeight`): inside a
+/// scroll view, such a child gets a view only while it is within `Self.margin` of the visible
+/// area, and gives it up again beyond `Self.dropMargin`. A sidebar of hundreds of tabs holds views
+/// (and their layers, labels and tracking areas) for the few dozen rows near the screen only.
 final class StackNode: NodeView {
-  var kids: [NodeView] = []
+  /// One per child; nil while a virtual child is off screen.
+  var slots: [NodeView?] = []
+  var specs: [Value] = []
+  var kids: [NodeView] { slots.compactMap { $0 } }
+  static let margin: CGFloat = 400
+  static let dropMargin: CGFloat = 1600
+  private var scrollObserver: NSObjectProtocol?
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if let o = scrollObserver { NotificationCenter.default.removeObserver(o); scrollObserver = nil }
+    guard window != nil, let clip = enclosingScrollView?.contentView else { return }
+    clip.postsBoundsChangedNotifications = true
+    scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: nil) { [weak self] _ in
+      MainActor.assumeIsolated { self?.materialize() }
+    }
+  }
+
   override func update(_ v: Value) {
     super.update(v)
-    kids = r.reconcile(v.list("children"), existing: kids, in: self)
+    let children = v.list("children")
+    var pool: [String: NodeView] = [:]
+    for (i, s) in slots.enumerated() { if let s { pool[Renderer.key(specs[i], i)] = s } }
+    specs = children
+    slots = children.enumerated().map { i, c in
+      if let s = pool.removeValue(forKey: Renderer.key(c, i)) {
+        if s.node != c { s.update(c) }
+        return s
+      }
+      if Renderer.fixedHeight(c) != nil { return nil }  // made by `materialize` when near the screen
+      let s = r.make(c)
+      addSubview(s)
+      return s
+    }
+    pool.values.forEach { $0.removeFromSuperview() }
+    materialize()
     needsLayout = true
   }
   var spacing: CGFloat { CGFloat(node.num("spacing", Double(Tokens.tabRowSpacing))) }
   var padding: CGFloat { CGFloat(node.num("padding", 0)) }
+  func childHeight(_ i: Int, _ w: CGFloat) -> CGFloat { slots[i]?.height(for: w) ?? Renderer.fixedHeight(specs[i]) ?? 0 }
   override func height(for w: CGFloat) -> CGFloat {
-    let hs = kids.map { $0.height(for: w) }.filter { $0 > 0 }
+    let hs = specs.indices.map { childHeight($0, w) }.filter { $0 > 0 }
     return hs.reduce(0, +) + spacing * CGFloat(max(0, hs.count - 1)) + padding * 2
+  }
+  /// Each child's frame, views or not.
+  func frames() -> [NSRect] {
+    var y = padding, out: [NSRect] = []
+    for i in specs.indices {
+      let h = childHeight(i, bounds.width)
+      out.append(NSRect(x: 0, y: y, width: bounds.width, height: h))
+      if h > 0 { y += h + spacing }
+    }
+    return out
   }
   override func layout() {
     super.layout()
-    var y = padding
-    for k in kids {
-      let h = k.height(for: bounds.width)
-      k.frame = NSRect(x: 0, y: y, width: bounds.width, height: h)
-      k.isHidden = h == 0
-      if h > 0 { y += h + spacing }
+    let fs = frames()
+    for (i, s) in slots.enumerated() {
+      guard let s else { continue }
+      s.frame = fs[i]
+      s.isHidden = fs[i].height == 0
+    }
+    materialize(fs)
+  }
+  /// Makes the views of virtual rows near the visible area and drops those far from it. Called on
+  /// layout and when the enclosing scroll view scrolls (`SidebarPage`). A row that is hovered,
+  /// being renamed or dragged keeps its view.
+  func materialize(_ given: [NSRect]? = nil) {
+    guard specs.contains(where: { Renderer.fixedHeight($0) != nil }) else { return }
+    let fs = given ?? frames()
+    // Outside a scroll view (or before one exists) every row is near the screen.
+    let vis = enclosingScrollView == nil ? bounds : visibleRect
+    // Not on screen (another space's page, no window or size yet): the first rows only, so the
+    // page shows at once when it slides in; nothing is dropped.
+    let hidden = vis.width < 1 || vis.height < 1
+    let near = vis.insetBy(dx: 0, dy: -Self.margin), keep = vis.insetBy(dx: 0, dy: -Self.dropMargin)
+    for i in specs.indices where Renderer.fixedHeight(specs[i]) != nil {
+      if let s = slots[i] {
+        guard !hidden, !fs[i].intersects(keep), !s.busy else { continue }
+        s.removeFromSuperview()
+        slots[i] = nil
+      } else if fs[i].height > 0, hidden ? i < 40 : fs[i].intersects(near) {
+        let s = r.make(specs[i])
+        s.frame = fs[i]
+        addSubview(s)
+        slots[i] = s
+      }
     }
   }
 }

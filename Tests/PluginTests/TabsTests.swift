@@ -199,7 +199,7 @@ struct TabsTests {
     #expect(row()?.rename.editor == nil && row()?.label.stringValue == "Reading list")
 
     // Context menu > Rename…, then Esc keeps the title.
-    #expect(h.tree("sidebar.today", 0)["children"][2]["menu"].array?.contains { $0["id"] == "rename" } == true)
+    #expect(h.tabs("menu", ["id": .string(t)]).array?.contains { $0["id"] == "rename" } == true)
     h.action(t, "menu", "rename")
     try await type("Something else", esc)
     #expect(h.tabs("list")["today"][0]["title"] == "Reading list")
@@ -312,13 +312,13 @@ struct TabsTests {
     h.rt.plugins.emit("webviews.audio", ["id": .string(id), "playing": true])
     var row = h.tree("sidebar.today", 0)["children"].array?.first { $0.s("id") == id } ?? .null
     #expect(row["audio"] == true && row["muted"] == false)
-    #expect(row["menu"].array?.contains { $0.s("id") == "mute" } == true)
+    #expect(h.tabs("menu", ["id": .string(id)]).array?.contains { $0.s("id") == "mute" } == true)
     // Clicking the speaker mutes the page through the host; the row and menu follow.
     h.action(id, "mute")
     #expect(h.rt.call("webviews", "get", ["id": .string(id)])["muted"] == true)
     #expect(h.rt.webviews.pageMuted(id) == true)
     row = h.tree("sidebar.today", 0)["children"].array?.first { $0.s("id") == id } ?? .null
-    #expect(row["muted"] == true && row["menu"].array?.contains { $0.s("id") == "unmute" } == true)
+    #expect(row["muted"] == true && h.tabs("menu", ["id": .string(id)]).array?.contains { $0.s("id") == "unmute" } == true)
     #expect(core.tabValue(id)["muted"] == true)
     // The menu item unmutes.
     h.action(id, "menu", "unmute")

@@ -239,7 +239,7 @@ struct GroupTests {
     let h = Harness()
     h.startTabs()
     let today = h.ids("today")
-    let menu = todayRow(h, today[1])["menu"].array ?? []
+    let menu = h.tabs("menu", ["id": .string(today[1])]).array ?? []
     func item(_ id: String) -> Value { menu.first { $0.s("id") == id } ?? .null }
     #expect(item("copy")["key"] == "cmd+shift+c")
     #expect(item("copyMarkdown")["alternate"] == true && item("copyMarkdown")["key"] == "cmd+opt+shift+c")
