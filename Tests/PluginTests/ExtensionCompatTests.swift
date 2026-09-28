@@ -129,6 +129,22 @@ struct ExtensionCompatTests {
     const t = tabs.find(t => /\\/links$/.test(t.url || ''));
     if (!t) return JSON.stringify({noTab: tabs.map(t => t.url)});
     const out = {tab: t.id + ' ' + t.url};
+    // What a runtime message from the content script carries as its sender.
+    chrome.runtime.onMessage.addListener((m, sender, send) => {
+      if (!m || !m.denEcho) return false;
+      send({tab: sender.tab ? {id: sender.tab.id, url: sender.tab.url, title: sender.tab.title} : null, url: sender.url, frameId: sender.frameId, origin: sender.origin, id: sender.id});
+      return false;
+    });
+    try {
+      const [e] = await chrome.scripting.executeScript({target: {tabId: t.id}, func: async () => JSON.stringify(await chrome.runtime.sendMessage({denEcho: 1}))});
+      out.echo = e && e.result;
+    } catch (e) { out.echo = 'error ' + e; }
+    try {
+      const [a] = await chrome.scripting.executeScript({target: {tabId: t.id}, func: async () => {
+        try { const r = await chrome.runtime.sendMessage({handler: 'initializeFrame'}); return 'resolved ' + JSON.stringify(r) + ' ' + typeof r; } catch (e) { return 'rejected ' + e; }
+      }});
+      out.initRaw = a && a.result;
+    } catch (e) { out.initRaw = 'error ' + e; }
     try {
       const r = await chrome.scripting.executeScript({target: {tabId: t.id}, func: async () => {
         const o = {};
