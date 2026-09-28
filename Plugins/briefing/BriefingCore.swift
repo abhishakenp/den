@@ -480,7 +480,12 @@ final class BriefingCore {
     for it in items {
       for j in 0..<counts.count where counts[j].0 == it.s("kind") { counts[j].1 += 1 }
     }
-    let parts = counts.filter { $0.1 > 0 }.map { String($0.1) + " " + ($0.1 == 1 ? $0.2 : $0.3) }
+    var parts = counts.filter { $0.1 > 0 }.map { String($0.1) + " " + ($0.1 == 1 ? $0.2 : $0.3) }
+    // Six kinds at most, so it stays a sentence: the rest as "12 more".
+    if parts.count > 6 {
+      let rest = counts.filter { $0.1 > 0 }.dropFirst(5).reduce(0) { $0 + $1.1 }
+      parts = Array(parts.prefix(5)) + [String(rest) + " more"]
+    }
     if parts.isEmpty { return "You're all caught up." }
     if parts.count == 1 { return parts[0] + "." }
     var s = ""

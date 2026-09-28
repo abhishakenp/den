@@ -85,6 +85,8 @@ public enum ConnectionScenarios {
           }
         }
       case "meetingReminder":
+        // The real Calendar host, so the seeded Calendar favorite shows the countdown chip.
+        rt.call("storage", "set", ["ns": "calendar", "key": "endpoints", "value": ["domain": "127.0.0.1", "web": .string(m.base + "/calendar/r")]])
         rt.call("settings", "set", ["id": "calendar", "key": "address", "value": .string(m.base + "/calendar/ical/basic.ics")])
         poll({ rt.call("connections", "get", ["id": "calendar"]).flag("connected") }) {
           // The reminder follows the calendar's first read (a briefing refresh reads it).

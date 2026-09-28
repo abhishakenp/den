@@ -388,6 +388,9 @@ struct GoogleNotionTests {
     #expect(b.agenda().map { $0.s("id") } == ["calendar:e0", "calendar:e1"])
     #expect(b.feed().map { $0.s("id") } == ["gmail:0:1", "notion:n1", "gmail:0:2"])
     #expect(BriefingCore.plainSummary(b.agenda() + b.feed()) == "2 events today, 1 email awaiting your reply, 1 comment and 1 other unread email.")
+    // Many kinds: five, then the rest as a count.
+    let many: [Value] = ["event", "review", "dm", "reply", "thread", "ci", "ci", "mention"].map { ["kind": .string($0)] }
+    #expect(BriefingCore.plainSummary(many) == "1 event today, 1 review request, 1 unread DM, 1 email awaiting your reply, 1 thread waiting for you and 3 more.")
     // A future event doesn't outrank everything through recency.
     #expect(BriefingCore.score(["kind": "event", "ts": .int(now + 5 * 3_600_000)], now: now, affinity: [:]) == 10 + 24)
     b.open()
