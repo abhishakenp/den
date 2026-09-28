@@ -28,7 +28,8 @@ struct ExtensionCompatTests {
     <!doctype html><title>links</title><body style='margin:0;font:15px -apple-system'>
     <p style='padding:20px'><a href='/links?one' id=l1>One</a> <a href='/links?two' id=l2>Two</a> <a href='/links?three' id=l3>Three</a>
     <button id=b1>Button</button></p><div style='height:6000px;background:linear-gradient(#fff,#ccc)'>tall</div>
-    <script>window.__keys=[];addEventListener('keydown',e=>__keys.push(e.key+(e.isTrusted?'':'?')),true);</script></body>
+    <script>window.__keys=[];addEventListener('keydown',e=>__keys.push(e.key+(e.isTrusted?'':'?')),true);
+    window.__clicks=[];addEventListener('click',e=>__clicks.push((e.target.id||e.target.tagName)+(e.isTrusted?'':'?')+(e.metaKey?'+meta':'')),true);</script></body>
     """
 
   /// Installs a store item and accepts the prompt. Returns the den id, or nil (the failure is printed).
@@ -252,7 +253,7 @@ struct ExtensionCompatTests {
     let hintA = await Wait.js(w, "document.querySelector('.vimiumHintMarker')?.textContent || ''") as? String ?? ""
     for ch in hintA.lowercased() { press(w, String(ch), Self.hintKeys[ch] ?? 0) }
     ok["f follows a link"] = await wait(10) { w.url?.query != nil }
-    notes.append("f \(hintA) -> \(w.url?.absoluteString ?? "?")")
+    notes.append("f \(hintA) -> \(w.url?.absoluteString ?? "?") markers=\(await markers()) clicks=\(await Wait.js(w, "JSON.stringify(window.__clicks)") ?? "?")")
 
     await fresh()
     let tabsBefore = h.ids("today").count
@@ -261,6 +262,7 @@ struct ExtensionCompatTests {
     let first = await Wait.js(w, "document.querySelector('.vimiumHintMarker')?.textContent || ''") as? String ?? ""
     for ch in first.lowercased() { press(w, String(ch), Self.hintKeys[ch] ?? 0) }
     ok["F opens a new tab"] = await wait(10) { h.ids("today").count > tabsBefore }
+    notes.append("F clicks=\(await Wait.js(w, "JSON.stringify(window.__clicks)") ?? "?") markers=\(await markers())")
     let newWindows = h.events.filter { $0.0 == "webviews.newWindow" }.map { $0.1.s("url") }
     notes.append("F first=\(first) tabs \(tabsBefore)->\(h.ids("today").count) newWindow=\(newWindows) pageURL=\(w.url?.absoluteString ?? "?")")
 

@@ -1,6 +1,6 @@
 # Extensions
 
-den runs Chrome and Firefox extensions on WebKit, through Apple's `WKWebExtension`. Manifest v2 and v3, `chrome.*` and `browser.*`. We've verified uBlock Origin Lite (it blocks ads), ColorPick Eyedropper and Dark Reader.
+den runs Chrome and Firefox extensions on WebKit, through Apple's `WKWebExtension`. Manifest v2 and v3, `chrome.*` and `browser.*`. [What works on WebKit](#what-works-on-webkit-and-what-doesnt) lists the extensions we test.
 
 ## Installing
 
