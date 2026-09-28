@@ -15,7 +15,7 @@ export const Hero = ({ release }: Props) => (
     <div className="mx-auto max-w-4xl text-center">
       <a
         href={release.pageUrl}
-        className="animate-rise inline-flex items-center gap-2 rounded-full border border-line-2 bg-panel/70 py-1 pl-1.5 pr-3 text-xs text-ink-soft transition hover:border-ember/50 hover:text-ink"
+        className="animate-rise relative z-20 inline-flex items-center gap-2 rounded-full border border-line-2 bg-panel/70 py-1 pl-1.5 pr-3 text-xs text-ink-soft transition hover:border-ember/50 hover:text-ink"
       >
         <span className="rounded-full bg-ember/15 px-2 py-0.5 font-mono text-[11px] text-ember-hi">alpha</span>
         {release.tag ? `${release.tag} is out` : "Pre-release is out"} · macOS 26
@@ -39,7 +39,7 @@ export const Hero = ({ release }: Props) => (
         swap while it runs. It idles at <span className="text-ink">20&nbsp;MB</span>.
       </p>
 
-      <div className="animate-rise mt-9 flex flex-col items-center justify-center gap-3 [animation-delay:240ms] sm:flex-row">
+      <div className="animate-rise relative z-20 mt-9 flex flex-col items-center justify-center gap-3 [animation-delay:240ms] sm:flex-row">
         <a
           href={release.dmgUrl}
           className="group inline-flex h-12 items-center gap-2.5 rounded-xl bg-gradient-to-b from-ember-hi to-ember px-6 font-medium text-ground shadow-[0_10px_40px_-10px_rgb(244_162_76/0.7)] transition hover:brightness-110"
