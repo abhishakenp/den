@@ -134,7 +134,10 @@ host quit-dialog-dark dialogQuit dark
 host find-bar findBar light
 host find-bar-dark findBar dark
 # Hover previews and the Library sheet, on the real plugin sidebar (PreviewScenarios.swift).
-for sc in Calendar Folder Gmail; do  # tab cards and the PR peek: ONLY=cards
+# The tab and split cards also render here, so the CI dark run catches a broken card icon.
+shot card-tab-dark previewTab dark 6
+shot card-split-dark previewSplit dark 6
+for sc in Calendar Folder Gmail; do  # the other tab cards and the PR peek: ONLY=cards
   n=$(echo $sc | tr A-Z a-z)
   shot preview-$n preview$sc light 5
   shot preview-$n-dark preview$sc dark 5

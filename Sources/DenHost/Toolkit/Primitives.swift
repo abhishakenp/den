@@ -337,7 +337,7 @@ public class IconView: NSView, Themable {
     } else if spec == "app:icon" {
       image = NSApp.applicationIconImage
     } else if spec.hasPrefix("sf:") {
-      image = NSImage(systemSymbolName: String(spec.dropFirst(3)), accessibilityDescription: nil)
+      image = Self.symbol(String(spec.dropFirst(3)))
       isSymbol = true
     } else if spec.hasPrefix("/") {
       image = ImageCache.shared.file(spec)
@@ -392,7 +392,37 @@ public class IconView: NSView, Themable {
       NSBezierPath(roundedRect: b, xRadius: b.width * 0.25, yRadius: b.height * 0.25).fill()
       return drawText(text, in: b, scale: 0.62, color: tint)
     }
+    // Text/emoji icons only: an unknown spec ("xx:…", a long string) must never be drawn as text.
+    guard Self.isTextIcon(spec) else {
+      Self.reportBadSpec(spec)
+      if let q = Self.symbol(Self.missingSymbol) { drawSymbol(q, in: b) }
+      return
+    }
     drawText(spec, in: b, scale: 0.86, color: tint)
+  }
+
+  /// Drawn in place of an SF Symbol name that doesn't resolve (a typo, or a symbol newer than the OS).
+  public static let missingSymbol = "questionmark.square.dashed"
+  private static var reported = Set<String>()
+
+  /// An SF Symbol by name, or `missingSymbol` (logged once per name) when the name doesn't exist.
+  public static func symbol(_ name: String) -> NSImage? {
+    if let img = NSImage(systemSymbolName: name, accessibilityDescription: nil) { return img }
+    reportBadSpec("sf:" + name)
+    return NSImage(systemSymbolName: missingSymbol, accessibilityDescription: nil)
+  }
+
+  static func reportBadSpec(_ spec: String) {
+    guard reported.insert(spec).inserted else { return }
+    NSLog("den: icon spec %@ doesn't resolve; drawing %@ instead", spec, missingSymbol)
+  }
+
+  /// True for a spec that is meant to be drawn as text: an emoji or up to two characters, never
+  /// something that looks like a `scheme:` spec.
+  public static func isTextIcon(_ spec: String) -> Bool {
+    guard !spec.isEmpty, spec.count <= 2 else { return false }
+    if let colon = spec.firstIndex(of: ":"), colon != spec.startIndex { return false }
+    return true
   }
 
   /// The `site:` tile: the domain's letter, white on its derived color; a globe without one.
