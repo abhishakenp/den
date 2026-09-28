@@ -145,6 +145,18 @@ Memory (`scripts/measure-memory.sh main 40`, phys_footprint, den launched throug
 
 Launch (`--measure-launch`, process start → first window, 10 launches per row, two interleaved rounds, load average 142–418 from other jobs on the machine, so noisy): pre-extensions build median 569 / 544 ms; this build with 0 extensions 686 / 521 ms; with uBOL installed 638 / 700 ms. The spread between rounds is larger than any difference, and by design nothing extension-related runs before the first window (the registry is read at the first web view).
 
+### Why Vimium "did nothing", and den's compatibility layer (2026-09-28, macOS 26.6, CI)
+
+`Tests/PluginTests/ExtensionCompatTests.swift` installs Vimium 2.4.2 (Chrome Web Store and Firefox Add-ons builds), Bitwarden, JSON Formatter and Dark Reader through den's real store path, then drives Vimium with real key events on a 127.0.0.1 page. Vimium installed fine; three WebKit differences stopped it at runtime, each silently:
+
+1. **A content script entry WebKit can't read loses all of them.** Vimium's second `content_scripts` entry matches `file:///` and `file:///*/`. WebKit's content script parser rejects file: patterns (`WKWebExtension.MatchPattern(string:)` accepts them), records "Manifest `content_scripts` entry has no specified `matches` entry", and injected none of Vimium's scripts. den drops patterns WebKit rejects, and entries left with none.
+2. **A module service worker never finishes starting.** Chrome's build declares `"service_worker": …, "type": "module"`: `loadBackgroundContent` hung, then "The background content failed to load due to an error". The same code as Firefox's `"scripts": […], "type": "module"` loads. den runs module service workers as module background scripts (a background page; classic workers stay workers).
+3. **Missing events end the background at its first `addListener`.** WebKit has `webNavigation` but no `onHistoryStateUpdated` / `onReferenceFragmentUpdated`. Vimium's `main.js` line 87 threw `TypeError`, before it registered its `runtime.onMessage` listener, so every content script's `initializeFrame` message resolved `undefined` and Vimium never entered normal mode: keys reached the page untouched. The page's own `chrome.runtime.sendMessage` round trip, `sender.tab`, async `sendResponse` and `storage.session` all worked.
+
+den's answer is `ExtensionShim` (`Sources/DenHost/Extensions/ExtensionShim.swift`), applied to den's own copy of a store or file install at load (never to `~/.den/extensions`): `__den/shim.js` runs first in the background, content scripts and extension pages. It adds any event WebKit leaves out of a namespace it has (the two above are driven by tab URL changes WebKit reports without a load), and stand-ins for APIs WebKit lacks: `bookmarks` (empty tree), `history` (pages visited while the extension runs, in its own storage), `sessions` (tabs closed while it runs), `search.query` (a Google search), `idle`, `sidePanel`, `offscreen`, and `storage.session.setAccessLevel`. They exist so start-up code carries on; den's real bookmarks and history aren't exposed. JavaScriptCore unit test: `ExtensionPackageTests.shimFillsMissingEventsAndAPIs`.
+
+Store pages: the Chrome Web Store serves WebKit a "Switch to Chrome" banner and a disabled "Add to Chrome" (measured user agent `…Version/26.6.2 Safari/605.1.15`). den's install doesn't depend on that page: the URL pill shows **Add to den** for any store item URL. A Chrome user agent on `chromewebstore.google.com` was considered and not done: the store's own button would then call `chrome.webstorePrivate`, which no WebKit browser has, so it would fail after looking like it works.
+
 ## 4. Open-source WebKit browsers using WKWebExtension
 
 | Repo | Notes (as of 2026-09-27) |
