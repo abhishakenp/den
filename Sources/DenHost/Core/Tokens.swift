@@ -44,6 +44,9 @@ public enum Tokens {
   public static let urlPillHeight: CGFloat = 36  // spec §1: x 8–220, y 46–82
   public static let urlPillCornerRadius: CGFloat = 12  // spec §1
   public static let urlPillFontSize: CGFloat = 13  // spec §1 (derived from x-height)
+  /// "Add to den" in the URL pill on a store item page (estimate: fits the 36 pt pill with 6 pt around).
+  public static let urlPillStoreButtonHeight: CGFloat = 24
+  public static let urlPillStoreButtonRadius: CGFloat = 8
 
   // MARK: Rows
   public static let tabRowHeight: CGFloat = 41  // spec §1: row pitch

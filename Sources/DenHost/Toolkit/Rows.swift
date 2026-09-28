@@ -153,6 +153,8 @@ final class URLPillNode: HoverNode {
   lazy var copy = IconButton(symbol: "link", size: 22) { [weak self] in self?.emit("copy") }
   var extensionButtons: [PillExtensionButton] = []
   var extensionsObserver: NSObjectProtocol?
+  /// "Add to den" while the page is a store item that isn't installed (always visible).
+  var storeButton: PillButton?
   /// Shows the hover accessories without a pointer (snapshots).
   var forceAccessories = false { didSet { hoverChanged() } }
   var extra: [IconButton] = []
@@ -172,6 +174,7 @@ final class URLPillNode: HoverNode {
         // Only this window's extensions (tests and future multi-window runs have several).
         guard let self, let ext = ExtensionsUI.of(self.window), sender == ObjectIdentifier(ext) else { return }
         self.syncExtensions()
+        self.syncStoreOffer()
       }
     }
     syncExtensions()
@@ -181,7 +184,7 @@ final class URLPillNode: HoverNode {
   var showsAccessories: Bool { hovering || forceAccessories }
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
-    if window != nil { syncExtensions() }
+    if window != nil { syncExtensions(); syncStoreOffer() }
   }
   override func hoverChanged() {
     copy.isHidden = !showsAccessories || node.str("text").isEmpty
@@ -214,6 +217,35 @@ final class URLPillNode: HoverNode {
     apply(r.palette)
     hoverChanged()
   }
+  // thin-host: feature-specific, migrate to plugin
+  /// den's own install button for the store item on screen (ExtensionsUI.storeOffer).
+  func syncStoreOffer() {
+    let ext = ExtensionsUI.of(window)
+    guard let ext, let offer = ext.storeOffer else {
+      if storeButton != nil {
+        storeButton?.removeFromSuperview()
+        storeButton = nil
+        needsLayout = true
+      }
+      return
+    }
+    let b: PillButton
+    if let existing = storeButton {
+      b = existing
+    } else {
+      b = PillButton(title: "Add to den", style: "default") { [weak ext] in ext?.addStoreOffer() }
+      b.cornerRadius = Tokens.urlPillStoreButtonRadius
+      addSubview(b)
+      storeButton = b
+    }
+    let busy = ext.storePending == offer.id
+    b.label.stringValue = busy ? "Adding…" : "Add to den"
+    b.toolTip = busy ? "Installing this extension" : "Install this extension in den"
+    b.alphaValue = busy ? 0.6 : 1
+    b.apply(r.palette)
+    needsLayout = true
+  }
+
   override func update(_ v: Value) {
     super.update(v)
     let t = v.str("text")
@@ -244,6 +276,7 @@ final class URLPillNode: HoverNode {
     label.textColor = node.str("text").isEmpty ? p.secondaryText : p.text
     lock.tint = p.secondaryText
     copy.apply(p)
+    storeButton?.apply(p)
     for b in extensionButtons {
       b.icon.tint = p.text.withAlphaComponent(0.75)
       b.hoverFill = p.hoverFill
@@ -268,6 +301,12 @@ final class URLPillNode: HoverNode {
       right -= s
       b.frame = NSRect(x: right, y: (h - s) / 2, width: s, height: s)
       if right < x + 40 { b.isHidden = true }  // a narrow sidebar keeps the domain readable
+    }
+    if let b = storeButton {
+      let w = b.preferredWidth, bh = Tokens.urlPillStoreButtonHeight
+      right -= w + 2
+      b.frame = NSRect(x: right, y: ((h - bh) / 2).rounded(), width: w, height: bh)
+      right -= 2
     }
     // Page actions (plugins' `buttons`) sit left of those, always visible.
     for b in extra.reversed() {

@@ -7,6 +7,11 @@ import WebKit
 @testable import DenHost
 @testable import PluginCores
 
+struct CompatJSOutcome: @unchecked Sendable {
+  let value: Any?
+  let error: Error?
+}
+
 /// Popular store extensions through den's real install path (store download, CRX/XPI unpack,
 /// manifest checks, permission prompt, `WKWebExtension` load), then what they do on a real page.
 /// Needs the network (Chrome Web Store, addons.mozilla.org): CI has it.
@@ -64,11 +69,11 @@ struct ExtensionCompatTests {
     let w = WKWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), configuration: cfg)
     w.load(URLRequest(url: ctx.baseURL.appendingPathComponent(page)))
     _ = await wait(20) { !w.isLoading && w.url != nil }
-    let r: JSResult? = await Wait.callback("probe", seconds: 30) { done in
+    let r: CompatJSOutcome? = await Wait.callback("probe", seconds: 30) { done in
       w.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { res in
         switch res {
-        case .success(let v): done(JSResult(value: v, error: nil))
-        case .failure(let e): done(JSResult(value: nil, error: e))
+        case .success(let v): done(CompatJSOutcome(value: v, error: nil))
+        case .failure(let e): done(CompatJSOutcome(value: nil, error: e))
         }
       }
     }
@@ -132,6 +137,51 @@ struct ExtensionCompatTests {
     print("compat vimium j: scrolled=\(scrolled) y=\(await Wait.js(w, "window.scrollY") ?? "?") pageKeys=\(await Wait.js(w, "JSON.stringify(window.__keys)") ?? "?")")
   }
 
+  static func pill(_ v: NSView) -> URLPillNode? {
+    if let p = v as? URLPillNode { return p }
+    for s in v.subviews { if let p = pill(s) { return p } }
+    return nil
+  }
+
+  /// The user's path: the store page, den's own "Add to den" in the URL pill, the prompt.
+  func installFromPill(_ h: Harness, url: String, storeId: String) async -> String? {
+    let tab = h.tabs("open", ["url": .string(url)]).s("id")
+    h.tabs("select", ["id": .string(tab)])
+    let loaded = await wait(60) { h.rt.webviews.record(tab)?.loading == false && h.rt.webviews.record(tab)?.url.contains(storeId) == true }
+    let offered = await wait(20) { h.rt.extensions.ui.storeOffer?.id == storeId }
+    let pill = Self.pill(h.rt.ui.sidebarView)
+    let button = pill?.storeButton
+    print("compat pill url=\(url) loaded=\(loaded) offer=\(String(describing: h.rt.extensions.ui.storeOffer)) pill=\(pill != nil) button=\(button?.label.stringValue ?? "none") frame=\(button?.frame ?? .zero)")
+    if let w = h.rt.webviews.record(tab)?.webView {
+      let inPage = await Wait.asyncJS(w, "return document.getElementById('den-add')?.textContent || 'none'", world: ExtensionsService.storeWorld)
+      let banner = await Wait.js(w, "[...document.querySelectorAll('button, a')].map(b => (b.textContent||'').trim()).filter(t => /chrome/i.test(t)).slice(0, 6).join(' | ')")
+      let ua = await Wait.js(w, "navigator.userAgent")
+      print("compat store page: den-add=\(String(describing: inPage)) chromeButtons=\(String(describing: banner)) ua=\(String(describing: ua))")
+    }
+    #expect(offered && button != nil)
+    let dir = FileManager.default.currentDirectoryPath + "/build/ci-logs"
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    pill?.forceAccessories = true
+    let snapped = await Snapshotter.write(h.rt.window.window, to: dir + "/add-to-den-pill.png")
+    print("compat snapshot add-to-den-pill.png ok=\(snapped)")
+    guard let button else { return nil }
+    let before = h.events.count
+    button.action()
+    var accepted = false
+    _ = await wait(120) {
+      if !accepted, let p = h.rt.extensions.prompts.first {
+        h.action(p.id, "button", ["button": "ok"])
+        accepted = true
+      }
+      return h.events[before...].contains { $0.0 == "webext.installed" || $0.0 == "webext.failed" }
+    }
+    let ev = h.events[before...].first { $0.0 == "webext.installed" || $0.0 == "webext.failed" }
+    print("compat pill install accepted=\(accepted) event=\(ev.map { "\($0.0) \($0.1)" } ?? "none")")
+    #expect(await wait(10) { h.rt.extensions.ui.storeOffer == nil && Self.pill(h.rt.ui.sidebarView)?.storeButton == nil })
+    guard let ev, ev.0 == "webext.installed" else { return nil }
+    return ev.1.s("id")
+  }
+
   @Test func vimiumFromChromeWebStore() async throws {
     let mock = MockServices()
     try mock.start()
@@ -140,7 +190,9 @@ struct ExtensionCompatTests {
     let h = Harness()
     h.startTabs()
     h.record(["webext.installed", "webext.failed"])
-    let id = try #require(await install(h, source: "chrome", id: Self.vimium))
+    var viaPill = await installFromPill(h, url: "https://chromewebstore.google.com/detail/vimium/\(Self.vimium)", storeId: Self.vimium)
+    if viaPill == nil { viaPill = await install(h, source: "chrome", id: Self.vimium) }
+    let id = try #require(viaPill)
     await report(h, id)
     _ = await probe(h, id, page: "pages/options.html", Self.apiProbe)
     await vimiumOnPage(h, id, mock: mock)

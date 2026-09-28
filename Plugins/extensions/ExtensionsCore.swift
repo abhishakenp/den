@@ -143,7 +143,11 @@ final class ExtensionsCore {
       var rows: [Value] = []
       for e in all {
         var sub = "Version " + e.s("version") + " · " + Self.sourceName(e.s("source"))
-        if !e.a("errors").isEmpty { sub = (e.b("loaded") || !e.b("enabled") ? "Version " + e.s("version") + " · ⚠︎ " : "Couldn’t load · ") + (e.a("errors").first?.string ?? "") }
+        if !e.a("errors").isEmpty {
+          sub = (e.b("loaded") || !e.b("enabled") ? "Version " + e.s("version") + " · ⚠︎ " : "Couldn’t load · ") + (e.a("errors").first?.string ?? "")
+        } else if !e.a("unsupported").isEmpty {
+          sub = "Version " + e.s("version") + " · Some features unavailable in den"
+        }
         var row: Value = ["type": "extensionRow", "id": .string("extensions.row:" + e.s("id")), "icon": .string(e.s("icon")),
                           "title": .string(e.s("name")), "subtitle": .string(sub), "on": .bool(e.b("enabled"))]
         if let v = e.sOpt("updateAvailable") { row.put("note", .string("Update " + v)) }
@@ -194,7 +198,7 @@ final class ExtensionsCore {
     let unsupported = e.a("unsupported").compactMap { $0.string }
     if !unsupported.isEmpty {
       perms.append(["type": "paragraph", "id": "extensions.unsupported", "style": "secondary", "icon": "sf:exclamationmark.triangle",
-                    "text": .string("Not available in WebKit: " + join(unsupported))])
+                    "text": .string("Some features unavailable in den: " + join(unsupported))])
     }
     children.append(["type": "section", "id": "extensions.perms", "title": "Permissions", "children": .array(perms)])
     var info: [Value] = [
