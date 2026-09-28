@@ -6,6 +6,9 @@ import CordisValue
 /// Item shapes:
 ///   {id, title, icon?, key?, alternate?, destructive?, enabled=true, checked?, items?: [item]}   (items = submenu)
 /// - `alternate`: shown instead of the item above it while ⌥ is held (NSMenuItem.isAlternate).
+/// - `paste: true, titleURL?`: a clipboard item (Paste and Go). Shown only while the clipboard holds
+///   one line of text; titled `titleURL` when that text is an address, `title` otherwise. The
+///   plugin reads the text with `app.pasteboard` when it's picked.
 ///   {separator: true}
 ///   {header: "Title"}                                                                 (section header)
 /// - `icon`: `sf:<symbol>` (tinted red when destructive).
@@ -22,7 +25,14 @@ enum ContextMenu {
     for it in items {
       if it.flag("separator") { m.addItem(.separator()); continue }
       if let h = it["header"].string { m.addItem(.sectionHeader(title: h)); continue }
-      let mi = NSMenuItem(title: it.str("title"), action: nil, keyEquivalent: "")
+      var title = it.str("title")
+      if it.flag("paste") {
+        // Paste and Go / Paste and Search: named for what's on the clipboard now; left out when
+        // there's no one-line text to paste.
+        guard let t = PasteText.title(url: it.str("titleURL", title), search: title) else { continue }
+        title = t
+      }
+      let mi = NSMenuItem(title: title, action: nil, keyEquivalent: "")
       mi.representedObject = it.str("id")
       mi.isEnabled = it.flag("enabled", true)
       mi.state = it.flag("checked") ? .on : .off

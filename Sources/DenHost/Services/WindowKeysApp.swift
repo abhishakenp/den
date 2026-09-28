@@ -223,6 +223,7 @@ public final class KeysService: NSObject, HostService, NSMenuItemValidation {
 ///   defaultBrowser               -> {bundleId, name, isDefault}: the app that opens https links now
 ///   info                         -> {bundleId, version, launchMs}
 ///   copy {text}                  -> puts text on the general pasteboard
+///   pasteboard, share, qrCode, copyImage, saveFile -> see `AppShare` (Paste and Go, Share, QR code)
 ///   state                        -> {active, idleSeconds, keyIdleSeconds, battery, lowPower}: frontmost, time since
 ///                                   any input / a key press, running on battery, Low Power Mode on
 ///   relaunch {background?}       -> quits cleanly (no quit dialog) and relaunches; `background` doesn't take focus
@@ -246,6 +247,14 @@ public final class AppService: HostService {
   public var relaunchHandler: ((Bool) -> Void)?
   /// Reads and sets the system default browser. Tests swap in a fake so they never touch macOS.
   public var browserDefaults = BrowserDefaults.system
+  /// Clipboard text, the share picker, QR codes and saving a file (`AppShare.swift`); built on first use.
+  lazy var share: AppShare = {
+    let s = AppShare(host: host, window: wc)
+    s.anchorView = { [weak self] id in self?.anchorView?(id) }
+    return s
+  }()
+  /// Finds a rendered node for the share picker's anchor (set by `DenRuntime`).
+  var anchorView: ((String) -> NSView?)?
 
   public init(host: ServiceHost, window: DenWindowController?) {
     self.host = host
@@ -317,8 +326,8 @@ public final class AppService: HostService {
       let isMe = current?.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL || (!mine.isEmpty && id == mine)
       return ["bundleId": .string(id), "name": .string(name), "isDefault": .bool(isMe)]
     case "copy":
-      NSPasteboard.general.clearContents()
-      NSPasteboard.general.setString(args.str("text"), forType: .string)
+      PasteText.board.clearContents()
+      PasteText.board.setString(args.str("text"), forType: .string)
     case "paths":
       let fm = FileManager.default
       return ["home": .string(fm.homeDirectoryForCurrentUser.path), "downloads": .string(fm.urls(for: .downloadsDirectory, in: .userDomainMask)[0].path),
@@ -352,6 +361,8 @@ public final class AppService: HostService {
       // new instance from taking focus.
       guard relaunchHandler != nil else { return .error("app: relaunch is not available") }
       relaunchHandler?(args.flag("background"))
+    case "pasteboard", "share", "qrCode", "copyImage", "saveFile":
+      return share.handle(method, args)
     case "setAbout":
       AboutPanel.shared.credits = args.str("credits")
     case "showAbout":

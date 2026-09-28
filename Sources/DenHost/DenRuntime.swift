@@ -124,6 +124,7 @@ public final class DenRuntime {
     host.externalListeners = { [weak plugins] e in plugins?.hasListeners(e) ?? false }
     window.emit = { [weak host] e, v in host?.emit(e, v) }
     window.onCloseRequest = { [weak app] in app?.shouldClose() ?? true }
+    app.anchorView = { [weak ui] id in ui?.nodeView(id) }
     settings.dark = { [unowned window] in window.isDark }
     settings.palette = { [unowned ui] in ui.renderer.palette }
     ui.onPalette = { [weak settings] _ in settings?.window?.applyAppearance() }

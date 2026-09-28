@@ -516,6 +516,7 @@ final class PeekCore {
         if let la = littleArcs.first(where: { $0.window == w }) {
           let u = env.call("webviews", "get", ["id": .string(la.webview)]).s("url")
           env.call("app", "copy", ["text": .string(u.isEmpty ? la.url : u)])
+          env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(Copied.link(u.isEmpty ? la.url : u)), "icon": "sf:link"]])
         }
       default: break
       }

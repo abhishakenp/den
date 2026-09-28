@@ -260,3 +260,40 @@ enum URLs {
     return nil
   }
 }
+
+/// Copy toasts that say exactly what went on the clipboard (Arc): "Copied link · example.com/a/b",
+/// "Copied Markdown link · …", "Copied image · 1280 × 800 px". One wording for every plugin.
+enum Copied {
+  /// "Copied <what> · <detail>" (no " · " when the detail is empty).
+  static func text(_ what: String, _ detail: String) -> String {
+    "Copied " + what + (detail.isEmpty ? "" : " · " + detail)
+  }
+
+  static func link(_ url: String) -> String { text("link", short(url)) }
+  static func markdown(_ url: String) -> String { text("Markdown link", short(url)) }
+
+  /// A URL as people read it: no scheme, no "www.", no lone trailing "/", a readable
+  /// international host, then cut to `max` bytes with "…" (never inside a UTF-8 character).
+  static func short(_ url: String, max: Int = 48) -> String {
+    let l = URLs.lower(url)
+    if Text.hasPrefix(l, "data:") { return "data:" + URLs.mediaType(url) }
+    var b = Array(url.utf8)
+    if let r = URLs.find(b, Array("://".utf8)), r < 12 { b = Array(b[(r + 3)...]) }
+    var end = 0
+    while end < b.count, b[end] != 47, b[end] != 63, b[end] != 35 { end += 1 }  // / ? #
+    var host = URLs.lower(String(decoding: b[0..<end], as: UTF8.self))
+    host = Text.dropPrefix(host, "www.")
+    var rest = String(decoding: b[end...], as: UTF8.self)
+    if rest == "/" { rest = "" }
+    return clip(IDN.display(host) + rest, max: max)
+  }
+
+  /// `s` cut to at most `max` UTF-8 bytes plus "…", at a character boundary.
+  static func clip(_ s: String, max: Int) -> String {
+    let b = Array(s.utf8)
+    guard b.count > max, max > 0 else { return s }
+    var n = max
+    while n > 0, b[n] & 0xC0 == 0x80 { n -= 1 }  // back off a continuation byte
+    return String(decoding: b[0..<n], as: UTF8.self) + "…"
+  }
+}

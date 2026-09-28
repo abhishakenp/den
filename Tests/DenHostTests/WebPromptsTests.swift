@@ -219,4 +219,33 @@ struct WebPromptsTests {
     let themed = WebErrorPage.html(WebErrorPage.page(for: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut), url: nil)!, url: nil, colors: c)
     #expect(themed.contains("--bg:rgba(21,28,48,1.000)") && themed.contains("color-scheme:dark") && !themed.contains("prefers-color-scheme:dark"))
   }
+
+  /// "View on the Web Archive": only where the site is missing, down or silent, and only for web URLs.
+  @Test func errorPageArchiveLink() {
+    func html(_ code: Int, _ url: String) -> String {
+      let u = URL(string: url)!
+      return WebErrorPage.html(WebErrorPage.page(for: NSError(domain: NSURLErrorDomain, code: code), url: u)!, url: u)
+    }
+    let link = "href=\"https://web.archive.org/web/2/https://x.test/a?b=1&amp;c=2\""
+    #expect(html(NSURLErrorCannotFindHost, "https://x.test/a?b=1&c=2").contains(link))
+    #expect(html(NSURLErrorTimedOut, "https://x.test/a?b=1&c=2").contains(link))
+    #expect(html(NSURLErrorCannotConnectToHost, "https://x.test/a?b=1&c=2").contains(link))
+    #expect(html(NSURLErrorCannotFindHost, "http://x.test/").contains("https://web.archive.org/web/2/http://x.test/"))
+    for code in [NSURLErrorNotConnectedToInternet, NSURLErrorServerCertificateUntrusted] {
+      #expect(!html(code, "https://x.test/").contains("web.archive.org"))
+    }
+    #expect(!html(NSURLErrorCannotFindHost, "file:///tmp/x.html").contains("web.archive.org"))
+    #expect(!WebErrorPage.html(WebErrorPage.crashed, url: URL(string: "https://x.test/")).contains("web.archive.org"))
+  }
+
+  /// A real failed navigation (a `.invalid` host never resolves) shows the link to the archive's copy.
+  @Test func errorPageArchiveLinkInARealPage() async {
+    let rt = runtime()
+    let (id, web) = page(rt)
+    rt.call("webviews", "navigate", ["id": .string(id), "url": "https://den-nonexistent.invalid/page"])
+    #expect(await wait { web.title == "Can’t find den-nonexistent.invalid" })
+    let href = try? await web.evaluateJavaScript("document.getElementById('archive').href") as? String
+    #expect(href == "https://web.archive.org/web/2/https://den-nonexistent.invalid/page")
+    _ = rt.call("webviews", "close", ["id": .string(id)])
+  }
 }

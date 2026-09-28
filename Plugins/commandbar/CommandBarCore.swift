@@ -348,6 +348,19 @@ final class CommandBarCore {
       open(m, query: args["query"].string)
     case "close":
       close()
+    case "paste":
+      // Paste and Go / Paste and Search (the URL pill's menu): the text opens as an address when
+      // it is one, else as a search with the default engine; `mode: edit` in the selected tab.
+      let text = trim(args.s("text"))
+      guard !text.isEmpty else { return .err("commands: paste needs text") }
+      let u = Self.url(from: text)
+      let target = u ?? Self.searchURL(defaultEngine, text)
+      if u != nil { bump("url:" + URLs.normalize(target), title: text, url: target) } else { bump("q:" + Text.lower(text), title: text, url: target) }
+      let was = mode
+      mode = args.s("mode") == "edit" ? "edit" : "new"
+      go(target, peek: false, scope: .main)
+      mode = was
+      return ["kind": .string(u == nil ? "search" : "url"), "url": .string(target)]
     case "engines":
       if let list = args["engines"].array {
         let parsed = list.compactMap { Engine($0) }
@@ -690,10 +703,10 @@ final class CommandBarCore {
       env.call("tabs", "duplicate", ["id": .string(tabId)])
     case "den.copyURL":
       env.call("app", "copy", ["text": tab["url"]])
-      toast("Copied Current URL", "sf:link")
+      toast(Copied.link(tab.s("url")), "sf:link")
     case "den.copyMarkdown":
       env.call("app", "copy", ["text": .string("[" + markdownEscape(tab.s("title")) + "](" + tab.s("url") + ")")])
-      toast("Copied URL as Markdown", "sf:link")
+      toast(Copied.markdown(tab.s("url")), "sf:link")
     case "den.clearToday":
       env.call("tabs", "clearToday")
     case "den.viewArchive":

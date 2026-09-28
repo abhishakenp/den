@@ -52,6 +52,19 @@ enum WebErrorPage {
     }
   }
 
+  /// Kinds that get a "View on the Web Archive" link: the site itself is missing, down or silent,
+  /// so an archived copy is the next best thing. Not `offline` (the archive is unreachable too),
+  /// not `secure` (a certificate error may be someone on the network; den doesn't route around
+  /// it), not `crashed` or `other`.
+  static let archiveKinds: Set<String> = ["host", "timeout", "refused"]
+
+  /// The Wayback Machine's latest capture of `url` (`/web/2/` redirects to the newest snapshot),
+  /// for http(s) pages whose error kind is in `archiveKinds`; nil otherwise.
+  static func archiveURL(_ p: Page, url: URL?) -> String? {
+    guard archiveKinds.contains(p.kind), let url, let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
+    return "https://web.archive.org/web/2/" + url.absoluteString
+  }
+
   static func escape(_ s: String) -> String {
     s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
       .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
@@ -142,6 +155,7 @@ enum WebErrorPage {
   static func html(_ p: Page, url: URL?, colors: Colors? = nil) -> String {
     let icon = icons[p.symbol] ?? icons["warn"]!
     let shown = url.map { escape($0.absoluteString) } ?? ""
+    let archive = archiveURL(p, url: url).map { "<p class=\"archive\"><a id=\"archive\" href=\"\(escape($0))\">View on the Web Archive</a></p>" } ?? ""
     let vars: String
     if let c = colors {
       vars = ":root{color-scheme:\(c.dark ? "dark" : "light");--bg:\(c.background);--fg:\(c.text);--sub:\(c.secondary);--pill:\(c.accent);--on:\(c.onAccent);--icon:\(c.secondary)}"
@@ -165,10 +179,13 @@ enum WebErrorPage {
       .url{margin-top:6px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;-webkit-user-select:text}
       button{margin-top:22px;border:0;border-radius:6px;background:var(--pill);color:var(--on);font:13px -apple-system,system-ui;padding:9px 16px;cursor:default}
       button:active{filter:brightness(.9)}
+      .archive{margin-top:14px;font-size:12px}
+      .archive a{color:var(--sub);text-decoration:underline;text-underline-offset:2px;cursor:default}
+      .archive a:hover{color:var(--fg)}
       </style></head><body data-den-error="\(p.kind)"><main>
       <svg viewBox="0 0 24 24" aria-hidden="true">\(icon)</svg>
       <h1>\(escape(p.title))</h1><p>\(escape(p.message))</p><p class="url">\(shown)</p>
-      <button id="retry" onclick="location.reload()">\(escape(p.button))</button>
+      <button id="retry" onclick="location.reload()">\(escape(p.button))</button>\(archive)
       </main></body></html>
       """
   }

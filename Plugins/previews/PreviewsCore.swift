@@ -556,7 +556,7 @@ final class PreviewsCore {
       }
     case "copy":
       env.call("app", "copy", ["text": .string(l.url)])
-      env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Copied Link", "icon": "sf:link"]])
+      env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(Copied.link(l.url)), "icon": "sf:link"]])
     default: break
     }
     hideLink(now: true)
