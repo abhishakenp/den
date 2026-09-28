@@ -177,8 +177,13 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 
 ### Getting around
 
-- ⏳ Onboarding under the zero-friction principles: an optional tour card (≤ 5 skippable steps), import offered as a quiet card
-- ⏳ One-time discovery tips, one at a time, with a global off switch ([spec](docs/guide/_in-app-tips.md))
+- 🟡 Onboarding under the zero-friction principles (`tips` plugin)
+  - ✅ tour card from the second launch (5 skippable steps in the sidebar card, each completes early when you do the thing; never back once dismissed), "Take the den Tour" command
+  - ✅ quiet one-click import card, shown only when a plugin provides the `importer` service
+  - ⏳ tour callouts pointing at the real UI (the steps show in the sidebar card for now); an importer
+- 🟡 One-time discovery tips, one at a time, with a global off switch ([spec](docs/guide/_in-app-tips.md))
+  - ✅ 14 tips wired to existing events, limits (1 per 10 min, 3 a day, none in the first minute or over a modal), Settings ▸ General ▸ Show tips, "Don't Show Tips" in the bar and on every tip
+  - ⏳ tips that need events den doesn't emit yet (link linger, ⌘F, tab drags, context-menu opens, keyword searches)
 - 🟡 Shortcuts shown on every surface where the action appears
   - ✅ menu bar, command bar rows
   - ✅ hover-card button tooltips (and the shortcuts act on the hovered tab while its card is open)

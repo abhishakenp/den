@@ -1,6 +1,16 @@
 # In-app discovery tips (spec)
 
-A spec for a future `tips` plugin: small, one-time hints that teach den's hidden gestures at the moment they're useful. **Nothing here is implemented.** Tips that point at features not yet on `main` are marked *(later)* and must stay off until those features ship.
+The spec for the `tips` plugin (`Plugins/tips`): small, one-time hints that teach den's hidden gestures at the moment they're useful. Tips that point at features not yet on `main` are marked *(later)* and must stay off until those features ship.
+
+## Status (what `Plugins/tips` does today)
+
+- **Tour card**: from the second launch, in the sidebar's `sidebar.notice` slot above the footer ([host API](../host-api.md#ui)). The five steps show in that same card ("Tour · 2 of 5", Skip Tour / Next); each completes early on its event (`tabs.key.pin` or the tab menu's Pin, any `commands.run`, `spaces.current`, `peek.opened`). *Not yet:* callouts that point at the real UI, and step 2 opening the bar itself. The **Take the den Tour** command starts it again.
+- **Import card**: shown only when some plugin provides the `importer` service; hidden otherwise. Nothing provides it yet. The contract an importer implements:
+  - `importer.sources` → `[{id, name}]`, the browsers it found data for (`[]` or an error hides the card).
+  - `importer.run {source}` → ok; it imports in the background and shows its own progress and result (a toast). The card goes away for good after one click (`tips.import = "done"`) or ×.
+- **Tips**: 14 wired (the table below marks each one ✅). The toast has one **Don't show tips** button instead of a `…` menu, and stays up while the pointer is on it (`toast.hold`). Not yet enforced: "never during a drag or a text-field edit" (no event says so); the command bar, dialogs, sheets and popovers are checked (`ui.get` overlays).
+- **Switch**: Settings ▸ General ▸ Tips ▸ **Show tips** (settings id `tips`, key `enabled`), the **Don't Show Tips** / **Show Tips** command, the toast button. Off also hides the tour and import cards.
+- **Snapshots**: `--scenario tourCard|tourStep|tipToast` (`docs/screenshots/tour-card-dark.png`, `tour-step-dark.png`, `tip-toast-dark.png`). Tests: `Tests/PluginTests/TipsTests.swift`.
 
 ## Principles
 
@@ -72,21 +82,21 @@ Each entry: **key** · trigger · text · retired by (the event that means you a
 | `renameTab` | 3rd time the user opens the tab context menu | "Double-click a tab to rename it." | an inline tab rename |
 | `dropOnSpace` | first drag of a tab in the sidebar while more than one space exists | "Drop a tab on a space icon below to move it there." | a tab moved to another space by drop |
 | `dropOnPage` | 2nd sidebar tab drag (and `dropOnSpace` shown) | "Drop a tab on the page to open it side by side." | a split created by a drop |
-| `clearUndo` | first manual close of 3+ Today tabs within a minute | "⇧⌘K clears all of Today. ⌃Z undoes it." | `tabs.clear` used |
-| `reopenClosed` | first ⌘W on a Today tab | "Closed tabs go to the Library. ⇧⌘T brings the last one back." | ⇧⌘T used, or the Library opened |
+| ✅ `clearUndo` | 3 tabs closed with their × (or middle-click) within a minute | "⇧⌘K clears all of Today. ⌃Z undoes it." | `tabs.clear` used |
+| ✅ `reopenClosed` | first ⌘W | "Closed tabs go to the Library. ⇧⌘T brings the last one back." | ⇧⌘T used, or the Library opened |
 | `recentTab` | 5th click-switch between the same two tabs within 10 minutes | "⌃Tab jumps back to the tab you used last." | `tabs.recent` used |
 | `middleClickClose` | 10th tab closed with the row's × button | "Middle-click a tab to close it." | a middle-click close |
-| `edgeReveal` | first time the sidebar is hidden with ⌘S or the button | "Move to the left edge of the window to bring the sidebar back." | an edge reveal |
-| `resetWidth` | first sidebar resize by dragging | "Double-click the sidebar edge to reset its width." | a double-click reset |
+| ✅ `edgeReveal` | first time the sidebar is hidden with ⌘S or the button | "Move to the left edge of the window to bring the sidebar back." | an edge reveal |
+| ✅ `resetWidth` | first sidebar resize by dragging | "Double-click the sidebar edge to reset its width." | a double-click reset |
 
 ### Spaces & themes
 
 | Key | Trigger | Text | Retired by |
 |---|---|---|---|
-| `swipeSpaces` | 3rd space switch by clicking a footer icon | "Swipe with two fingers in the sidebar to switch spaces." | a swipe switch |
-| `spaceMenu` | first time a second space is created | "Right-click a space for its icon, theme and more." | the space menu opened |
-| `renameSpace` | first rename via the space menu | "Next time, just double-click the space's name." | a double-click rename |
-| `reorderSpaces` | 4th space created | "Drag space icons in the footer to reorder them." | a footer reorder |
+| ✅ `swipeSpaces` | 3rd space switch by clicking a footer icon | "Swipe with two fingers in the sidebar to switch spaces." | a swipe switch |
+| ✅ `spaceMenu` | first time a second space is created | "Right-click a space for its icon, theme and more." | the space menu opened |
+| ✅ `renameSpace` | first rename via the space menu | "Next time, just double-click the space's name." | a double-click rename |
+| ✅ `reorderSpaces` | 4th space created | "Drag space icons in the footer to reorder them." | a footer reorder |
 
 ### Links, Peek, split, previews
 
@@ -94,9 +104,9 @@ Each entry: **key** · trigger · text · retired by (the event that means you a
 |---|---|---|---|
 | `linkPreview` *(later)* | first time the pointer rests on a link for 1.5 s | "Hold ⇧ while hovering a link to preview it." | a ⇧-hover preview shown |
 | `peekClick` | 5th link opened in a new tab and closed again within 30 s | "⇧-click or ⌥-click a link to Peek at it instead." | a Peek opened by click |
-| `peekReopen` | first Peek closed with Esc less than 2 s after opening | "Closed it by mistake? ⌘Z brings it back." | ⌘Z reopen |
-| `splitKeys` | first split view created | "⌃⇧1–4 focus a pane. ⌃⇧- closes the focused one." | a pane focused by keyboard |
-| `prPeek` | first hover card for a GitHub pull request | "Hover a PR tab any time for its checks and reviews." | shown once, no retire event |
+| ✅ `peekReopen` | first Peek closed with Esc less than 2 s after opening | "Closed it by mistake? ⌘Z brings it back." | ⌘Z reopen |
+| ✅ `splitKeys` | first split view created | "⌃⇧1–4 focus a pane. ⌃⇧- closes the focused one." | a pane focused by keyboard |
+| ✅ `prPeek` | first hover card for a GitHub pull request | "Hover a PR tab any time for its checks and reviews." | shown once, no retire event |
 
 ### Command bar & shortcuts
 
@@ -104,14 +114,14 @@ Each entry: **key** · trigger · text · retired by (the event that means you a
 |---|---|---|---|
 | `siteKeyword` | first web search that starts with a word matching a site keyword (e.g. "yt cats") | "Type yt, then Tab, to search YouTube directly." | a keyword search via Tab |
 | `settingsInBar` | first time Settings is opened with ⌘, | "You can also type a setting's name in the command bar." | a Settings result chosen in the bar |
-| `editUrl` | first click on the URL pill | "⌘L edits the address from anywhere." | ⌘L used |
-| `copyMarkdown` | 3rd ⇧⌘C | "⌥⇧⌘C copies the link as Markdown." | ⌥⇧⌘C used |
+| ✅ `editUrl` | first click on the URL pill | "⌘L edits the address from anywhere." | ⌘L used |
+| ✅ `copyMarkdown` | 3rd ⇧⌘C | "⌥⇧⌘C copies the link as Markdown." | ⌥⇧⌘C used |
 
 ### Connections & briefing
 
 | Key | Trigger | Text | Retired by |
 |---|---|---|---|
-| `briefingKey` | first briefing opened from its toast | "⇧⌘B opens your briefing any time." | ⇧⌘B used |
+| ✅ `briefingKey` | first briefing opened from the command bar (its toast has no button) | "⇧⌘B opens your briefing any time." | ⇧⌘B used |
 | `connectFromSite` *(later, auto-connect)* | first sign-in detected on github.com or slack.com with no connection | "You're signed in to GitHub. Connect it for your daily briefing?" with **Connect** | a connection added |
 
 ### Pages

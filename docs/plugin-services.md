@@ -371,6 +371,12 @@ These plugins provide no service; they only use the ones above.
   - "Always quit" stores `warn = false` (storage ns `quit`) and turns interception off. The "Ask Before Quitting" command (`quit.warn`) turns it back on.
   - Closing the window never asks (spec §5).
 - **`updates`:** update policy (channels, schedule, what to install, relaunch, every string) over the host `updates` service; injects `updates`, `app`, `ui`, `storage`; command `den.checkForUpdates`. See [updates.md](updates.md).
+- **`tips`:** onboarding ([spec and status](guide/_in-app-tips.md)): the tour card and the import card in the `sidebar.notice` slot (node ids `tips.card`, `tips.tour.*`, `tips.import.*`), one-time tips as toasts (id `tips.tip`, `hold: true`, button "Don't show tips").
+  - Injects `ui`, `storage`, `settings`; calls `commands`, `spaces`, `content` and `importer` when they exist. Listens only: `tabs.key.*`, `window.sidebar*`, `spaces.*`, `peek.*`, `previews.request`, `commands.run`, `ui.action`. Settings row, commands and cards wait 1.5 s after load.
+  - Commands `tips.toggle` ("Don't Show Tips" / "Show Tips") and `tips.tour` ("Take the den Tour"). Settings ▸ General ▸ Tips (id `tips`, key `enabled`).
+  - Storage ns `tips`: `enabled`, `tour` (`new|dismissed|done`), `import`, `launches`, `shown.<key>`, `retired.<key>`, `counts`, `last`, `day`, `dayCount`.
+  - `importer` (provided by no plugin yet): `sources` → `[{id, name}]`, `run {source}`.
+  - `tips.preview {key}` (snapshot scenarios only) shows a card or tip without limits or records.
 - `theme` and `quit` call `commands.register` without injecting `commands` (the command bar is optional), retrying every 500 ms for 30 s until it exists.
 
 ## Ownership rules

@@ -36,6 +36,13 @@ Rows marked **changed** were annoying defaults and have been fixed.
 | Ask before quitting | on | ⌘Q sits next to ⌘W; quitting by accident kills playing video, form input and page state. The dialog has "Always quit" on first sight, so anyone who hates it turns it off in one click. Tabs come back after a quit either way |
 | Close window (⇧⌘W) | never asks | Arc. Tabs are kept, nothing is lost |
 
+## Tips and the tour
+
+| Setting | Default | Why |
+|---|---|---|
+| Show tips | on | den's best parts are gestures and shortcuts you can't see. A tip shows once, only when it's relevant, at most one per 10 minutes and three a day, never in the first minute or over a dialog; each one has a "Don't show tips" button |
+| Tour card | second launch | The first launch is for browsing. Five skippable steps; closing the card ends it for good |
+
 ## Search and the command bar
 
 | Setting | Default | Why |

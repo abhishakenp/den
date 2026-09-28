@@ -2,6 +2,14 @@
 
 Everything in den that you won't find by looking at it. One line each, with a link to the full story.
 
+## den teaches you as you go
+
+- **The tour card** shows up at the bottom of the sidebar on your second launch: five short steps, each skippable, and it never comes back once you close it. Type **Take the den Tour** in the command bar to run it again.
+- **One-time tips** appear in the corner when a shortcut would have helped, for example after your first ⌘W: "Closed tabs go to the Library. ⇧⌘T brings the last one back." Each shows once, never if you already use the shortcut, at most one every 10 minutes and three a day, and never over the command bar or a dialog. Point at a tip to keep it up.
+- **Turn them off** with the tip's **Don't show tips** button, **Settings ▸ General ▸ Show tips**, or **Don't Show Tips** in the command bar.
+
+<p align="center"><img src="../screenshots/tour-card-dark.png" alt="The tour card above the sidebar footer" width="720"></p>
+
 ## Sidebar & tabs
 
 - **Click a pinned tab's favicon** when a **/** shows before its title to jump back to its pinned page. [Sidebar](sidebar-and-tabs.md#pinned-tabs)
