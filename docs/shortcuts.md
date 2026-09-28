@@ -97,6 +97,13 @@ Reader: Safari's ⇧⌘R is Arc's (and den's) Reload from Origin, so Reader is �
 | Open location (command bar, edit URL) | ⌘L | ⌘L | ⌘L | ⌘L | `file.openLocation` |
 | Copy URL | – | – | ⇧⌘C | ⇧⌘C | `edit.copyURL` |
 | Copy URL as Markdown | – | – | ⌥⇧⌘C | ⌥⇧⌘C | `edit.copyMarkdown` |
+| Share (macOS share sheet) | – | – | – | – (File ▸ Share…) | `file.share` |
+| QR code for the page | – | – | – | – (File ▸ QR Code for This Page) | `file.qrCode` |
+
+Paste and Go / Paste and Search have no key: they're in the URL pill's and the command bar field's right-click menus. ⇧⌘V is left alone because web apps (Google Docs, Slack) use it for pasting without formatting.
+| Share (share sheet) | File ▸ Share | – | ⇧⌘I (Share Page) | – (File ▸ Share…) | `file.share` |
+| QR code for the page | – | Share ▸ QR Code | – | – (File ▸ QR Code for This Page) | `file.qrCode` |
+| Paste and Go / Paste and Search | address bar menu | address bar menu | – (unshipped) | – (URL pill and command bar field menus) | – |
 
 ## App
 

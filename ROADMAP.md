@@ -291,12 +291,12 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 ## Share and clipboard
 
-- ⏳ Native share menu (AirDrop, Messages) and a QR code for the page
-- ⏳ Paste and Go / Paste and Search
-- ⏳ Copy toast says exactly what was copied
-- ✅ Clear a copied password from the clipboard after a short time (60 s)
+- ✅ Native share menu (AirDrop, Messages) and a QR code for the page (File menu, command bar, URL pill and tab menus; the QR code in a popover with Copy Image / Save…)
+- ✅ Paste and Go / Paste and Search (URL pill and command bar field menus, named for what's on the clipboard)
+- ✅ Copy toast says exactly what was copied ("Copied link · example.com/path…", Markdown link, image size, highlight, password)
+- ✅ Clear a copied password from the clipboard after a short time (60 s), only if it's still what's on the clipboard
 - ✅ Upload picker shows recent downloads, screenshots and the clipboard first (filtered by `accept`; Choose File… ⌘O for the usual panel)
-- ⏳ Error pages link to the Web Archive copy
+- ✅ Error pages link to the Web Archive copy (site not found, refused or timed out; not offline or certificate errors)
 
 ## Energy
 
