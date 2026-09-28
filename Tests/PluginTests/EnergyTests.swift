@@ -38,20 +38,20 @@ struct EnergyTests {
     #expect(old.allSatisfy { live(h, $0) })
     #expect(h.rt.webviews.autoplayAllowed)
     // Unplugged: one minute is enough, new pages don't autoplay; the 5 most recent stay.
-    h.rt.app.powerOverride = PowerState(battery: true, lowPower: false)
+    let power = h.rt.app.powerSource as! FixedPower  // tests never read the Mac's power
+    power.state = PowerState(battery: true, lowPower: false)
     #expect(h.tabs("energy")["saving"] == true && h.tabs("energy")["suspendAfterMs"] == .int(60_000))
     #expect(!h.rt.webviews.autoplayAllowed)
     core.tick()
     for id in old { #expect(await h.waitUnloaded(id)) }
     #expect(recent.allSatisfy { live(h, $0) })
     // Off: plugged-in rules again, even in Low Power Mode.
-    h.rt.app.powerOverride = PowerState(battery: false, lowPower: true)
+    power.state = PowerState(battery: false, lowPower: true)
     #expect(h.tabs("energy")["saving"] == true)
     #expect(h.tabs("settings", ["batterySaver": false])["batterySaver"] == false)
     #expect(h.tabs("energy")["saving"] == false && h.rt.webviews.autoplayAllowed)
     #expect(h.storage("tabs", "energy")["batterySaver"] == false)
     #expect(h.rt.call("settings", "get", ["id": "tabs", "key": "batterySaver"]) == false)
-    h.rt.app.powerOverride = nil
   }
 
   @Test func keptActiveSitesNeverUnloadWhenIdle() async {

@@ -267,20 +267,28 @@ public final class AppService: HostService {
       }
     }
     // `app.power {battery, lowPower}`: plugins that save energy on battery (tabs' battery saver)
-    // follow it. Both sources are notifications: no polling, no wakeups while nothing changes.
-    power = PowerState.read()
-    PowerState.watch { [weak self] in self?.powerChanged() }
-    NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in
-      MainActor.assumeIsolated { self?.powerChanged() }
+    // follow it. Tests get a fixed "plugged in" source: nothing in a test reads the Mac's power.
+    powerSource = TestMode.active ? FixedPower() : SystemPower()
+    power = powerSource.read()
+    watchPower()
+  }
+
+  public private(set) var power = PowerState.ac
+  /// The Mac's power (`SystemPower`), or a `FixedPower` a test drives.
+  public var powerSource: PowerSource = FixedPower() {
+    didSet { watchPower(); powerChanged() }
+  }
+
+  func watchPower() {
+    let source = powerSource
+    source.watch { [weak self, weak source] in
+      guard let self, let source, source === self.powerSource else { return }
+      self.powerChanged()
     }
   }
 
-  private(set) var power = PowerState(battery: false, lowPower: false)
-  /// Tests: stands in for the Mac's power source and Low Power Mode.
-  public var powerOverride: PowerState? { didSet { powerChanged() } }
-
   func powerChanged() {
-    let now = powerOverride ?? PowerState.read()
+    let now = powerSource.read()
     guard now != power else { return }
     power = now
     host.emit("app.power", ["battery": .bool(now.battery), "lowPower": .bool(now.lowPower)])
@@ -353,7 +361,7 @@ public final class AppService: HostService {
       // Generic signals for plugins that schedule work around the user (e.g. updates).
       let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
       let keyIdle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
-      let p = powerOverride ?? power
+      let p = power
       return ["active": .bool(NSApp.isActive), "idleSeconds": .double(idle), "keyIdleSeconds": .double(keyIdle),
               "battery": .bool(p.battery), "lowPower": .bool(p.lowPower)]
     case "relaunch":

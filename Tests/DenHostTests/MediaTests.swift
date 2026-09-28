@@ -146,11 +146,12 @@ struct MediaTests {
     // Power: app.state carries it, a change is an event.
     var events: [Value] = []
     _ = rt.plugins.on("app.power") { events.append($0) }
-    let state = rt.call("app", "state")
-    #expect(state["battery"].bool != nil && state["lowPower"].bool != nil)
-    rt.app.powerOverride = PowerState(battery: true, lowPower: false)
-    rt.app.powerOverride = PowerState(battery: true, lowPower: false)  // no change, no event
-    rt.app.powerOverride = PowerState(battery: true, lowPower: true)
+    // Tests never read the Mac's power: a fixed source, plugged in, no Low Power Mode.
+    let power = try #require(rt.app.powerSource as? FixedPower)
+    #expect(rt.call("app", "state")["battery"] == false && rt.call("app", "state")["lowPower"] == false)
+    power.state = PowerState(battery: true, lowPower: false)
+    power.state = PowerState(battery: true, lowPower: false)  // no change, no event
+    power.state = PowerState(battery: true, lowPower: true)
     #expect(events.map { $0["battery"] } == [true, true] && events.map { $0["lowPower"] } == [false, true])
     #expect(rt.call("app", "state")["lowPower"] == true)
     mock.stop()
