@@ -128,16 +128,9 @@ struct ShareTests {
     #expect(r.shared.count == 1)
     #expect((r.shared.last?.items.first as? URL)?.absoluteString == "https://news.test/a")
     #expect((r.shared.last?.view as? NodeView)?.nodeId == "tabs.url")
-    // The tab's own menu: anchored at its row.
-    func find(_ list: [Value]) -> Value? {
-      for v in list {
-        if v.str("id") == id { return v }
-        if let hit = find(v.list("children")) { return hit }
-      }
-      return nil
-    }
-    let row = find(r.h.tree("sidebar.today", 0).list("children")) ?? .null
-    #expect(row.list("menu").map { $0.str("id") }.contains("share"))
+    // The tab's own menu (built on right-click): anchored at its row.
+    let items = (r.h.tabs("menu", ["id": .string(id)]).array ?? []).map { $0.str("id") }
+    #expect(items.contains("share"), "\(items)")
     r.h.action(id, "menu", "share")
     #expect(r.shared.count == 2 && (r.shared.last?.items.first as? URL)?.absoluteString == "https://news.test/a")
     // No anchor on screen: the top of the page.
