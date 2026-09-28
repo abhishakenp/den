@@ -80,7 +80,8 @@ public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDele
 
   private func start(at first: Int) {
     let s = AVSpeechSynthesizer()
-    s.delegate = self
+    // Silent mode reports progress itself (the delegate would report `write` utterances twice).
+    s.delegate = silent ? nil : self
     synth = s
     keys = [:]
     let voice = lang.isEmpty ? nil : AVSpeechSynthesisVoice(language: lang)
