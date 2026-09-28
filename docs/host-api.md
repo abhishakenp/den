@@ -46,7 +46,8 @@ Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `w
 
 | Method | Args | Returns |
 |---|---|---|
-| `create` | `id?`, `url?`, `profile?` (`default`, `private`, or any name, which maps to a stable `WKWebsiteDataStore(forIdentifier:)`) | `{id}` (lazy: no `WKWebView` until shown) |
+| `create` | `id?`, `url?`, `profile?` (`default`, `private`, or any name, which maps to a stable `WKWebsiteDataStore(forIdentifier:)`), `userAgent?` (`mobile`: Safari on an iPhone, for web panels; or any string) | `{id}` (lazy: no `WKWebView` until shown) |
+| `mediaControl` | `id`, `action: play\|pause\|toggle\|next\|previous\|seek\|skip\|stop`, `value?` (s) | ok, or an error when the page plays nothing (or has no next track). Acts on the page's now-playing media, in the frame that reported it. `next` / `previous` run the page's own Media Session handlers (`previous` without one restarts the track); `stop` pauses and drops it from now playing until it plays again |
 | `navigate` | `id`, `url` | ok |
 | `back`, `forward`, `reload`, `stop`, `close` | `id` (optional except for `close`), `fromOrigin?` (`reload`: ⇧⌘R, skips the cache) | ok |
 | `zoom` | `id?`, `action: in\|out\|reset` | `{zoom}`. Safari's steps, 50–300% (`Tokens.zoomSteps`). Remembered per site (host without `www.`, storage ns `_zoom`; 100% is not stored) and re-applied whenever a page's host changes. Emits `webviews.zoom {id, zoom}` |
@@ -78,6 +79,7 @@ Events:
 - `webviews.audio {id,playing}` (audible media)
 - `webviews.muted {id,muted}`
 - `webviews.media {id,playing,pip,dirty}`: den's page script (its own content world, every frame) reports media and unsaved input when they change; no polling
+- `webviews.nowPlaying {id, now: {title, artist, album, art, paused, dur, video, acts} | null, muted}`: the page's "now playing", when it changes. It is the last `<audio>`/`<video>` that played with sound (a muted autoplaying video never counts), with the page's Media Session metadata (title, falling back to the page title; the largest artwork as an absolute http(s) URL; `acts` = the Media Session actions the page handles, e.g. `nexttrack`). null once it's stopped, its element is gone, the page navigates, or the view is discarded. Also in `get`: `media.now`. The only page-world script (`PageScripts.sessionHook`) keeps the page's `setActionHandler` handlers so `mediaControl` can call them, and notes metadata changes; the two worlds exchange strings only
 - `webviews.newWindow {id,url}`
 - `webviews.crashed {id}`: the page's web process died. The host shows den's "This page crashed" page with **Reload** in its place (at once when on screen, else the next time it's shown), keeping the URL; it never reloads by itself
 - `webviews.suspended {id}`
@@ -135,7 +137,8 @@ Generic blocks for plugins that work inside web pages (`PageScripting.swift`). T
 | `show` | `panes: [webviewId]` (1–4), `orientation?: horizontal\|vertical\|grid`, `ratios?`, `focus?` | ok |
 | `focus` | `id` | ok |
 | `peek` | `webview` to show, or `{}` to hide | ok |
-| `get` | – | `{panes, orientation, focus, peek}` |
+| `side` | `webview`, `width?` (280–520, default 360) / `{}` to hide | ok. The side column: one web view in a card at the content's left edge, beside whatever the panes show and across tab and space switches; the panes make room. It slides out from the sidebar edge (0.25 s, Dia's curve; none with Reduce Motion) with the card at full width, clipped, so it doesn't squeeze. Its header is the `side.header` ui slot. Hidden, the web view leaves the window, so `webviews.suspend` can discard it |
+| `get` | – | `{panes, orientation, focus, peek, side, sideWidth}` |
 
 Events: `content.focus {id}`, `content.peekAction {action: close|expand|split, webview}` and `content.paneAction {id, action: close|separate}`.
 
@@ -161,16 +164,31 @@ den's mini player (`// thin-host` marker: to move into a plugin over generic pri
 - **Which video:** playing, audible (not muted by the page, its volume or the tab), at least 5 s long or live, at least 200x100 on the page, with a video track, and not closed by the user earlier in the session. One player at a time.
 - **Isolation:** den's page script marks the video (or, from the parent frames, the iframe holding it) and a style makes it fill the viewport on black with everything else invisible. Layout is untouched, so undoing it is exact.
 - **Controls** (on hover, and while paused): back to the tab (also double-click and Esc), system picture in picture, close (pauses; remembered), ±10 s, play/pause, mute and volume, playback speed, a seek bar with elapsed and remaining time. Keys: space, ←/→ (5 s), ↑/↓ volume, M. Drag to move, drag a corner to resize (aspect locked); it snaps to the nearest screen corner, which is remembered with the width. The page reports playback only while the player shows it, on `timeupdate` (at most 4 a second).
+- **Extras** (Dia, Firefox): the page's host in a chip at the top (click: back to the tab); **keep on top** (pin button, T; `settings.keepOnTop`, persisted, default on: `.floating`, off: `.normal` level); **CC** (C) when the video has `subtitles`/`captions` text tracks (`cc` in the video info and playback: 0 none, 1 available, 2 showing; the toggle shows the track matching the system language, else the first); **stash**: dropped with its centre past the left or right screen edge, it tucks there with a 28 pt strip and a chevron left on screen, controls off; a click on it (or `control unstash`) glides it back to the nearest corner on that side. Firefox's picture-in-picture keys: ⌘←/⌘→ a tenth of the video (`seekpct`), Home/End (`start`/`end`), ⌘↓/⌘↑ mute/unmute, ⌘W close (the panel takes ⌘-keys before the main menu while it is key).
 
 | Method | Args | Returns |
 |---|---|---|
-| `get` | – | `{open, webview?, fromWindow?, frame?, settings: {autoMiniPlayer}}` |
-| `settings` | `autoMiniPlayer?` | `{autoMiniPlayer}` (persisted, on by default) |
+| `get` | – | `{open, webview?, fromWindow?, frame?, stashed?, settings: {autoMiniPlayer, keepOnTop}}` |
+| `settings` | `autoMiniPlayer?`, `keepOnTop?` | `{autoMiniPlayer, keepOnTop}` (persisted, both on by default) |
 | `open` | `webview` | ok, or an error when it plays no video |
-| `control` | `action`, `value?` | ok (an error when no player is open). What the panel's controls do: `play`, `pause`, `toggle`, `seek` (s), `skip` (±s), `volume` (0–1), `mute` (0/1), `rate`, `pip`, `back`, `close` |
+| `control` | `action`, `value?` | ok (an error when no player is open). What the panel's controls and keys do: `play`, `pause`, `toggle`, `seek` (s), `skip` (±s), `seekpct` (± fraction), `start`, `end`, `volume` (0–1), `mute` (0/1), `rate`, `cc`, `keepOnTop` (0/1), `unstash`, `pip`, `back`, `close` |
 | `close` | – | ok (pauses the video), or an error when no player is open |
 
 Events: `media.miniPlayer {webview, open}`, `media.backToTab {webview}` (the tabs plugin selects that tab), `media.playback {webview, t, dur, paused, muted, vol, rate}`.
+
+## nowplaying
+
+den's entry in Control Center's Now Playing and the keyboard's (and headphones') media keys: `MPNowPlayingInfoCenter` and `MPRemoteCommandCenter`, as a generic bridge. What is "now playing" and what a command does belong to the `media` plugin. Nothing is registered until the first `set`; `clear` removes the entry and every command handler.
+
+| Method | Args | Returns |
+|---|---|---|
+| `set` | `title`, `artist?`, `album?`, `artwork?` (http(s) URL, loaded through the icon cache), `duration?`, `elapsed?`, `playing`, `commands?: [play, pause, toggle, next, previous, stop]` (default: all but next and previous) | ok. Only the listed commands are enabled |
+| `clear` | – | ok |
+| `get` | – | `{active, title, playing, commands}` |
+
+Event: `nowplaying.command {command}` when Control Center or a media key asks for an enabled command.
+
+WebKit may publish its own Now Playing entry for a playing web view as well; how the system picks between the two on a real Mac with media keys is not verified yet (CI runners have no media keys).
 
 Picture in picture needs WKPreferences' private `allowsPictureInPictureMediaPlayback` on macOS (set through KVC when WebKit has it); `callAsyncJavaScript` counts as a user gesture for `requestPictureInPicture()`.
 
@@ -202,7 +220,8 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 **Long lists are virtualized.** In a `list` inside a scroll view (the sidebar), `tabRow` and `splitRow` children (fixed height) get views only within 200 pt of the visible area and give them up beyond 1000 pt (unless hovered, pressed, focused or being renamed). Heights and order are unaffected; a row without a view is made from its latest value when it scrolls near.
 
 **Slots:**
-- `sidebar.header`, `sidebar.favorites`, `sidebar.footer`
+- `sidebar.header`, `sidebar.favorites`, `sidebar.dock` (right above the footer, as tall as its tree, at most 60% of the space below the favorites; the `media` plugin's now-playing cards), `sidebar.footer`
+- `side.header`: over the side column's web view (`content.side`; the `panels` plugin's header)
 - Per space page: `sidebar.spaceHeader`, `sidebar.pinned`, `sidebar.today`
 - Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections`, `overlay.passwords`, `overlay.extensions` (see [Briefing page](#briefing-page-and-connections-sheet)). Cards: [`ui.card`](#uicard-popover-cards-and-hover-intent)
 
@@ -228,7 +247,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `spaceTitle` | `id`, `title`, `icon?`, `editing?`, `editText?` | `click`, `doubleClick`, `more`, `rename {title}`, `renameCancel` |
 | `spaceIcon` | `id`, `icon?` (empty = dot), `title`, `selected`, `spaceId?` (makes it a drop target for dragged rows), `reorderable?` | `click`, `move {index}` (after a drag-reorder, see [Space icon reorder](#space-icon-reorder)) |
 | `iconPicker` | `id`, `anchor?`, `title?`, `selected?` (popover slot) | `pick {icon}` (`sf:<name>`, an emoji, or "" to remove), `dismiss {reason?}` |
-| `tabRow` | `id`, `title`, `icon`, `selected`, `highlighted?` (picked into a multi-selection; drawn like selected), `audio`, `muted?`, `drift` (the "/" marker), `closable=true`, `closeTitle?` (the X's tooltip), `indent?`, `draggable=true`, `editing?`, `editText?`, `hoverIntent?`, `dropInto?`, `dropIntoIcon?`, `unread?` (a 6 pt accent dot at the right end) | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel`, `hover` (see [ui.card](#uicard-popover-cards-and-hover-intent)) |
+| `tabRow` | `id`, `title`, `icon`, `selected`, `highlighted?` (picked into a multi-selection; drawn like selected), `audio`, `muted?`, `media?: {paused, next, previous}` (while hovered: previous / play-pause / next buttons, left of the speaker; they emit `media {action: previous\|toggle\|next}`), `drift` (the "/" marker), `closable=true`, `closeTitle?` (the X's tooltip), `indent?`, `draggable=true`, `editing?`, `editText?`, `hoverIntent?`, `dropInto?`, `dropIntoIcon?`, `unread?` (a 6 pt accent dot at the right end) | `click {modifiers?}`, `doubleClick`, `close` (also middle-click), `reset` (favicon click while drifted), `mute`, `reorder`, `dropOnContent`, `rename {title}`, `renameCancel`, `hover` (see [ui.card](#uicard-popover-cards-and-hover-intent)) |
 | `splitRow` | `id`, `selected` (the split is shown), `layout?`, `panes: [{id, title, icon, selected}]` (`selected` = focused pane), `closable=true`, `indent?` | `click {pane}`, `close` (hover X), `reorder` (as target, a tab row can drop `into` it), `dropOnSpace` |
 | `folder` | `id`, `title`, `icon?`, `open`, `children`, `closedChildren?` (rows still shown while closed: its active tab), `style?: "group"` (a lighter rounded panel behind the header and rows, bold name: Dia's groups), `pending?` (a shimmer runs across the title; Reduce Motion dims it), `reveal?` (a one-time colour sweep across a title that just changed, 0.4 s), `editing?`, `unread?` (a 7 pt accent dot on the folder's icon), `badge?` (a quiet chip before the chevron, "3 ✓"; a button) | `toggle`, `reorder` (as target: `position: "into"`), `rename {title}`, `renameCancel`, `badge` (the chip) |
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
@@ -350,7 +369,7 @@ Feature-free nodes any plugin can compose (Toolkit/CardNodes.swift). Colors are 
 
 | Node | Fields | Actions |
 |---|---|---|
-| `stack` | `axis: v\|h`, `spacing`, `padding` (n or [top, right, bottom, left]), `distribute: fill\|equal`, `align: start\|center\|end`, `height?` (h), `children` | – |
+| `stack` | `axis: v\|h`, `spacing`, `padding` (n or [top, right, bottom, left]), `distribute: fill\|equal`, `align: start\|center\|end`, `height?` (h), `fill?: panel\|card\|hover` (a surface behind it: the selected-tab fill, the card fill, the card hover fill) with `radius?` (8), `clickable?` (with an `id`: a hover tint and `click {value}` for clicks no child button takes), `children` | `click {value}` when `clickable` |
 | `label` | `text` or `runs: [{text, tone?, weight?}]`, `size` (13), `weight`, `tone`, `lines` (1; more wrap and end in "…"), `lineHeight?`, `align` | – |
 | `icon` | `spec` (sf:/URL/path/emoji), `size`, `tone`, `letter?` | – |
 | `image` | `src` (URL or path), `width?`, `height?`, `aspect?`, `radius?`, `placeholder?`, `version?` | – |

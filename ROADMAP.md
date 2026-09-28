@@ -192,7 +192,10 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 ## Media
 
 - 🟡 Mini player: den's own frameless, always-on-top player (seek, volume/mute, ±10 s, speed, back to tab, resize/snap), native PiP as the fallback
-- ⏳ Mini player extras: "Keep on top" toggle, tuck off the screen edge, hostname chip back to the tab, Firefox's PiP keys, subtitles
+- ✅ Mini player extras: "Keep on top" toggle (T), tuck off the screen edge (stash), hostname chip back to the tab, Firefox's PiP keys, subtitles (C) when the page has text tracks ([guide](docs/guide/media.md#the-mini-player))
+- ✅ Now-playing dock at the bottom of the sidebar, Control Center and media keys ([guide](docs/guide/media.md#now-playing-at-the-bottom-of-the-sidebar)). ⏳ Verify on a real Mac how macOS picks between den's Now Playing entry and WebKit's own (CI has no media keys)
+- ✅ Hover play/pause/skip on the row of any tab playing (or paused) media
+- ✅ Web panels (optional `panels` plugin, ⌃⌘S; [guide](docs/guide/media.md#web-panels)). ⏳ Drag to resize a panel
 - ✅ AutoPiP like Safari, on by default: den's own mini player opens when leaving a tab or app while a video plays
 - ✅ Tabs playing audio are never archived or unloaded, and updates never relaunch during playback
 - ⏳ Camera, mic and screen-share badges on tabs, click to turn off
@@ -366,5 +369,5 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ⏳ Emoji tab and folder icons, from rename and the right-click menu (Arc)
 - ⏳ Same tab in multiple windows: opt-in, ships with multi-window support
 - ⏳ AI tab tidying: Apple on-device model, off by default, enable in Settings, never automatic unless enabled
-- ⏳ Web panels: optional plugin, normal priority (chat, AI chat sites like claude.ai/Gemini, reference, dashboards beside any tab; slides out from the sidebar edge; sleeps when hidden). Zen removed theirs for a Firefox-specific sandbox issue (Mozilla bug 1935985, per Zen discussion #7314) that doesn't apply to WebKit, where a panel is an ordinary sandboxed web view
-- ⏳ Now-playing dock at the bottom of the sidebar (Arc): every playing tab with artwork, title and artist (from the page's media info), play/pause, previous/next, mute, jump to tab and stop. Handles several playing at once, most recent first. Media keys and Control Center's Now Playing control den. Zero cost when nothing plays; event-driven
+- ✅ Web panels: optional plugin, normal priority (chat, AI chat sites like claude.ai/Gemini, reference, dashboards beside any tab; slides out from the sidebar edge; sleeps when hidden). Zen removed theirs for a Firefox-specific sandbox issue (Mozilla bug 1935985, per Zen discussion #7314) that doesn't apply to WebKit, where a panel is an ordinary sandboxed web view
+- ✅ Now-playing dock at the bottom of the sidebar (Arc): every playing tab with artwork, title and artist (from the page's media info), play/pause, previous/next, mute, jump to tab and stop. Handles several playing at once, most recent first. Media keys and Control Center's Now Playing control den. Zero cost when nothing plays; event-driven

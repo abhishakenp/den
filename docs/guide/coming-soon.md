@@ -16,9 +16,7 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 
 ## Media
 
-- Mini player extras: a "Keep on top" toggle, tucking it off the screen edge, a hostname chip back to the tab, subtitles.
 - **Automatic system picture in picture** like Safari's, when you leave a tab playing video (today den's own mini player follows you instead).
-- Hover play/pause/skip for any tab playing audio.
 
 ## Connections & briefing
 
