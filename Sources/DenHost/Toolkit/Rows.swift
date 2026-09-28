@@ -302,8 +302,9 @@ final class GridNode: NodeView {
   var columns: Int { max(1, Int(node.num("columns", Double(Tokens.favoriteColumns)))) }
   private var animateNext = false
 
-  /// Frames for `count` tiles in `width` (top-left origin). Widths are whole points; the last
-  /// tile of each row takes the remainder, so every row ends exactly at `width` with no gap.
+  /// Frames for `count` tiles in `width` (top-left origin). Widths are whole points; the leftover
+  /// points go one each to the trailing tiles (so widths in a row differ by at most 1), and the
+  /// last tile ends exactly at `width` with no gap.
   static func frames(count: Int, width: CGFloat, columns: Int, spacing sp: CGFloat = Tokens.favoriteTileSpacing,
                      height h: CGFloat = Tokens.favoriteTileHeight) -> [NSRect] {
     guard count > 0, columns > 0 else { return [] }
@@ -311,11 +312,14 @@ final class GridNode: NodeView {
     var i = 0, row = 0
     while i < count {
       let n = min(columns, count - i)
-      let w = ((width - sp * CGFloat(n - 1)) / CGFloat(n)).rounded(.down)
+      let avail = width - sp * CGFloat(n - 1)
+      let w = (avail / CGFloat(n)).rounded(.down)
+      let extra = max(0, min(n, Int((avail - w * CGFloat(n)).rounded(.down))))
+      var x: CGFloat = 0
       for c in 0..<n {
-        let x = CGFloat(c) * (w + sp)
-        let cw = c == n - 1 ? width - x : w
+        let cw = c == n - 1 ? width - x : w + (c >= n - extra ? 1 : 0)
         out.append(NSRect(x: x, y: CGFloat(row) * (h + sp), width: max(0, cw), height: h))
+        x += cw + sp
       }
       i += n
       row += 1
