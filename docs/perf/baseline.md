@@ -139,3 +139,33 @@ Derived from these runs:
 
 - Test instances launch without activation, like `open -g`. den (this build) calls `NSApp.activate()` itself, though. While `scripts/perf.sh` ran, den was the frontmost app in 5 of 60 two-second samples. A test flag that keeps den in the background would need a den code change, which this measurement work did not make. Later builds have one, `--background` (`Sources/Den/main.swift`, used by `scripts/measure-memory.sh`); `scripts/perf.sh` doesn't pass it yet.
 - This den build shows a quit dialog in response to the quit AppleEvent, so the probe force-quits it after 10 s. Later builds quit cleanly on SIGTERM.
+
+## 2026-09-28: lazy plugins, Scenarios trait (launch before/after)
+
+Same machine. `scripts/perf.sh` (10 warm launches after 1 warm-up, seeded store), run back to back:
+**before** = a bundle of `a493736` (frozen copy), **after** = `a4eec49` (first-frame plugins only,
+setup in `willFinishLaunching`, SF Symbols prewarm, no Scenarios/Network.framework). The gate wanted
+load < 4; "before" started at 5.2, so its row is marked TAINTED (a slightly slower machine than "after").
+
+| build | load (1-min) at start | reqMs median | p90 | min | max | startMs median |
+|---|---|---|---|---|---|---|
+| before `a493736` (TAINTED) | 5.22 | 219.8 | 228.5 | 201.4 | 228.5 | 210.9 |
+| after `a4eec49` | 2.75 | **195.6** | **206.9** | 188.2 | 206.9 | 185.7 |
+
+Earlier the same session, at load 25–60, the in-process trace (`DEN_TRACE=1`, not load-proof)
+showed where the time went before the change: `DenRuntime.init` ~70 ms (mostly the first `NSWindow`
+and its theme frame), plugin loading 45–70 ms (15 dlopen + apply, 13 of them not needed for the
+first frame), then an idle gap until LaunchServices' open event. An interleaved A/B at load ~30
+(12 pairs, `trace display`) measured the SF Symbols prewarm at 249.8 vs 268.6 ms median.
+
+Binary (`ls -l`, `otool -L`, `nm`): `den` 4,938,624 → 5,049,360 B (+110 KB: this build also has
+the commits that landed on main in between: media, mini player, page tools). Network.framework and
+the 143 `MockServices` symbols are gone from the release binary. The bundle is 12.3 → 13.1 MB (`du`).
+
+**Open regression: no-tabs memory.** The same perf.sh run measured noTabs host 19.1 MB (before) and
+23.5 MB (after), which fails the 21.5 MB budget. An interleaved recheck (`perfprobe mem`, seeded store,
+10 s settle, n=3 each, load 3–27) gave before 31.0/30.3/30.2 MB and after 36.0/32.9/32.6 MB. So
+"after" costs about +2.5–5 MB at idle. Suspects, not yet bisected: the symbol prewarm (catalog
+mapped on a second thread), all 13 deferred plugins loading at first frame together with the webviews,
+and main's new features between the two builds. discardedTab.KB (84.5 → 87.6) and onePage.totalMB
+(84.5 → 89.0) fail in both builds.
