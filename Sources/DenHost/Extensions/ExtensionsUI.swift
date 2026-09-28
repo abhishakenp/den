@@ -255,8 +255,7 @@ final class ExtensionPanelView: PanelView {
   private var content: NSView?
   init() {
     super.init(radius: Tokens.extensionPanelRadius)
-    layer?.shadowOpacity = 0.3
-    layer?.shadowRadius = 20
+    elevation = .popover
   }
   required init?(coder: NSCoder) { fatalError() }
   func setContent(_ v: NSView) {
@@ -268,7 +267,6 @@ final class ExtensionPanelView: PanelView {
   override func apply(_ p: Palette) {
     super.apply(p)
     surface.layer?.backgroundColor = p.popover.cgColor
-    surface.layer?.borderColor = NSColor(white: p.dark ? 1 : 0, alpha: p.dark ? 0.12 : 0.08).cgColor
     content?.applyPaletteRecursively(p)
   }
   override func layout() {

@@ -38,12 +38,41 @@ final class PasswordsCore {
     env.on("vault.result") { [self] v in result(v) }
     env.on("ui.action") { [self] v in action(v.s("id"), v.s("action"), v["value"]) }
     env.on("commands.run") { [self] v in if v.s("id") == "passwords.open" { open() } }
+    env.on("content.focus") { [self] v in page = v.s("id"); refreshKey() }
+    env.on("webviews.url") { [self] v in if v.s("id") == page { refreshKey() } }
+    page = env.call("content", "get").s("focus")
+    refreshKey()
     registerCommands()
   }
 
   func stop() {
     registerAttempts = Int.max / 2
     closeSheet()
+    if !keyOn.isEmpty { env.call("tabs", "pillButtons", ["webview": .string(keyOn), "owner": "passwords", "buttons": []]) }
+  }
+
+  // MARK: Key button
+
+  static let keyButton = "passwords.key"
+  /// The web view in front (content focus).
+  var page = ""
+  /// The web view whose URL pill shows the key ("" = none).
+  var keyOn = ""
+
+  /// A key in the URL pill (the tabs plugin's `pillButtons`) while the page in front has saved
+  /// logins: clicking it focuses the page's sign-in field, which opens the suggestions under it.
+  func refreshKey() {
+    let logins = page.isEmpty ? [] : (env.call("vault", "accounts", ["webview": .string(page)]).array ?? [])
+    if !keyOn.isEmpty, keyOn != page || logins.isEmpty {
+      env.call("tabs", "pillButtons", ["webview": .string(keyOn), "owner": "passwords", "buttons": []])
+      keyOn = ""
+    }
+    guard !logins.isEmpty else { return }
+    let host = URLs.host(logins.first?.s("origin") ?? "")
+    env.call("tabs", "pillButtons", ["webview": .string(page), "owner": "passwords", "buttons": [[
+      "id": .string(Self.keyButton), "icon": "sf:key.fill",
+      "tooltip": .string(logins.count == 1 ? "Fill your saved password for " + host : "Fill a saved password for " + host)]]])
+    keyOn = page
   }
 
   // MARK: Autofill
@@ -102,6 +131,7 @@ final class PasswordsCore {
       let r = env.call("vault", "save", ["capture": p["capture"]])
       toast(r.isErr ? "Couldn't save the password" : "Password saved for " + URLs.host(p.s("origin")), r.isErr ? "sf:exclamationmark.triangle.fill" : "sf:key.fill")
       if sheetOpen { render() }
+      refreshKey()
     case "never":
       never.append(p.s("origin"))
       env.call("storage", "set", ["ns": .string(Self.ns), "key": "never", "value": .array(never.map { .string($0) })])
@@ -166,6 +196,11 @@ final class PasswordsCore {
 
   func action(_ id: String, _ action: String, _ value: Value) {
     if id == Self.saveDialog, action == "button" { return saveButton(value.s("button")) }
+    if id == Self.keyButton, action == "click" {
+      let w = value.s("webview")
+      env.call("vault", "focusLogin", ["webview": .string(w.isEmpty ? page : w)])
+      return
+    }
     if id == Self.sheetId, action == "dismiss" { return closeSheet() }
     guard sheetOpen, Text.hasPrefix(id, Self.rowPrefix) else { return }
     let account = Text.dropPrefix(id, Self.rowPrefix)

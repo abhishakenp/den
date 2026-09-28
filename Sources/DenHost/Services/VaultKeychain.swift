@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import LocalAuthentication
+import os
 import Security
 
 /// A saved login's metadata. The password is never part of it.
@@ -27,17 +28,85 @@ public protocol VaultStore: AnyObject {
 @MainActor
 public protocol VaultAuth: AnyObject {
   func authenticate(reason: String, _ done: @escaping @MainActor (Bool, LAContext?) -> Void)
+  /// Why the last refusal happened, when it wasn't the user cancelling ("biometryNotAvailable (-6)").
+  var failure: String? { get }
 }
 
+extension VaultAuth {
+  public var failure: String? { nil }
+}
+
+/// Touch ID (or the login password) through `LAContext.evaluatePolicy(.deviceOwnerAuthentication)`,
+/// for every fill, copy and unlock, whatever keychain the item is in. No reuse window: each request
+/// prompts. Every outcome is logged (`os_log` subsystem `io.github.abhishakenp.den`, category
+/// `vault`) with the exact `LAError` code, and kept in `last` for tests and diagnostics.
 public final class SystemAuth: VaultAuth {
+  public struct Outcome: Sendable, Equatable {
+    public var ok: Bool
+    public var code: Int  // LAError.Code raw value; 0 when ok
+    public var name: String  // "ok", "userCancel", "appCancel", "biometryNotAvailable", …
+    public var ms: Int  // from the call to the answer
+  }
+  public private(set) var last: Outcome?
+  public var failure: String? {
+    guard let l = last, !l.ok, !Self.isCancel(l.code) else { return nil }
+    return "\(l.name) (\(l.code))"
+  }
+  /// Called with each context before it is evaluated (tests cancel it with `invalidate()`).
+  public var willEvaluate: ((LAContext) -> Void)?
+  static let log = Logger(subsystem: "io.github.abhishakenp.den", category: "vault")
+
   public init() {}
+
   public func authenticate(reason: String, _ done: @escaping @MainActor (Bool, LAContext?) -> Void) {
     let ctx = LAContext()
-    ctx.touchIDAuthenticationAllowableReuseDuration = 10
+    ctx.touchIDAuthenticationAllowableReuseDuration = 0  // every fill / copy asks
+    var pre: NSError?
+    let can = ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &pre)
+    var bioErr: NSError?
+    let bio = LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &bioErr)
+    Self.log.info("auth start: canEvaluate=\(can, privacy: .public) \(pre?.code ?? 0, privacy: .public) biometrics=\(bio, privacy: .public) \(bioErr?.code ?? 0, privacy: .public) type=\(ctx.biometryType.rawValue, privacy: .public)")
+    willEvaluate?(ctx)
     nonisolated(unsafe) let c = ctx
-    ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { ok, _ in
-      DispatchQueue.main.async { MainActor.assumeIsolated { done(ok, ok ? c : nil) } }
+    let start = Date()
+    ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { ok, error in
+      let code = (error as NSError?)?.code ?? 0
+      let ms = Int(Date().timeIntervalSince(start) * 1000)
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          let o = Outcome(ok: ok, code: ok ? 0 : code, name: ok ? "ok" : Self.name(code), ms: ms)
+          self.last = o
+          Self.log.info("auth end: \(o.name, privacy: .public) (\(o.code, privacy: .public)) after \(o.ms, privacy: .public) ms")
+          done(ok, ok ? c : nil)
+        }
+      }
     }
+  }
+
+  /// `LAError.Code` names (LAError.h).
+  public nonisolated static func name(_ code: Int) -> String {
+    switch code {
+    case LAError.authenticationFailed.rawValue: return "authenticationFailed"
+    case LAError.userCancel.rawValue: return "userCancel"
+    case LAError.userFallback.rawValue: return "userFallback"
+    case LAError.systemCancel.rawValue: return "systemCancel"
+    case LAError.passcodeNotSet.rawValue: return "passcodeNotSet"
+    case LAError.appCancel.rawValue: return "appCancel"
+    case LAError.invalidContext.rawValue: return "invalidContext"
+    case LAError.notInteractive.rawValue: return "notInteractive"
+    case LAError.biometryNotAvailable.rawValue: return "biometryNotAvailable"
+    case LAError.biometryNotEnrolled.rawValue: return "biometryNotEnrolled"
+    case LAError.biometryLockout.rawValue: return "biometryLockout"
+    case LAError.biometryDisconnected.rawValue: return "biometryDisconnected"
+    case LAError.biometryNotPaired.rawValue: return "biometryNotPaired"
+    case LAError.companionNotAvailable.rawValue: return "companionNotAvailable"
+    default: return "error"
+    }
+  }
+
+  /// A refusal the user chose (or that den caused), as opposed to a failure worth reporting.
+  public nonisolated static func isCancel(_ code: Int) -> Bool {
+    [LAError.userCancel.rawValue, LAError.systemCancel.rawValue, LAError.appCancel.rawValue, LAError.userFallback.rawValue].contains(code)
   }
 }
 
@@ -80,9 +149,14 @@ public final class SystemKeychain: VaultStore {
     return q
   }
 
+  /// Stores to read: the data protection keychain once den has written there (`acl`), and the
+  /// login keychain always (items saved while den was ad-hoc signed stay readable after it gets a
+  /// real signature).
+  var stores: [Bool] { dp() ? [true, false] : [false] }
+
   public func accounts() -> [VaultAccount] {
     var out: [VaultAccount] = []
-    for dp in dp() ? [true] : [false] {
+    for dp in stores {
       var q = base(dp: dp)
       q[kSecMatchLimit] = kSecMatchLimitAll
       q[kSecReturnAttributes] = true
@@ -96,12 +170,18 @@ public final class SystemKeychain: VaultStore {
         out.append(VaultAccount(origin: "\(proto)://\(host)" + (port == 0 ? "" : ":\(port)"), username: user, created: created * 1000))
       }
     }
-    return out.sorted { ($0.origin, $0.username) < ($1.origin, $1.username) }
+    var seen = Set<String>()
+    return out.filter { seen.insert($0.id).inserted }.sorted { ($0.origin, $0.username) < ($1.origin, $1.username) }
   }
 
+  /// The data protection keychain is tried once per launch while den is in `app` mode, so a den
+  /// that gained a real signature (with `keychain-access-groups`) moves to per-item ACLs.
+  nonisolated(unsafe) static var probedDataProtection = false
+
   public func save(origin: String, username: String, password: Data) -> OSStatus {
-    // Try the data protection keychain with a Touch ID ACL once; remember which store works.
-    if mode != "app" {
+    // Try the data protection keychain with a Touch ID (user presence) ACL; remember which store works.
+    if mode != "app" || !Self.probedDataProtection {
+      Self.probedDataProtection = true
       var err: Unmanaged<CFError>?
       if let acl = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, .userPresence, &err),
         var q = itemQuery(origin, username, dp: true)
@@ -111,7 +191,13 @@ public final class SystemKeychain: VaultStore {
         q[kSecValueData] = password
         q[kSecAttrLabel] = "den — " + (Self.parts(origin)?.host ?? origin)
         let s = SecItemAdd(q as CFDictionary, nil)
-        if s == errSecSuccess { setMode("acl"); return s }
+        SystemAuth.log.info("vault save: data protection keychain status \(s, privacy: .public)")
+        if s == errSecSuccess {
+          setMode("acl")
+          // One copy only: drop a login-keychain item for the same login.
+          if let old = itemQuery(origin, username, dp: false) { SecItemDelete(old as CFDictionary) }
+          return s
+        }
         if s != errSecMissingEntitlement { return s }
       }
       setMode("app")
@@ -130,19 +216,33 @@ public final class SystemKeychain: VaultStore {
     UserDefaults.standard.set(m, forKey: "den.vault.mode")
   }
 
+  /// The last read's Keychain status (logged; `vault.result` reports a failed read as "keychain <status>").
+  public private(set) var lastReadStatus: OSStatus = errSecSuccess
+
   public func password(for a: VaultAccount, context: LAContext?) -> Data? {
-    guard var q = itemQuery(a.origin, a.username, dp: dp()) else { return nil }
-    q[kSecReturnData] = true
-    q[kSecMatchLimit] = kSecMatchLimitOne
-    if let context { q[kSecUseAuthenticationContext] = context }
-    var res: CFTypeRef?
-    guard SecItemCopyMatching(q as CFDictionary, &res) == errSecSuccess else { return nil }
-    return res as? Data
+    for dp in stores {
+      guard var q = itemQuery(a.origin, a.username, dp: dp) else { return nil }
+      q[kSecReturnData] = true
+      q[kSecMatchLimit] = kSecMatchLimitOne
+      // The context den just evaluated: an ACL item doesn't ask a second time.
+      if let context { q[kSecUseAuthenticationContext] = context }
+      var res: CFTypeRef?
+      let s = SecItemCopyMatching(q as CFDictionary, &res)
+      lastReadStatus = s
+      SystemAuth.log.info("vault read: \(dp ? "data protection" : "login", privacy: .public) keychain status \(s, privacy: .public)")
+      if s == errSecSuccess { return res as? Data }
+      if s != errSecItemNotFound { return nil }
+    }
+    return nil
   }
 
   public func delete(_ a: VaultAccount) -> Bool {
-    guard let q = itemQuery(a.origin, a.username, dp: dp()) else { return false }
-    return SecItemDelete(q as CFDictionary) == errSecSuccess
+    var deleted = false
+    for dp in stores {
+      guard let q = itemQuery(a.origin, a.username, dp: dp) else { return false }
+      if SecItemDelete(q as CFDictionary) == errSecSuccess { deleted = true }
+    }
+    return deleted
   }
 }
 

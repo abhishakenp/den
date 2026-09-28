@@ -1,38 +1,37 @@
 import AppKit
 import CordisValue
 
-/// Rounded floating panel surface with shadow, tinted by the palette.
+/// Rounded floating panel: an elevated surface (Elevation.swift: layered shadow, rim, edge) tinted
+/// by the palette. Subclasses pick their `elevation` level.
 @MainActor
 class PanelView: FlippedView, Themable {
   var radius: CGFloat
   let surface = FlippedView()
+  var elevation: Elevation = .modal
+  var showsRim = true
+  var showsEdge = true
+  var palette: Palette?
   init(radius: CGFloat) {
     self.radius = radius
     super.init(frame: .zero)
     wantsLayer = true
-    layer?.shadowColor = NSColor.black.cgColor
-    layer?.shadowOpacity = 0.28  // estimate; apply(_:) sets the theme's PopoverShadow
-    layer?.shadowRadius = 24  // estimate
-    layer?.shadowOffset = CGSize(width: 0, height: -8)
     surface.wantsLayer = true
     surface.layer?.cornerRadius = radius
     surface.layer?.cornerCurve = .continuous
     surface.layer?.masksToBounds = true
-    surface.layer?.borderWidth = 0.5
     addSubview(surface)
   }
   required init?(coder: NSCoder) { fatalError() }
   func apply(_ p: Palette) {
+    palette = p
     surface.layer?.backgroundColor = p.surface.cgColor
-    surface.layer?.borderColor = p.hairline.cgColor
-    layer?.shadowColor = p.shadowColor.cgColor
-    layer?.shadowOpacity = min(0.45, p.shadowOpacity)
     SurfaceGrain.apply(to: surface, palette: p)
+    Elevation.apply(elevation, host: self, surface: surface, radius: radius, palette: p, rim: showsRim, edge: showsEdge)
   }
   override func layout() {
     super.layout()
     surface.frame = bounds
-    layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+    if let p = palette { Elevation.apply(elevation, host: self, surface: surface, radius: radius, palette: p, rim: showsRim, edge: showsEdge) }
   }
 }
 
@@ -156,15 +155,21 @@ final class DialogView: PanelView {
 
   static func isDefault(_ b: Value) -> Bool { b["default"].bool ?? (b.str("style") == "default") }
 
+  /// What Escape presses: the `cancel` button, or the only button of a one-button dialog (a page's
+  /// alert(), like NSAlert).
+  var cancelIndex: Int? {
+    let b = node.list("buttons")
+    return b.firstIndex { $0.str("style") == "cancel" } ?? (b.count == 1 ? 0 : nil)
+  }
+
   /// Return / Escape trigger the default / cancel buttons.
   override func keyDown(with event: NSEvent) {
-    let styles = node.list("buttons").map { $0.str("style") }
     if event.keyCode == 36 || event.keyCode == 76, let i = node.list("buttons").firstIndex(where: Self.isDefault) { pressed(i); return }
-    if event.keyCode == 53, let i = styles.firstIndex(of: "cancel") { pressed(i); return }
+    if event.keyCode == 53, let i = cancelIndex { pressed(i); return }
     super.keyDown(with: event)
   }
   override func cancelOperation(_ sender: Any?) {
-    if let i = node.list("buttons").firstIndex(where: { $0.str("style") == "cancel" }) { pressed(i) }
+    if let i = cancelIndex { pressed(i) }
   }
   override var acceptsFirstResponder: Bool { true }
 

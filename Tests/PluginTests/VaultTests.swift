@@ -185,6 +185,103 @@ struct VaultTests {
     #expect(e.store.items["https://new.test new@example.com"]?.1 == Data(p1.utf8))
   }
 
+  /// The key in the URL pill: shown while the page in front has saved logins; a click focuses the
+  /// sign-in field, which opens the suggestions under it.
+  @Test func keyButtonInTheURLPill() async throws {
+    let e = start()
+    defer { closeAll(e.h) }
+    // The tabs plugin's URL-pill buttons (tabs.pillButtons), recorded.
+    var pill: [String: [Value]] = [:]
+    e.h.rt.plugins.provide("tabs") { m, a in
+      if m == "pillButtons" { MainActor.assumeIsolated { pill[a.s("webview")] = a.a("buttons") } }
+      return .ok
+    }
+    _ = e.store.save(origin: "https://login.test", username: "ada", password: Data("pw".utf8))
+    let w = try await page(e.h, "t6", Self.login, "https://login.test/")
+    e.h.rt.call("content", "show", ["panes": ["t6"]])
+    #expect(try await wait { pill["t6"]?.first?.s("id") == "passwords.key" })
+    #expect(pill["t6"]?.first?.s("tooltip") == "Fill your saved password for login.test")
+    #expect(e.h.rt.call("vault", "accounts", ["webview": "t6"]).array?.count == 1)
+    e.h.action("passwords.key", "click", ["webview": "t6"])
+    #expect(try await wait { e.events.contains { $0.0 == "vault.focus" } })
+    #expect(e.h.rt.vault.suggestions["t6"]?.stack.arrangedSubviews.count == 1)
+    #expect(await js(w, "return document.activeElement.id") == "p")
+    // A page without saved logins: no key.
+    w.loadHTMLString(Self.login, baseURL: URL(string: "https://elsewhere.test/"))
+    #expect(try await wait { pill["t6"]?.isEmpty == true })
+  }
+
+  /// Username-first sign-ins (Google): the email step has no password field, yet the saved login is
+  /// offered and fills the username.
+  @Test func usernameFirstStep() async throws {
+    let e = start()
+    defer { closeAll(e.h) }
+    _ = e.store.save(origin: "https://accounts.test", username: "ada@example.com", password: Data("pw".utf8))
+    let w = try await page(e.h, "t7", "<form><input id=u type=email autocomplete='username webauthn'><button>Next</button></form>", "https://accounts.test/")
+    await js(w, "document.getElementById('u').focus()")
+    #expect(try await wait { e.events.contains { $0.0 == "vault.focus" } })
+    #expect(e.h.rt.vault.suggestions["t7"]?.stack.arrangedSubviews.count == 1)
+    e.core.picked("t7", "fill:https://accounts.test ada@example.com")
+    #expect(try await wait { e.events.contains { $0.0 == "vault.result" && $0.1.b("ok") } })
+    #expect(await js(w, "return document.getElementById('u').value") == "ada@example.com")
+    #expect(e.auth.asked == ["fill your password for accounts.test"])
+  }
+
+  /// The real path on this Mac: the login Keychain (or the data protection one) and a real
+  /// `LAContext`. Save from a mock login page, reload, focus, the suggestion appears, pick it, and
+  /// Touch ID is really asked for ("fill your password for …"). Nobody touches the sensor, so the
+  /// test cancels the prompt after 3 s and checks the answer is a cancel (the prompt was on
+  /// screen), not biometryNotAvailable or a Keychain error. It shows the system Touch ID sheet for
+  /// 3 s, so it only runs with DEN_TOUCHID_PROBE=1.
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["DEN_TOUCHID_PROBE"] == "1"))
+  func realTouchIDPromptOnFill() async throws {
+    let h = Harness()
+    let store = SystemKeychain(), auth = SystemAuth()
+    h.rt.vault.store = store
+    h.rt.vault.auth = auth
+    h.record(["vault.focus", "vault.captured", "vault.result"])
+    let core = PasswordsCore(env: h.env)
+    core.start()
+    let origin = "https://den-touchid-probe.invalid"
+    defer {
+      for a in store.accounts() where a.origin == origin { _ = store.delete(a) }
+      closeAll(h)
+    }
+    var w = try await page(h, "tid", Self.login, origin + "/signin")
+    await type(w, ["u": "probe@den.test", "p": "probe-pw-1"])
+    await js(w, "document.getElementById('go').click()")
+    #expect(try await wait { h.rt.ui.dialogOpen })
+    h.action("passwords.save", "button", ["button": "save"])
+    #expect(store.accounts().contains { $0.origin == origin }, "saved to the \(store.mode) keychain")
+    // Reload, focus the field: the suggestion.
+    closeAll(h)
+    w = try await page(h, "tid2", Self.login, origin + "/signin")
+    await js(w, "document.getElementById('p').focus()")
+    #expect(try await wait { h.rt.vault.suggestions["tid2"]?.stack.arrangedSubviews.count == 1 })
+    var evaluated: LAContext?
+    auth.willEvaluate = { ctx in
+      evaluated = ctx
+      nonisolated(unsafe) let c = ctx
+      DispatchQueue.main.asyncAfter(deadline: .now() + 3) { c.invalidate() }
+    }
+    core.picked("tid2", "fill:" + origin + " probe@den.test")
+    #expect(try await wait { h.events.contains { $0.0 == "vault.result" } })
+    let r = h.events.first { $0.0 == "vault.result" }!.1
+    let o = try #require(auth.last)
+    print("touchid.probe mode=\(store.mode) result=\(r) outcome=\(o.name) code=\(o.code) ms=\(o.ms) biometryType=\(evaluated?.biometryType.rawValue ?? -1)")
+    #expect(evaluated != nil)
+    // The prompt was really on screen: either someone touched the sensor (then the Keychain read
+    // and the fill ran), or it stayed up until den cancelled it (appCancel, -9, after ~3 s).
+    // Never an immediate failure such as biometryNotAvailable (-6) or a Keychain error.
+    let filled = await js(w, "return document.getElementById('p').value")
+    if o.ok {
+      #expect(r.b("ok") && filled == "probe-pw-1")
+    } else {
+      #expect(SystemAuth.isCancel(o.code) && o.ms >= 2500, "\(o.name) \(o.code) after \(o.ms) ms")
+      #expect(r.s("error") == "cancelled" && filled == "")
+    }
+  }
+
   @Test func strongPasswords() {
     let all = (0..<200).map { _ in VaultService.strongPassword() }
     #expect(Set(all).count == 200)

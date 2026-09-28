@@ -58,6 +58,8 @@ public final class DenRuntime {
     schedule = ScheduleService(host: host, storage: storage)
     pageStyle = PageStyleService(host: host, webviews: webviews)
     vault = VaultService(host: host, webviews: webviews)
+    // No platform passkeys without Apple's entitlement: pages are told so (Passkeys.swift).
+    webviews.configureHooks.append { _, c in Passkeys.configure(c) }
     // The real profile keeps extensions next to its storage and a persistent controller; any other
     // storage root (tests, --demo, --storage) gets its own folder and a non-persistent controller.
     let isDefault = storageRoot.standardizedFileURL == StorageService.defaultRoot.standardizedFileURL

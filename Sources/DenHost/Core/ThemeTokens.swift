@@ -51,6 +51,10 @@ public struct ThemeTokens: Equatable, Sendable {
   /// Toasts: a deep, theme-blended chip with light text (spec §6: theme-tinted toasts).
   public var toast: RGB, onToast: RGB
   public var hairline: RGBA, hover: RGBA, pressed: RGBA, shadow: RGBA
+  /// Elevated surfaces (Elevation.swift): the spec's PopoverShadow (#151C32 α0.30 light / α0.80
+  /// dark, spec §3) for the layered shadow, the hairline edge around the surface, and the light
+  /// rim along its top edge (brightest at the top, gone by a third of the way down).
+  public var elevationShadow: RGBA, edge: RGBA, rim: RGBA
   /// Black dim behind modal dialogs (spec §3: α 0.55) and sheets (0.35).
   public var dialogDim: CGFloat, sheetDim: CGFloat
   /// Grain drawn on surfaces (a fraction of the window's grain, never louder).
@@ -178,6 +182,10 @@ public struct ThemeTokens: Equatable, Sendable {
       toast: toast, onToast: white,
       hairline: RGBA(hairFg, dark ? 0.1 : 0.08), hover: RGBA(hairFg, dark ? 0.07 : 0.05), pressed: RGBA(hairFg, dark ? 0.12 : 0.09),
       shadow: RGBA(dark ? RGB(0, 0, 0) : RGB(0x15 / 255, 0x1C / 255, 0x32 / 255), dark ? 0.6 : 0.3),  // PopoverShadow (spec §3)
+      elevationShadow: RGBA(RGB(0x15 / 255, 0x1C / 255, 0x32 / 255), dark ? 0.8 : 0.3),  // PopoverShadow (spec §3), exact
+      // estimates, tuned on snapshots: a crisp edge that separates the surface from a dimmed page
+      edge: RGBA(dark ? white : RGB(0x15 / 255, 0x1C / 255, 0x32 / 255), dark ? 0.12 : 0.10),
+      rim: RGBA(white, dark ? 0.16 : 0.85),
       dialogDim: 0.55, sheetDim: 0.35,
       grain: theme.grain * 0.5)
   }

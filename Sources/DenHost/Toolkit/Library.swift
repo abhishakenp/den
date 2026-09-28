@@ -68,7 +68,6 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
   var headers: [NSTextField] = []
   var rows: [Row] = []
   var node: Value = .null
-  var palette: Palette?
   var now: () -> Date = Date.init
   let emit: (String, String, Value) -> Void
 

@@ -353,12 +353,13 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
   var node: Value = .null
   var rowIds: [String] = []
   var selected = ""
-  var palette: Palette?
   let emit: (String, String, Value) -> Void
 
   init(emit: @escaping (String, String, Value) -> Void) {
     self.emit = emit
     super.init(radius: Tokens.commandBarCornerRadius)
+    elevation = .bar
+    showsEdge = false  // its own two-tone border (spec §2)
     input.isBordered = false
     input.drawsBackground = false
     input.focusRingType = .none

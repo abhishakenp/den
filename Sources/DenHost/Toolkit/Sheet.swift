@@ -57,8 +57,10 @@ final class SheetView: PanelView {
     node = v
     radius = isPage ? Tokens.cardCornerRadius : Tokens.sheetCornerRadius
     surface.layer?.cornerRadius = radius
-    layer?.shadowOpacity = isPage ? 0.12 : 0.28  // estimate
-    layer?.shadowRadius = isPage ? 3 : 24  // estimate
+    // A sheet floats like a dialog; a page sits in the content area like a card, with no rim.
+    elevation = isPage ? .card : .modal
+    showsRim = !isPage
+    showsEdge = !isPage
     icon.spec = v.str("icon")
     icon.isHidden = icon.spec.isEmpty
     titleLabel.stringValue = v.str("title")

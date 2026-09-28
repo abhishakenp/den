@@ -96,8 +96,9 @@ Observed output (verbatim):
 
 ## 4. What den does
 
-**Now (no entitlement, ad-hoc):**
-- Nothing to implement. WebKit exposes WebAuthn and handles the ceremony. den has no WebAuthn or AuthenticationServices code (`grep` of `Sources/`: none) and blocks nothing.
+**Now (no entitlement, ad-hoc or "den Local Signing"):**
+- WebKit exposes WebAuthn and handles the ceremony; den adds no AuthenticationServices code.
+- **Fallback (2026-09-28, `Sources/DenHost/Services/Passkeys.swift`).** A user reported Google trying a passkey and ending on "Something went wrong — Make sure Bluetooth is on" with no Touch ID prompt: `getClientCapabilities()` claims `hybridTransport` and `passkeyPlatformAuthenticator` (§3) although both fail. den now injects a document-start page-world script that makes `isUserVerifyingPlatformAuthenticatorAvailable()` / `isConditionalMediationAvailable()` resolve false and those capability entries false, so sites go to the password step. `navigator.credentials` is not overwritten. Considered and rejected: WebKit's private `WebAuthenticationEnabled` feature (present in macOS 26.5's `WKPreferences._features`, default on), which removes `PublicKeyCredential` altogether. The setting (General ▸ "Skip passkey sign-in, use the password") turns itself off once the process has the entitlement. Whether Google then skips the passkey step on a real account is **UNVERIFIED** (no test account); the API answers are verified in `PasskeysTests`.
 - Keep it that way:
   - Don't turn on `backgroundTextExtractionEnabled` for tab web views.
   - Don't overwrite `navigator.credentials` in injected scripts.

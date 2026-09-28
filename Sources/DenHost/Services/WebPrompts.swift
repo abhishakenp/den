@@ -30,15 +30,13 @@ public final class WebPrompts {
   public private(set) var queue: [Request] = []
   public private(set) var current: Request?
   private var dialog: DialogView?
-  private let backdrop = BackdropView()
+  private let backdrop = ModalBackdrop(dim: Tokens.dialogBackdropAlpha)
   /// "<origin> <camera|microphone>" -> allowed, for this session.
   public private(set) var mediaDecisions: [String: Bool] = [:]
 
   init(window: DenWindowController?, palette: @escaping () -> Palette?) {
     self.window = window
     self.palette = palette
-    backdrop.wantsLayer = true
-    backdrop.layer?.backgroundColor = NSColor(white: 0, alpha: Tokens.dialogBackdropAlpha).cgColor
   }
 
   public var visible: Bool { current != nil }
@@ -165,10 +163,14 @@ public final class WebPrompts {
     guard let container else { return }
     backdrop.frame = container.bounds
     backdrop.autoresizingMask = [.width, .height]
+    Elevation.reset(backdrop)
     container.addSubview(backdrop)
     container.addSubview(d)
     layout(in: container)
-    d.window?.makeFirstResponder(d.focusTarget)
+    ModalFocus.present(d) { [weak d] in d?.focusTarget }
+    // Elevation.swift: the blurred page under the dim, and the spring in.
+    if let root = container.window?.contentView { backdrop.captureBlur(root: root, hiding: container === window?.overlays ? [container] : [backdrop, d]) }
+    Elevation.animateIn(d, backdrop: backdrop)
   }
 
   private func layout(in container: NSView) {
@@ -181,8 +183,15 @@ public final class WebPrompts {
   }
 
   private func hide() {
-    dialog?.removeFromSuperview()
+    guard let d = dialog else { return backdrop.removeFromSuperview() }
     dialog = nil
-    backdrop.removeFromSuperview()
+    ModalFocus.dismiss(d)
+    // The next queued dialog reuses the backdrop at once; otherwise both fade out.
+    Elevation.animateOut(d, backdrop: queue.isEmpty ? backdrop : nil) { [weak self] in
+      d.removeFromSuperview()
+      guard let self, self.dialog == nil else { return }
+      self.backdrop.removeFromSuperview()
+      Elevation.reset(self.backdrop)
+    }
   }
 }

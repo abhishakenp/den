@@ -486,12 +486,11 @@ final class ThemePickerNode: NodeView {
 final class PopoverPanel: PanelView {
   var content: NodeView?
   var anchor = ""
-  init() { super.init(radius: Tokens.themePickerCornerRadius) }
-  required init?(coder: NSCoder) { fatalError() }
-  override func apply(_ p: Palette) {
-    super.apply(p)
-    surface.layer?.borderColor = NSColor(white: 1, alpha: p.dark ? 0.08 : 0.5).cgColor  // estimate
+  init() {
+    super.init(radius: Tokens.themePickerCornerRadius)
+    elevation = .popover
   }
+  required init?(coder: NSCoder) { fatalError() }
   var contentSize: CGSize {
     guard let c = content else { return .zero }
     return CGSize(width: c.preferredWidth ?? 320, height: c.height(for: c.preferredWidth ?? 320))

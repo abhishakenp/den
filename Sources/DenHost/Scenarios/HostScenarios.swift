@@ -10,7 +10,7 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard", "briefingSheet", "connectionsSheet", "findBar", "dropOnTab", "tabAudio", "iconFallbacks"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "dialogQuitSandy", "dialogPassword", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard", "briefingSheet", "connectionsSheet", "findBar", "dropOnTab", "tabAudio", "iconFallbacks"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -43,6 +43,19 @@ public enum HostScenarios {
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
       rt.call("ui", "set", ["slot": "dialog", "tree": dialogs[name]!])
+    case "dialogQuitSandy", "dialogPassword":
+      // The quit sheet on a sandy, grainy space; the passwords plugin's save dialog.
+      if name == "dialogQuitSandy" {
+        seedSidebar(rt, appearance: appearance, colors: ["#E8D5B0", "#D9BF8C"])
+        rt.call("window", "setTheme", ["colors": ["#E8D5B0", "#D9BF8C"], "intensity": 0.75, "grain": 0.8, "appearance": .string(appearance)])
+      } else {
+        seedSidebar(rt, appearance: appearance)
+      }
+      showContent(rt)
+      // After the page has loaded, so the blurred backdrop shows it.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+        rt.call("ui", "set", ["slot": "dialog", "tree": name == "dialogPassword" ? passwordDialog : dialogs["dialogQuit"]!])
+      }
     case "peekCard":
       seedSidebar(rt, appearance: appearance)
       showContent(rt)
@@ -214,6 +227,12 @@ public enum HostScenarios {
     let id = page(rt, id: "t1", title: "Example Domain", body: "This page is local HTML rendered by den's scenario runner, so snapshots never need the network.")
     rt.call("content", "show", ["panes": [.string(id)]])
   }
+
+  /// The passwords plugin's save dialog (PasswordsCore.captured).
+  static let passwordDialog: Value = ["type": "dialog", "id": "passwords.save", "icon": "sf:key.fill", "iconStyle": "accent",
+    "title": "Save password for accounts.google.com?", "message": "ada@example.com · Stored in your Keychain, filled only after Touch ID.",
+    "buttons": [["id": "never", "title": "Never for This Site", "style": "secondary"], ["id": "cancel", "title": "Not Now", "style": "cancel"],
+                ["id": "save", "title": "Save", "style": "default"]]]
 
   /// The dialog variants plugins show (den's own wording; layout per spec §5).
   static let dialogs: [String: Value] = [

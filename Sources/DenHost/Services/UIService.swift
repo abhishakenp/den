@@ -8,8 +8,7 @@ import CordisValue
 ///                                sidebar.today*, sidebar.footer, overlay.commandBar, overlay.peek, dialog, toast
 ///                                (* = per space page; `page` defaults to the current page). tree null clears.
 ///   setPages {count, current?}   number of space pages in the swipeable sidebar pager
-///   showPage {page, animated?}   slide to a page (also blends the window theme)
-///   get                          -> {page, pages, overlays: [slot]}
+///   showPage {page, animated?}   slide to a page (also blends the window theme)///   get                          -> {page, pages, overlays: [slot]}
 /// Event: ui.action {id, action, value}. Node actions are documented on each node type;
 ///   sidebar-level: {id:"sidebar", action:"page", value:n} after a swipe, {id:"sidebar", action:"doubleClick"}.
 @MainActor
@@ -24,7 +23,7 @@ public final class UIService: HostService {
   lazy var commandBar = CommandBarView(emit: { [weak self] in self?.emit($0, $1, $2) })
   lazy var dialog = DialogView(emit: { [weak self] in self?.emit($0, $1, $2) })
   let commandBackdrop = BackdropView()
-  let dialogBackdrop = BackdropView()
+  let dialogBackdrop = ModalBackdrop(dim: Tokens.dialogBackdropAlpha)
   var toasts: [ToastView] = []
   lazy var library = LibraryView(emit: { [weak self] in self?.emit($0, $1, $2) })
   let libraryBackdrop = BackdropView()
@@ -83,8 +82,6 @@ public final class UIService: HostService {
     libraryBackdrop.wantsLayer = true
     libraryBackdrop.layer?.backgroundColor = NSColor(white: 0, alpha: Tokens.libraryBackdropAlpha).cgColor
     libraryBackdrop.onClick = { [weak self] in self?.library.send("dismiss") }
-    dialogBackdrop.wantsLayer = true
-    dialogBackdrop.layer?.backgroundColor = NSColor(white: 0, alpha: Tokens.dialogBackdropAlpha).cgColor
     let prev = wc.onLayout
     wc.onLayout = { [weak self] in prev?(); self?.layoutOverlays() }
     wc.background.onAppearanceChange = { [weak self] in self?.refreshPalette() }
@@ -174,6 +171,7 @@ public final class UIService: HostService {
       commandBarOpen = false
       commandBackdrop.removeFromSuperview()
       commandBar.removeFromSuperview()
+      ModalFocus.dismiss(commandBar)
       return
     }
     commandBar.update(tree, palette: renderer.palette)
@@ -182,7 +180,7 @@ public final class UIService: HostService {
       wc.overlays.addSubview(commandBackdrop)
       wc.overlays.addSubview(commandBar)
       layoutOverlays()
-      wc.window.makeFirstResponder(commandBar.input)
+      ModalFocus.present(commandBar) { [weak self] in self?.commandBar.input }
       commandBar.input.currentEditor()?.selectAll(nil)
       // Spec §2/§7: the command bar appears and disappears in one frame, no animation.
     }
@@ -191,19 +189,33 @@ public final class UIService: HostService {
 
   func setDialog(_ tree: Value) {
     if tree.isNull {
+      guard dialogOpen else { return }
       dialogOpen = false
-      dialogBackdrop.removeFromSuperview()
-      dialog.removeFromSuperview()
+      ModalFocus.dismiss(dialog)
+      // Elevation.swift: a quick fade and settle, then the views go (unless a new dialog came).
+      Elevation.animateOut(dialog, backdrop: dialogBackdrop) { [weak self] in
+        guard let self, !self.dialogOpen else { return }
+        self.dialogBackdrop.removeFromSuperview()
+        self.dialog.removeFromSuperview()
+        Elevation.reset(self.dialog, self.dialogBackdrop)
+      }
       return
     }
     dialog.update(tree, palette: renderer.palette)
-    if !dialogOpen {
+    let isNew = !dialogOpen
+    if isNew {
       dialogOpen = true
+      Elevation.reset(dialog, dialogBackdrop)
       wc.overlays.addSubview(dialogBackdrop)
       wc.overlays.addSubview(dialog)
     }
-    wc.window.makeFirstResponder(dialog.focusTarget)
+    ModalFocus.present(dialog) { [weak self] in self?.dialog.focusTarget }
     layoutOverlays()
+    if isNew {
+      // Blur what's behind (one snapshot) under the spec's α0.55 dim; spring the dialog in.
+      if let root = wc.window.contentView { dialogBackdrop.captureBlur(root: root, hiding: [wc.overlays]) }
+      Elevation.animateIn(dialog, backdrop: dialogBackdrop)
+    }
   }
 
   func showToast(_ tree: Value) {
@@ -265,6 +277,7 @@ public final class UIService: HostService {
       libraryBackdrop.removeFromSuperview()
       library.removeFromSuperview()
       library.node = .null
+      ModalFocus.dismiss(library)
       return
     }
     library.update(tree, palette: renderer.palette)
@@ -279,7 +292,7 @@ public final class UIService: HostService {
         wc.overlays.addSubview(library)
       }
       layoutOverlays()
-      wc.window.makeFirstResponder(library.input)
+      ModalFocus.present(library) { [weak self] in self?.library.input }
     }
     layoutOverlays()
   }
@@ -292,6 +305,7 @@ public final class UIService: HostService {
       guard let v = sheets.removeValue(forKey: slot) else { return }
       v.removeFromSuperview()
       sheetBackdrops.removeValue(forKey: slot)?.removeFromSuperview()
+      ModalFocus.dismiss(v)
       return
     }
     let isNew = sheets[slot] == nil
@@ -322,7 +336,7 @@ public final class UIService: HostService {
       }
     }
     layoutOverlays()
-    if isNew { wc.window.makeFirstResponder(v) }
+    if isNew { ModalFocus.present(v) }
   }
 
   func layoutSheets(in b: NSRect) {
@@ -351,6 +365,7 @@ public final class UIService: HostService {
       popover.removeFromSuperview()
       popover.content?.removeFromSuperview()
       popover.content = nil
+      ModalFocus.dismiss(popover)
       return
     }
     popover.anchor = tree.str("anchor")
@@ -363,7 +378,7 @@ public final class UIService: HostService {
       popover.apply(renderer.palette)
     }
     layoutOverlays()
-    if let c = popover.content { wc.window.makeFirstResponder(c) }
+    ModalFocus.present(popover) { [weak self] in self?.popover.content }
   }
 
   /// Frame of a rendered sidebar node (by id) in overlay coordinates.

@@ -79,6 +79,13 @@ public final class VaultService: HostService {
     case "status":
       return ["enabled": .bool(enabled), "mode": .string(store.mode), "unlocked": .bool(unlocked)]
     case "accounts":
+      // `webview`: the logins for the origin that page shows now (den derives it, not the plugin).
+      if !args.str("webview").isEmpty {
+        let r = webviews.record(args.str("webview"))
+        let origin = Self.origin(of: r?.webView?.url ?? r.flatMap { URL(string: $0.url) })
+        guard !origin.isEmpty else { return .array([]) }
+        return .array(store.accounts().filter { $0.origin == origin }.map { a in ["id": .string(a.id), "origin": .string(a.origin), "username": .string(a.username)] })
+      }
       let origin = args.str("origin")
       guard !origin.isEmpty || unlocked else { return .error("vault: locked") }
       return .array(store.accounts().filter { origin.isEmpty || $0.origin == origin }.map(Self.value))
@@ -90,6 +97,13 @@ public final class VaultService: HostService {
     case "dismiss":
       captures[args.str("capture")] = nil
       return .ok
+    case "focusLogin":
+      // Focuses the page's sign-in field (password, else username); the listener then reports
+      // `vault.focus` and the suggestions open under it, as if the user had clicked the field.
+      guard let w = webviews.record(args.str("webview"))?.webView else { return .error("vault: no live web view") }
+      w.window?.makeFirstResponder(w)
+      w.callAsyncJavaScript(Self.focusScript, arguments: [:], in: nil, in: Self.world) { _ in }
+      return .ok
     case "fill": return fill(args)
     case "generate": return generate(args)
     // thin-host: feature-specific, migrate to plugin (unlock window (5 min) and prompt strings are passwords policy)
@@ -98,7 +112,7 @@ public final class VaultService: HostService {
       auth.authenticate(reason: args.str("reason", "show your saved passwords")) { [weak self] ok, _ in
         guard let self else { return }
         if ok { self.unlockedUntil = self.clock().addingTimeInterval(300) }
-        self.result(request, "unlock", ok, ok ? nil : "cancelled")
+        self.result(request, "unlock", ok, ok ? nil : self.refusal)
       }
       return ["request": .string(request)]
     case "lock":
@@ -129,6 +143,11 @@ public final class VaultService: HostService {
     defer { nextRequest += 1 }
     return "vault-\(nextRequest)"
   }
+
+  /// "cancelled" when the user (or den) cancelled Touch ID; otherwise the LAError, e.g.
+  /// "auth biometryNotAvailable (-6)".
+  var refusal: String { auth.failure.map { "auth " + $0 } ?? "cancelled" }
+  var keychainError: String { "keychain " + String((store as? SystemKeychain)?.lastReadStatus ?? errSecItemNotFound) }
 
   func result(_ request: String, _ method: String, _ ok: Bool, _ error: String?) {
     var v: Value = ["request": .string(request), "method": .string(method), "ok": .bool(ok)]
@@ -215,8 +234,8 @@ public final class VaultService: HostService {
     guard let f = focused[id], f.origin == a.origin, let w = webviews.record(id)?.webView else { return .error("vault: no login field for \(a.origin) is focused") }
     auth.authenticate(reason: "fill your password for \(URL(string: a.origin)?.host ?? a.origin)") { [weak self] ok, ctx in
       guard let self else { return }
-      guard ok else { return self.result(request, "fill", false, "cancelled") }
-      guard let data = self.store.password(for: a, context: ctx) else { return self.result(request, "fill", false, "keychain") }
+      guard ok else { return self.result(request, "fill", false, self.refusal) }
+      guard let data = self.store.password(for: a, context: ctx) else { return self.result(request, "fill", false, self.keychainError) }
       self.inject(w, f.frame, origin: a.origin, username: a.username, password: String(decoding: data, as: UTF8.self), all: false, request: request, method: "fill")
     }
     return ["request": .string(request)]
@@ -264,7 +283,7 @@ public final class VaultService: HostService {
     guard let a = account(args.str("account")) else { return .error("vault: no account") }
     auth.authenticate(reason: "copy your password for \(URL(string: a.origin)?.host ?? a.origin)") { [weak self] ok, ctx in
       guard let self else { return }
-      guard ok, let data = self.store.password(for: a, context: ctx) else { return self.result(request, "copy", false, ok ? "keychain" : "cancelled") }
+      guard ok, let data = self.store.password(for: a, context: ctx) else { return self.result(request, "copy", false, ok ? self.keychainError : self.refusal) }
       let pb = NSPasteboard.general
       pb.clearContents()
       // Concealed: clipboard managers that honor it don't record the password.
@@ -321,11 +340,23 @@ public final class VaultService: HostService {
     addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('button,input[type=submit],input[type=button],[role=button]');
     if(b){const s=scope(b);if(pwds(s).some(x=>x.value))capture(s)}},true);
     addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target instanceof I){const s=scope(e.target);if(pwds(s).some(x=>x.value))capture(s)}},true);
-    addEventListener('focusin',e=>{const t=e.target;if(!(isPw(t)||textish(t)))return;const s=scope(t);if(!pwds(s).length)return;
+    addEventListener('focusin',e=>{const t=e.target;if(!(isPw(t)||textish(t)))return;const s=scope(t);
+    if(!pwds(s).length&&!(t.type==='email'||/username/.test(t.autocomplete||'')))return;
     if(!isPw(t)&&!/user|mail|login|account|name|phone/i.test((t.autocomplete||'')+' '+t.name+' '+t.id+' '+t.type))return;
     const r=t.getBoundingClientRect();
     post({type:'focus',field:isPw(t)?'password':'username',signup:isPw(t)&&(t.autocomplete==='new-password'||(signup(s)&&t.autocomplete!=='current-password')),rect:[r.left,r.top,r.width,r.height]})},true);
     addEventListener('focusout',e=>{if(isPw(e.target)||textish(e.target))post({type:'blur'})},true);})();
+    """
+
+  /// The first visible sign-in field: an empty password field, else a username / email field.
+  static let focusScript = """
+    const vis = e => !e.disabled && e.offsetParent !== null;
+    const f = [...document.querySelectorAll('input[type=password]')].find(vis)
+      || [...document.querySelectorAll('input[autocomplete~=username],input[type=email],input[name*=user i],input[name*=login i]')].find(vis);
+    if (!f) return 'none';
+    if (document.activeElement === f) f.blur();
+    f.focus();
+    return 'ok';
     """
 
   /// Arguments o (expected origin), u, p, all (fill every password field: generated passwords).
@@ -336,7 +367,13 @@ public final class VaultService: HostService {
     const a = document.activeElement;
     const s = (a && a.form) || document;
     const pw = [...s.querySelectorAll('input[type=password]')];
-    if (!pw.length) return 'no password field';
+    if (!pw.length) {
+      // A username-first sign-in step (Google, Microsoft): only the username field is on the page.
+      const f = (a instanceof HTMLInputElement && a.type !== 'password') ? a : s.querySelector('input[autocomplete~=username],input[type=email]');
+      if (all || !u || !f) return 'no password field';
+      set(f, u);
+      return 'ok';
+    }
     if (all) { pw.forEach(x => set(x, p)); return 'ok'; }
     if (u) {
       const inputs = [...s.querySelectorAll('input')];

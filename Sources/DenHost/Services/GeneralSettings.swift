@@ -35,6 +35,11 @@ enum GeneralSettings {
     // Accent color: the space's colors (default) or the system accent. Read before the first
     // frame (one small storage read) so the window never flashes the other accent.
     if s.stored("general").first(where: { $0.0 == "accent" })?.1.string == "system" { Palette.accentSource = .system }
+    // Passkey fallback (Passkeys.swift): applies to pages loaded in web views created afterwards.
+    Passkeys.fallbackSetting = s.stored("general").first(where: { $0.0 == "passkeyFallback" })?.1.bool ?? true
+    rt.host.on("settings.changed") { v in
+      if v.str("id") == "general", v.str("key") == "passkeyFallback" { Passkeys.fallbackSetting = v["value"].bool ?? true }
+    }
     rt.host.on("settings.changed") { [unowned rt] v in
       guard v.str("id") == "general", v.str("key") == "accent" else { return }
       Palette.accentSource = v["value"].string == "system" ? .system : .theme
@@ -66,6 +71,11 @@ enum GeneralSettings {
        "subtitle": "Buttons, selection and toggles take their color from the current space, or from macOS.",
        "options": [["value": "theme", "title": "Space colors"], ["value": "system", "title": "System accent"]], "default": "theme"],
     ]
+    out.append(["key": "passkeyFallback", "type": "toggle", "title": "Skip passkey sign-in, use the password",
+                "subtitle": .string(Passkeys.entitled
+                  ? "den can use passkeys, so sites get WebKit's real answer and this has no effect."
+                  : "den can't use passkeys yet (it needs Apple's browser entitlement). Sites then offer your password instead of a phone or Bluetooth prompt. Applies to newly opened tabs."),
+                "default": true])
     let b = rt.call("app", "defaultBrowser")
     if b.flag("isDefault") {
       out.append(["key": "defaultBrowser", "type": "info", "title": "Default browser", "subtitle": "Links from other apps open in den.", "value": "den"])

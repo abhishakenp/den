@@ -83,6 +83,18 @@ public final class DenNSWindow: NSWindow {
   public override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
     Presentation.invisible ? frameRect : super.constrainFrameRect(frameRect, to: screen)
   }
+
+  // Key-downs pass `ModalFocus` first: an open dialog / sheet / popover takes focus back from a
+  // page that grabbed it, so Esc and Return reach it.
+  public override func sendEvent(_ event: NSEvent) {
+    if event.type == .keyDown { ModalFocus.route(event, in: self) }
+    super.sendEvent(event)
+  }
+
+  public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    if event.type == .keyDown { ModalFocus.route(event, in: self) }
+    return super.performKeyEquivalent(with: event)
+  }
 }
 
 /// `DenNSWindow` for panels (Little Arc).
@@ -99,5 +111,15 @@ public final class DenNSPanel: NSPanel {
 
   public override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
     Presentation.invisible ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+  }
+
+  public override func sendEvent(_ event: NSEvent) {
+    if event.type == .keyDown { ModalFocus.route(event, in: self) }
+    super.sendEvent(event)
+  }
+
+  public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    if event.type == .keyDown { ModalFocus.route(event, in: self) }
+    return super.performKeyEquivalent(with: event)
   }
 }

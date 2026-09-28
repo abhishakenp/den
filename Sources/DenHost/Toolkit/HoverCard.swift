@@ -390,9 +390,9 @@ public final class HoverCardView: FlippedView, Themable {
     let dark = p.dark
     // PopoverBackground #FAFBFF / #151C30 (spec §3), tinted by the space (theme tokens).
     surface.layer?.backgroundColor = p.surface.cgColor
+    // Card elevation (Elevation.swift): PopoverShadow #151C32 α0.30 / α0.80 (spec §3), layered.
+    Elevation.apply(.card, host: self, surface: surface, radius: Tokens.hoverCardRadius, palette: p)
     surface.layer?.borderColor = (dark ? p.textPrimary.withAlphaComponent(0.2) : p.hairline).cgColor  // PopoverBorder (dark); light hairline estimate
-    layer?.shadowColor = p.shadowColor.cgColor
-    layer?.shadowOpacity = p.shadowOpacity  // spec §3 PopoverShadow α0.30 / α0.80
     SurfaceGrain.apply(to: surface, palette: p)
     title.textColor = p.textPrimary
     subtitle.textColor = p.textSecondary
@@ -489,7 +489,8 @@ public final class HoverCardView: FlippedView, Themable {
     super.layout()
     surface.frame = bounds
     place(apply: true)
-    layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Tokens.hoverCardRadius, cornerHeight: Tokens.hoverCardRadius, transform: nil)
+    Elevation.apply(.card, host: self, surface: surface, radius: Tokens.hoverCardRadius, palette: palette)
+    surface.layer?.borderColor = (palette.dark ? palette.textPrimary.withAlphaComponent(0.2) : palette.hairline).cgColor
   }
 
   // MARK: Hover + animation
