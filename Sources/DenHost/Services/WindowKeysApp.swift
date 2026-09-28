@@ -6,22 +6,59 @@ import CordisValue
 /// Methods:
 ///   setTheme {colors: [hex] (≤3), intensity 0–1, grain 0–1, appearance: light|dark|auto, page?}
 ///   setSidebar {width?, hidden?, animated?}     toggleSidebar {animated?}
-///   setTitle {title}                            get -> {width, hidden, page, fullScreen, dark}
+///   setTitle {title, window?}                   get -> {width, hidden, page, fullScreen, dark, id, private, count}
+///   new {private?, id?, page?, focus?, restored?} -> {id}   a browser window (⌘N) or a private one (⇧⌘N)
+///   list -> [{id, private, page, panes, focus, key, visible, frame}]   focus {id}   close {id?}
+///   Every other method acts on the active browser window (the one most recently key; WindowSet).
 ///   openMini {webview, space?, width?, height?} -> {id}   Little Arc window (spec §8) hosting one web view
 ///   updateMini {id, space?}                     closeMini {id}                listMini -> [{id, webview, key}]
 ///   focusMini {id}                              brings that Little Arc window to the front
 /// Events: window.sidebarResized {width}, window.sidebarVisibility {hidden}, window.sidebarReveal {revealed},
-///   window.miniAction {id, webview, action: open|copy}, window.miniClosed {id, webview}
+///   window.miniAction {id, webview, action: open|copy}, window.miniClosed {id, webview},
+///   window.opened {id, private, page, panes, focus, restored}, window.activated {id, previous, …},
+///   window.closed {id, private, page, panes, focus, frame}, window.reopen
 @MainActor
 public final class WindowService: HostService {
   public let name = "window"
-  let wc: DenWindowController
+  let windows: WindowSet
+  /// The active window (the one most recently key).
+  var wc: DenWindowController { windows.active }
   weak var ui: UIService?
+  weak var content: ContentService?
   let mini: MiniWindows
 
-  public init(window: DenWindowController) {
-    wc = window
-    mini = MiniWindows(window: window)
+  public init(windows: WindowSet) {
+    self.windows = windows
+    mini = MiniWindows(windows: windows)
+  }
+
+  /// `{id, private, page, panes, focus, key, visible, frame}` for one window.
+  func describe(_ w: DenWindowController) -> Value {
+    let d = windows.describe?(w) ?? ["id": .string(w.id)]
+    return d.with("key", .bool(w === windows.active)).with("visible", .bool(w.window.isVisible)).with("frame", WindowSet.frame(w.window.frame))
+  }
+
+  /// `window.new`: a normal window on the same spaces (⌘N), or a private one (⇧⌘N).
+  func newWindow(_ args: Value) -> Value {
+    let isPrivate = args.flag("private")
+    // `id` asks for a normal window's old id (restore, reopen): its saved frame comes back. A taken
+    // id gets the next free one instead.
+    let w = windows.create(id: args["id"].string, isPrivate: isPrivate)
+    if let p = args["page"].int, !isPrivate, let sv = ui?.sidebar(of: w.id) {
+      sv.pager.show(Int(p), animated: false)
+      w.showTheme(for: sv.pager.current)
+    }
+    if args["sidebarHidden"].bool == true { w.setSidebarHidden(true, animated: false) }
+    let focus = args.flag("focus", true)
+    // Plugins hear about the window before it becomes active, so they know what it is.
+    windows.emit("window.opened", describe(w).with("restored", .bool(args.flag("restored"))).with("focus", .bool(focus)))
+    if focus {
+      windows.activate(w)
+      if !TestMode.active { Presentation.show(w.window) }
+    } else if !TestMode.active {
+      Presentation.show(w.window, key: false)
+    }
+    return ["id": .string(w.id)]
   }
 
   /// Gives the Little Arc windows access to web views and the event bus.
@@ -35,9 +72,24 @@ public final class WindowService: HostService {
   public func handle(method: String, args: Value) -> Value {
     switch method {
     case "setTheme":
-      wc.setTheme(Theme(args), page: args["page"].int.map(Int.init))
+      // Space themes are shared: every normal window keeps them per page (private windows ignore them).
+      let t = Theme(args), p = args["page"].int.map(Int.init)
+      for w in windows.all { w.setTheme(t, page: p ?? (w === wc ? nil : wc.page)) }
       ui?.refreshPalette()
       mini.refreshTheme()
+    case "new":
+      return newWindow(args)
+    case "list":
+      return .array(windows.all.map { describe($0) })
+    case "focus":
+      guard let w = windows.find(args.str("id")) else { return .error("window: no window '\(args.str("id"))'") }
+      windows.activate(w)
+      if w.window.isMiniaturized { w.window.deminiaturize(nil) }
+      if !TestMode.active { Presentation.show(w.window) }
+    case "close":
+      let id = args.str("id", wc.id)
+      guard let w = windows.find(id) else { return .error("window: no window '\(id)'") }
+      w.window.close()
     case "setSidebar":
       if let w = args["width"].double { wc.setSidebarWidth(CGFloat(w), animated: args.flag("animated", false)) }
       if let h = args["hidden"].bool { wc.setSidebarHidden(h, animated: args.flag("animated", true)) }
@@ -52,10 +104,11 @@ public final class WindowService: HostService {
         ["id": .string($0.id), "webview": .string($0.webview), "key": .bool($0.panel.isKeyWindow)]
       })
     case "setTitle":
-      wc.window.title = args.str("title", "den")
+      (args["window"].string.flatMap { windows.find($0) } ?? wc).window.title = args.str("title", "den")
     case "get":
       return ["width": .double(Double(wc.sidebarWidth)), "hidden": .bool(wc.sidebarHidden), "page": .int(Int64(wc.page)),
-              "fullScreen": .bool(wc.window.styleMask.contains(.fullScreen)), "dark": .bool(wc.isDark)]
+              "fullScreen": .bool(wc.window.styleMask.contains(.fullScreen)), "dark": .bool(wc.isDark),
+              "id": .string(wc.id), "private": .bool(wc.isPrivate), "count": .int(Int64(windows.all.count))]
     default:
       return .error("window: unknown method '\(method)'")
     }
@@ -235,7 +288,9 @@ public final class KeysService: NSObject, HostService, NSMenuItemValidation {
 public final class AppService: HostService {
   public let name = "app"
   let host: ServiceHost
-  weak var wc: DenWindowController?
+  weak var windows: WindowSet?
+  /// The active browser window (closeWindow, folder sheets).
+  var wc: DenWindowController? { windows?.active }
   var interceptQuit = false
   var interceptClose = false
   var quitPending = false
@@ -250,15 +305,16 @@ public final class AppService: HostService {
   /// Clipboard text, the share picker, QR codes and saving a file (`AppShare.swift`); built on first use.
   lazy var share: AppShare = {
     let s = AppShare(host: host, window: wc)
+    s.current = { [weak self] in self?.wc }
     s.anchorView = { [weak self] id in self?.anchorView?(id) }
     return s
   }()
   /// Finds a rendered node for the share picker's anchor (set by `DenRuntime`).
   var anchorView: ((String) -> NSView?)?
 
-  public init(host: ServiceHost, window: DenWindowController?) {
+  public init(host: ServiceHost, windows: WindowSet?) {
     self.host = host
-    self.wc = window
+    self.windows = windows
     // `app.active {active}`: den became (or stopped being) the frontmost app. Plugins that count
     // time only while den is in use (idle tab discard) follow it.
     for (name, on) in [(NSApplication.didBecomeActiveNotification, true), (NSApplication.didResignActiveNotification, false)] {

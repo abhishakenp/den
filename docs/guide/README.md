@@ -14,6 +14,7 @@ How to use den, one page per area. Everything here describes what's on `main` to
 
 - [Sidebar & tabs](sidebar-and-tabs.md): favorites, pinned, Today, the Library, folders, drag and drop
 - [Spaces & themes](spaces-and-themes.md): the space menu, the theme picker, swiping
+- [Windows](windows.md): more windows on the same spaces, private windows, reopening a closed window
 - [Command bar & launcher](command-bar.md): search, site keywords, actions, settings from the bar
 - [Peek, split view & Little Arc](peek-split-little-arc.md)
 - [Hover previews](hover-previews.md): tab hover cards and the GitHub PR peek

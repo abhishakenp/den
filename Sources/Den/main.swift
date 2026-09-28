@@ -46,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var pendingURLs: [URL] = []
   var visibleObserver: NSObjectProtocol?
   var snapMini = false
+  var snapActive = false
   let home: DenHome? = CommandLine.arguments.contains("--no-den-home") ? nil : DenHome()
   var config: ConfigService?
   var live: LivePlugins?
@@ -241,6 +242,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
           // Scenarios that open a Little Arc snapshot that panel instead of the main window.
           if self.snapMini, let p = NSApp.windows.first(where: { $0 is NSPanel && $0.isVisible }) { snapWindow = p }
+          // Window scenarios snapshot the window in front (a new or private window).
+          if self.snapActive { snapWindow = self.runtime.window.window }
           let ok = await Snapshotter.write(snapWindow, to: path)
           print(ok ? "snapshot: \(path)" : "snapshot: FAILED")
           exit(ok ? 0 : 1)
@@ -429,6 +432,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       #if Scenarios
       DiscardScenarios.apply(s, runtime: rt)
       #endif
+    case "newWindow":
+      // ⌘N: a second window on the same space, its command bar asking what to open.
+      snapActive = true
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.call("window", "new") }
+    case "privateWindow":
+      // ⇧⌘N with two private tabs (network: swift.org, apple.com).
+      snapActive = true
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        rt.call("window", "new", ["private": true])
+        rt.call("commands", "close")
+        rt.call("tabs", "open", ["url": "https://www.swift.org/"])
+        rt.call("tabs", "open", ["url": "https://developer.apple.com/", "background": true])
+      }
+    case "windowHandoff":
+      // "Let a tab open in two windows" on: the first window's tab, picked in a second
+      // window, moves there; the first window (snapshotted) says where it went.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        rt.call("settings", "set", ["id": "tabs", "key": "sameTabInWindows", "value": true])
+        let sel = rt.call("tabs", "selected")["id"]
+        rt.call("window", "new")
+        rt.call("commands", "close")
+        rt.call("tabs", "select", ["id": sel])
+        print("scenario.handoff w1=\(rt.call("content", "get", ["window": "w1"])) w2=\(rt.call("content", "get"))")
+      }
     case "dialog": rt.plugins.emit("app.quitRequested")
     case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { rt.call("tabs", "clearToday") }
     case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.call("peek", "open", ["url": "https://www.swift.org"]) }
@@ -500,7 +527,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-    if !flag { Presentation.show(runtime.window.window) }
+    if !flag { Presentation.show(runtime.windows.main.window) }
     return true
   }
 }

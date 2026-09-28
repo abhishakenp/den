@@ -834,6 +834,8 @@ final class CommandBarCore {
   }
 
   func bump(_ key: String, title: String, url: String) {
+    // A private window leaves no history: nothing it opens is counted or remembered.
+    if env.call("window", "get").b("private") { return }
     var u = usage[key] ?? Usage(n: 0, t: 0, title: title, url: url)
     u.n += 1
     u.t = env.now()

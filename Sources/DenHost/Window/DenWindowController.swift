@@ -29,6 +29,12 @@ public final class PassthroughView: FlippedView {
 @MainActor
 public final class DenWindowController: NSObject, NSWindowDelegate {
   public let window: NSWindow
+  /// `w1` for the first window, `w2`… for more (⌘N), `p1`… for private windows (⇧⌘N). Normal
+  /// window ids are reused and stable across relaunches, which is what window restore keys on.
+  public let id: String
+  /// A private window: its own ephemeral data store, dark chrome, nothing persisted (the tabs
+  /// plugin keeps its tabs out of its state). Its theme is fixed (`Tokens.privateTheme`).
+  public let isPrivate: Bool
   let root = RootView()
   public let background = ThemeBackgroundView()
   /// Host for the sidebar UI (filled by the ui toolkit). Transparent when docked.
@@ -57,7 +63,12 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
   /// The sidebar was shown when full screen began (it comes back on exit).
   var restoreSidebarAfterFullScreen = false
 
-  public override init() {
+  public convenience override init() { self.init(id: "w1") }
+
+  /// `cascadeFrom`: a later window opens over the one in front, offset like any Mac app's.
+  public init(id: String, isPrivate: Bool = false, cascadeFrom: NSWindow? = nil) {
+    self.id = id
+    self.isPrivate = isPrivate
     window = DenNSWindow(
       contentRect: NSRect(origin: .zero, size: Tokens.windowDefaultSize),
       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -73,10 +84,21 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     window.delegate = self
     if Presentation.invisible {
       // Automation: off every display, and the user's saved window frame is neither read nor written.
+      let d = Tokens.windowCascadeOffset
+      if let c = cascadeFrom { window.setFrame(c.frame.offsetBy(dx: d, dy: -d), display: false) }
       Presentation.park(window)
     } else {
-      window.setFrameAutosaveName("den.main")
-      if window.frame.origin == .zero { window.center() }
+      // The first window keeps its old autosave name; later normal windows get one per id (ids
+      // are reused, so saved frames stay few). Private windows remember nothing.
+      if !isPrivate { window.setFrameAutosaveName(id == "w1" ? "den.main" : "den.window." + id) }
+      if isPrivate || window.frame.origin == .zero {
+        if let c = cascadeFrom {
+          window.setFrame(c.frame, display: false)
+          window.setFrameTopLeftPoint(window.cascadeTopLeft(from: NSPoint(x: c.frame.minX, y: c.frame.maxY)))
+        } else {
+          window.center()
+        }
+      }
     }
     TestMode.hide(window)
 
@@ -103,6 +125,13 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     sidebar.registerForDraggedTypes([.URL, .fileURL, .string])
     sidebar.onDropURLs = { [weak self] urls in
       self?.emit("window.dropURLs", ["urls": .array(urls.map { .string($0) }), "target": "sidebar"])
+    }
+    if isPrivate {
+      themes[0] = Tokens.privateTheme
+      appearance = .dark
+      applyAppearance()  // observers don't run in init
+      showTheme(for: 0)
+      window.title = "Private"
     }
   }
 
@@ -223,14 +252,16 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
   // MARK: Theme
 
   public func setTheme(_ t: Theme, page p: Int?) {
+    // A private window wears den's own dark theme, whatever the spaces say.
+    guard !isPrivate else { return }
     themes[p ?? page] = t
     if t.appearance != appearance, p == nil || p == page { appearance = t.appearance }
     if p == nil || p == page { showTheme(for: page) }
   }
 
   public func showTheme(for p: Int) {
-    page = p
-    background.theme = themes[p] ?? themes[0] ?? Theme()
+    page = isPrivate ? 0 : p
+    background.theme = themes[page] ?? themes[0] ?? Theme()
     sidebar.backdrop.theme = background.theme
   }
 
@@ -275,6 +306,9 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     restoreSidebarAfterFullScreen = false
   }
   public func windowShouldClose(_ sender: NSWindow) -> Bool { onCloseRequest?() ?? true }
+  /// Set by `WindowSet`: the window is closing (red button, ⇧⌘W, `window.close`).
+  public var onClosed: (() -> Void)?
+  public func windowWillClose(_ notification: Notification) { onClosed?() }
 }
 
 /// Drag handle on the sidebar edge.

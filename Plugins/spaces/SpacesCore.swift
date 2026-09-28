@@ -309,7 +309,19 @@ final class SpacesCore {
     return b
   }
 
+  /// The footer marks the current space. With several normal windows each marks its own (the
+  /// space its sidebar shows); with one window it renders once, for every window.
   func renderFooter() {
+    var wins: [(String, Int)] = []
+    for w in env.call("window", "list").array ?? [] where !w.b("private") { wins.append((w.s("id"), Int(w.i("page")))) }
+    if wins.count <= 1 { return renderFooter(current: current, window: nil) }
+    for (w, page) in wins {
+      let active = w == (env.call("window", "get")["id"].string ?? "")
+      renderFooter(current: active || page >= spaces.count ? current : spaces[page].id, window: w)
+    }
+  }
+
+  func renderFooter(current: String, window: String?) {
     var row: [Value] = [
       ["type": "button", "id": "spaces.library", "icon": "sf:tray.full", "tooltip": "Library (⌘Y)", "size": 32],
     ]
@@ -321,7 +333,9 @@ final class SpacesCore {
     }
     row.append(["type": "spacer"])
     row.append(["type": "button", "id": "spaces.new", "icon": "sf:plus", "tooltip": "New Space", "size": 32])
-    env.call("ui", "set", ["slot": "sidebar.footer", "tree": ["type": "row", "id": "spaces.footer", "height": 50, "spacing": 2, "children": .array(row)]])
+    var args: Value = ["slot": "sidebar.footer", "tree": ["type": "row", "id": "spaces.footer", "height": 50, "spacing": 2, "children": .array(row)]]
+    if let window { args.put("window", .string(window)) }
+    env.call("ui", "set", args)
   }
 
   func bindKeys() {

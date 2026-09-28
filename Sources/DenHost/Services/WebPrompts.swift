@@ -28,8 +28,9 @@ public final class WebPrompts {
   }
   private var nextRequest = 1
 
-  /// Where a dialog for `webView` goes: the main window's overlay layer, or a Little Arc panel.
-  weak var window: DenWindowController?
+  /// Where a dialog for `webView` goes: the overlay layer of the den window showing the page
+  /// (the active one when it isn't on screen), or a Little Arc panel.
+  weak var windows: WindowSet?
   var palette: () -> Palette?
   public private(set) var queue: [Request] = []
   public private(set) var current: Request?
@@ -47,8 +48,8 @@ public final class WebPrompts {
   public static let dialogsBeforeOffer = 3
   static let checkedKey = "\u{1}checked"
 
-  init(window: DenWindowController?, palette: @escaping () -> Palette?) {
-    self.window = window
+  init(windows: WindowSet?, palette: @escaping () -> Palette?) {
+    self.windows = windows
     self.palette = palette
   }
 
@@ -206,7 +207,9 @@ public final class WebPrompts {
     d.update(r.tree, palette: p)
     dialog = d
     let container: NSView?
-    if let w = r.webView?.window, w !== window?.window { container = w.contentView } else { container = window?.overlays }
+    let pageWindow = r.webView?.window
+    let den = windows?.containing(pageWindow) ?? (pageWindow == nil ? windows?.active : nil)
+    if let den { container = den.overlays } else { container = pageWindow?.contentView }
     guard let container else { return }
     backdrop.frame = container.bounds
     backdrop.autoresizingMask = [.width, .height]
@@ -216,7 +219,7 @@ public final class WebPrompts {
     layout(in: container)
     ModalFocus.present(d) { [weak d] in d?.focusTarget }
     // Elevation.swift: the blurred page under the dim, and the spring in.
-    if let root = container.window?.contentView { backdrop.captureBlur(root: root, hiding: container === window?.overlays ? [container] : [backdrop, d]) }
+    if let root = container.window?.contentView { backdrop.captureBlur(root: root, hiding: container === den?.overlays ? [container] : [backdrop, d]) }
     Elevation.animateIn(d, backdrop: backdrop)
   }
 

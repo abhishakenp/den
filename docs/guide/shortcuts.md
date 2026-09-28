@@ -24,6 +24,15 @@ Where Arc and Safari disagree, den follows Arc, and keeps Safari's key as a seco
 | Library (closed tabs) | ⌘Y or ⇧⌘L |
 | Downloads | ⌥⌘L |
 
+## Windows
+
+| Action | Keys |
+|---|---|
+| New window (same spaces and tabs) | ⌘N |
+| New private window | ⇧⌘N |
+| Close window | ⇧⌘W |
+| Reopen the window you just closed | ⇧⌘T (or File ▸ Reopen Closed Window) |
+
 ## Navigation
 
 | Action | Keys |
@@ -137,6 +146,3 @@ In `~/.den/config.toml`, map a chord to a menu item id or a command id. It appli
 
 Chords use `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f5`, `plus`). A remapped menu item loses its default key. A command bound this way shows up in a **Shortcuts** menu. Menu item ids are in the last column of [docs/shortcuts.md](../shortcuts.md); command ids are in [docs/plugin-services.md](../plugin-services.md).
 
-## Not there yet
-
-New window (⌘N) and private window (⇧⌘N) have no shortcut because den doesn't have those features yet. See [Coming soon](coming-soon.md).

@@ -34,7 +34,9 @@ public final class MediaService: HostService {
   let host: ServiceHost
   let webviews: WebViewsService
   let content: ContentService
-  let wc: DenWindowController
+  let windows: WindowSet
+  /// The browser window in front: the one whose video leaving the screen opens the player.
+  var wc: DenWindowController { windows.active }
   let storage: StorageService
 
   public private(set) var autoMiniPlayer = true
@@ -59,11 +61,11 @@ public final class MediaService: HostService {
   private var width = MiniPlayerPanel.defaultWidth
   static let ns = "media"
 
-  public init(host: ServiceHost, webviews: WebViewsService, content: ContentService, window: DenWindowController, storage: StorageService) {
+  public init(host: ServiceHost, webviews: WebViewsService, content: ContentService, windows: WindowSet, storage: StorageService) {
     self.host = host
     self.webviews = webviews
     self.content = content
-    self.wc = window
+    self.windows = windows
     self.storage = storage
     let s = storage.handle(method: "get", args: ["ns": .string(Self.ns), "key": "settings"])
     autoMiniPlayer = s.flag("autoMiniPlayer", true)
@@ -166,13 +168,21 @@ public final class MediaService: HostService {
     let names: [(Notification.Name, AnyObject?)] = [
       (NSApplication.didResignActiveNotification, nil), (NSApplication.didBecomeActiveNotification, nil),
       (NSApplication.didHideNotification, nil), (NSApplication.didUnhideNotification, nil),
-      (NSWindow.didChangeOcclusionStateNotification, wc.window), (NSWindow.didMiniaturizeNotification, wc.window),
-      (NSWindow.didDeminiaturizeNotification, wc.window),
+      (NSWindow.didChangeOcclusionStateNotification, nil), (NSWindow.didMiniaturizeNotification, nil),
+      (NSWindow.didDeminiaturizeNotification, nil),
     ]
     for (n, obj) in names {
       let raw = n.rawValue
-      observers.append(nc.addObserver(forName: n, object: obj, queue: .main) { [weak self] _ in
-        MainActor.assumeIsolated { self?.windowStateChanged(raw) }
+      let perWindow = raw.hasPrefix("NSWindow")
+      observers.append(nc.addObserver(forName: n, object: obj, queue: .main) { [weak self] note in
+        // Window notifications count only for den's browser windows (the player follows the
+        // one in front, `windowVisible`).
+        nonisolated(unsafe) let sender = note.object
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          if perWindow, self.windows.containing(sender as? NSWindow) == nil { return }
+          self.windowStateChanged(raw)
+        }
       })
     }
   }

@@ -73,6 +73,9 @@ public final class WebRecord {
   init(id: String, profile: String, url: String) { (self.id, self.profile, self.url) = (id, profile, url) }
 
   public var isSuspended: Bool { webView == nil && (interactionState != nil || snapshotPath != nil) }
+  /// A private window's page (`private` or `private:<window>` profile): nothing about it is
+  /// written to disk (no snapshot, no remembered zoom).
+  public var isPrivate: Bool { WebViewsService.isPrivate(profile) }
 
   /// The page's media state, all frames together.
   public var media: PageMedia {
@@ -244,6 +247,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     case "mediaControl": return mediaControl(r, args.str("action"), args.num("value"))
     case "snapshot":
       if !args["rect"].isNull || args.flag("full") || args.flag("clipboard") || !args.str("folder").isEmpty { return capture(r, args) }
+      // A private page's picture is never written for previews (a capture you ask for still is).
+      if r.isPrivate { return .error("webviews: '\(r.id)' is private") }
       snapshot(r, path: args.str("path"), width: args["width"].double.map { CGFloat($0) }, jpeg: args.str("format") == "jpeg")
       return ["pending": true]
     case "eval": return evaluate(r, args)
@@ -516,7 +521,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   /// draw; the encode runs off the main thread. `then` runs once the view is no longer needed
   /// (at most 3 s later).
   public func captureSnapshot(_ r: WebRecord, then: (@MainActor () -> Void)? = nil) {
-    guard let w = r.webView, w.window != nil, w.bounds.width > 1, w.url != nil else { then?(); return }
+    // Private pages leave no picture on disk.
+    guard let w = r.webView, w.window != nil, w.bounds.width > 1, w.url != nil, !r.isPrivate else { then?(); return }
     // One capture at a time: a page closed right after it left the screen (⌘W) waits for the
     // snapshot already being taken instead of taking a second one.
     if r.snapshotWaiters != nil {
@@ -789,11 +795,20 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     let s: WKWebsiteDataStore
     switch profile {
     case "default", "": s = .default()
-    case "private": s = .nonPersistent()
+    case _ where Self.isPrivate(profile): s = .nonPersistent()  // `private:<window>`: one ephemeral store per private window
     default: s = WKWebsiteDataStore(forIdentifier: Self.profileUUID(profile))
     }
     stores[profile] = s
     return s
+  }
+
+  public nonisolated static func isPrivate(_ profile: String) -> Bool { profile == "private" || profile.hasPrefix("private:") }
+
+  /// A private window closed: its ephemeral store is let go (WebKit drops its cookies and caches
+  /// once no page uses it).
+  public func releaseStore(_ profile: String) {
+    guard Self.isPrivate(profile) else { return }
+    stores[profile] = nil
   }
 
   /// Stable UUID per profile name (SHA-256 based, version/variant bits set).

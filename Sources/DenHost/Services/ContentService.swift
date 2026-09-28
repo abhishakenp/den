@@ -5,7 +5,7 @@ import WebKit
 /// `content` service: which web views are on screen, and the peek overlay.
 ///
 /// Methods:
-///   show {panes: [webviewId], orientation?: horizontal|vertical|grid, ratios?: [number], focus?: id}
+///   show {panes: [webviewId], orientation?: horizontal|vertical|grid, ratios?: [number], focus?: id, window?}
 ///        1 pane = single card; 2–4 = split with gaps. Web views not listed are detached from the
 ///        window (WebKit then suspends them); they are created on first show.
 ///   focus {id}                          -> highlight + first responder
@@ -14,7 +14,11 @@ import WebKit
 ///                                          content's left edge, beside whatever the panes show, sliding out
 ///                                          from the sidebar edge. Its header is the `side.header` ui slot.
 ///                                          Hidden, the web view leaves the window (the caller may discard it)
-///   get                                 -> {panes, orientation, focus, peek, side, sideWidth}
+///   get {window?}                       -> {panes, orientation, focus, peek, side, sideWidth, window}
+/// Every method acts on the active window unless `window` names another (docs/host-api.md#window).
+/// A page is live in one window at a time: showing it in a second window moves it there, and the
+/// first shows "Open in another window" until it takes the page back (it becomes active again,
+/// or its "Show Here" is clicked).
 /// Events: content.focus {id}   content.peekAction {action: close|expand|split, webview}
 ///         content.paneAction {id, action: close|separate}   (split pane hover controls)
 @MainActor
@@ -22,59 +26,179 @@ public final class ContentService: HostService {
   public let name = "content"
   let host: ServiceHost
   let webviews: WebViewsService
-  let wc: DenWindowController
-
-  public private(set) var panes: [String] = []
-  public private(set) var orientation: SplitOrientation = .horizontal
-  var ratios: [CGFloat] = []
-  public private(set) var focused: String?
-  private var cards: [String: CardView] = [:]
-  private let emptyCard = CardView()
-  /// Where a page that just left the screen waits (invisible, still in the window) while its
-  /// snapshot is taken: WebKit only snapshots a view that is in a window.
-  private let parking = NSView()
-  public let peek = PeekOverlayView()
-  public private(set) var peekId: String?
+  let windows: WindowSet
+  /// Per-window panes, cards and peek, by window id.
+  private(set) var byWindow: [String: WindowContent] = [:]
   private var clickMonitor: Any?
   /// While true, `show` lays out cards but doesn't create WKWebViews yet. The app holds them
   /// until the first window frame is on screen (launch time), then calls `releaseWebViews()`.
   public var holdWebViews = false
   /// Space accent for the focused-pane ring (set by the ui service on palette changes).
-  public var accent: NSColor? { didSet { cards.values.forEach { $0.focusColor = accent } } }
+  public var accent: NSColor? { didSet { current.accent = accent } }
   /// Asked for each live page leaving the screen: true when the mini player takes its web view.
   public var adoptLeaving: ((String) -> Bool)?
   /// Called before a page's web view goes (back) into its card: the mini player lets go of it.
   public var willAttach: ((String) -> Void)?
-  /// Restore placeholders: a discarded page's snapshot, shown until the page has loaded.
-  private var covers: [String: NSView] = [:]
   /// Longest a restore placeholder stays up.
   public var coverTimeout: TimeInterval = 1.5
-  /// The previous page, kept on screen over a new one until the new one first paints (no white
-  /// flash on a tab switch). It takes no clicks.
-  private let holding = HoldView()
-  public private(set) var held: String?
   /// Longest the previous page is held.
   public var holdTimeout: TimeInterval = Tokens.paintHoldTimeout
-  /// The side column (`side`): one web view docked left of the panes (the `panels` plugin's web
-  /// panels). Nothing is created until the first `side`.
-  private var sideView: SideColumnView?
-  /// The side column if it was ever used (re-theming skips it otherwise).
-  public var sideIfLoaded: SideColumnView? { sideView }
-  public var side: SideColumnView {
+  /// The active window's side column (`side`): one web view docked left of the panes (the
+  /// `panels` plugin's web panels). Nothing is created until the first `side`.
+  public var sideIfLoaded: SideColumnView? { current.sideView }
+  public var side: SideColumnView { current.side }
+  public var sideId: String? { current.sideId }
+  public var sideWidth: CGFloat { current.sideWidth }
+  static let sideWidths: ClosedRange<CGFloat> = 280...520
+
+  public init(host: ServiceHost, webviews: WebViewsService, windows: WindowSet) {
+    self.host = host
+    self.webviews = webviews
+    self.windows = windows
+    windows.each { [unowned self] wc in self.byWindow[wc.id] = WindowContent(svc: self, wc: wc) }
+    windows.onRemove.append { [weak self] wc in self?.byWindow.removeValue(forKey: wc.id)?.tearDown() }
+    // A window that becomes active takes back a page another window borrowed.
+    windows.onActivate.append { [weak self] _, wc in self?.byWindow[wc.id]?.reclaim() }
+    windows.describe = { [weak self] wc in
+      let c = self?.byWindow[wc.id]
+      return ["id": .string(wc.id), "private": .bool(wc.isPrivate), "page": .int(Int64(wc.page)),
+              "panes": .array((c?.panes ?? []).map { .string($0) }), "focus": c?.focused.map { .string($0) } ?? .null]
+    }
+    host.on("webviews.closed") { [weak self] v in self?.byWindow.values.forEach { $0.forget(v.str("id")) } }
+    host.on("webviews.detached") { [weak self] v in self?.byWindow.values.forEach { $0.detached(v.str("id")) } }
+    let prevFinish = webviews.onFinish
+    webviews.onFinish = { [weak self] id in prevFinish?(id); self?.byWindow.values.forEach { $0.uncover(id) } }
+    let prevPainted = webviews.onPainted
+    webviews.onPainted = { [weak self] id in prevPainted?(id); self?.byWindow.values.forEach { $0.painted(id) } }
+    clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] e in
+      MainActor.assumeIsolated { self?.byWindow.values.first { $0.wc.window === e.window }?.noteClick(e) }
+      return e
+    }
+  }
+
+  /// The active window's content.
+  var current: WindowContent { byWindow[windows.active.id]! }
+  /// A window's content (tests, the window service).
+  func content(of window: String) -> WindowContent? { byWindow[window] }
+
+  public var panes: [String] { current.panes }
+  public var orientation: SplitOrientation { current.orientation }
+  public var focused: String? { current.focused }
+  public var peekId: String? { current.peekId }
+  public var peek: PeekOverlayView { current.peek }
+  public var held: String? { current.held }
+
+  public func handle(method: String, args: Value) -> Value {
+    var target = current
+    if let w = args["window"].string {
+      guard let c = byWindow[w] else { return .error("content: no window '\(w)'") }
+      target = c
+    }
+    switch method {
+    case "show":
+      let ids = args.list("panes").compactMap(\.string).filter { webviews.record($0) != nil }
+      target.show(Array(ids.prefix(4)), orientation: SplitOrientation(rawValue: args.str("orientation", "horizontal")) ?? .horizontal,
+                  ratios: args.list("ratios").compactMap { $0.double.map { CGFloat($0) } }, focus: args["focus"].string)
+    case "focus":
+      target.setFocus(args.str("id"), makeFirstResponder: true)
+    case "peek":
+      let id = args.str("webview")
+      if id.isEmpty { target.hidePeek() } else { target.showPeek(id, title: args.str("title")) }
+    case "side":
+      let id = args.str("webview")
+      guard id.isEmpty || webviews.record(id) != nil else { return .error("content: no webview '\(id)'") }
+      target.setSide(id.isEmpty ? nil : id, width: args["width"].double.map { CGFloat($0) })
+    case "get":
+      return ["panes": .array(target.panes.map { .string($0) }), "orientation": .string(target.orientation.rawValue),
+              "focus": target.focused.map { .string($0) } ?? .null, "peek": target.peekId.map { .string($0) } ?? .null,
+              "side": target.sideId.map { .string($0) } ?? .null, "sideWidth": .double(Double(target.sideWidth)),
+              "window": .string(target.wc.id)]
+    default:
+      return .error("content: unknown method '\(method)'")
+    }
+    return .ok
+  }
+
+  /// The window content whose card, peek, parking or holding view has `w` (at most one).
+  func owner(of w: WKWebView) -> WindowContent? {
+    guard let win = w.window else { return nil }
+    return byWindow.values.first { $0.wc.window === win }
+  }
+
+  /// Whether a restore placeholder is up (tests, scenarios).
+  public func isCovered(_ id: String) -> Bool { byWindow.values.contains { $0.isCovered(id) } }
+
+  /// Takes a pane's live web view out of its card (the mini player shows it while den's window
+  /// isn't visible); `reattach` puts it back.
+  public func detachForMini(_ id: String) -> WKWebView? { current.detachForMini(id) }
+  public func reattach(_ id: String) { current.reattach(id) }
+
+  /// Ends `holdWebViews`: creates and attaches the web views of the panes on screen, in every
+  /// window (restored windows included), the active one last so it wins a shared page.
+  public func releaseWebViews() {
+    guard holdWebViews else { return }
+    holdWebViews = false
+    let active = current
+    for c in byWindow.values where c !== active { c.reshow() }
+    active.reshow()
+  }
+
+  /// Re-attaches the panes' web views (after `webviews` rebuilt them, e.g. for extensions).
+  public func reattach() {
+    guard !holdWebViews else { return }
+    current.reshow()
+  }
+
+  /// The card showing a pane (snapshots, tests): the active window's first.
+  public func card(_ id: String) -> CardView? { current.cards[id] ?? byWindow.values.lazy.compactMap { $0.cards[id] }.first }
+}
+
+/// One window's content area: its panes and their cards, the peek overlay, and the views that
+/// keep tab switches flash-free (parking, holding, snapshot covers).
+@MainActor
+final class WindowContent {
+  unowned let svc: ContentService
+  let wc: DenWindowController
+  var host: ServiceHost { svc.host }
+  var webviews: WebViewsService { svc.webviews }
+  /// This window's side column (web panels); built on first use.
+  private(set) var sideView: SideColumnView?
+  var side: SideColumnView {
     if let s = sideView { return s }
     let s = SideColumnView()
     s.isHidden = true
     sideView = s
     return s
   }
-  public private(set) var sideId: String?
-  public private(set) var sideWidth: CGFloat = 360
-  static let sideWidths: ClosedRange<CGFloat> = 280...520
+  private(set) var sideId: String?
+  private(set) var sideWidth: CGFloat = 360
+  static var sideWidths: ClosedRange<CGFloat> { ContentService.sideWidths }
 
-  public init(host: ServiceHost, webviews: WebViewsService, window: DenWindowController) {
-    self.host = host
-    self.webviews = webviews
-    self.wc = window
+  private(set) var panes: [String] = []
+  private(set) var orientation: SplitOrientation = .horizontal
+  var ratios: [CGFloat] = []
+  private(set) var focused: String?
+  fileprivate(set) var cards: [String: CardView] = [:]
+  private let emptyCard = CardView()
+  /// Where a page that just left the screen waits (invisible, still in the window) while its
+  /// snapshot is taken: WebKit only snapshots a view that is in a window.
+  private let parking = NSView()
+  let peek = PeekOverlayView()
+  private(set) var peekId: String?
+  var accent: NSColor? { didSet { cards.values.forEach { $0.focusColor = accent } } }
+  /// Restore placeholders: a discarded page's snapshot, shown until the page has loaded.
+  private var covers: [String: NSView] = [:]
+  /// The previous page, kept on screen over a new one until the new one first paints (no white
+  /// flash on a tab switch). It takes no clicks.
+  private let holding = HoldView()
+  private(set) var held: String?
+  /// Panes whose page another window has on screen right now ("Open in another window").
+  private var elsewhere: [String: ElsewhereView] = [:]
+
+  init(svc: ContentService, wc: DenWindowController) {
+    self.svc = svc
+    self.wc = wc
+    accent = svc.accent
     wc.contentArea.addSubview(emptyCard)
     parking.alphaValue = 0
     wc.contentArea.addSubview(parking, positioned: .below, relativeTo: nil)
@@ -83,49 +207,20 @@ public final class ContentService: HostService {
     peek.onAction = { [weak self] action in self?.peekAction(action) }
     let prev = wc.onLayout
     wc.onLayout = { [weak self] in prev?(); self?.layout() }
-    host.on("webviews.closed") { [weak self] v in
-      if v.str("id") == self?.sideId { self?.setSide(nil, width: nil) }
-      self?.forget(v.str("id"))
-    }
-    host.on("webviews.detached") { [weak self] v in
-      self?.cards[v.str("id")]?.clip.subviews.forEach { $0.removeFromSuperview() }
-      if v.str("id") == self?.sideId { self?.sideView?.card.clip.subviews.forEach { $0.removeFromSuperview() } }
-    }
-    let prevFinish = webviews.onFinish
-    webviews.onFinish = { [weak self] id in prevFinish?(id); self?.uncover(id) }
-    let prevPainted = webviews.onPainted
-    webviews.onPainted = { [weak self] id in prevPainted?(id); self?.painted(id) }
     holding.isHidden = true
     wc.contentArea.addSubview(holding)
-    clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] e in
-      MainActor.assumeIsolated { self?.noteClick(e) }
-      return e
-    }
   }
 
-  public func handle(method: String, args: Value) -> Value {
-    switch method {
-    case "show":
-      let ids = args.list("panes").compactMap(\.string).filter { webviews.record($0) != nil }
-      show(Array(ids.prefix(4)), orientation: SplitOrientation(rawValue: args.str("orientation", "horizontal")) ?? .horizontal,
-           ratios: args.list("ratios").compactMap { $0.double.map { CGFloat($0) } }, focus: args["focus"].string)
-    case "focus":
-      setFocus(args.str("id"), makeFirstResponder: true)
-    case "peek":
-      let id = args.str("webview")
-      if id.isEmpty { hidePeek() } else { showPeek(id, title: args.str("title")) }
-    case "side":
-      let id = args.str("webview")
-      guard id.isEmpty || webviews.record(id) != nil else { return .error("content: no webview '\(id)'") }
-      setSide(id.isEmpty ? nil : id, width: args["width"].double.map { CGFloat($0) })
-    case "get":
-      return ["panes": .array(panes.map { .string($0) }), "orientation": .string(orientation.rawValue),
-              "focus": focused.map { .string($0) } ?? .null, "peek": peekId.map { .string($0) } ?? .null,
-              "side": sideId.map { .string($0) } ?? .null, "sideWidth": .double(Double(sideWidth))]
-    default:
-      return .error("content: unknown method '\(method)'")
-    }
-    return .ok
+  /// The window closed for good: its pages leave it (they stay alive for the other windows).
+  func tearDown() {
+    releaseHold()
+    for id in panes { if let w = webviews.record(id)?.webView, w.window === wc.window { w.removeFromSuperview() } }
+    if let id = peekId, let w = webviews.record(id)?.webView, w.window === wc.window { w.removeFromSuperview() }
+    if let id = sideId, let w = webviews.record(id)?.webView, w.window === wc.window { w.removeFromSuperview() }
+    for w in parking.subviews { w.removeFromSuperview() }
+    panes = []
+    cards = [:]
+    peekId = nil
   }
 
   func show(_ ids: [String], orientation o: SplitOrientation, ratios r: [CGFloat], focus f: String?) {
@@ -139,9 +234,10 @@ public final class ContentService: HostService {
     ratios = r
     for id in old.subtracting(ids) where id != peekId {
       cards[id]?.removeFromSuperview()
+      elsewhere.removeValue(forKey: id)?.removeFromSuperview()
       uncover(id, animated: false)
       guard let r = webviews.record(id), let w = r.webView, w.superview != nil, w.superview === cards[id]?.clip else { continue }
-      if adoptLeaving?(id) == true { continue }
+      if svc.adoptLeaving?(id) == true { continue }
       // Keep a picture of the page on disk (for a later restore and for previews), then let it go.
       parking.frame = cards[id]?.frame ?? w.frame
       parking.addSubview(w)
@@ -161,11 +257,14 @@ public final class ContentService: HostService {
       cards[id] = card
       card.showsPaneControls = ids.count > 1
       if card.superview !== wc.contentArea { wc.contentArea.addSubview(card) }
-      if !holdWebViews {
+      if !svc.holdWebViews {
         let wasLive = webviews.record(id)?.webView != nil
-        if wasLive { willAttach?(id) }
+        if wasLive { svc.willAttach?(id) }
         if let w = webviews.materialize(id), w.superview !== card.clip {
+          // The page is on screen in another window: it moves here, and that window says so.
+          if let other = svc.owner(of: w), other !== self { other.lost(id) }
           card.clip.subviews.forEach { $0.removeFromSuperview() }
+          elsewhere[id] = nil
           card.clip.addSubview(w)
           if !wasLive { cover(id, in: card) }
         }
@@ -176,12 +275,40 @@ public final class ContentService: HostService {
     }
     // Hold the previous page over a new one that hasn't painted (and has no snapshot cover).
     // (A blank page has nothing to paint and nothing to flash: it isn't waited for.)
-    if let l = leaving, let new = ids.first, let nr = webviews.record(new), !nr.painted, nr.url != "about:blank", covers[new] == nil, !holdWebViews {
+    if let l = leaving, let new = ids.first, let nr = webviews.record(new), !nr.painted, nr.url != "about:blank", covers[new] == nil, !svc.holdWebViews {
       hold(l.id, l.view, frame: l.frame)
     }
     emptyCard.isHidden = !ids.isEmpty
     layout()
     setFocus(f ?? (ids.contains(focused ?? "") ? focused : ids.first), makeFirstResponder: true)
+  }
+
+  /// Shows the same panes again (attaching web views that aren't in their cards).
+  func reshow() {
+    guard !panes.isEmpty else { return }
+    show(panes, orientation: orientation, ratios: ratios, focus: focused)
+  }
+
+  /// Another window took `id`'s page: its card shows where it went until this window takes it back.
+  func lost(_ id: String) {
+    if held == id { releaseHold() }
+    if peekId == id { hidePeek() }
+    guard let card = cards[id], elsewhere[id] == nil else { return }
+    uncover(id, animated: false)
+    let v = ElsewhereView(url: webviews.record(id)?.url ?? "", palette: Palette(theme: wc.currentTheme, dark: wc.isDark)) { [weak self] in
+      guard let self else { return }
+      self.svc.windows.activate(self.wc)
+      self.reclaim()
+    }
+    card.clip.addSubview(v)
+    v.frame = card.clip.bounds
+    elsewhere[id] = v
+  }
+
+  /// This window became active: take back any of its pages another window has on screen.
+  func reclaim() {
+    guard !svc.holdWebViews, !elsewhere.isEmpty else { return }
+    reshow()
   }
 
   /// A restored (previously discarded) page shows its last snapshot at once, over the new web
@@ -192,7 +319,7 @@ public final class ContentService: HostService {
     card.clip.addSubview(v)
     v.frame = card.clip.bounds
     covers[id] = v
-    DispatchQueue.main.asyncAfter(deadline: .now() + coverTimeout) { [weak self, weak v] in
+    DispatchQueue.main.asyncAfter(deadline: .now() + svc.coverTimeout) { [weak self, weak v] in
       MainActor.assumeIsolated { if let v, self?.covers[id] === v { self?.uncover(id) } }
     }
   }
@@ -206,8 +333,7 @@ public final class ContentService: HostService {
     }, completionHandler: { MainActor.assumeIsolated { v.removeFromSuperview() } })
   }
 
-  /// Whether a restore placeholder is up (tests, scenarios).
-  public func isCovered(_ id: String) -> Bool { covers[id] != nil }
+  func isCovered(_ id: String) -> Bool { covers[id] != nil }
 
   private func hold(_ id: String, _ w: WKWebView, frame: NSRect) {
     held = id
@@ -216,7 +342,7 @@ public final class ContentService: HostService {
     wc.contentArea.addSubview(holding, positioned: .above, relativeTo: nil)
     holding.addSubview(w)
     w.frame = holding.bounds
-    DispatchQueue.main.asyncAfter(deadline: .now() + holdTimeout) { [weak self] in
+    DispatchQueue.main.asyncAfter(deadline: .now() + svc.holdTimeout) { [weak self] in
       MainActor.assumeIsolated { if self?.held == id { self?.releaseHold() } }
     }
   }
@@ -239,38 +365,27 @@ public final class ContentService: HostService {
     if panes.contains(id), held != nil { releaseHold() }
   }
 
-  /// Takes a pane's live web view out of its card (the mini player shows it while den's window
-  /// isn't visible); `reattach` puts it back.
-  public func detachForMini(_ id: String) -> WKWebView? {
+  func detached(_ id: String) {
+    if id == sideId { sideView?.card.clip.subviews.forEach { $0.removeFromSuperview() } }
+    guard let card = cards[id] else { return }
+    for v in card.clip.subviews where !(v is ElsewhereView) { v.removeFromSuperview() }
+  }
+
+  func detachForMini(_ id: String) -> WKWebView? {
     guard panes.contains(id), let w = webviews.record(id)?.webView, w.superview === cards[id]?.clip else { return nil }
     w.removeFromSuperview()
     return w
   }
 
-  public func reattach(_ id: String) {
+  func reattach(_ id: String) {
     guard panes.contains(id), let card = cards[id], let w = webviews.record(id)?.webView, w.superview !== card.clip else { return }
-    willAttach?(id)
+    if let other = svc.owner(of: w), other !== self { other.lost(id) }
+    svc.willAttach?(id)
+    elsewhere.removeValue(forKey: id)?.removeFromSuperview()
     card.clip.addSubview(w)
     card.needsLayout = true
     if id == focused { wc.window.makeFirstResponder(w) }
   }
-
-  /// Ends `holdWebViews`: creates and attaches the web views of the panes on screen.
-  public func releaseWebViews() {
-    guard holdWebViews else { return }
-    holdWebViews = false
-    guard !panes.isEmpty else { return }
-    show(panes, orientation: orientation, ratios: ratios, focus: focused)
-  }
-
-  /// Re-attaches the panes' web views (after `webviews` rebuilt them, e.g. for extensions).
-  public func reattach() {
-    guard !holdWebViews, !panes.isEmpty else { return }
-    show(panes, orientation: orientation, ratios: ratios, focus: focused)
-  }
-
-  /// The card showing a pane (snapshots, tests).
-  public func card(_ id: String) -> CardView? { cards[id] }
 
   /// Shows `id` in the side column (nil hides it), sliding it out from (or back into) the sidebar
   /// edge while the panes make room. The previous side web view leaves the window.
@@ -335,7 +450,7 @@ public final class ContentService: HostService {
     let changed = id != focused
     focused = id
     for (cid, card) in cards { card.focused = panes.count > 1 && cid == id }
-    if makeFirstResponder, let w = webviews.record(id)?.webView { wc.window.makeFirstResponder(w) }
+    if makeFirstResponder, let w = webviews.record(id)?.webView, w.window === wc.window { wc.window.makeFirstResponder(w) }
     if changed { host.emit("content.focus", ["id": .string(id)]) }
   }
 
@@ -346,9 +461,11 @@ public final class ContentService: HostService {
   }
 
   func forget(_ id: String) {
+    if id == sideId { setSide(nil, width: nil) }
     if held == id { releaseHold() }
     cards[id]?.removeFromSuperview()
     cards[id] = nil
+    elsewhere[id] = nil
     if panes.contains(id) {
       panes.removeAll { $0 == id }
       emptyCard.isHidden = !panes.isEmpty
@@ -361,6 +478,7 @@ public final class ContentService: HostService {
 
   func showPeek(_ id: String, title: String) {
     guard let w = webviews.materialize(id) else { return }
+    if let other = svc.owner(of: w), other !== self { other.lost(id) }
     peekId = id
     peek.title = title.isEmpty ? (webviews.record(id)?.url ?? "") : title
     peek.setWeb(w)
@@ -388,6 +506,46 @@ public final class ContentService: HostService {
   func peekAction(_ action: String) {
     guard let id = peekId else { return }
     host.emit("content.peekAction", ["action": .string(action), "webview": .string(id)])
+  }
+}
+
+/// A pane whose page another window has on screen (a tab shows in one window at a time, Arc's
+/// "Tab Handoff"): a quiet note and "Show Here", which brings the page back to this window.
+final class ElsewhereView: FlippedView {
+  let label = makeLabel("Open in another window", size: 15, weight: .semibold)
+  let detail = makeLabel("", size: 12)
+  let button: PillButton
+
+  init(url: String, palette: Palette, onShow: @escaping () -> Void) {
+    button = PillButton(title: "Show Here", style: "default", action: onShow)
+    super.init(frame: .zero)
+    wantsLayer = true
+    detail.stringValue = URL(string: url)?.host() ?? url
+    detail.lineBreakMode = .byTruncatingMiddle
+    label.alignment = .center
+    detail.alignment = .center
+    for v in [label, detail, button] as [NSView] { addSubview(v) }
+    apply(palette)
+  }
+  required init?(coder: NSCoder) { fatalError() }
+
+  func apply(_ p: Palette) {
+    layer?.backgroundColor = p.surface.cgColor
+    label.textColor = p.textPrimary
+    detail.textColor = p.textSecondary
+    button.apply(p)
+  }
+
+  override func layout() {
+    super.layout()
+    let w = max(0, min(bounds.width - 40, Tokens.elsewhereWidth))
+    let bw = button.preferredWidth, bh = Tokens.elsewhereButtonHeight
+    var y = ((bounds.height - (20 + 6 + 16 + 16 + bh)) / 2).rounded()
+    label.frame = NSRect(x: ((bounds.width - w) / 2).rounded(), y: y, width: w, height: 20)
+    y += 26
+    detail.frame = NSRect(x: ((bounds.width - w) / 2).rounded(), y: y, width: w, height: 16)
+    y += 32
+    button.frame = NSRect(x: ((bounds.width - bw) / 2).rounded(), y: y, width: bw, height: bh)
   }
 }
 

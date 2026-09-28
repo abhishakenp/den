@@ -33,8 +33,9 @@ Chords are `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f
 | Undo sidebar action | – | – | ⌃Z (toast) | ⌃Z | `tabs.undo` |
 | Unload space (free every loaded tab but the one on screen) | – | – | – | ⌃⌘U (also in the space's menu) | `spaces.unload` |
 | Open Peek / mini window in space | – | – | ⌘O | ⌘O | `file.openInSpace` |
-| New window | ⌘N | ⌘N | ⌘N | – | den has one window with every space in it (Arc's windows share spaces too). Not planned yet |
-| New private window | ⇧⌘N | ⇧⌘N | ⇧⌘N | – | Needs private tabs; the `private` web profile exists, the UI doesn't yet |
+| New window | ⌘N | ⌘N | ⌘N | ⌘N (same spaces and tabs, its own place) | `file.newWindow` |
+| New private window | ⇧⌘N | ⇧⌘N | ⇧⌘N | ⇧⌘N (dark, nothing saved) | `file.newPrivateWindow` |
+| Reopen closed window | ⇧⌘T | ⇧⌘T | – | ⇧⌘T right after closing a window; File ▸ Reopen Closed Window | `file.reopenWindow` |
 
 **Non-US keyboards.** Shortcuts match the character a key types (Dvorak and QWERTZ letters keep their own keys). A key whose layout can't type the shortcut's character (AZERTY's ⌃& for ⌃1, the ⌘^ dead key for ⌘[, any Cyrillic, Greek or Hebrew letter) runs the shortcut at that key's US position, as Chrome and Firefox do, unless the typed character is itself a shortcut (`KeyLayoutFallback`, tested with the French, Russian, Dvorak and German layouts in `PageSafetyTests`).
 

@@ -237,4 +237,15 @@ public enum Tokens {
   public static let findBarInset: CGFloat = 12  // den's own: from the card's top and right edges
   /// Safari's page zoom steps (⌘+ / ⌘-), 50–300%.
   public static let zoomSteps: [Double] = [0.5, 0.75, 0.85, 1, 1.15, 1.25, 1.5, 1.75, 2, 2.5, 3]
+
+  // MARK: Windows — den's own
+  /// Private windows (⇧⌘N) are always dark (Dia 1.18.1: "can't mistake a private window for a
+  /// normal one"): a deep violet-to-graphite gradient, no grain, whatever the space themes are.
+  public static let privateTheme = Theme(colors: [RGB(hex: "#3a2f5c")!, RGB(hex: "#1c1b26")!], intensity: 0.9, grain: 0, appearance: .dark)
+  /// A new window (⌘N) opens this far right and down from the one in front (invisible mode only;
+  /// on screen AppKit's cascade places it).
+  public static let windowCascadeOffset: CGFloat = 30
+  /// "Open in another window" in a pane whose page another window shows.
+  public static let elsewhereWidth: CGFloat = 360  // den's own
+  public static let elsewhereButtonHeight: CGFloat = 30  // den's own: dialog buttons' height class
 }

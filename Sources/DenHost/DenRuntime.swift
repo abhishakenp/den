@@ -8,7 +8,9 @@ public final class DenRuntime {
   /// The cordis plugin host. Every host service is provided here, and every host event is
   /// re-emitted on its bus, so plugins reach the host exactly like they reach each other.
   public let plugins: PluginHost
-  public let window = DenWindowController()
+  /// Every browser window (⌘N, ⇧⌘N); `window` is the active one.
+  public let windows = WindowSet()
+  public var window: DenWindowController { windows.active }
   public let windowService: WindowService
   public let webviews: WebViewsService
   public let content: ContentService
@@ -50,14 +52,14 @@ public final class DenRuntime {
   /// `PluginHost.defaultCrashMarkerPath`.
   public init(storageRoot: URL = StorageService.defaultRoot, crashMarkerPath: String? = nil, pluginCache: String? = nil) {
     plugins = PluginHost(crashMarkerPath: crashMarkerPath, cacheDirectory: pluginCache)
-    windowService = WindowService(window: window)
+    windowService = WindowService(windows: windows)
     webviews = WebViewsService(host: host)
-    content = ContentService(host: host, webviews: webviews, window: window)
-    ui = UIService(host: host, window: window, content: content)
+    content = ContentService(host: host, webviews: webviews, windows: windows)
+    ui = UIService(host: host, windows: windows, content: content)
     keys = KeysService(host: host)
     storage = StorageService(root: storageRoot)
-    app = AppService(host: host, window: window)
-    media = MediaService(host: host, webviews: webviews, content: content, window: window, storage: storage)
+    app = AppService(host: host, windows: windows)
+    media = MediaService(host: host, webviews: webviews, content: content, windows: windows, storage: storage)
     nowPlaying = NowPlayingService(host: host)
     session = SessionService(host: host, webviews: webviews, permissions: permissions)
     net = NetService(host: host, webviews: webviews, permissions: permissions)
@@ -76,13 +78,14 @@ public final class DenRuntime {
       guard let webviews else { return nil }
       return webviews.record(preferred)?.webView ?? webviews.records.values.lazy.compactMap(\.webView).first
     }
+    downloads.isPrivateWebview = { [weak webviews] id in webviews?.record(id)?.isPrivate ?? id.hasPrefix("ptab-") }
     webviews.uploadPicker = UploadPicker(downloads: downloads)
     // No platform passkeys without Apple's entitlement: pages are told so (Passkeys.swift).
     webviews.configureHooks.append { _, c in Passkeys.configure(c) }
     // The real profile keeps extensions next to its storage and a persistent controller; any other
     // storage root (tests, --demo, --storage) gets its own folder and a non-persistent controller.
     let isDefault = storageRoot.standardizedFileURL == StorageService.defaultRoot.standardizedFileURL
-    extensions = ExtensionsService(host: host, webviews: webviews, window: window,
+    extensions = ExtensionsService(host: host, webviews: webviews, window: windows.main,
                                    root: isDefault ? storageRoot.deletingLastPathComponent().appendingPathComponent("Extensions", isDirectory: true)
                                      : storageRoot.appendingPathComponent("extensions", isDirectory: true),
                                    persistent: isDefault)
@@ -90,7 +93,7 @@ public final class DenRuntime {
     settings = SettingsService(host: host, storage: storage)
     speech = SpeechService(host: host)
     translate = TranslateService(host: host)
-    translate.window = { [weak window] in window?.window }
+    translate.window = { [weak windows] in windows?.active.window }
     Self.permissionsByHost[ObjectIdentifier(plugins)] = permissions
     // `webviews.eval` reads a live page only for a plugin with `session:<that page's host>`.
     webviews.allowScript = { [permissions] plugin, host in MainActor.assumeIsolated { permissions.allowsSession(plugin, host: host) } }
@@ -98,10 +101,10 @@ public final class DenRuntime {
     webviews.allowPages = { [permissions] plugin, host in MainActor.assumeIsolated { permissions.allowsPages(plugin, host: host) } }
     webviews.resource = { [permissions] plugin, name in MainActor.assumeIsolated { permissions.resource(plugin, name) } }
     windowService.ui = ui
-    webviews.prompts = WebPrompts(window: window) { [weak ui] in ui?.renderer.palette }
+    webviews.prompts = WebPrompts(windows: windows) { [weak ui] in ui?.renderer.palette }
     windowService.attach(webviews: webviews, host: host)
     // Page actions (zoom, find, print, inspector, view source): state only, UI built on first use.
-    let pa = PageActions(host: host, webviews: webviews, content: content, window: window, storage: storage)
+    let pa = PageActions(host: host, webviews: webviews, content: content, windows: windows, storage: storage)
     pa.palette = { [weak ui] in ui?.renderer.palette }
     pa.searchEngine = { [weak plugins] in
       guard let e = plugins?.call("commands", "engines", .null).array?.first, let u = e["url"].string else { return nil }
@@ -125,10 +128,13 @@ public final class DenRuntime {
     extensions.start()
     host.forward = { [weak plugins] e, v in plugins?.emit(e, v) }
     host.externalListeners = { [weak plugins] e in plugins?.hasListeners(e) ?? false }
-    window.emit = { [weak host] e, v in host?.emit(e, v) }
-    window.onCloseRequest = { [weak app] in app?.shouldClose() ?? true }
+    windows.emit = { [weak host] e, v in host?.emit(e, v) }
+    windows.onCloseRequest = { [weak app] in app?.shouldClose() ?? true }
+    // A closed private window's ephemeral data store goes with it.
+    windows.onRemove.append { [weak webviews] w in if w.isPrivate { webviews?.releaseStore("private:" + w.id) } }
+    windowService.content = content
     app.anchorView = { [weak ui] id in ui?.nodeView(id) }
-    settings.dark = { [unowned window] in window.isDark }
+    settings.dark = { [unowned windows] in windows.active.isDark }
     settings.palette = { [unowned ui] in ui.renderer.palette }
     ui.onPalette = { [weak settings] _ in settings?.window?.applyAppearance() }
     GeneralSettings.install(self)

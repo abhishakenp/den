@@ -214,9 +214,11 @@ final class MiniWindows {
   var next = 1
   weak var webviews: WebViewsService?
   weak var host: ServiceHost?
-  let wc: DenWindowController
+  let browserWindows: WindowSet
+  /// Little Arc follows the theme of the browser window in front (a private window's is never used).
+  var wc: DenWindowController { browserWindows.active.isPrivate ? browserWindows.main : browserWindows.active }
 
-  init(window: DenWindowController) { wc = window }
+  init(windows: WindowSet) { browserWindows = windows }
 
   /// Spec §8: placed 20 pt from the screen's right edge and 20 pt below the menu bar.
   static func frame(on screen: NSRect, size: CGSize) -> NSRect {

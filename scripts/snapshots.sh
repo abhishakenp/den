@@ -93,6 +93,13 @@ if [[ -f build/den.app/Contents/PlugIns/commandbar.dylib ]]; then
   done
 fi
 if [[ -f build/den.app/Contents/PlugIns/theme.dylib ]]; then shot theme-picker-live themeLive light; shot theme-picker-live-dark themeLive dark; fi
+# Windows: a second window (⌘N) asking what to open, a private window (network: swift.org), and a
+# tab moved to another window (the first window says where it went).
+if [[ -f build/den.app/Contents/PlugIns/commandbar.dylib ]]; then
+  soft shot window-new newWindow light 4
+  soft shot window-private privateWindow dark 8
+  soft shot window-handoff windowHandoff light 5
+fi
 if [[ -f build/den.app/Contents/PlugIns/quit.dylib ]]; then shot quit-dialog dialog light; shot quit-dialog-dark dialog dark; fi
 # Host components (self-contained scenarios, no --demo): see DenHost/Scenarios/HostScenarios.swift.
 host() { # name scenario appearance [delay]

@@ -14,6 +14,8 @@ enum MenuActions {
     MainMenu.handler = { [weak rt] a in if let rt { perform(a, rt) } }
     MainMenu.canPerform = { [weak rt] a in
       guard let rt else { return false }
+      // Reopen Closed Window: only when the tabs plugin has one to bring back.
+      if a == "window.reopen" { return rt.call("tabs", "closedWindows")["count"].int ?? 0 > 0 }
       return a.hasPrefix("page.") ? focusedWebView(rt) != nil : true
     }
     MainMenu.runCommand = { [weak rt] id in _ = rt?.call("commands", "run", ["id": .string(id)]) }
@@ -36,6 +38,10 @@ enum MenuActions {
     case "app.about": AboutPanel.shared.show(nil)  // the app service keeps its credits (`app.about`)
     case "app.settings": rt.settings.open()
     case "app.defaultBrowser": rt.call("app", "setDefaultBrowser")
+    // Windows are host capabilities; what they show is up to the tabs plugin (window.opened).
+    case "window.new": rt.call("window", "new")
+    case "window.newPrivate": rt.call("window", "new", ["private": true])
+    case "window.reopen": rt.host.emit("window.reopen")
     case "page.zoomIn": rt.call("webviews", "zoom", ["id": id, "action": "in"])
     case "page.zoomOut": rt.call("webviews", "zoom", ["id": id, "action": "out"])
     case "page.zoomReset": rt.call("webviews", "zoom", ["id": id, "action": "reset"])
