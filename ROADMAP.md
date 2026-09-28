@@ -338,7 +338,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
   - ⏳ Developer ID signing and notarization
 - ✅ Auto-update (OTA): Sparkle for the app, signed hot-swapped plugins, `stable` / `prerelease` / `follow-main` channels, relaunch only when you won't notice ([docs](docs/updates.md))
 - ✅ Stable signing identity: `scripts/make-signing-identity.sh` creates "den Local Signing" in the login keychain once; `scripts/bundle.sh` signs with it (designated requirement = certificate, not cdhash), ad-hoc when absent
-- ⏳ CI builds on every PR
+- ✅ CI builds on every PR: build, full test suite, report-only perf on the macos-26 runner; `scripts/ci-check.sh` for remote builds (docs/dev.md)
 - ⏳ Contributing guide
 - 🟡 Plugin author docs
   - ✅ [host API](docs/host-api.md), [plugin services](docs/plugin-services.md), [`~/.den` plugins](docs/den-home.md#plugins)
