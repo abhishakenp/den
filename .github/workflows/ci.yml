@@ -74,7 +74,7 @@ jobs:
       - name: Test (scripts/test.sh, UI suites included)
         env:
           CI_TEST_CMD: ${{ inputs.lldb && 'scripts/ci/lldb-tests.sh' || 'scripts/test.sh' }}
-        run: scripts/ci/run-tests.sh --filter ExtensionCompatTests
+        run: scripts/ci/run-tests.sh --filter "ExtensionCompatTests|ExtensionsTests|ExtensionPackageTests"
 
       - name: Perf (report only)
         if: false
