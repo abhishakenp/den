@@ -1276,44 +1276,80 @@ final class FolderNode: NodeView {
   }
 }
 
-/// Pinned/today divider with an optional action. {type:"divider", id, action?: "Clear"} -> action "clear"
+/// Pinned/today divider with an optional action. {type:"divider", id, action?: "Clear",
+/// secondary?: {id, title, icon?, always?}} -> action "clear", or the secondary's `id`.
+/// The secondary button (Arc's "Tidy") sits left of the action and shows only while the divider
+/// is hovered, unless `always` (e.g. while it's busy).
 final class DividerNode: HoverNode {
   let button = makeLabel(size: 11, weight: .medium)
   let arrow = IconView()
+  let second = makeLabel(size: 11, weight: .medium)
+  let secondIcon = IconView()
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
     addSubview(arrow)
     addSubview(button)
+    addSubview(secondIcon)
+    addSubview(second)
   }
   required init?(coder: NSCoder) { fatalError() }
   override var fillRect: NSRect { .zero }
-  override func hoverChanged() { apply(r.palette) }
+  override func hoverChanged() {
+    updateSecondary()
+    apply(r.palette)
+  }
   override func update(_ v: Value) {
     super.update(v)
     button.stringValue = v.str("action")
     button.isHidden = button.stringValue.isEmpty
     arrow.spec = "sf:arrow.down"
     arrow.isHidden = button.isHidden
+    second.stringValue = v["secondary"].str("title")
+    secondIcon.spec = v["secondary"].str("icon")
+    updateSecondary()
     needsLayout = true
+  }
+  var hasSecondary: Bool { !node["secondary"].str("id").isEmpty && !second.stringValue.isEmpty }
+  /// Hover-only, like Arc's Tidy; `always` keeps it up (a busy "Tidying…").
+  var secondaryShown: Bool { hasSecondary && (hovering || node["secondary"].flag("always")) }
+  func updateSecondary() {
+    second.isHidden = !secondaryShown
+    secondIcon.isHidden = second.isHidden || secondIcon.spec.isEmpty
+    needsLayout = true
+    needsDisplay = true
   }
   override func apply(_ p: Palette) {
     button.textColor = hovering ? p.text : p.secondaryText
     arrow.tint = button.textColor ?? p.secondaryText
+    second.textColor = p.secondaryText
+    secondIcon.tint = p.secondaryText
     needsDisplay = true
   }
   override func height(for w: CGFloat) -> CGFloat { Tokens.dividerHeight }
-  var lineEnd: CGFloat { button.isHidden ? bounds.width - 8 : bounds.width - button.textWidth - 30 }
+  var secondMinX: CGFloat { secondIcon.isHidden ? second.frame.minX : secondIcon.frame.minX }
+  var lineEnd: CGFloat {
+    if !second.isHidden { return secondMinX - 8 }
+    return button.isHidden ? bounds.width - 8 : bounds.width - button.textWidth - 30
+  }
   override func layout() {
     let bw = ceil(button.textWidth) + 4
     button.frame = NSRect(x: bounds.width - bw - 6, y: (bounds.height - 14) / 2, width: bw, height: 14)
     arrow.frame = NSRect(x: button.frame.minX - 13, y: (bounds.height - 9) / 2, width: 9, height: 9)
+    let right = button.isHidden ? bounds.width - 6 : arrow.frame.minX - 12
+    let sw = ceil(second.textWidth) + 4
+    second.frame = NSRect(x: right - sw, y: (bounds.height - 14) / 2, width: sw, height: 14)
+    secondIcon.frame = NSRect(x: second.frame.minX - 13, y: (bounds.height - 10) / 2, width: 10, height: 10)
   }
   override func draw(_ dirtyRect: NSRect) {
     palette.divider.setFill()
     NSRect(x: 8, y: (bounds.height / 2).rounded(), width: max(0, lineEnd - 8), height: 0.5).fill()  // spec §1: 0.5 pt
   }
   override func clicked(at p: NSPoint, event: NSEvent) {
-    if !button.isHidden, p.x > lineEnd { emit("clear") }
+    if !second.isHidden, p.x >= secondMinX - 4, p.x <= second.frame.maxX + 4 {
+      emit(node["secondary"].str("id"))
+      return
+    }
+    if !button.isHidden, p.x > arrow.frame.minX - 4 { emit("clear") }
   }
 }
 
