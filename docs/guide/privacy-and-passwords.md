@@ -5,8 +5,7 @@
 Shields are on for every site from the first launch; there's nothing to set up.
 
 <p align="center">
-  <img src="../screenshots/shields-panel.png" alt="The Shields panel" width="400">
-  <img src="../screenshots/shields-panel-dark.png" alt="The Shields panel, dark" width="400">
+  <img src="../screenshots/shields-panel-dark.png" alt="The Shields panel" width="400">
 </p>
 
 | What | What it does |
@@ -20,7 +19,7 @@ Shields are on for every site from the first launch; there's nothing to set up.
 | **Autoplay** | Videos may start by themselves only when muted |
 
 <p align="center">
-  <img src="../screenshots/shields-https.png" alt="A site without HTTPS" width="400">
+  <img src="../screenshots/shields-https-dark.png" alt="A site without HTTPS" width="400">
   <img src="../screenshots/shields-lookalike-dark.png" alt="A lookalike site warning" width="400">
 </p>
 
@@ -86,6 +85,8 @@ It's on by default, and follows den's appearance (Automatic, Light or Dark, set 
 | **Dark Mode: Off for This Site** | den never touches it |
 | **Dark Mode for Websites: On/Off** | turns the whole feature off or on |
 
+<p align="center"><img src="../screenshots/dark-mode-site-dark.png" alt="example.com, a light page, darkened" width="560"></p>
+
 ## Google sign-in
 
 Google refuses to sign you in from many embedded web views. den identifies itself with Safari's user agent (read from the Safari on your Mac), so Google sign-in works.
@@ -93,6 +94,15 @@ Google refuses to sign you in from many embedded web views. den identifies itsel
 ## Passwords: the Touch ID vault
 
 den saves logins to your Mac's Keychain and fills them after Touch ID.
+
+<p align="center">
+  <img src="../screenshots/vault-save-dark.png" alt="Save password for this site? with Save, Not Now and Never for This Site" width="400">
+  <img src="../screenshots/vault-fill-dark.png" alt="Saved logins listed under the password field" width="400">
+</p>
+<p align="center">
+  <img src="../screenshots/vault-generate-dark.png" alt="Use Strong Password on a sign-up form" width="400">
+  <img src="../screenshots/vault-sheet-dark.png" alt="The Passwords list with Copy and Delete" width="400">
+</p>
 
 - **Saving.** After you sign in, den asks **"Save password for \<site\>?"** (or **Update password…**) with **Save**, **Not Now** and **Never for This Site**.
 - **Filling.** Click into a login field and your saved logins for that site appear below it. Pick one, touch the sensor ("den is trying to fill your password for \<site\>"), and it's filled. Username-first sign-ins (Google, Microsoft) get the list on the email step too.
