@@ -345,6 +345,9 @@ final class ConnectionsCore {
   func disconnect(_ id: String) -> Value {
     guard let p = provider(id) else { return .err("connections: no provider " + id) }
     pending[id] = nil
+    // You stay signed in to the site, so the next cookie change would auto-connect it again
+    // (Google rotates cookies on most page loads): a disconnect stays until a manual Connect.
+    setDeclined(id, true)
     guard account(id) != nil else { return .okay }
     accounts.removeAll { $0.s("id") == id }
     save()

@@ -225,7 +225,7 @@ Injects: `ui`, `storage`, `tabs`, `spaces`. Calls `commands` when it exists. Dia
 | `get` | `id` | one entry of `list` |
 | `connect` | `id`, `url?`, `profile?` (default: current space's) | ok. Probes first; if not signed in, opens `signIn` in a tab and probes every 3 s and when that tab finishes loading (15 min limit), then toasts "X connected". Several Slack workspaces open the sheet with the picker |
 | `report` | `id`, `connected`, `profile`, `account?`, `teams?`, `note?` (a short status: "reads your Calendar tab"), `auto?`, `expired?` | ok. A provider's answer to a probe; `expired` from a refresh means the site session ended (toast, account dropped). Auto-connects within 8 s of each other share one toast ("Gmail and Google Calendar connected", Undo undoes both: `connections.undo:<id>,<id>`) |
-| `disconnect` | `id` | ok. Forgets the account (you stay signed in to the site) |
+| `disconnect` | `id` | ok. Forgets the account (you stay signed in to the site) and turns auto-connect off for it until a manual Connect (`declined`), so the next cookie change doesn't bring it back |
 | `setTeam` | `id`, `team`, `enabled` | ok. Workspace picker |
 | `open`, `close` | – | The Connections sheet (`overlay.connections`) |
 

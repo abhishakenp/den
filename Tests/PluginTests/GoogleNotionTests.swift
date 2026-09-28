@@ -252,6 +252,11 @@ struct GoogleNotionTests {
     h.rt.call("connections", "disconnect", ["id": "calendar"])
     #expect(await ct.until { rec.badges.last == "" })
     #expect(cal.events.isEmpty)
+    // A disconnect sticks: the next Google cookie change doesn't connect it again.
+    #expect(h.rt.call("connections", "get", ["id": "calendar"]).b("declined"))
+    h.rt.plugins.emit("session.cookiesChanged", ["domain": "127.0.0.1", "profile": "default"])
+    try? await Task.sleep(for: .milliseconds(300))
+    #expect(!h.rt.call("connections", "get", ["id": "calendar"]).b("connected"))
   }
 
   @Test func calendarReadsTodayFromTheCalendarTab() async throws {
