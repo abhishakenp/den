@@ -26,10 +26,11 @@ on:
 permissions:
   contents: read
 
-# One run per ref: a newer push (or dispatch) to the same branch cancels the superseded run.
+# One run per ref: a newer push (or dispatch) to a ci/** or PR branch cancels the superseded run.
+# main queues instead, so every commit on main gets a verdict (and a den.app artifact).
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   DEN_SIGN_IDENTITY: "-" # ad hoc: runners have no stable signing identity
