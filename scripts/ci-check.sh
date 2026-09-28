@@ -37,20 +37,26 @@ if [[ $remote_sha != "$sha" ]]; then
   git push --force --quiet origin "HEAD:refs/heads/$branch"  # scratch branch only
   echo "pushed ${sha:0:12} to $branch"
 fi
-# A push triggers the build+test run. Snapshots (or a commit already on the branch) need a
-# dispatch; it supersedes the push run for the same ref (concurrency group), which is cancelled.
-event=push
-if (( snapshots )) || [[ $remote_sha == "$sha" ]]; then
+# A push triggers the build+test run. Snapshots need a dispatch; it supersedes the push run for
+# the same ref (concurrency group), which is cancelled. A commit already on the branch reuses its
+# latest run (still going or finished) when that run is enough, else it is dispatched again.
+event=push run=""
+if (( ! snapshots )) && [[ $remote_sha == "$sha" ]]; then
+  run=$(gh run list --workflow ci.yml --branch "$branch" --commit "$sha" --limit 10 \
+    --json databaseId,conclusion --jq '[.[] | select(.conclusion != "cancelled")][0].databaseId // empty' 2>/dev/null || true)
+  [[ -n $run ]] && echo "${sha:0:12} is already on $branch: following its run"
+fi
+if [[ -z $run ]] && { (( snapshots )) || [[ $remote_sha == "$sha" ]]; }; then
   event=workflow_dispatch
   gh workflow run ci.yml --ref "$branch" -f snapshots=$( (( snapshots )) && echo true || echo false) \
     -f snapshot_appearance=$appearance >/dev/null
   echo "dispatched ci.yml on $branch (snapshots: $( (( snapshots )) && echo $appearance || echo off))"
 fi
 
-run=""
 for _ in {1..40}; do
+  [[ -n $run ]] && break
   run=$(gh run list --workflow ci.yml --branch "$branch" --commit "$sha" --event $event --limit 5 \
-    --json databaseId,createdAt --jq "[.[] | select(.createdAt >= \"$start\")][0].databaseId // empty")
+    --json databaseId,createdAt --jq "[.[] | select(.createdAt >= \"$start\")][0].databaseId // empty" 2>/dev/null || true)
   [[ -n $run ]] && break
   sleep 3
 done
@@ -59,9 +65,19 @@ url=$(gh run view "$run" --json url --jq .url)
 echo "run: $url"
 
 t0=$SECONDS
-rc=0
-gh run watch "$run" --compact --interval 20 --exit-status >/dev/null || rc=$?
-conclusion=$(gh run view "$run" --json conclusion --jq .conclusion)
+# gh run watch gives up on a network blip; resume until the run itself says it's completed.
+while :; do
+  gh run watch "$run" --compact --interval 20 >/dev/null 2>&1 && break
+  st=$(gh run view "$run" --json status --jq .status 2>/dev/null || echo unreachable)
+  [[ $st == completed ]] && break
+  echo "gh run watch stopped (run: $st); resuming" >&2
+  sleep 15
+done
+conclusion=""
+for _ in {1..10}; do
+  conclusion=$(gh run view "$run" --json conclusion --jq .conclusion 2>/dev/null) && [[ -n $conclusion ]] && break
+  sleep 10
+done
 echo
 echo "== $conclusion in $(( (SECONDS - t0) / 60 ))m$(( (SECONDS - t0) % 60 ))s: $url"
 gh run view "$run" --json jobs --jq '.jobs[] | "\(.conclusion // .status)\t\(.name)\t\((((.completedAt | fromdate) - (.startedAt | fromdate)) / 60 | floor))m"' 2>/dev/null || true
@@ -77,5 +93,5 @@ fi
 if [[ $conclusion != success ]]; then
   echo "== failed step logs (tail)"
   gh run view "$run" --log-failed 2>/dev/null | cut -f3- | grep -vE '^\s*$' | tail -60 || true
-  exit $(( rc ? rc : 1 ))
+  exit 1
 fi
