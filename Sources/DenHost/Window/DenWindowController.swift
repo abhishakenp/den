@@ -116,8 +116,8 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     overlays.wantsLayer = true
 
     resizeHandle.onDrag = { [weak self] x in self?.dragResize(to: x) }
-    resizeHandle.onDragEnd = { [weak self] in self?.emit("window.sidebarResized", ["width": .double(Double(self?.sidebarWidth ?? 0))]) }
-    resizeHandle.onDoubleClick = { [weak self] in self?.setSidebarWidth(Tokens.sidebarDefaultWidth, animated: true) }
+    resizeHandle.onDragEnd = { [weak self] in self?.emit("window.sidebarResized", ["width": .double(Double(self?.sidebarWidth ?? 0)), "by": "drag"]) }
+    resizeHandle.onDoubleClick = { [weak self] in self?.setSidebarWidth(Tokens.sidebarDefaultWidth, animated: true, by: "reset") }
     edgeZone.onEnter = { [weak self] in self?.setRevealed(true) }
     sidebar.onExit = { [weak self] in self?.scheduleConceal() }
     sidebar.onEnter = { [weak self] in self?.hideRevealWork?.cancel() }
@@ -193,10 +193,12 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
 
   // MARK: Sidebar
 
-  public func setSidebarWidth(_ w: CGFloat, animated: Bool) {
+  /// `by`: what changed it, in `window.sidebarResized` (`set`: a plugin; `reset`: a double-click
+  /// on the edge; a drag emits `drag` when it ends).
+  public func setSidebarWidth(_ w: CGFloat, animated: Bool, by: String = "set") {
     sidebarWidth = min(max(w, Tokens.sidebarMinWidth), Tokens.sidebarMaxWidth)
     relayout(animated: animated)
-    emit("window.sidebarResized", ["width": .double(Double(sidebarWidth))])
+    emit("window.sidebarResized", ["width": .double(Double(sidebarWidth)), "by": .string(by)])
   }
 
   func dragResize(to x: CGFloat) {

@@ -13,7 +13,7 @@ import CordisValue
 ///   openMini {webview, space?, width?, height?} -> {id}   Little Arc window (spec §8) hosting one web view
 ///   updateMini {id, space?}                     closeMini {id}                listMini -> [{id, webview, key}]
 ///   focusMini {id}                              brings that Little Arc window to the front
-/// Events: window.sidebarResized {width}, window.sidebarVisibility {hidden}, window.sidebarReveal {revealed},
+/// Events: window.sidebarResized {width, by: drag|reset|set}, window.sidebarVisibility {hidden}, window.sidebarReveal {revealed},
 ///   window.miniAction {id, webview, action: open|copy}, window.miniClosed {id, webview},
 ///   window.opened {id, private, page, panes, focus, restored}, window.activated {id, previous, …},
 ///   window.closed {id, private, page, panes, focus, frame}, window.reopen

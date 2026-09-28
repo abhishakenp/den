@@ -456,6 +456,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rt.call("tabs", "select", ["id": sel])
         print("scenario.handoff w1=\(rt.call("content", "get", ["window": "w1"])) w2=\(rt.call("content", "get"))")
       }
+    case "tourCard", "tourStep", "tipToast":
+      // The tips plugin's tour card, its second step, and a tip (limits ignored, nothing recorded).
+      let preview: Value = s == "tourCard" ? ["key": "tour"] : s == "tourStep" ? ["key": "step", "step": 1] : ["key": "reopenClosed"]
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.plugins.emit("tips.preview", preview) }
     case "dialog": rt.plugins.emit("app.quitRequested")
     case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { rt.call("tabs", "clearToday") }
     case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.call("peek", "open", ["url": "https://www.swift.org"]) }
