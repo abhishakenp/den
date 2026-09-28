@@ -5,6 +5,7 @@
 #   scripts/perf/lab.sh <den.app> <outdir> [scenario...]
 #   scenarios (default: empty tabs200 seeded):
 #     empty    zero tabs (den alone, no WebKit process)
+#     emptyload  the same, launched and measured while busy loops load every core
 #     tabs200  200 never-loaded tabs, nothing selected (per discarded tab = (tabs200 - empty) / 200)
 #     seeded   den's first-run store (its pages load)
 #     page     zero tabs + https://example.com, 45 s settle
@@ -68,7 +69,7 @@ for s in $scenarios; do
   hosts=() totals=()
   settle=${LAB_SETTLE:-10} url=()
   [[ $s == page || $s == ubo ]] && { settle=${LAB_SETTLE:-45}; url=(--url https://example.com); }
-  src=$s; [[ $s == page ]] && src=empty
+  src=$s; [[ $s == page || $s == emptyload ]] && src=empty
   for i in $(seq 1 $reps); do
     fresh $src
     # The ubo store's extensions.json points at its own folder: rewrite for the copy.
@@ -76,7 +77,14 @@ for s in $scenarios; do
     exec_args=()
     # First run: heap, vmmap, footprint, and the power assertions held while den idles.
     (( i == 1 )) && exec_args=(--exec "heap -s \$PERF_PID > '$out/$s.heap.txt' 2>&1; vmmap -summary \$PERF_PID > '$out/$s.vmmap.txt' 2>&1; footprint -p \$PERF_PID > '$out/$s.footprint.txt' 2>&1; pmset -g assertions > '$out/$s.assertions.txt' 2>&1; true")
+    # emptyload: the empty store while 3x ncpu busy loops load the machine (launch-time races that
+    # only show on a busy Mac: the 2026-09-28 noTabs regression was measured at load 5-800).
+    burners=()
+    if [[ $s == emptyload ]]; then
+      for _ in $(seq 1 $(( $(sysctl -n hw.ncpu) * 3 ))); do yes > /dev/null & burners+=($!); done
+    fi
     $probe mem $app --settle $settle $url $exec_args -- --storage $tmp/store > $tmp/log 2>&1 || true
+    (( ${#burners} )) && kill $burners 2>/dev/null; wait $burners 2>/dev/null || true
     cat $tmp/log >> $out/$s.log
     hosts+=($(awk '$1 == "mem.hostMB" {print $2}' $tmp/log)) totals+=($(awk '$1 == "mem.totalMB" {print $2}' $tmp/log))
   done
