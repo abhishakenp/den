@@ -1,6 +1,6 @@
 # Refs .github/workflows/perf-lab.yml measures on a push to perf/**: "<ref> <label> [scenario...]"
 # (HEAD = the pushed commit; lab/<name> branches hold experiment variants). Scenarios: scripts/perf/lab.sh.
 darkbench: yes
-010c2c9 pre-lazy empty tabs200 seeded
 HEAD head empty tabs200 seeded page ubo
-lab/noprewarm noprewarm empty tabs200 seeded
+lab/noprewarm2 noprewarm empty tabs200 seeded
+lab/eager eager empty seeded
