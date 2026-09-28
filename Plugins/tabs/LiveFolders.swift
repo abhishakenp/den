@@ -292,7 +292,7 @@ final class LiveFolders {
         case "open": open(fid, it)
         case "copy":
           env.call("app", "copy", ["text": it["url"]])
-          env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Copied Link", "icon": "sf:link"]])
+          env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": .string(Copied.link(it.s("url"))), "icon": "sf:link"]])
         case "done": markDone(fid, it)
         default: break
         }
