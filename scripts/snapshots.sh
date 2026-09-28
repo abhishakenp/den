@@ -94,6 +94,13 @@ if [[ -f build/den.app/Contents/PlugIns/commandbar.dylib ]]; then
 fi
 if [[ -f build/den.app/Contents/PlugIns/theme.dylib ]]; then shot theme-picker-live themeLive light; shot theme-picker-live-dark themeLive dark; fi
 if [[ -f build/den.app/Contents/PlugIns/quit.dylib ]]; then shot quit-dialog dialog light; shot quit-dialog-dark dialog dark; fi
+# Onboarding (the tips plugin): the tour card, a tour step and a tip toast.
+if [[ -f build/den.app/Contents/PlugIns/tips.dylib ]]; then
+  for p in tourCard:tour-card tourStep:tour-step tipToast:tip-toast; do
+    soft shot ${p##*:} ${p%%:*} light 3
+    soft shot ${p##*:}-dark ${p%%:*} dark 3
+  done
+fi
 # Host components (self-contained scenarios, no --demo): see DenHost/Scenarios/HostScenarios.swift.
 host() { # name scenario appearance [delay]
   resolve "$1" "$3" || return 0

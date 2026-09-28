@@ -31,7 +31,7 @@ The code lives in `Sources/DenHost/Services/`. `DenRuntime` registers every serv
 | `listMini` | – | `[{id, webview, key}]`. `key` is true for the key window (the peek plugin's ⌘O acts on it) |
 | `focusMini` | `id` | ok. Brings that Little Arc window to the front (the command bar's Windows rows) |
 
-Events: `window.sidebarResized {width}`, `window.sidebarVisibility {hidden}`, `window.sidebarReveal {revealed}`, `window.miniAction {id, webview, action: open|copy}`, `window.miniClosed {id, webview}`.
+Events: `window.sidebarResized {width, by: drag|reset|set}` (a drag when it ends, a double-click reset on the edge, or a plugin's `setSidebar`), `window.sidebarVisibility {hidden}`, `window.sidebarReveal {revealed}`, `window.miniAction {id, webview, action: open|copy}`, `window.miniClosed {id, webview}`.
 
 **Little Arc** (spec §8) is a floating panel, 1185x832 by default, placed 20 pt from the screen's right edge and 20 pt below the menu bar. A 47 pt bar holds the traffic lights, a URL field (site icon, centered domain, copy-link button → `action: copy`) and an "Open in <space> ⌘O" button (→ `action: open`). The web view fills the rest, with no inset card. The bar follows the main window's theme. For "Open in space", the plugin calls `closeMini` and then shows the same web view with `content.show`; closing the window emits `miniClosed`, and the plugin decides whether to close the web view. The ⌘O shortcut itself is bound by the plugin through `keys`.
 
@@ -220,8 +220,12 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 **Long lists are virtualized.** In a `list` inside a scroll view (the sidebar), `tabRow` and `splitRow` children (fixed height) get views only within 200 pt of the visible area and give them up beyond 1000 pt (unless hovered, pressed, focused or being renamed). Heights and order are unaffected; a row without a view is made from its latest value when it scrolls near.
 
 **Slots:**
+<<<<<<< HEAD
 - `sidebar.header`, `sidebar.favorites`, `sidebar.dock` (right above the footer, as tall as its tree, at most 60% of the space below the favorites; the `media` plugin's now-playing cards), `sidebar.footer`
 - `side.header`: over the side column's web view (`content.side`; the `panels` plugin's header)
+=======
+- `sidebar.notice`: a small card pinned above the dock (or the footer when nothing plays), drawn by the host from the theme tokens (`ThemeTokens.card` fill, a 0.5 pt hairline, 10 pt continuous radius, 8 pt from the footer and the tabs above; a 0.2 s fade in, none with Reduce Motion). The tree is [generic nodes](#generic-nodes) (`stack`, `label`, `action`…); `null` removes it and gives the space back to the tabs. The `tips` plugin puts its tour and import cards there
+>>>>>>> 1d9aebf (tips plugin: tour card, import card, one-time tips, Show tips switch)
 - Per space page: `sidebar.spaceHeader`, `sidebar.pinned`, `sidebar.today`
 - Overlays: `overlay.commandBar`, `overlay.peek` (`{webview, title}`), `dialog`, `toast`, `popover` (see [Theme picker](#theme-picker-popover)), `overlay.library` (see [Archive / Library](#archive--library-sheet)), `overlay.briefing`, `overlay.connections`, `overlay.passwords`, `overlay.extensions` (see [Briefing page](#briefing-page-and-connections-sheet)). Cards: [`ui.card`](#uicard-popover-cards-and-hover-intent)
 
@@ -254,7 +258,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `newTabRow` | `id`, `title?` | `click` |
 | `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `headers?` (default true; false draws one flat list), `inputMode?: search\|go` (caret color), `banner?: {text, secondary, primary}` (the default-browser banner), `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?, shortcut?, toggle?}]}]`. `shortcut` ("⇧⌘C") is drawn one keycap per key; `toggle` (bool) draws a switch | `input {text}`, `select {row}` (arrow keys, or hovering a row after the mouse moves), `submit {row, query, modifiers}`, `tab {query}`, `right {row, query}` (→ with the caret at the end), `back` (Backspace in an empty field), `dismiss`, `banner {button: try\|set\|close}` |
 | `dialog` | `id`, `title`, `message?`, `icon?`, `iconStyle?: accent\|destructive\|plain`, `buttons: [{id, title, style: default\|cancel\|destructive\|secondary, default?, keycap?}]`, `checkbox?`, `choices?: [{id, title, subtitle?, icon?}]`, `multiple?` | `button {button, checked, choices?}`. Return presses the `default` button (or the one with `default: true`), Esc the `cancel` one, and a button whose keycap is a ⌘ chord (`⌘O`) takes that key. `choices` are rows under the message (the upload picker): one is selected (the first at the start, ↑/↓ move it) and a click presses the default button with it; with `multiple` a click ticks it. `choices` in the action lists the selected ids |
-| `toast` | `text`, `icon?`, `duration?` (ms; 0 = until dismissed), `id?` (a new toast with the same id replaces it), `action?` (button label), `dismiss?` (removes the toast with that id) | `ui.action {id, action: "toast"}` when the button is clicked |
+| `toast` | `text`, `icon?`, `duration?` (ms; 0 = until dismissed), `id?` (a new toast with the same id replaces it), `action?` (button label), `dismiss?` (removes the toast with that id), `hold?` (stays while the pointer is on it, then leaves 1 s after) | `ui.action {id, action: "toast"}` when the button is clicked |
 | `library` | `id`, `title?`, `icon?`, `query?`, `placeholder?`, `clearTitle?` (`""` hides it), `empty?`, `sections?: [{id, title, keycap?}]`, `section?`, `items: [{id, title, url?, subtitle?, icon?, closedAt?, section?, progress?, buttons?, pill?, file?, dimmed?}]` | `input {text}`, `restore {item}`, `button {item, button}`, `section {id}`, `clear`, `dismiss` |
 | `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss {reason?}` |
 

@@ -412,6 +412,12 @@ These plugins provide no service; they only use the ones above.
   - ⌃⌘S (`panels.key.toggle`, View ▸ Toggle Web Panel) shows the last panel or hides it; with no panels it opens Settings ▸ Web Panels. Commands `panels.toggle`, `panels.addTab` ("Add This Tab as a Web Panel"), `panels.add` (opens Settings).
   - Sleep: 30 s after a panel leaves the screen, `webviews.suspend` (refused while it plays sound; tried again at the next hide). Showing it again restores it like a discarded tab.
   - Settings ▸ Web Panels (`settings.register`, id `panels`): an add field (`claude.ai` → `https://claude.ai`) and the list with Remove. Storage ns `panels`: `list [{id, url, title, mobile}]`, `state {open, last, width}`; the panel open at quit comes back 1.5 s after launch.
+- **`tips`:** onboarding ([spec and status](guide/_in-app-tips.md)): the tour card and the import card in the `sidebar.notice` slot (node ids `tips.card`, `tips.tour.*`, `tips.import.*`), one-time tips as toasts (id `tips.tip`, `hold: true`, button "Don't show tips").
+  - Injects `ui`, `storage`, `settings`; calls `commands`, `spaces`, `content` and `importer` when they exist. Listens only: `tabs.key.*`, `window.sidebar*`, `spaces.*`, `peek.*`, `previews.request`, `commands.run`, `ui.action`. Settings row, commands and cards wait 1.5 s after load.
+  - Commands `tips.toggle` ("Don't Show Tips" / "Show Tips") and `tips.tour` ("Take the den Tour"). Settings ▸ General ▸ Tips (id `tips`, key `enabled`).
+  - Storage ns `tips`: `enabled`, `tour` (`new|dismissed|done`), `import`, `launches`, `shown.<key>`, `retired.<key>`, `counts`, `last`, `day`, `dayCount`.
+  - `importer` (provided by no plugin yet): `sources` → `[{id, name}]`, `run {source}`.
+  - `tips.preview {key}` (snapshot scenarios only) shows a card or tip without limits or records.
 - `theme` and `quit` call `commands.register` without injecting `commands` (the command bar is optional), retrying every 500 ms for 30 s until it exists.
 
 ## Ownership rules
