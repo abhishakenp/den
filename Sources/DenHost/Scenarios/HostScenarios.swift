@@ -31,6 +31,7 @@ public enum HostScenarios {
     if let w = PreviewScenarios.apply(name, runtime: rt, appearance: appearance) { return w }
     if let w = SpaceScenarios.apply(name, runtime: rt) { return w }
     if let w = PromptScenarios.apply(name, runtime: rt, appearance: appearance) { return w }
+    if let w = DownloadScenarios.apply(name, runtime: rt, appearance: appearance) { return w }
     if PageToolsScenarios.apply(name, runtime: rt) { return rt.window.window }
     guard names.contains(name) else { return nil }
     switch name {

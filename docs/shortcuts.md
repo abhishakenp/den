@@ -103,7 +103,7 @@ Reader: Safari's ⇧⌘R is Arc's (and den's) Reload from Origin, so Reader is �
 |---|---|---|---|---|---|
 | History | ⌘Y | ⌘Y | ⌘Y | ⌘Y (the Library: den's archive of closed tabs) | `history.library` |
 | Library | – | – | ⇧⌘L | ⇧⌘L | `history.library` |
-| Downloads | ⌥⌘L | ⇧⌘J | ⇧⌘J | – | den has no downloads list yet (a link's or image's context menu has Save Link As… / Save Image As…) |
+| Downloads | ⌥⌘L | ⇧⌘J | ⇧⌘J | ⌥⌘L (Library ▸ Downloads; again closes it) | `history.downloads` |
 | Settings | ⌘, | ⌘, | ⌘, | ⌘, | `app.settings` |
 | Minimize | ⌘M | ⌘M | ⌘M | ⌘M | `window.minimize` |
 | Close window | ⇧⌘W | ⇧⌘W | ⇧⌘W | ⇧⌘W | `file.closeWindow` |

@@ -43,7 +43,7 @@ struct ShortcutTests {
     // Address and sharing
     ("cmd+shift+c", .event("tabs.key.copy")), ("cmd+opt+shift+c", .command("den.copyMarkdown")),
     // App
-    ("cmd+y", .event("tabs.key.library")), ("cmd+shift+l", .event("tabs.key.library")),
+    ("cmd+y", .event("tabs.key.library")), ("cmd+shift+l", .event("tabs.key.library")), ("cmd+opt+l", .event("tabs.key.downloads")),
     ("cmd+,", .host("app.settings")), ("cmd+m", .sel("performMiniaturize:")), ("cmd+h", .sel("hide:")), ("cmd+q", .sel("terminate:")),
     ("cmd+shift+w", .sel("performClose:")),
     // Edit

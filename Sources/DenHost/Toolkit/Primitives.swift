@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import CordisValue
 
 /// Colors for chrome drawn on top of the themed background.
@@ -283,7 +284,8 @@ public enum Sites {
 
 /// Draws an icon spec: "sf:<symbol>", "app:icon", "site:<domain>" (a letter tile in a color
 /// derived from the domain, or a globe when the domain is empty), an http(s) or data: image
-/// URL, an absolute image file path (extension icons), or text/emoji. A remote image that fails to load (or answers non-2xx) becomes the
+/// URL, an absolute image file path (extension icons), "file:<path>" (Finder's icon for that file,
+/// or for its type when it's gone), or text/emoji. A remote image that fails to load (or answers non-2xx) becomes the
 /// `site:` tile for `fallbackDomain`, else for the domain the icon URL names (Google s2's
 /// `domain=`, else its host); with no domain, a globe.
 public class IconView: NSView, Themable {
@@ -295,6 +297,8 @@ public class IconView: NSView, Themable {
   public var tint: NSColor = .labelColor { didSet { needsDisplay = true } }
   private var image: NSImage?
   private var isSymbol = false
+  /// A Finder file icon: drawn as is, without the rounded clip.
+  private var isFileIcon = false
   /// The remote icon failed: draw the site tile instead.
   private var failed = false
 
@@ -325,8 +329,12 @@ public class IconView: NSView, Themable {
   func reload() {
     image = nil
     isSymbol = false
+    isFileIcon = false
     failed = false
-    if spec == "app:icon" {
+    if spec.hasPrefix("file:") {
+      image = Self.fileIcon(String(spec.dropFirst(5)))
+      isFileIcon = true
+    } else if spec == "app:icon" {
       image = NSApp.applicationIconImage
     } else if spec.hasPrefix("sf:") {
       image = NSImage(systemSymbolName: String(spec.dropFirst(3)), accessibilityDescription: nil)
@@ -350,10 +358,18 @@ public class IconView: NSView, Themable {
 
   public func apply(_ p: Palette) { tint = p.text }
 
+  /// Finder's icon for a file, or for its type when the file is gone (a deleted download).
+  static func fileIcon(_ path: String) -> NSImage {
+    if FileManager.default.fileExists(atPath: path) { return NSWorkspace.shared.icon(forFile: path) }
+    let ext = (path as NSString).pathExtension
+    return NSWorkspace.shared.icon(for: UTType(filenameExtension: ext) ?? .data)
+  }
+
   public override func draw(_ dirtyRect: NSRect) {
     let b = bounds
     if let img = image {
       if isSymbol { return drawSymbol(img, in: b) }
+      if isFileIcon { return img.draw(in: b, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil) }
       NSGraphicsContext.current?.imageInterpolation = .high
       let path = NSBezierPath(roundedRect: b, xRadius: b.width * 0.2, yRadius: b.height * 0.2)
       NSGraphicsContext.saveGraphicsState()

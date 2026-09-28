@@ -1,6 +1,6 @@
 # Sidebar & tabs
 
-The sidebar is den's tab strip, turned on its side. From top to bottom: the URL pill, your **favorites**, the space's **pinned tabs** and folders, a divider with **Clear**, and **Today**'s tabs. The footer holds the Library button, your spaces and **+**.
+The sidebar is den's tab strip, turned on its side. From top to bottom: the URL pill, your **favorites**, the space's **pinned tabs** and folders, a divider with **Clear**, and **Today**'s tabs. The footer holds the Library button (with a download arrow next to it while something downloads, see [Downloads](downloads.md)), your spaces and **+**.
 
 <p align="center"><img src="../screenshots/main-dark.png" alt="The sidebar: favorites, pinned tabs, a folder, Today tabs" width="720"></p>
 
@@ -44,7 +44,7 @@ Every tab you close or that archives itself goes to the Library.
 - History ▸ **Search Archive…** searches it from the command bar instead.
 - **Clear Archive** empties it, after asking. That one can't be undone.
 
-The Library keeps your last 500 tabs.
+The Library keeps your last 500 tabs. Its **Downloads** tab (⌥⌘L) lists your downloads: see [Downloads & uploads](downloads.md).
 
 ## Undo
 

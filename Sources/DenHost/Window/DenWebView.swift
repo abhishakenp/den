@@ -98,7 +98,13 @@ final class DenWebView: WKWebView {
   }
   @objc func saveAs(_ sender: NSMenuItem) {
     guard let s = sender.representedObject as? String, let u = URL(string: s) else { return }
-    startDownload(using: URLRequest(url: u)) { d in MainActor.assumeIsolated { SaveAsDownloads.shared.track(d) } }
+    // Through the downloads list, with a save panel for the destination.
+    let ask = service?.downloads
+    startDownload(using: URLRequest(url: u)) { [weak self] d in
+      MainActor.assumeIsolated {
+        if let ask { ask.adopt(d, webview: self?.recordId ?? "", ask: true) } else { SaveAsDownloads.shared.track(d) }
+      }
+    }
   }
 
   // MARK: Mouse buttons

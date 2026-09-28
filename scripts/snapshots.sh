@@ -117,6 +117,11 @@ for sc in Calendar Folder; do  # tab cards and the PR peek: ONLY=cards
 done
 shot library-footer libraryFooter light 4
 shot library-footer-dark libraryFooter dark 4
+# Library ▸ Downloads with the sidebar's download ring, and the upload picker (DownloadScenarios.swift).
+shot downloads downloads light 4
+shot downloads-dark downloads dark 4
+host upload-picker uploadPicker light
+host upload-picker-dark uploadPicker dark
 # Web page prompts and error pages (PromptScenarios.swift).
 for sc in jsAlert jsPrompt httpAuth permissionCamera errorHost errorOffline errorSecure; do
   n=$(echo $sc | sed -E 's/([a-z])([A-Z])/\1-\2/g' | tr A-Z a-z)

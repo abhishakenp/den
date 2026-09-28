@@ -105,6 +105,7 @@ public enum MainMenu {
       Entry("history.back", "Back", "", .event("tabs.key.back")),
       Entry("history.forward", "Forward", "", .event("tabs.key.forward")), .sep,
       Entry("history.library", "Show Library", "", .event("tabs.key.library")),
+      Entry("history.downloads", "Downloads", "", .event("tabs.key.downloads")),
       Entry("history.archive", "Search Archive…", "", .command("den.viewArchive")),
     ]),
     ("Spaces", [

@@ -200,6 +200,7 @@ public final class WebPrompts {
       var f: [String: String] = [:]
       if case let .object(pairs) = value["fields"] { for (k, v) in pairs { f[k] = v.string ?? "" } }
       if value.flag("checked") { f[Self.checkedKey] = "1" }
+      if let c = value["choices"].array { f[UploadPicker.choicesKey] = c.compactMap(\.string).joined(separator: "\n") }
       self?.press(value.str("button"), fields: f)
     }
     d.update(r.tree, palette: p)

@@ -39,6 +39,8 @@ enum PromptScenarios {
     case "fileUpload":
       // Self-check in the real app (prints scenario.fileUpload … ok=true|false, exits): a real click
       // on <input type=file multiple> opens the panel as a sheet; Cancel reaches the page as `cancel`.
+      // (The upload picker has nothing to offer here: `uploadPicker` shows it.)
+      rt.webviews.uploadPicker?.fixed = { _ in [] }
       web.loadHTMLString("<style>body{margin:0}input{display:block;width:100vw;height:100vh}</style><input type=file multiple oncancel=\"document.title='cancelled'\">",
                          baseURL: URL(string: "https://upload.example/"))
       DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {

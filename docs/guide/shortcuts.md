@@ -22,6 +22,7 @@ Where Arc and Safari disagree, den follows Arc, and keeps Safari's key as a seco
 | Clear Today tabs | ⇧⌘K |
 | Undo sidebar action | ⌃Z |
 | Library (closed tabs) | ⌘Y or ⇧⌘L |
+| Downloads | ⌥⌘L |
 
 ## Navigation
 
@@ -122,4 +123,4 @@ Chords use `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f
 
 ## Not there yet
 
-New window (⌘N), private window (⇧⌘N) and a downloads list (⌥⌘L) have no shortcut because den doesn't have those features yet. (Save Link As… and Save Image As… in a page's context menu do save files.) See [Coming soon](coming-soon.md).
+New window (⌘N) and private window (⇧⌘N) have no shortcut because den doesn't have those features yet. See [Coming soon](coming-soon.md).

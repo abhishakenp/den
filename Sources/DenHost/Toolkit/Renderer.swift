@@ -196,14 +196,19 @@ final class TextNode: NodeView {
   override func layout() { label.frame = bounds.insetBy(dx: 2, dy: 2) }
 }
 
-/// {type:"button", id, icon, title?, size?} -> ui.action {id, action: "click"}
+/// {type:"button", id, icon, title?, size?, tooltip?, progress? (0–1 ring; negative: waiting), dot?}
+/// -> ui.action {id, action: "click"}. `progress` draws a ring around the icon in the accent (the
+/// sidebar's download indicator), `dot` a small accent dot at its top right (something new).
 final class ButtonNode: NodeView {
   lazy var button = IconButton(symbol: "sf:circle", size: 28) { [weak self] in self?.emit(self?.node.str("action", "click") ?? "click") }
   let label = makeLabel(size: 12, weight: .medium)
+  let ring = RingView()
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
     addSubview(button)
     addSubview(label)
+    ring.isHidden = true
+    addSubview(ring)
   }
   required init?(coder: NSCoder) { fatalError() }
   override func update(_ v: Value) {
@@ -213,14 +218,56 @@ final class ButtonNode: NodeView {
     button.toolTip = v.str("tooltip")
     label.stringValue = v.str("title")
     label.isHidden = label.stringValue.isEmpty
+    ring.progress = v["progress"].double
+    ring.dot = v.flag("dot")
+    ring.isHidden = ring.progress == nil && !ring.dot
     needsLayout = true
   }
   var size: CGFloat { CGFloat(node.num("size", 28)) }
-  override func apply(_ p: Palette) { button.apply(p); label.textColor = p.text }
+  override func apply(_ p: Palette) {
+    button.apply(p)
+    label.textColor = p.text
+    ring.accent = p.accentStrong
+    ring.track = p.text.withAlphaComponent(0.18)
+  }
   override func height(for w: CGFloat) -> CGFloat { size }
   override var preferredWidth: CGFloat? { size + (label.isHidden ? 0 : ceil(label.textWidth) + 6) }
   override func layout() {
     button.frame = NSRect(x: 0, y: (bounds.height - size) / 2, width: size, height: size)
+    ring.frame = button.frame
     label.frame = NSRect(x: size + 2, y: (bounds.height - 16) / 2, width: max(0, bounds.width - size - 2), height: 16)
+  }
+}
+
+/// A progress ring and/or a "new" dot drawn over a button (it takes no clicks).
+final class RingView: FlippedView {
+  var progress: Double? { didSet { if progress != oldValue { needsDisplay = true } } }
+  var dot = false { didSet { if dot != oldValue { needsDisplay = true } } }
+  var accent: NSColor = .controlAccentColor { didSet { needsDisplay = true } }
+  var track: NSColor = NSColor(white: 0.5, alpha: 0.2) { didSet { needsDisplay = true } }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+  override func draw(_ dirtyRect: NSRect) {
+    let b = bounds
+    if let p = progress {
+      let r = min(b.width, b.height) / 2 - 2.5, c = NSPoint(x: b.midX, y: b.midY)
+      let t = NSBezierPath()
+      t.appendArc(withCenter: c, radius: r, startAngle: 0, endAngle: 360)
+      t.lineWidth = 2
+      track.setStroke()
+      t.stroke()
+      // Unknown size: a short arc, so it still reads as "working".
+      let f = p < 0 ? 0.12 : min(max(p, 0.02), 1)
+      let a = NSBezierPath()
+      // Flipped view: clockwise on screen from 12 o'clock.
+      a.appendArc(withCenter: c, radius: r, startAngle: -90, endAngle: -90 + 360 * f, clockwise: false)
+      a.lineWidth = 2
+      a.lineCapStyle = .round
+      accent.setStroke()
+      a.stroke()
+    }
+    if dot {
+      accent.setFill()
+      NSBezierPath(ovalIn: NSRect(x: b.maxX - 9, y: b.minY + 3, width: 6, height: 6)).fill()
+    }
   }
 }

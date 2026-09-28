@@ -31,7 +31,6 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 
 ## Browsing
 
-- Downloads, in the sidebar and the Library.
 - Profile management, and private windows.
 - A built-in ad and tracker blocker.
 - Link routing rules (URL → space), like Arc's Air Traffic Control.

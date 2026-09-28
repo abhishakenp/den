@@ -55,6 +55,11 @@ final class SpacesCore {
   var nextId: Int64 = 1
   /// True until the first render has placed the pager; later renders never jump pages.
   var placedPager = false
+  /// The footer's download indicator (host `downloads.changed`): running downloads, finished ones
+  /// not looked at yet, and overall progress in percent (-1 unknown). Absent when all are 0.
+  var dlActive: Int64 = 0
+  var dlUnseen: Int64 = 0
+  var dlPercent: Int64 = -1
 
   init(env: PluginEnv) { self.env = env }
 
@@ -64,6 +69,7 @@ final class SpacesCore {
     load()
     bindKeys()
     env.on("ui.action") { [self] v in action(v.s("id"), v.s("action"), v["value"]) }
+    env.on("downloads.changed") { [self] v in downloadsChanged(v) }
     env.on("spaces.key.jump") { [self] v in
       let i = Int(v["payload"].int ?? 0)
       if i < spaces.count { switchTo(i, direction: "jump", animated: true) }
@@ -282,11 +288,30 @@ final class SpacesCore {
     env.call("ui", "set", ["slot": "sidebar.spaceHeader", "page": .int(Int64(i)), "tree": tree])
   }
 
+  func downloadsChanged(_ v: Value) {
+    let p = v["progress"].double ?? -1
+    let percent: Int64 = p < 0 ? -1 : Int64(p * 50) * 2  // 2% steps: at most 50 redraws per download
+    let next = (v.i("active"), v.i("unseen"), percent)
+    guard next != (dlActive, dlUnseen, dlPercent) else { return }
+    (dlActive, dlUnseen, dlPercent) = next
+    renderFooter()
+  }
+
+  /// A download arrow next to the Library button while something downloads (a progress ring) or
+  /// finished since you last looked (a dot). Opens Library ▸ Downloads.
+  var downloadsButton: Value? {
+    guard dlActive > 0 || dlUnseen > 0 else { return nil }
+    var b: Value = ["type": "button", "id": "spaces.downloads", "icon": "sf:arrow.down", "tooltip": "Downloads (⌥⌘L)", "size": 32]
+    if dlActive > 0 { b.put("progress", .double(dlPercent < 0 ? -1 : Double(dlPercent) / 100)) } else { b.put("dot", true) }
+    return b
+  }
+
   func renderFooter() {
     var row: [Value] = [
-      ["type": "button", "id": "spaces.library", "icon": "sf:tray.full", "tooltip": "Library", "size": 32],
-      ["type": "spacer"],
+      ["type": "button", "id": "spaces.library", "icon": "sf:tray.full", "tooltip": "Library (⌘Y)", "size": 32],
     ]
+    if let d = downloadsButton { row.append(d) }
+    row.append(["type": "spacer"])
     for (i, s) in spaces.enumerated() {
       row.append(["type": "spaceIcon", "id": .string("spaces.icon:" + s.id), "icon": .string(s.icon), "title": .string(s.name), "selected": .bool(s.id == current),
                   "spaceId": .string(s.id), "reorderable": true, "menu": .array(menu(i))])
@@ -413,6 +438,8 @@ final class SpacesCore {
       newSpace()
     } else if id == "spaces.library", action == "click" {
       env.emit("spaces.library", .null)
+    } else if id == "spaces.downloads", action == "click" {
+      env.call("downloads", "open")
     } else if id == Self.iconPickerId {
       if action == "pick", let sid = iconEditing {
         _ = handle("update", ["id": .string(sid), "icon": .string(value.s("icon"))])

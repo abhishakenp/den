@@ -111,6 +111,11 @@ final class TabsCore {
   var selected: [String: String] = [:]  // space id -> tab id
   var archive: [Value] = []  // newest first: {id, title, url, favicon, closedAt, spaceId}
   var libraryOpen = false
+  /// The Library's shown section: "archive" or "downloads" (TabsDownloads.swift).
+  var librarySection = "archive"
+  var downloadsArchiveMs = TabsCore.defaultDownloadsArchiveMs
+  /// The download the last download toast was about (its action button).
+  var toastDownload = ""
   var mru: [String] = []  // tab ids, most recent first
   var nextId: Int64 = 1
   var archiveAfterMs = TabsCore.defaultArchiveAfterMs
@@ -158,6 +163,7 @@ final class TabsCore {
     bindKeys()
     subscribe()
     registerSettings()
+    startDownloads()
     renderAll()
     showSelected()
     tick()
@@ -490,7 +496,7 @@ final class TabsCore {
     case "archive":
       return .array(archive)
     case "library":
-      if args.b("open", true) { openLibrary() } else { closeLibrary() }
+      if args.b("open", true) { openLibrary(section: args.sOpt("section") ?? "archive") } else { closeLibrary() }
     case "pillButtons":
       // Another plugin's buttons in the URL pill while `webview` is selected: [{id, icon, tooltip?, active?}].
       // A click emits ui.action {id: <button id>, action: click, value: {webview}}.
@@ -1791,7 +1797,7 @@ final class TabsCore {
       // Arc's tab switcher backward from the current tab wraps to the least recent one.
       if let id = mru.last(where: { $0 != selectedId && tabs[$0] != nil }) { select(id) }
     }
-    env.on("tabs.key.library") { [self] _ in _ = handle("library", ["open": .bool(!libraryOpen)]) }
+    env.on("tabs.key.library") { [self] _ in _ = handle("library", ["open": .bool(!(libraryOpen && librarySection == "archive"))]) }
     env.on("tabs.key.prevTab") { [self] _ in stepTab(-1) }
     env.on("tabs.key.nextTab") { [self] _ in stepTab(1) }
     env.on("tabs.key.back") { [self] _ in web("back") }
@@ -2080,6 +2086,8 @@ final class TabsCore {
       if action == "copy" { copyURL() }
     case Self.libraryId:
       libraryAction(action, value)
+    case Self.downloadToastId:
+      if action == "toast" { downloadToastAction() }
     case Self.clearArchiveId:
       env.call("ui", "set", ["slot": "dialog", "tree": nil])
       if action == "button", value.s("button") == "clear" { clearArchive() }
@@ -2186,8 +2194,10 @@ final class TabsCore {
 
   /// The footer's Library button (`spaces.library`) opens the archive in the host's
   /// `overlay.library` sheet; `tabs` owns that slot.
-  func openLibrary() {
+  func openLibrary(section: String = "archive") {
     libraryOpen = true
+    librarySection = section
+    if section == "downloads" { archiveOldDownloads() }
     renderLibrary()
   }
 
@@ -2199,6 +2209,12 @@ final class TabsCore {
 
   func renderLibrary() {
     guard libraryOpen else { return }
+    let sections = hasDownloads
+    if sections, librarySection == "downloads" {
+      env.call("ui", "set", ["slot": "overlay.library", "tree": downloadsTree()])
+      return
+    }
+    librarySection = "archive"
     let items: [Value] = archive.map { e in
       ["id": e["id"], "title": .string(URLs.pageTitle(e.s("title"), e.s("url"))), "url": e["url"], "icon": .string(URLs.icon(e.sOpt("favicon"), e.s("url"))),
        "closedAt": e["closedAt"]]
@@ -2206,10 +2222,21 @@ final class TabsCore {
     env.call("ui", "set", ["slot": "overlay.library", "tree": [
       "type": "library", "id": .string(Self.libraryId), "title": "Archive", "placeholder": "Search archived tabs",
       "empty": "Tabs you close or that archive themselves show up here.", "items": .array(items),
+      "sections": sections ? Self.librarySections : .null, "section": "archive",
     ]])
   }
 
   func libraryAction(_ action: String, _ value: Value) {
+    if action == "section" {
+      librarySection = value.s("id") == "downloads" ? "downloads" : "archive"
+      if librarySection == "downloads" { archiveOldDownloads() }
+      renderLibrary()
+      return
+    }
+    if librarySection == "downloads", action != "dismiss", action != "input" {
+      downloadsAction(action, value)
+      return
+    }
     switch action {
     case "restore":
       closeLibrary()

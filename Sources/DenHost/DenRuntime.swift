@@ -28,6 +28,8 @@ public final class DenRuntime {
   /// Per-site content rule lists, page preferences, HTTPS-first and the navigation guard (`shields`).
   public let sitePolicy: SitePolicyService
   public let vault: VaultService
+  /// Files pages hand over (WKDownload), and the upload picker's recent files.
+  public let downloads: DownloadsService
   /// Chrome/Firefox extensions (docs/host-api.md#extensions). Nothing WebKit-side exists until
   /// something is installed.
   public let extensions: ExtensionsService
@@ -65,6 +67,13 @@ public final class DenRuntime {
                                      ? storageRoot.deletingLastPathComponent().appendingPathComponent("ContentRules", isDirectory: true)
                                      : storageRoot.appendingPathComponent("contentrules", isDirectory: true))
     vault = VaultService(host: host, webviews: webviews)
+    downloads = DownloadsService(host: host, storage: storage)
+    webviews.downloads = downloads
+    downloads.webView = { [weak webviews] preferred in
+      guard let webviews else { return nil }
+      return webviews.record(preferred)?.webView ?? webviews.records.values.lazy.compactMap(\.webView).first
+    }
+    webviews.uploadPicker = UploadPicker(downloads: downloads)
     // No platform passkeys without Apple's entitlement: pages are told so (Passkeys.swift).
     webviews.configureHooks.append { _, c in Passkeys.configure(c) }
     // The real profile keeps extensions next to its storage and a persistent controller; any other
@@ -100,7 +109,7 @@ public final class DenRuntime {
     sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
     sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
     sitePolicy.resource = { [permissions] p, f in permissions.resource(p, f) }
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, extensions, settings, media, speech, translate] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, speech, translate] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

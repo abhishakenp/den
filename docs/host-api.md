@@ -181,7 +181,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `alert()` / `confirm()` / `prompt()` | "<host> says", the message, OK (↩) / Cancel (esc); `prompt()` adds a text field holding the default text. From the fourth in one page load, a checkbox "Stop this page from showing dialogs": ticked, the page's later dialogs get the cancel answer at once until it navigates (Dia 1.15) |
 | HTTP Basic, Digest or NTLM sign-in | "Sign in to <host>", the realm, Username and Password fields, Cancel / Sign In. A wrong password asks again ("That didn’t work."); plain http says the password is sent unencrypted. The credential goes to WebKit for the session only; den never logs or stores it. Cancel shows the server's own 401 page |
 | Camera / microphone (`getUserMedia`) | "Allow <host> to use your camera (and microphone)?", Don’t Allow / Allow. The answer is kept per origin and device until den quits. The app declares `NSCameraUsageDescription`, `NSMicrophoneUsageDescription` and the hardened-runtime camera / audio-input entitlements, so macOS asks once for den itself |
-| `<input type=file>` | An open panel as a sheet on the page's window, with the input's multiple / directory options |
+| `<input type=file>` | The **upload picker** first (`UploadPicker.swift`, Opera's idea): "Upload to <host>" with up to 3 recent downloads (last 7 days), the 3 newest screenshots (in the Screenshot app's folder, else the Desktop; last 7 days) and the clipboard (a copied file or image), filtered by the input's `accept` (WebKit's private `_acceptedMIMETypes` / `_acceptedFileExtensions`, checked with `responds(to:)`). A click on a row uploads it (with `multiple`, rows tick and Upload sends them); **Choose File… ⌘O** opens the open panel as a sheet, with the input's multiple / directory options. With nothing to offer, or a folder input, the panel opens at once. The clipboard's types are checked when the page asks; its contents are read only when you pick it (an image is saved as a PNG in a temporary folder). Nothing runs until a page asks. Snapshot: `--scenario uploadPicker` |
 | Geolocation, notifications | Not available: WKWebView on macOS has no public API to ask the user. WebKit denies them (`Notification.requestPermission()` resolves `"denied"`, verified in a live web view) |
 
 **Error pages.** When a page fails before anything arrives (offline, unknown host, refused connection, timeout, certificate problems), den loads its own small page for that error with `loadSimulatedRequest` for the failed URL: an icon, a title ("You’re offline", "Can’t find <host>", "This connection isn’t private", …), one line of explanation, the URL, and **Try Again**. The tab keeps the real URL, so Reload, Try Again and Back/Forward retry it. The page takes the space's palette colors (with a `prefers-color-scheme` fallback). Cancelled or replaced navigations (NSURLErrorCancelled, WebKit's 102 and 204) show nothing. There's no "proceed anyway" for certificate errors.
@@ -215,7 +215,7 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `row` | `children`, `spacing?`, `height?` | – |
 | `spacer` | `width?`, `height?` | – |
 | `text` | `text`, `style: title\|body\|caption\|secondary` | – |
-| `button` | `id`, `icon`, `title?`, `size?`, `tooltip?`, `enabled?`, `action?` | `click` (or `action`) |
+| `button` | `id`, `icon`, `title?`, `size?`, `tooltip?`, `enabled?`, `action?`, `progress?` (0–1: an accent ring around the icon; negative: a short arc, size unknown), `dot?` (a small accent dot: something new) | `click` (or `action`) |
 | `navBar` | `id`, `canGoBack`, `canGoForward`, `loading` | `toggleSidebar`, `back`, `forward`, `reload`, `stop` |
 | `urlPill` | `id`, `text`, `progress?`, `loading?`, `placeholder?`, `buttons?: [{id, icon, tooltip?, active?}]`, `webview?` | `click`, `copy`. A `buttons` item (always visible, left of copy; `active` tints it with the accent) emits `{id: <its id>, action: click, value: {webview}}` |
 | `grid` | `columns?`, `children` | – |
@@ -229,13 +229,13 @@ The host answers what a page asks for itself (`WebPrompts.swift`, `WebErrorPage.
 | `divider` | `id`, `action?` (label, e.g. "Clear") | `clear` |
 | `newTabRow` | `id`, `title?` | `click` |
 | `commandBar` | `id`, `query`, `replaceQuery?`, `placeholder?`, `selected`, `headers?` (default true; false draws one flat list), `inputMode?: search\|go` (caret color), `banner?: {text, secondary, primary}` (the default-browser banner), `sections: [{title?, rows: [{id, icon, title, subtitle?, accessory?, keycap?, shortcut?, toggle?}]}]`. `shortcut` ("⇧⌘C") is drawn one keycap per key; `toggle` (bool) draws a switch | `input {text}`, `select {row}` (arrow keys, or hovering a row after the mouse moves), `submit {row, query, modifiers}`, `tab {query}`, `right {row, query}` (→ with the caret at the end), `back` (Backspace in an empty field), `dismiss`, `banner {button: try\|set\|close}` |
-| `dialog` | `id`, `title`, `message?`, `icon?`, `iconStyle?: accent\|destructive\|plain`, `buttons: [{id, title, style: default\|cancel\|destructive\|secondary, default?, keycap?}]`, `checkbox?` | `button {button, checked}`. Return presses the `default` button (or the one with `default: true`), Esc the `cancel` one |
+| `dialog` | `id`, `title`, `message?`, `icon?`, `iconStyle?: accent\|destructive\|plain`, `buttons: [{id, title, style: default\|cancel\|destructive\|secondary, default?, keycap?}]`, `checkbox?`, `choices?: [{id, title, subtitle?, icon?}]`, `multiple?` | `button {button, checked, choices?}`. Return presses the `default` button (or the one with `default: true`), Esc the `cancel` one, and a button whose keycap is a ⌘ chord (`⌘O`) takes that key. `choices` are rows under the message (the upload picker): one is selected (the first at the start, ↑/↓ move it) and a click presses the default button with it; with `multiple` a click ticks it. `choices` in the action lists the selected ids |
 | `toast` | `text`, `icon?`, `duration?` (ms; 0 = until dismissed), `id?` (a new toast with the same id replaces it), `action?` (button label), `dismiss?` (removes the toast with that id) | `ui.action {id, action: "toast"}` when the button is clicked |
-| `library` | `id`, `title?`, `query?`, `placeholder?`, `clearTitle?`, `empty?`, `items: [{id, title, url?, subtitle?, icon?, closedAt?}]` | `input {text}`, `restore {item}`, `clear`, `dismiss` |
+| `library` | `id`, `title?`, `icon?`, `query?`, `placeholder?`, `clearTitle?` (`""` hides it), `empty?`, `sections?: [{id, title, keycap?}]`, `section?`, `items: [{id, title, url?, subtitle?, icon?, closedAt?, section?, progress?, buttons?, pill?, file?, dimmed?}]` | `input {text}`, `restore {item}`, `button {item, button}`, `section {id}`, `clear`, `dismiss` |
 | `themePicker` | `id`, `anchor?`, `colors: [hex]` (≤3), `positions?: [[x, y]]`, `intensity`, `grain`, `appearance: auto\|light\|dark`, `page?` | `change {colors, positions, intensity, grain, appearance}` (live), `commit {…}`, `page {page}`, `dismiss {reason?}` |
 
 **Details that apply to several nodes:**
-- **Icons.** A node icon can be `sf:<symbol>`, an http(s) or `data:` image URL (cached), an absolute image file path (extension icons), `app:icon`, `site:<domain>`, or text/emoji. In a `dialog`, an image icon draws at 62 pt like `app:icon`; only `sf:` symbols get the hero disc. `site:<domain>` draws an Arc-style letter tile: the domain's first letter ("www." skipped), white on a color derived from the domain (hash → hue), or a globe when the domain is empty (`site:`, for data:, file: and about: pages). A remote image that fails, answers non-2xx, or is Google s2's 16 px placeholder globe falls back to the `site:` tile for the domain it names (s2's `domain=`, else the image's host).
+- **Icons.** A node icon can be `sf:<symbol>`, an http(s) or `data:` image URL (cached), an absolute image file path (extension icons, thumbnails), `file:<path>` (Finder's icon for that file, or for its type once the file is gone: download rows), `app:icon`, `site:<domain>`, or text/emoji. In a `dialog`, an image icon draws at 62 pt like `app:icon`; only `sf:` symbols get the hero disc. `site:<domain>` draws an Arc-style letter tile: the domain's first letter ("www." skipped), white on a color derived from the domain (hash → hue), or a globe when the domain is empty (`site:`, for data:, file: and about: pages). A remote image that fails, answers non-2xx, or is Google s2's 16 px placeholder globe falls back to the `site:` tile for the domain it names (s2's `domain=`, else the image's host).
 - **Context menus.** Any node can carry `menu: [item]`, shown as a native context menu. Picking an item emits `menu` with its id (submenu items included). Item shapes:
   - `{id, title, icon?, key?, alternate?, destructive?, enabled=true, checked?, items?}`. `icon` is an `sf:` symbol. `key` is a chord hint drawn on the right (`cmd+w`), display only; the real binding lives in `keys`. `alternate: true` shows the item instead of the one above it while ⌥ is held (`NSMenuItem.isAlternate`; same key, ⌥ added). `destructive` draws the title and icon in DestructiveButtonFace red (#F53714). `items` makes it a submenu ("Move to Space ▸").
   - `{separator: true}` and `{header: "Title"}` (section header).
@@ -280,6 +280,8 @@ A `spaceIcon` with `reorderable: true` can be dragged along the footer strip (`S
 - **Items** take the `tabs.archive` shape directly. Rows are grouped by the day of `closedAt` (ms since 1970): Today, Yesterday, a weekday within the last week, then "Month day". The subtitle defaults to "host · time".
 - **Search** filters the items locally by title or URL on every keystroke, so it stays instant. The typed text is also emitted as `input`. Return restores the first match.
 - **Restore.** Clicking a row, or its hover "Restore" button, emits `restore {item}`.
+- **Sections.** With `sections`, the header shows them as tabs, each with its shortcut as a keycap ("Archive ⌘Y", "Downloads ⌥⌘L"), the `section` one selected; clicking one emits `section {id}`. The `tabs` plugin uses it for Archive and Downloads.
+- **Other rows** (Downloads): an item's `section` replaces its day header ("In Progress", "Archived"); a `subtitle` may contain `{time}` (its `closedAt` as "3:41 PM"); `progress` (0–1, negative = waiting) draws a thin accent bar under the text; `buttons: [{id, icon, title}]` are round icon buttons shown on hover (their tooltips are their titles) that emit `button {item, button}`; `pill` renames the hover pill ("" hides it); `file` (a path) lets you drag the row out as that file (Finder, Mail, a page's upload field); `dimmed` fades the row (a deleted file). Rows are reused by id, so progress updates don't disturb a hovered button.
 - **Clear Archive** emits `clear`. The plugin then confirms with the Clear Archive dialog below, which opens above the sheet.
 - **Dismiss.** Esc, the close button or a click on the dim emits `dismiss`; the plugin clears the slot.
 
@@ -403,6 +405,35 @@ Every den surface takes its colors from one token layer, derived from the curren
 - **Adopting it.** A surface view conforms to `Themable` and reads colors in `apply(_ p: Palette)`: backgrounds from `p.surface` / `p.elevatedSurface`, text from `p.textPrimary`/`textSecondary`/`textTertiary`, primary actions `p.primaryButton` + `p.onAccent`, destructive `p.destructive` + `p.onDestructive`, dividers `p.hairline`, shadows `p.shadowColor`. Views added under `wc.overlays` (or `PanelView` subclasses) are re-themed automatically. For a colored fill with custom text, call `ThemeTokens.ensure(text, on: fill, ThemeTokens.bodyContrast)`. For an HTML surface (error pages), inject `p.tokens.surface.hex`, `textPrimary.hex` and `accent.hex` as CSS variables.
 - Native menus follow the window's appearance (light/dark); AppKit doesn't let them take theme colors.
 - Snapshot: `docs/screenshots/theming-grid.png` (scenario `themeSample`, see scripts/snapshots.sh).
+
+## downloads
+
+Files pages hand over, with WebKit's `WKDownload` (`DownloadsService.swift`). The host keeps only the native half: the downloads, their files, progress and a small persisted list (storage ns `downloads`, key `items`, at most 300). The Library screen, the sidebar indicator, the toasts and when old downloads are archived belong to the `tabs` and `spaces` plugins ([plugin-services.md](plugin-services.md#tabs-plugin-tabs)). Nothing is read or observed until the first download or a `list` call.
+
+- **What downloads.** A main-frame response WebKit can't show (`canShowMIMEType` false: a zip, a dmg), any response with `Content-Disposition: attachment`, and `<a download>` links. A hidden frame's un-showable response doesn't. The page stays where it was. "Save Link As…" / "Save Image As…" in the page menu go through the same list, with a save panel for the destination.
+- **Where.** `~/Downloads`, under the server's name made safe (no `/` or `:`, no leading dot), and Finder's "name 2.ext" when taken. The file is written in place while it downloads, and marked as downloaded from the internet (quarantine, like Safari's), so Gatekeeper checks it on first open.
+- **Pause and resume.** Pause cancels the transfer with WebKit's resume data (kept, and persisted, so a paused download survives a relaunch); Resume carries on with `resumeDownload(fromResumeData:)`, which asks the server for the rest (a `Range` request). Without resume data it starts again. A download that was running when den quit comes back as "failed · Interrupted" with Retry. Cancel stops it and deletes the partial file.
+- **Cost.** A `downloads.changed` event at most 4 times a second while bytes arrive; nothing otherwise. A private web view is created only to resume or retry when no page is open, and released when nothing is running.
+
+| Method | Args | Returns |
+|---|---|---|
+| `list` | – | `{items: [item], active, unseen, progress, count}`, newest first |
+| `summary` | – | `{active, unseen, progress, count}`. Never reads the stored list |
+| `get` | `id` | item |
+| `pause`, `resume`, `retry`, `cancel` | `id` | ok, or an error ("isn't running", "no web view") |
+| `open` | `id?` | ok. Opens the file with its app; without `id`, emits `downloads.show` (the command bar's Downloads destination) |
+| `reveal` | `id` | ok. Shows the file in Finder (an error when it was moved or deleted) |
+| `remove` | `id` | ok. Off the list; the file stays |
+| `clear` | – | `{removed}`. Everything not running leaves the list |
+| `archive` | `before` (ms since 1970) | `{archived}`. Finished downloads that ended before it are marked `archived` |
+| `seen` | – | ok. Nothing finished counts as new any more |
+| `start` | `url`, `webview?`, `ask?` | `{id}`. Downloads a URL with that page's session; `ask` shows a save panel |
+
+item: `{id, url, name, path, state: downloading|paused|done|failed|cancelled, received, total (-1 unknown), rate (bytes/s, while downloading), started, finished?, error?, archived, exists, unseen?}`.
+
+Events: `downloads.changed {active, unseen, progress, count}`, `downloads.started {id, name, webview}`, `downloads.finished {id, name, ok, error?}`, `downloads.show`.
+
+Tests: `DownloadsTests` (real downloads from a local server: a zip, `<a download>`, pause and resume through a server that holds the connection, cancel, the quarantine flag). Scenario: `--scenario downloads` (`docs/screenshots/downloads*.png`).
 
 ## settings
 

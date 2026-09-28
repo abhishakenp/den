@@ -22,6 +22,7 @@ How to use den, one page per area. Everything here describes what's on `main` to
 - [Extensions](extensions.md): Chrome Web Store and Firefox Add-ons on WebKit
 - [Privacy & passwords](privacy-and-passwords.md): dark mode for websites, Google sign-in, the Touch ID vault, passkeys
 - [Page tools](page-tools.md): find, zoom, print, save, copy links, Reader and read aloud, translate, capture, Zap
+- [Downloads & uploads](downloads.md): Library ▸ Downloads, pause and resume, the upload picker
 
 ## Making den yours
 

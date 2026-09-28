@@ -152,6 +152,8 @@ struct WebPromptsTests {
 
     // A real click on <input type=file multiple>: WebKit asks for the panel, den shows it as a sheet.
     let rt = runtime()
+    // Nothing to offer in the upload picker (DownloadsTests covers it): straight to the panel.
+    rt.webviews.uploadPicker?.fixed = { _ in [] }
     rt.window.window.orderFront(nil)
     let (_, web) = page(rt)
     web.loadHTMLString("<style>body{margin:0}input{display:block;width:100vw;height:100vh}</style><input id=f type=file multiple onchange=\"document.title='files:'+this.files.length\" oncancel=\"document.title='cancelled'\">", baseURL: URL(string: "https://upload.test/"))

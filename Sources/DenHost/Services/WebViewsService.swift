@@ -767,6 +767,11 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       host.emit("webviews.newWindow", ["id": .string(r.id), "url": .string(target.absoluteString), "background": .bool(bg)])
       return
     }
+    // `<a download>`: a download, not a navigation (DownloadsService).
+    if action.shouldPerformDownload, downloads != nil {
+      decisionHandler(.download)
+      return
+    }
     if mainFrame, let sp = sitePolicy, case let .cancel(then) = sp.decide(r, webView, action, preferences) {
       decisionHandler(.cancel)
       DispatchQueue.main.async { then() }
@@ -777,6 +782,26 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   /// Per-site policy (`sitepolicy`), set when that service is first used.
   weak var sitePolicy: SitePolicyService?
+  /// Files pages hand over (`downloads` service, set by `DenRuntime`).
+  public weak var downloads: DownloadsService?
+
+  /// A response WebKit can't show, or a `Content-Disposition: attachment`, is downloaded into
+  /// Downloads instead of failing (DownloadsService.shouldDownload).
+  public func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                      decisionHandler: @escaping @MainActor (WKNavigationResponsePolicy) -> Void) {
+    let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
+    let download = downloads != nil && DownloadsService.shouldDownload(canShow: navigationResponse.canShowMIMEType, mainFrame: navigationResponse.isForMainFrame,
+                                                                        disposition: disposition)
+    decisionHandler(download ? .download : .allow)
+  }
+
+  public func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+    downloads?.adopt(download, webview: recordFor(webView)?.id ?? "")
+  }
+
+  public func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+    downloads?.adopt(download, webview: recordFor(webView)?.id ?? "")
+  }
 
   /// WebKit SPI (`_WKNavigationDelegatePrivate`): a content rule list acted on a load. WebKit only
   /// calls it because this object responds to it; the count stays in `sitepolicy`.
@@ -923,9 +948,19 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     prompts.media(origin, type: type, webView: webView, done: decisionHandler)
   }
 
-  /// `<input type=file>`: an open panel as a sheet on the page's window.
+  /// `<input type=file>`: den's upload picker first (recent downloads, screenshots, the clipboard;
+  /// UploadPicker.swift), else straight to an open panel as a sheet on the page's window.
   public func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor ([URL]?) -> Void) {
-    let panel = Self.openPanel(multiple: parameters.allowsMultipleSelection, directories: parameters.allowsDirectories)
+    let request = UploadPicker.Request(parameters)
+    if let picker = uploadPicker, let prompts, picker.offer(request, webView: webView, prompts: prompts, done: completionHandler) { return }
+    Self.runOpenPanel(request, webView: webView, done: completionHandler)
+  }
+
+  /// den's upload picker (set by `DenRuntime`; nil = always the system panel).
+  public var uploadPicker: UploadPicker?
+
+  static func runOpenPanel(_ request: UploadPicker.Request, webView: WKWebView, done completionHandler: @escaping @MainActor ([URL]?) -> Void) {
+    let panel = Self.openPanel(multiple: request.multiple, directories: request.directories)
     let done: (NSApplication.ModalResponse) -> Void = { r in MainActor.assumeIsolated { completionHandler(r == .OK ? panel.urls : nil) } }
     if let w = webView.window { panel.beginSheetModal(for: w, completionHandler: done) } else { panel.begin(completionHandler: done) }
   }

@@ -3,31 +3,68 @@ import CordisValue
 
 /// Archive / Library sheet, shown in the `overlay.library` slot over the content area.
 ///
-/// {type:"library", id, title? ("Archive"), query?, placeholder?, clearTitle? ("Clear Archive"),
-///  empty? (empty-state text), items: [{id, title, url?, subtitle?, icon?, closedAt? (ms since 1970)}]}
-/// Items are grouped by `closedAt` day (Today, Yesterday, weekday, then month + day) and filtered
-/// locally as you type, so search is instant; the typed text is also emitted.
-/// actions (id = library id): input {text}, restore {item}, clear, dismiss (Esc, close button, backdrop)
+/// {type:"library", id, title? ("Archive"), icon? ("sf:archivebox"), query?, placeholder?,
+///  clearTitle? ("Clear Archive"), empty? (empty-state text),
+///  sections?: [{id, title, icon?, keycap?}], section? (the shown one's id),
+///  items: [{id, title, url?, subtitle?, icon?, closedAt? (ms since 1970), section? (header, instead
+///           of the day), progress? (0–1 bar; negative: waiting), buttons?: [{id, icon, title}],
+///           pill? ("Restore"; "" none), file? (a path: drag the row out as that file), dimmed?}]}
+/// A `subtitle` may hold `{time}`: the item's `closedAt` as "3:41 PM".
+/// Items are grouped by `closedAt` day (Today, Yesterday, weekday, then month + day) unless they
+/// name their own `section`, and filtered locally as you type, so search is instant; the typed
+/// text is also emitted. With `sections`, the header shows them as tabs with their shortcuts.
+/// actions (id = library id): input {text}, restore {item} (a click on the row or its pill),
+/// button {item, button}, section {id}, clear, dismiss (Esc, close button, backdrop)
 /// Arc's archive view was not measured (spec §12): every value here is an estimate in Tokens.
 @MainActor
 final class LibraryView: PanelView, NSTextFieldDelegate {
-  final class Row: FlippedView, Hoverable {
+  final class Row: FlippedView, Hoverable, NSDraggingSource {
     var hoverGroup: HoverGroup { .row }
     let icon = IconView()
     let title = makeLabel(size: 13.5, weight: .medium)
     let subtitle = makeLabel(size: 12)
     lazy var restore = PillButton(title: "Restore", style: "secondary") { [weak self] in self?.onRestore?() }
+    let bar = FlippedView()
+    let barFill = FlippedView()
+    var buttons: [IconButton] = []
     var itemId = ""
-    var hovering = false { didSet { restore.isHidden = !hovering; needsDisplay = true } }
+    var progress: Double?
+    var file = ""
+    var hasPill = true
+    var hovering = false { didSet { restore.isHidden = !hovering || !hasPill; buttons.forEach { $0.isHidden = !hovering }; needsDisplay = true } }
     var hoverFill: NSColor = .clear
     var onRestore: (() -> Void)?
+    var onButton: ((String) -> Void)?
 
     override init(frame: NSRect) {
       super.init(frame: frame)
       [icon, title, subtitle, restore].forEach { addSubview($0) }
       restore.isHidden = true
+      bar.wantsLayer = true
+      bar.layer?.cornerRadius = 1.5
+      barFill.wantsLayer = true
+      barFill.layer?.cornerRadius = 1.5
+      bar.addSubview(barFill)
+      bar.isHidden = true
+      addSubview(bar)
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    var buttonSpecs: [Value] = []
+    func setButtons(_ specs: [Value]) {
+      guard specs != buttonSpecs else { return }
+      buttonSpecs = specs
+      buttons.forEach { $0.removeFromSuperview() }
+      buttons = specs.map { b in
+        let id = b.str("id")
+        let btn = IconButton(symbol: b.str("icon", "sf:circle"), size: 28) { [weak self] in self?.onButton?(id) }
+        btn.round = true
+        btn.toolTip = b.str("title")
+        btn.isHidden = !hovering
+        addSubview(btn)
+        return btn
+      }
+    }
 
     override func draw(_ dirtyRect: NSRect) {
       guard hovering else { return }
@@ -37,11 +74,27 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
     override func layout() {
       let h = bounds.height, s = Tokens.tabRowIconSize
       icon.frame = NSRect(x: 12, y: (h - s) / 2, width: s, height: s)
-      let rw = restore.preferredWidth
-      restore.frame = NSRect(x: bounds.width - 8 - rw, y: (h - 28) / 2, width: rw, height: 28)
-      let right = (restore.isHidden ? bounds.width - 12 : restore.frame.minX - 8)
+      var right = bounds.width - 8
+      for b in buttons.reversed() {
+        right -= 28
+        b.frame = NSRect(x: right, y: (h - 28) / 2, width: 28, height: 28)
+        right -= 2
+      }
+      if hasPill {
+        let rw = restore.preferredWidth
+        restore.frame = NSRect(x: right - rw, y: (h - 28) / 2, width: rw, height: 28)
+        if !restore.isHidden { right = restore.frame.minX }
+      }
+      if !hovering || buttons.isEmpty && restore.isHidden { right = max(right, bounds.width - 12) }
+      right -= 8
       title.frame = NSRect(x: 42, y: h / 2 - 17, width: max(0, right - 42), height: 17)
       subtitle.frame = NSRect(x: 42, y: h / 2 + 1, width: max(0, right - 42), height: 15)
+      bar.isHidden = progress == nil
+      if let p = progress {
+        bar.frame = NSRect(x: 42, y: h - 5, width: max(0, right - 42), height: 3)
+        let f = p < 0 ? 0.08 : min(max(p, 0), 1)
+        barFill.frame = NSRect(x: 0, y: 0, width: (bar.bounds.width * f).rounded(), height: 3)
+      }
     }
     override func updateTrackingAreas() {
       super.updateTrackingAreas()
@@ -50,13 +103,70 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
     }
     override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window); needsLayout = true }
     override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window); needsLayout = true }
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    /// A row with a `file` drags out as that file (Finder, Mail, a page's upload field).
+    override func mouseDown(with event: NSEvent) {
+      guard !file.isEmpty, FileManager.default.fileExists(atPath: file), let window else { return }
+      let start = event.locationInWindow
+      while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp], until: .distantFuture, inMode: .eventTracking, dequeue: true) {
+        if e.type == .leftMouseUp {
+          if e.clickCount == 1, bounds.contains(convert(e.locationInWindow, from: nil)) { onRestore?() }
+          return
+        }
+        if hypot(e.locationInWindow.x - start.x, e.locationInWindow.y - start.y) > 4 { return beginFileDrag(e) }
+      }
+    }
     override func mouseUp(with event: NSEvent) {
       if event.clickCount == 1, bounds.contains(convert(event.locationInWindow, from: nil)) { onRestore?() }
     }
+
+    func beginFileDrag(_ e: NSEvent) {
+      let url = URL(fileURLWithPath: file)
+      let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+      let img = NSWorkspace.shared.icon(forFile: file)
+      let p = convert(e.locationInWindow, from: nil)
+      item.setDraggingFrame(NSRect(x: p.x - 16, y: p.y - 16, width: 32, height: 32), contents: img)
+      beginDraggingSession(with: [item], event: e, source: self)
+    }
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+      context == .outsideApplication ? [.copy, .link, .generic] : .copy
+    }
+  }
+
+  final class SectionTab: FlippedView {
+    let label = makeLabel(size: 13.5, weight: .semibold)
+    let keycap = Keycap()
+    var sectionId = ""
+    var selected = false { didSet { needsDisplay = true } }
+    var fill: NSColor = .clear
+    var onClick: (() -> Void)?
+    override init(frame: NSRect) {
+      super.init(frame: frame)
+      addSubview(label)
+      addSubview(keycap)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    var preferredWidth: CGFloat { 12 + ceil(label.textWidth) + (keycap.text.isEmpty ? 10 : 6 + keycap.preferredWidth + 8) }
+    override func draw(_ dirtyRect: NSRect) {
+      guard selected else { return }
+      fill.setFill()
+      NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+    }
+    override func layout() {
+      let lw = ceil(label.textWidth)
+      label.frame = NSRect(x: 12, y: (bounds.height - 18) / 2, width: lw, height: 18)
+      keycap.isHidden = keycap.text.isEmpty
+      keycap.frame = NSRect(x: label.frame.maxX + 6, y: (bounds.height - 18) / 2, width: keycap.preferredWidth, height: 18)
+    }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
   }
 
   let headerIcon = IconView()
   let titleLabel = makeLabel(size: 20, weight: .semibold)
+  var tabs: [SectionTab] = []
   lazy var clearButton = PillButton(title: "Clear Archive", style: "destructiveSecondary") { [weak self] in self?.send("clear") }
   lazy var closeButton = IconButton(symbol: "xmark", size: 28) { [weak self] in self?.send("dismiss") }
   let searchField = FlippedView()
@@ -107,13 +217,33 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
     let old = node
     node = v
     titleLabel.stringValue = v.str("title", "Archive")
+    headerIcon.spec = v.str("icon", "sf:archivebox")
     clearButton.label.stringValue = v.str("clearTitle", "Clear Archive")
-    clearButton.isHidden = v.list("items").isEmpty
+    clearButton.isHidden = v.list("items").isEmpty || v["clearTitle"].string == ""
     input.placeholderString = v.str("placeholder", "Search the Archive")
-    if input.currentEditor() == nil || old.isNull { input.stringValue = v.str("query") }
+    // A new section starts with its own query.
+    if input.currentEditor() == nil || old.isNull || old.str("section") != v.str("section") { input.stringValue = v.str("query") }
+    if old["sections"] != v["sections"] || old.str("section") != v.str("section") { rebuildTabs() }
     rebuild()
     apply(p)
     needsLayout = true
+  }
+
+  func rebuildTabs() {
+    tabs.forEach { $0.removeFromSuperview() }
+    let current = node.str("section")
+    tabs = node.list("sections").map { s in
+      let t = SectionTab()
+      t.sectionId = s.str("id")
+      t.label.stringValue = s.str("title")
+      t.keycap.text = s.str("keycap")
+      t.selected = t.sectionId == current
+      let id = t.sectionId
+      t.onClick = { [weak self] in self?.send("section", ["id": .string(id)]) }
+      surface.addSubview(t)
+      return t
+    }
+    titleLabel.isHidden = !tabs.isEmpty
   }
 
   /// Items matching the typed text (title or URL, case-insensitive).
@@ -156,32 +286,46 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
 
   func rebuild() {
     headers.forEach { $0.removeFromSuperview() }
-    rows.forEach { $0.removeFromSuperview() }
+    // Rows are reused by item id, so a download's row keeps its hover (and a half-done click on its
+    // Pause button) while progress updates arrive.
+    var pool: [String: Row] = [:]
+    for r in rows { pool[r.itemId] = r }
     headers = []
     rows = []
     var current = ""
     for it in filtered {
-      let sec = Self.section(for: it["closedAt"].double, now: now())
+      let sec = it["section"].string ?? Self.section(for: it["closedAt"].double, now: now())
       if sec != current {
         current = sec
         let h = makeLabel(sec, size: 11, weight: .semibold)
         headers.append(h)
         doc.addSubview(h)
       }
-      let r = Row()
+      let r = pool.removeValue(forKey: it.str("id")) ?? Row()
       r.itemId = it.str("id")
       r.icon.spec = it.str("icon", "sf:globe")
       r.icon.fallbackLetter = it.str("title")
       r.title.stringValue = it.str("title", "Untitled")
-      let sub = it["subtitle"].string ?? [Self.host(it.str("url")), Self.time(it["closedAt"].double)].filter { !$0.isEmpty }.joined(separator: " · ")
+      let sub = it["subtitle"].string.map { $0.replacingOccurrences(of: "{time}", with: Self.time(it["closedAt"].double)) }
+        ?? [Self.host(it.str("url")), Self.time(it["closedAt"].double)].filter { !$0.isEmpty }.joined(separator: " · ")
       r.subtitle.stringValue = sub
       r.icon.fallbackDomain = Sites.domain(it.str("url"))
+      r.progress = it["progress"].double
+      r.file = it.str("file")
+      let pill = it["pill"].string ?? "Restore"
+      r.hasPill = !pill.isEmpty
+      r.restore.label.stringValue = pill
+      r.setButtons(it.list("buttons"))
+      r.alphaValue = it.flag("dimmed") ? 0.55 : 1
       let iid = r.itemId
       r.onRestore = { [weak self] in self?.send("restore", ["item": .string(iid)]) }
+      r.onButton = { [weak self] b in self?.send("button", ["item": .string(iid), "button": .string(b)]) }
       rows.append(r)
-      doc.addSubview(r)
+      if r.superview !== doc { doc.addSubview(r) }
       r.identifier = NSUserInterfaceItemIdentifier(sec)
+      r.needsLayout = true
     }
+    pool.values.forEach { $0.removeFromSuperview() }
     emptyLabel.stringValue = node.list("items").isEmpty ? node.str("empty", "Nothing in the Archive yet") : "No matches"
     emptyLabel.isHidden = !rows.isEmpty
   }
@@ -199,12 +343,21 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
     input.textColor = p.textPrimary
     emptyLabel.textColor = p.textSecondary
     headers.forEach { $0.textColor = p.textSecondary }
+    for t in tabs {
+      t.label.textColor = t.selected ? p.textPrimary : p.textSecondary
+      t.fill = p.pillFill
+      t.keycap.apply(p, onAccent: false)
+      t.needsDisplay = true
+    }
     for r in rows {
       r.title.textColor = p.textPrimary
       r.subtitle.textColor = p.textSecondary
       r.icon.tint = p.textPrimary
       r.hoverFill = p.rowHover.withAlphaComponent(p.dark ? 0.08 : 0.05)
       r.restore.apply(p)
+      r.buttons.forEach { $0.apply(p) }
+      r.bar.layer?.backgroundColor = p.textPrimary.withAlphaComponent(0.12).cgColor
+      r.barFill.layer?.backgroundColor = p.accentStrong.cgColor
     }
   }
 
@@ -213,6 +366,13 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
     let pad = Tokens.libraryPadding, w = bounds.width
     headerIcon.frame = NSRect(x: pad, y: pad + 3, width: 22, height: 22)
     titleLabel.frame = NSRect(x: pad + 32, y: pad + 1, width: 300, height: 26)
+    var tx = pad + 28
+    for t in tabs {
+      let tw = t.preferredWidth
+      t.frame = NSRect(x: tx, y: pad, width: tw, height: 28)
+      t.needsLayout = true
+      tx += tw + 4
+    }
     closeButton.frame = NSRect(x: w - pad - 28, y: pad, width: 28, height: 28)
     let cw = clearButton.preferredWidth
     clearButton.frame = NSRect(x: closeButton.frame.minX - 10 - cw, y: pad - 1, width: cw, height: 30)

@@ -43,8 +43,10 @@ class PanelView: FlippedView, Themable {
 
 /// {type:"dialog", id, title, message?, icon?, iconStyle?: accent|destructive|plain,
 ///  buttons: [{id, title, style: default|cancel|destructive|secondary, default?, keycap?}], checkbox?: {id, title, checked},
-///  fields?: [{id, placeholder?, value?, secure?}]}
-/// action (id = dialog id): button {button, checked, fields?: {id: text}}. Fields (a web page's prompt(),
+///  fields?: [{id, placeholder?, value?, secure?}], choices?: [{id, title, subtitle?, icon?}], multiple?}
+/// action (id = dialog id): button {button, checked, fields?: {id: text}, choices?: [id]}.
+/// Choices (the upload picker) are rows under the message: one is selected (the first at the start);
+/// a click on a row presses the default button with it, or with `multiple` ticks it on and off. Fields (a web page's prompt(),
 /// HTTP sign-in) stack under the message; the first one takes focus, and Return in any of them
 /// presses the default button. Return presses the `default` style button or the
 /// button flagged `default: true` (e.g. a destructive confirm); Escape presses the cancel button.
@@ -61,8 +63,10 @@ final class DialogView: PanelView {
   var buttons: [PillButton] = []
   var checkbox: NSButton?
   var fields: [NSTextField] = []
+  var choices: [ChoiceRow] = []
   var node: Value = .null
   let emit: (String, String, Value) -> Void
+  static let choiceHeight: CGFloat = 48
 
   init(emit: @escaping (String, String, Value) -> Void) {
     self.emit = emit
@@ -113,8 +117,34 @@ final class DialogView: PanelView {
       surface.addSubview(t)
       return t
     }
+    choices.forEach { $0.removeFromSuperview() }
+    let multiple = v.flag("multiple")
+    choices = v.list("choices").enumerated().map { i, c in
+      let r = ChoiceRow()
+      r.choiceId = c.str("id")
+      r.icon.spec = c.str("icon", "sf:doc")
+      r.title.stringValue = c.str("title")
+      r.subtitle.stringValue = c.str("subtitle")
+      r.multiple = multiple
+      r.selected = !multiple && i == 0
+      r.onClick = { [weak self] in self?.choiceClicked(i) }
+      surface.addSubview(r)
+      return r
+    }
     apply(p)
     needsLayout = true
+  }
+
+  var selectedChoices: [String] { choices.filter(\.selected).map(\.choiceId) }
+
+  func choiceClicked(_ i: Int) {
+    guard i < choices.count else { return }
+    if choices[i].multiple {
+      choices[i].selected.toggle()
+      return
+    }
+    for (j, c) in choices.enumerated() { c.selected = j == i }
+    if let d = node.list("buttons").firstIndex(where: Self.isDefault) { pressed(d) }
   }
 
   override func apply(_ p: Palette) {
@@ -131,11 +161,13 @@ final class DialogView: PanelView {
     icon.tint = tint
     hero.layer?.backgroundColor = tint.withAlphaComponent(p.dark ? 0.2 : 0.12).cgColor  // estimate
     buttons.forEach { $0.apply(p) }
+    choices.forEach { $0.apply(p) }
   }
 
   func pressed(_ i: Int) {
     let spec = node.list("buttons")[i]
     var value: Value = ["button": .string(spec.str("id")), "checked": .bool(checkbox?.state == .on)]
+    if !choices.isEmpty { value = value.with("choices", .array(selectedChoices.map { .string($0) })) }
     if !fields.isEmpty {
       let ids = node.list("fields").map { $0.str("id") }
       value = value.with("fields", .object(zip(ids, fields).map { ($0, .string($1.stringValue)) }))
@@ -165,11 +197,28 @@ final class DialogView: PanelView {
   /// Return / Escape trigger the default / cancel buttons.
   override func keyDown(with event: NSEvent) {
     if event.keyCode == 36 || event.keyCode == 76, let i = node.list("buttons").firstIndex(where: Self.isDefault) { pressed(i); return }
+    // ↑/↓ move the selected choice.
+    if !choices.isEmpty, !choices[0].multiple, event.keyCode == 125 || event.keyCode == 126 {
+      let cur = choices.firstIndex(where: \.selected) ?? 0
+      let next = min(max(0, cur + (event.keyCode == 125 ? 1 : -1)), choices.count - 1)
+      for (j, c) in choices.enumerated() { c.selected = j == next }
+      return
+    }
     if event.keyCode == 53, let i = cancelIndex { pressed(i); return }
     super.keyDown(with: event)
   }
   override func cancelOperation(_ sender: Any?) {
     if let i = cancelIndex { pressed(i) }
+  }
+  /// A button whose keycap is a ⌘ chord ("⌘O" for the upload picker's Choose File…) takes that key
+  /// before the main menu does.
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    if superview != nil, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, let ch = event.charactersIgnoringModifiers?.uppercased(),
+       let i = node.list("buttons").firstIndex(where: { $0.str("keycap") == "⌘" + ch }) {
+      pressed(i)
+      return true
+    }
+    return super.performKeyEquivalent(with: event)
   }
   override var acceptsFirstResponder: Bool { true }
 
@@ -188,6 +237,7 @@ final class DialogView: PanelView {
     if !message.isHidden { h += 8 + messageHeight }
     if checkbox != nil { h += 30 }
     if !fields.isEmpty { h += 14 + CGFloat(fields.count) * 36 - 8 }
+    if !choices.isEmpty { h += 14 + CGFloat(choices.count) * Self.choiceHeight }
     h += 33 + Tokens.dialogButtonHeight + Tokens.dialogButtonInset
     return max(icon.isHidden ? 0 : 248, h)
   }
@@ -215,6 +265,10 @@ final class DialogView: PanelView {
       y += 14
       for f in fields { f.frame = NSRect(x: pad, y: y, width: w, height: 28); y += 36 }
     }
+    if !choices.isEmpty {
+      y += 14
+      for c in choices { c.frame = NSRect(x: pad - 10, y: y, width: w + 20, height: Self.choiceHeight); y += Self.choiceHeight }
+    }
     // Buttons: one row, 28 pt from the sides and bottom (PX). Cancel/default buttons pack to the
     // right 7 pt apart (spec §5); a leading secondary button ("Quit, and don’t ask again") sits left.
     let inset = Tokens.dialogButtonInset
@@ -232,6 +286,67 @@ final class DialogView: PanelView {
       b.frame = NSRect(x: x, y: by, width: bw, height: Tokens.dialogButtonHeight)
       x -= Tokens.dialogButtonGap
     }
+  }
+}
+
+/// One choice in a dialog (the upload picker): a thumbnail or file icon, a name and a detail line.
+/// Selected rows get the accent tint; with `multiple`, a checkmark.
+@MainActor
+final class ChoiceRow: FlippedView, Themable, Hoverable {
+  var hoverGroup: HoverGroup { .row }
+  let icon = IconView()
+  let title = makeLabel(size: 13, weight: .medium)
+  let subtitle = makeLabel(size: 11.5)
+  let check = IconView()
+  var choiceId = ""
+  var multiple = false { didSet { needsLayout = true } }
+  var selected = false { didSet { check.isHidden = !(multiple && selected); needsDisplay = true } }
+  var hovering = false { didSet { needsDisplay = true } }
+  var onClick: (() -> Void)?
+  var fill: NSColor = .clear
+  var selectedFill: NSColor = .clear
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    check.spec = "sf:checkmark.circle.fill"
+    check.isHidden = true
+    [icon, title, subtitle, check].forEach { addSubview($0) }
+  }
+  required init?(coder: NSCoder) { fatalError() }
+
+  func apply(_ p: Palette) {
+    title.textColor = p.textPrimary
+    subtitle.textColor = p.textSecondary
+    icon.tint = p.textPrimary
+    check.tint = p.accentStrong
+    fill = p.rowHover.withAlphaComponent(p.dark ? 0.08 : 0.05)
+    selectedFill = p.accentStrong.withAlphaComponent(p.dark ? 0.22 : 0.14)
+    needsDisplay = true
+  }
+  override func draw(_ dirtyRect: NSRect) {
+    guard selected || hovering else { return }
+    (selected ? selectedFill : fill).setFill()
+    NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
+  }
+  override func layout() {
+    let h = bounds.height
+    icon.frame = NSRect(x: 10, y: (h - 32) / 2, width: 32, height: 32)
+    let right = bounds.width - (multiple ? 38 : 10)
+    title.frame = NSRect(x: 52, y: h / 2 - 17, width: max(0, right - 52), height: 17)
+    subtitle.frame = NSRect(x: 52, y: h / 2 + 1, width: max(0, right - 52), height: 15)
+    check.frame = NSRect(x: bounds.width - 30, y: (h - 18) / 2, width: 18, height: 18)
+  }
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    trackingAreas.forEach(removeTrackingArea)
+    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+  override func mouseEntered(with event: NSEvent) { HoverTracker.refresh(window) }
+  override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window) }
+  override var mouseDownCanMoveWindow: Bool { false }
+  override func mouseDown(with event: NSEvent) {}
+  override func mouseUp(with event: NSEvent) {
+    if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
   }
 }
 

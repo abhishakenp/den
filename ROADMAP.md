@@ -81,7 +81,7 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
   - ⏳ crash recovery of den itself
 - ⏳ Apple Pay exception: skip den's injected scripts on checkout pages, since any injection disables Apple Pay
 - ⏳ Web push notifications: not supported in `WKWebView`; decide on a workaround or skip
-- ⏳ Downloads: `WKDownload`, Arc-style downloads in the sidebar and Library, auto-archive
+- ✅ Downloads: `WKDownload` into ~/Downloads (quarantined, Finder-style names), Library ▸ Downloads (⌥⌘L) with pause/resume (kept across relaunch), cancel, retry, open, reveal and drag out, a sidebar progress ring, auto-archive after 1 day (Settings ▸ Tabs) ([guide](docs/guide/downloads.md))
 - ✅ Find in page (find bar, ⌘F/⌘G/⇧⌘G/⌘E)
 - 🟡 Printing and PDF viewing
   - ✅ print (⌘P), save as Web Archive (⇧⌘S)
@@ -295,7 +295,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ⏳ Paste and Go / Paste and Search
 - ⏳ Copy toast says exactly what was copied
 - ✅ Clear a copied password from the clipboard after a short time (60 s)
-- ⏳ Upload picker shows recent downloads, screenshots and the clipboard first
+- ✅ Upload picker shows recent downloads, screenshots and the clipboard first (filtered by `accept`; Choose File… ⌘O for the usual panel)
 - ⏳ Error pages link to the Web Archive copy
 
 ## Energy
