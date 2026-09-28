@@ -145,7 +145,7 @@ enum Cards {
     return [
       action(p + "split", icon: "sf:rectangle.split.2x1", tooltip: "Add to Split", shortcut: "ctrl+shift+="),
       action(p + "copy", icon: "sf:link", tooltip: "Copy Link", shortcut: "cmd+shift+c"),
-      action(p + "separate", icon: "sf:rectangle.split.3x1.slash", tooltip: "Separate Tabs"),
+      action(p + "separate", icon: "sf:rectangle.split.2x1.slash", tooltip: "Separate Tabs"),
     ]
   }
 
