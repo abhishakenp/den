@@ -33,7 +33,7 @@ final class MiniWindowController: NSObject, NSWindowDelegate {
     panel.level = .floating
     panel.hidesOnDeactivate = false
     panel.isReleasedWhenClosed = false
-    panel.collectionBehavior.insert(.fullScreenAuxiliary)
+    panel.collectionBehavior = [.fullScreenAuxiliary, .canJoinAllSpaces, .ignoresCycle]
     panel.minSize = Tokens.miniMinSize
     TestMode.hide(panel)
     panel.delegate = self
