@@ -182,6 +182,111 @@ struct PageBlocksTests {
     #expect(rt.call("speech", "state")["state"] == "stopped")
   }
 
+  @Test func speechListsVoicesSpeaksInOneAndPreviews() async throws {
+    let rt = Self.runtime()
+    let r = rt.call("speech", "voices")
+    let voices = r.list("voices")
+    print("speech.voices:", voices.count, "voices, personalVoice", r.str("personalVoice"))
+    #expect(!voices.isEmpty)
+    #expect(voices.allSatisfy { !$0.str("id").isEmpty && !$0.str("name").isEmpty && !$0.str("language").isEmpty && $0.str("provider") == "system" })
+    #expect(voices.allSatisfy { ["default", "enhanced", "premium"].contains($0.str("quality")) })
+    #expect(["notDetermined", "denied", "unsupported", "authorized"].contains(r.str("personalVoice")))
+    // The voice for a language, and a voice by id.
+    let en = rt.call("speech", "voice", ["lang": "en-US"])
+    #expect(!en.str("name").isEmpty && en.str("language").hasPrefix("en"))
+    let pick = try #require(voices.first { $0.str("language").hasPrefix("en") } ?? voices.first)
+    #expect(rt.call("speech", "voice", ["voice": pick["id"]])["id"] == pick["id"])
+    // Speaking in that voice; switching voice mid-queue restarts at the same sentence.
+    _ = rt.call("speech", "speak", ["utterances": ["One.", "Two.", "Three."], "voice": pick["id"], "volume": 0, "request": "v"])
+    #expect(rt.call("speech", "state")["voice"] == pick["id"])
+    _ = rt.call("speech", "setVoice", ["voice": "", "lang": "en"])
+    #expect(rt.call("speech", "state")["voice"] == "")
+    let done = await Self.wait(rt, "speech.state", timeout: 300) { $0["request"] == "v" && $0["state"] == "done" }
+    #expect(done != nil)
+    // A preview speaks beside the queue and lets go of its synthesizer.
+    #expect(rt.call("speech", "preview", ["voice": pick["id"], "text": "Hello there."]) == .ok)
+    #expect(rt.speech.previewing)
+    #expect(await Wait.until("preview ends", seconds: 15) { !rt.speech.previewing })
+    #expect(rt.call("speech", "preview", ["text": ""]).isError)
+    // Personal Voice never asks under tests; the settings pane isn't opened either.
+    #expect(rt.call("speech", "personalVoice", ["request": true])["pending"].isNull)
+    _ = rt.call("speech", "openSettings")
+    #expect(rt.speech.settingsOpened == 1)
+    #expect(SpeechService.settingsURL == "x-apple.systempreferences:com.apple.Accessibility-Settings.extension?SpokenContent")
+  }
+
+  /// A plugin's voices: listed after macOS's, spoken by asking it for audio one sentence ahead
+  /// and playing what it answers.
+  @Test func speechProviderVoicesSpeakThroughTheProvider() async throws {
+    let rt = Self.runtime()
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("den-speech-\(UUID())")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let wav = dir.appendingPathComponent("s.wav")
+    try Self.silentWAV(ms: 120).write(to: wav)
+    #expect(rt.call("speech", "registerProvider", ["id": "system", "voices": []]).isError)
+    _ = rt.call("speech", "registerProvider", ["id": "fake", "name": "Fake TTS", "voices": [
+      ["id": "alba", "name": "Alba", "language": "en-GB", "quality": "premium", "gender": "female"], ["id": "bad"],
+    ]])
+    let listed = rt.call("speech", "voices").list("voices").filter { $0.str("provider") == "fake" }
+    #expect(listed.count == 1)
+    #expect(listed.first?.str("providerName") == "Fake TTS" && listed.first?.str("quality") == "premium" && listed.first?.str("gender") == "female")
+    #expect(rt.call("speech", "voice", ["voice": "alba", "provider": "fake"])["name"] == "Alba")
+    #expect(rt.call("speech", "speak", ["utterances": ["A."], "provider": "nope"]).isError)
+    // The provider answers each sentence with a file.
+    var asked: [Value] = []
+    rt.plugins.on("speech.synthesize") { v in
+      guard v["provider"] == "fake", v["request"] != "e" else { return }
+      asked.append(v)
+      _ = rt.call("speech", "provide", ["key": v["key"], "path": .string(wav.path)])
+    }
+    var progress: [Int64] = []
+    rt.plugins.on("speech.progress") { if $0["request"] == "p", let i = $0["index"].int { progress.append(i) } }
+    _ = rt.call("speech", "speak", ["utterances": ["First.", "Second.", "Third."], "voice": "alba", "provider": "fake", "request": "p", "volume": 0])
+    let done = await Self.wait(rt, "speech.state", timeout: 200) { $0["request"] == "p" && $0["state"] == "done" }
+    #expect(done != nil)
+    #expect(progress == [0, 1, 2])
+    #expect(asked.map { $0.str("text") } == ["First.", "Second.", "Third."])
+    #expect(asked.allSatisfy { $0["voice"] == "alba" && $0["request"] == "p" })
+    // A preview in a provider's voice asks for one sentence.
+    let before = asked.count
+    _ = rt.call("speech", "preview", ["voice": "alba", "provider": "fake", "text": "Hi."])
+    #expect(asked.count == before + 1 && asked.last?["request"] == "preview")
+    #expect(!rt.speech.previewing)
+    // A provider error stops the queue and says why.
+    asked = []
+    var stopped: [String: Value] = [:]
+    rt.plugins.on("speech.state") { v in if v["state"] == "stopped" { stopped[v.str("request")] = v } }
+    rt.plugins.on("speech.synthesize") { v in if v["request"] == "e" { _ = rt.call("speech", "provide", ["key": v["key"], "error": "model not running"]) } }
+    _ = rt.call("speech", "speak", ["utterances": ["X.", "Y."], "voice": "alba", "provider": "fake", "request": "e"])
+    #expect(await Wait.until("error", seconds: 10) { stopped["e"] != nil })
+    #expect(stopped["e"]?["error"] == "model not running")
+    #expect(rt.call("speech", "state")["state"] == "stopped")
+    // Only files and localhost URLs are played.
+    _ = rt.call("speech", "unregisterProvider", ["id": "fake"])
+    _ = rt.call("speech", "registerProvider", ["id": "remote", "voices": [["id": "r", "name": "R", "language": "en"]]])
+    rt.plugins.on("speech.synthesize") { v in if v["request"] == "u" { _ = rt.call("speech", "provide", ["key": v["key"], "url": "https://example.com/a.wav"]) } }
+    _ = rt.call("speech", "speak", ["utterances": ["X."], "voice": "r", "provider": "remote", "request": "u"])
+    #expect(await Wait.until("refused", seconds: 10) { stopped["u"] != nil })
+    #expect(stopped["u"]?.str("error").contains("localhost") == true)
+    // Unregistering removes the voices.
+    _ = rt.call("speech", "unregisterProvider", ["id": "remote"])
+    #expect(!rt.call("speech", "voices").list("voices").contains { $0.str("provider") != "system" })
+  }
+
+  /// A mono 16-bit WAV of silence.
+  static func silentWAV(ms: Int) -> Data {
+    let rate = 22_050, samples = rate * ms / 1000, bytes = samples * 2
+    var d = Data()
+    func u32(_ v: Int) { var x = UInt32(v).littleEndian; d.append(Data(bytes: &x, count: 4)) }
+    func u16(_ v: Int) { var x = UInt16(v).littleEndian; d.append(Data(bytes: &x, count: 2)) }
+    d.append(contentsOf: Array("RIFF".utf8)); u32(36 + bytes); d.append(contentsOf: Array("WAVEfmt ".utf8))
+    u32(16); u16(1); u16(1); u32(rate); u32(rate * 2); u16(2); u16(16)
+    d.append(contentsOf: Array("data".utf8)); u32(bytes)
+    d.append(Data(count: bytes))
+    return d
+  }
+
   @Test func translateDetectsAndTranslatesOnDevice() async throws {
     let rt = Self.runtime()
     let d = rt.call("translate", "detect", ["text": "Le chat dort sur la table de la cuisine depuis ce matin."])
