@@ -147,17 +147,36 @@ public final class MediaService: HostService {
   }
 
   /// Automatic entry for `trigger`: `id`'s video if it qualifies (a log line either way, unless
-  /// the page has no video at all). True when den asked WebKit.
-  @discardableResult
-  func autoEnter(_ id: String, _ trigger: String) -> Bool {
-    if active.contains(id) || entering.contains(id) { return false }
+  /// the page has no video at all). When what the page last reported may be out of date (a
+  /// video's size or track that changed without an event den listens to), the page's frames
+  /// report afresh and den decides again, if `still` holds by then. `entered`: den asked WebKit.
+  func autoEnter(_ id: String, _ trigger: String, still: @escaping @MainActor () -> Bool = { true }, entered: (@MainActor () -> Void)? = nil) {
+    if active.contains(id) || entering.contains(id) { return }
     let e = eligibility(id)
-    guard e.video != nil else {
-      if e.why != "no video" { note("pip \(trigger) \(id): skip, \(e.why)") }
-      return false
+    if e.video != nil {
+      note("pip \(trigger) \(id): enter, \(e.why)")
+      if enter(id, auto: true) { entered?() }
+      return
     }
-    note("pip \(trigger) \(id): enter, \(e.why)")
-    return enter(id, auto: true)
+    if e.why != "no video" { note("pip \(trigger) \(id): skip, \(e.why)") }
+    guard ["no video track yet", "small", "media playing"].contains(where: { e.why.hasPrefix($0) }), let r = webviews.record(id), r.webView != nil else { return }
+    let frames = r.frames.values.map(\.frame)
+    final class Left { var n: Int; init(_ n: Int) { self.n = n } }
+    let left = Left(frames.count)
+    for f in frames {
+      webviews.runPageScript(id, "return window.__denMedia.refresh()", frame: f) { [weak self] _ in
+        left.n -= 1
+        guard left.n == 0, let self else { return }
+        guard still(), !self.active.contains(id), !self.entering.contains(id) else { return }
+        let e2 = self.eligibility(id)
+        guard e2.video != nil else {
+          self.note("pip \(trigger) \(id): skip after a fresh report, \(e2.why)")
+          return
+        }
+        self.note("pip \(trigger) \(id): enter after a fresh report, \(e2.why)")
+        if self.enter(id, auto: true) { entered?() }
+      }
+    }
   }
 
   /// The page to auto-PiP when den's window or app is left: the focused pane's video, else
@@ -328,7 +347,7 @@ public final class MediaService: HostService {
 
   /// A tab leaving the screen (its web view still in the window).
   func leaving(_ id: String) {
-    autoEnter(id, "tabLeave")
+    autoEnter(id, "tabLeave", still: { [weak self] in self?.content.panes.contains(id) == false })
   }
 
   /// A page going (back) on screen: a PiP den started comes back into it.
@@ -412,7 +431,7 @@ public final class MediaService: HostService {
       note("pip appSwitch: no pane \(windowState)")
       return
     }
-    if autoEnter(id, "appSwitch") { appAway.insert(id) }
+    autoEnter(id, "appSwitch", still: { !NSApp.isActive }, entered: { [weak self] in _ = self?.appAway.insert(id) })
   }
 
   /// den's window, as the log says it.
@@ -459,7 +478,7 @@ public final class MediaService: HostService {
       return
     }
     guard let id = awayTarget(), panes.contains(id) else { return }
-    autoEnter(id, "windowAway")
+    autoEnter(id, "windowAway", still: { [weak self] in self?.windowVisible == false })
   }
 
   /// The window of `id`'s web view when it isn't one of den's (WebKit's full-screen window).
@@ -492,7 +511,7 @@ public final class MediaService: HostService {
         guard let self, let win, self.fullScreenWindow(id) === win,
               !(win.isVisible && win.occlusionState.contains(.visible) && win.isOnActiveSpace) else { return }
         if self.fullScreenAway.insert(id).inserted { self.note("pip fullScreen away \(id) activeSpace=\(win.isOnActiveSpace) occlusionVisible=\(win.occlusionState.contains(.visible))") }
-        self.autoEnter(id, "fullScreenAway")
+        self.autoEnter(id, "fullScreenAway", still: { [weak self] in self?.fullScreenAway.contains(id) == true })
       }
     }
   }

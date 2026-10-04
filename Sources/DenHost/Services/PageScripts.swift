@@ -13,7 +13,8 @@ import WebKit
 ///                              dur, video, acts} (acts = the page's Media Session action handlers)
 /// and exposes `window.__denMedia` (in the `den` world only) for the host: `act(action, value)`
 /// (the now-playing element), `pip()` / `exitPip()` (the standard picture-in-picture API, which
-/// WebKit implements with the system PiP window), `probe()`.
+/// WebKit implements with the system PiP window), `probe()`, `refresh()` (a report now, changed
+/// or not). A video's `resize` (its track's size known or changed) is a change too.
 ///
 /// `sessionHook` is the only page-world part: it remembers the page's Media Session action
 /// handlers (WebKit has no way to call them from outside) and tells the den world when they or
@@ -101,7 +102,7 @@ enum PageScripts {
     cur = m;
   };
   for (const e of ['play', 'playing', 'pause', 'ended', 'volumechange', 'emptied', 'ratechange', 'durationchange', 'loadedmetadata',
-                   'seeked', 'enterpictureinpicture', 'leavepictureinpicture']) {
+                   'seeked', 'enterpictureinpicture', 'leavepictureinpicture', 'resize', 'loadeddata']) {
     document.addEventListener(e, ev => { follow(ev); soon(); }, true);
   }
   // Media Session handlers or metadata changed in the page (sessionHook, page world).
@@ -164,6 +165,8 @@ enum PageScripts {
       try { await document.exitPictureInPicture(); } catch (e) { return false; }
       return true;
     },
+    // A report now, sent even if nothing changed (den deciding with what it last heard).
+    refresh() { last = ''; state(); return true; },
     probe() { const v = pipVideo() || document.querySelector('video'); return v ? Object.assign(info(v), { inPip: document.pictureInPictureElement === v }) : null; },
 
   };

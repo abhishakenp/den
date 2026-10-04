@@ -253,6 +253,33 @@ struct MediaTests {
     mock.stop()
   }
 
+  /// What the page last reported can be out of date (a video made bigger without any media
+  /// event): den asks the page for a fresh report and decides again, instead of skipping it.
+  @Test func staleReportIsRefreshedBeforeSkipping() async throws {
+    let rt = ServiceTests.runtime()
+    rt.window.window.orderFront(nil)
+    defer { rt.window.window.orderOut(nil) }
+    let mock = try Self.served()
+    let id = rt.call("webviews", "create", ["id": "f", "url": .string(mock.base + "/v.html")])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    let web = try #require(rt.webviews.record(id)?.webView)
+    #expect(await wait { !web.isLoading && web.url != nil })
+    var lines: [String] = []
+    rt.media.log = { lines.append($0) }
+    defer { rt.media.log = nil }
+    _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.style.width = '120px'; v.muted = false; await v.play(); return true")
+    #expect(await wait { rt.media.eligibility(id).why.hasPrefix("small") })
+    _ = await Wait.asyncJS(web, "document.querySelector('video').style.width = '640px'; return true")
+    try await Task.sleep(for: .milliseconds(300))
+    #expect(rt.media.eligibility(id).why.hasPrefix("small"), "nothing told den about the new size")
+    rt.media.appActiveChanged(false)
+    #expect(await wait(10) { rt.media.active.contains(id) }, "\(lines)")
+    #expect(lines.contains { $0.hasPrefix("pip appSwitch \(id): skip, small") } && lines.contains { $0.hasPrefix("pip appSwitch \(id): enter after a fresh report") }, "\(lines)")
+    _ = rt.call("media", "exit")
+    #expect(await wait(10) { rt.media.active.isEmpty })
+    mock.stop()
+  }
+
   /// A discarded page's WKWebView is released at once (nothing in den keeps it), which is what
   /// lets WebKit end its WebContent process. The process exit itself is WebKit's timing (seconds,
   /// longer on a busy Mac): measured in the real app with `scripts/measure-memory.sh`.
