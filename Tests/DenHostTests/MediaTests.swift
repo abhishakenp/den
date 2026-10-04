@@ -207,6 +207,79 @@ struct MediaTests {
     mock.stop()
   }
 
+  /// Switching to another app (den resigns active) puts the video in PiP at once, even with
+  /// den's window still showing; the window staying in sight doesn't take it back out while
+  /// another app is in front; den active again does. In a split, the pane playing video goes,
+  /// not the focused blank one. Each decision is a log line, with the reason when it's no.
+  /// (The real notifications: `--scenario pip` on CI, with Terminal and other apps in front.)
+  @Test func appSwitchEntersAndComingBackExits() async throws {
+    let rt = ServiceTests.runtime()
+    rt.window.window.orderFront(nil)
+    defer { rt.window.window.orderOut(nil) }
+    let mock = try Self.served()
+    let id = rt.call("webviews", "create", ["id": "a", "url": .string(mock.base + "/v.html")])["id"].string!
+    let other = rt.call("webviews", "create", ["id": "b"])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(other), .string(id)], "focus": .string(other)])
+    let web = try #require(rt.webviews.record(id)?.webView)
+    #expect(await wait { !web.isLoading && web.url != nil })
+    var lines: [String] = []
+    rt.media.log = { lines.append($0) }
+    // The test window is never really on screen (Invisible): say it's in sight, behind the other app.
+    rt.media.windowVisibleForTests = true
+    defer { rt.media.windowVisibleForTests = nil }
+    _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.muted = true; await v.play(); return true")
+    #expect(await wait { rt.media.eligibility(id).why == "video muted" })
+    rt.media.appActiveChanged(false)
+    #expect(rt.media.active.isEmpty && lines.contains("pip appSwitch \(id): skip, video muted"), "\(lines)")
+    _ = await Wait.asyncJS(web, "document.querySelector('video').muted = false; return true")
+    #expect(await wait { rt.media.eligibleVideo(id) != nil })
+    #expect(rt.media.awayTarget() == id)
+
+    rt.media.appActiveChanged(false)
+    #expect(await wait(10) { rt.media.active.contains(id) }, "\(lines)")
+    #expect(rt.media.auto.contains(id))
+    #expect(lines.contains { $0.hasPrefix("pip appSwitch \(id): enter") } && lines.contains { $0.hasPrefix("pip enter \(id): js(main) -> true") }, "\(lines)")
+    #expect(lines.contains("pip webkit \(id): in (auto)") || lines.contains("pip webkit \(id): in (auto) systemWindow"), "\(lines)")
+    // The window is in sight (another app in front of part of it): it stays in PiP.
+    rt.media.evaluateWindow()
+    try await Task.sleep(for: .milliseconds(600))
+    #expect(rt.media.active.contains(id))
+    // den active again: back inline, playing.
+    rt.media.appActiveChanged(true)
+    #expect(await wait(10) { rt.media.active.isEmpty && rt.media.auto.isEmpty }, "\(lines)")
+    #expect(await Wait.until("inline and playing") { await Wait.asyncJS(web, "return !document.pictureInPictureElement && !document.querySelector('video').paused") as? Bool == true })
+    print("media-test: appSwitch log\n" + lines.joined(separator: "\n"))
+    rt.media.log = nil
+    mock.stop()
+  }
+
+  /// What the page last reported can be out of date (a video made bigger without any media
+  /// event): den asks the page for a fresh report and decides again, instead of skipping it.
+  @Test func staleReportIsRefreshedBeforeSkipping() async throws {
+    let rt = ServiceTests.runtime()
+    rt.window.window.orderFront(nil)
+    defer { rt.window.window.orderOut(nil) }
+    let mock = try Self.served()
+    let id = rt.call("webviews", "create", ["id": "f", "url": .string(mock.base + "/v.html")])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    let web = try #require(rt.webviews.record(id)?.webView)
+    #expect(await wait { !web.isLoading && web.url != nil })
+    var lines: [String] = []
+    rt.media.log = { lines.append($0) }
+    defer { rt.media.log = nil }
+    _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.style.width = '120px'; v.muted = false; await v.play(); return true")
+    #expect(await wait { rt.media.eligibility(id).why.hasPrefix("small") })
+    _ = await Wait.asyncJS(web, "document.querySelector('video').style.width = '640px'; return true")
+    try await Task.sleep(for: .milliseconds(300))
+    #expect(rt.media.eligibility(id).why.hasPrefix("small"), "nothing told den about the new size")
+    rt.media.appActiveChanged(false)
+    #expect(await wait(10) { rt.media.active.contains(id) }, "\(lines)")
+    #expect(lines.contains { $0.hasPrefix("pip appSwitch \(id): skip, small") } && lines.contains { $0.hasPrefix("pip appSwitch \(id): enter after a fresh report") }, "\(lines)")
+    _ = rt.call("media", "exit")
+    #expect(await wait(10) { rt.media.active.isEmpty })
+    mock.stop()
+  }
+
   /// A discarded page's WKWebView is released at once (nothing in den keeps it), which is what
   /// lets WebKit end its WebContent process. The process exit itself is WebKit's timing (seconds,
   /// longer on a busy Mac): measured in the real app with `scripts/measure-memory.sh`.

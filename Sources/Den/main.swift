@@ -95,6 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Unpacked development extensions (docs/den-home.md). Only a path: nothing is read until the first web view.
     runtime.extensions.homeFolder = home?.extensions
     runtime.extensions.logFile = home.map { DenLog(url: $0.logs.appendingPathComponent("extensions.log")) }
+    // Automatic picture in picture: every decision, one line (why a video did or didn't go).
+    if let log = sessionLog { runtime.media.log = { log.write($0) } }
     trace("runtime")
     // Demo runs never touch the real Keychain.
     if args.contains("--demo") { runtime.vault.store = MemoryVaultStore() }
