@@ -426,6 +426,24 @@ struct ExtensionCompatTests {
     _ = await probe(h, id, page: "pages/options.html", Self.apiProbe)
     let ok = await vimiumOnPage(h, id, mock: mock)
     #expect(ok.filter { !$0.value }.map(\.key).sorted() == [], "Vimium keys that did nothing")
+    // Real sites: hints and scrolling (printed; the sites change, so they don't fail the run).
+    for site in ["https://en.wikipedia.org/wiki/Vim_(text_editor)", "https://github.com/philc/vimium"] {
+      let t = h.tabs("open", ["url": .string(site)]).s("id")
+      h.tabs("select", ["id": .string(t)])
+      _ = await wait(40) { h.rt.webviews.record(t)?.loading == false && h.rt.webviews.record(t)?.webView != nil }
+      guard let w = h.rt.webviews.record(t)?.webView else { continue }
+      TestMode.keepActive(w)
+      h.rt.window.window.makeFirstResponder(w)
+      try? await Task.sleep(for: .seconds(2))
+      press(w, "f", 3)
+      let hints = await wait(10) { (await Wait.js(w, "document.querySelectorAll('.vimiumHintMarker').length") as? Int ?? 0) > 0 }
+      let n = await Wait.js(w, "document.querySelectorAll('.vimiumHintMarker').length") ?? "?"
+      press(w, "\u{1b}", 53)
+      try? await Task.sleep(for: .milliseconds(400))
+      press(w, "j", 38)
+      let scrolled = await wait(10) { (await Wait.js(w, "window.scrollY") as? Double ?? 0) > 0 }
+      print("compat vimium site \(site): hints=\(hints) markers=\(n) j=\(scrolled)")
+    }
   }
 
   @Test func vimiumFromFirefoxAddons() async throws {
