@@ -37,7 +37,8 @@ public final class SitePolicyService: HostService {
     public var lists: [String] = []
     /// `allow`, `sound` (autoplay only without sound) or `none`; nil leaves WebKit's default.
     public var autoplay: String?
-    /// `allow` or `block`; nil leaves WebKit's default (pop-ups only from a click).
+    /// `allow` (every pop-up) or `block` (only from a click; the rest blocked with a notice, like
+    /// Safari's "Block and Notify"). nil is `block`.
     public var popups: String?
   }
 
@@ -350,7 +351,11 @@ public final class SitePolicyService: HostService {
     let rule = rule(for: PageStyleService.host(of: url))
     apply(p, w.configuration.userContentController, rule)
     Self.setPolicy(prefs, "_setAutoplayPolicy:", ["allow": 1, "sound": 2, "none": 3][rule.autoplay ?? ""] ?? 0)
-    Self.setPolicy(prefs, "_setPopUpPolicy:", ["allow": 1, "block": 2][rule.popups ?? ""] ?? 0)
+    // Pop-ups: `allow` lets every one through; `block` is Safari's "Block and Notify": WebKit's own
+    // policy (0) hands each window.open to `createWebViewWith`, which opens it after a click and
+    // blocks it with a notice otherwise (Popups.swift). WebKit's Block (2) would also refuse
+    // pop-ups from a click, which broke every OAuth sign-in pop-up.
+    Self.setPolicy(prefs, "_setPopUpPolicy:", rule.popups == "allow" ? 1 : 0)
     if scheme == "http", httpsFirst, !Self.isLocal(url.host ?? ""), !httpAllowed.contains(PageStyleService.host(of: url)) {
       prefs.preferredHTTPSNavigationPolicy = .errorOnFailure
       p.upgrading = url

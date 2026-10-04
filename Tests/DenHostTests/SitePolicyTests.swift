@@ -68,6 +68,23 @@ struct SitePolicyTests {
     #expect(rt.call("sitepolicy", "define", ["name": "test.block", "json": .string(Self.blockJSON)])["ready"] == true)
   }
 
+  /// Shields' default rule is `popups: block`. It must never refuse a window a click opens
+  /// (sign-in pop-ups, links a script opens from a click handler); only pop-ups without a click
+  /// stay blocked. It used to map to WebKit's Block policy, which refuses both.
+  @Test func popupsBlockedByRuleStillOpenFromAClick() async throws {
+    let rt = ServiceTests.runtime()
+    _ = rt.call("sitepolicy", "rules", ["default": ["popups": "block"]])
+    let opened = events(rt, "webviews.newWindow")
+    let w = try await page(rt, "p", "<script>setTimeout(() => { window.auto = window.open('https://pop.test/auto') ? 'opened' : 'blocked' }, 10)</script>", "https://pop.test/")
+    // A page's own timer (no click): blocked.
+    #expect(try await until { (try? await w.evaluateJavaScript("window.auto || ''")) as? String == "blocked" })
+    #expect(opened().isEmpty)
+    // A click (`evaluateJavaScript` runs as a user gesture): it opens.
+    _ = try? await w.evaluateJavaScript("window.open('https://pop.test/signin', 'signin', 'width=500,height=600'); 1")
+    #expect(try await until { opened().contains { $0.str("url") == "https://pop.test/signin" } })
+    #expect(opened().count == 1)
+  }
+
   @Test func loadLooksUpBeforeCompiling() async throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("den-sp-\(UUID())")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

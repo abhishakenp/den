@@ -1013,10 +1013,27 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   }
 
   public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-    if let r = recordFor(webView), let u = action.request.url {
-      host.emit("webviews.newWindow", ["id": .string(r.id), "url": .string(u.absoluteString)])
-    }
+    guard let r = recordFor(webView), let u = action.request.url else { return nil }
+    // Like Safari: a window a click opens always opens; one a page opens by itself only on a site
+    // whose pop-ups are allowed (WebKit on macOS would let every one through).
+    guard Self.isUserInitiated(action) || popupsAllowed(on: webView.url) else { return nil }
+    host.emit("webviews.newWindow", ["id": .string(r.id), "url": .string(u.absoluteString)])
     return nil
+  }
+
+  /// `-[WKNavigationAction _isUserInitiated]` (SPI): the page is handling a click or key press.
+  /// Without it, only a link activation counts.
+  nonisolated static func isUserInitiated(_ action: WKNavigationAction) -> Bool {
+    let sel = NSSelectorFromString("_isUserInitiated")
+    guard action.responds(to: sel), let imp = action.method(for: sel) else { return action.navigationType == .linkActivated }
+    typealias Getter = @convention(c) (AnyObject, Selector) -> Bool
+    return unsafeBitCast(imp, to: Getter.self)(action, sel)
+  }
+
+  /// Pop-ups without a click are allowed on this page's site (`sitepolicy` rule `popups: allow`).
+  func popupsAllowed(on url: URL?) -> Bool {
+    guard let sp = sitePolicy, let h = url?.host, !h.isEmpty else { return false }
+    return sp.rule(for: h).popups == "allow"
   }
 
   // MARK: Page prompts and error pages (WebPrompts.swift, WebErrorPage.swift)
