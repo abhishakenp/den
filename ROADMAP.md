@@ -223,8 +223,10 @@ Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 - ⏳ Native messaging bridge (password managers)
 - ✅ Built-in ad/tracker blocker: EasyList, EasyPrivacy and the EasyList Cookie List compiled to WebKit content rules at release time with `adblock-rust`, including element hiding ([Shields](docs/plugin-services.md#shields-plugin-shields)); offers to step aside when uBlock Origin Lite is installed
 - ✅ Scriptlets for YouTube ads (pre-roll, mid-roll, feed and search promotions, the anti-adblock dialog): uBlock Origin's YouTube rules as data, run by den's own engine in the page's world; the data refreshes daily without a release ([Shields](docs/plugin-services.md#shields-plugin-shields))
-- ⏳ Scriptlets for other sites, and procedural cosmetic filters (content rules can't express them)
-- ⏳ Filter-list updates between releases (`sitepolicy` already reads `~/.den/updates/lists`; the updater doesn't deliver lists yet)
+- ✅ Scriptlets for ~21,000 other sites (anti-adblock walls, pop-unders): uBlock Origin's site rules, converted to data for den's engine and delivered per site ([Shields](docs/plugin-services.md#shields-plugin-shields))
+- ⏳ Procedural cosmetic filters, and uBO scriptlets that carry code (`rpnt`, `trusted-*`) or need entities (`name.*`)
+- ❌ Twitch pre-rolls: not served to den from the test network (logged out, 5 channels, playlists without ad markers), so a Twitch blocker could not be verified and isn't shipped
+- ⏳ Content-rule list updates between releases (scriptlet data already refreshes daily through `sitepolicy.fetch` into `~/.den/updates/lists`; the EasyList lists still come with releases)
 - ✅ uBlock Origin Lite works (full uBlock Origin can't, since WebKit has no blocking `webRequest`)
 - ✅ Minimum macOS: 26 Tahoe. No support for older versions; newer-OS APIs (macOS 27) used when available
 

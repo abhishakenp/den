@@ -87,10 +87,18 @@ final class AdCheck: NSObject, WKScriptMessageHandler {
     rt.call("tabs", "select", ["id": id])
     tab = id.string ?? ""
     if url.contains("youtube.com/watch") { sample(url, n: 0, seen: []) } else {
-      DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
-        let st = self.rt.call("sitepolicy", "get", ["id": .string(self.tab)])
-        print("scenario.ad page url=\(url) blocked=\(st.num("blocked")) byList=\(st["blockedByList"]) scripts=\(st["scripts"])")
-        self.next()
+      DispatchQueue.main.asyncAfter(deadline: .now() + 11) {
+        _ = self.rt.call("sitepolicy", "get", ["id": .string(self.tab)])  // starts a read of the scriptlet count
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+          let st = self.rt.call("sitepolicy", "get", ["id": .string(self.tab)])
+          let page = self.rt.call("webviews", "get", ["id": .string(self.tab)])
+          self.rt.webviews.record(self.tab)?.webView?.evaluateJavaScript("document.body ? document.body.innerText.length : -1") { len, _ in
+            MainActor.assumeIsolated {
+              print("scenario.ad page url=\(url) blocked=\(st.num("blocked")) scripted=\(st.num("scripted")) scripts=\(st["scripts"]) byList=\(st["blockedByList"]) title=\(page.str("title").prefix(40)) textLength=\(len ?? -1)")
+              self.next()
+            }
+          }
+        }
       }
     }
   }

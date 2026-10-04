@@ -96,7 +96,7 @@ struct ShieldsTests {
     let core = start(h)
     #expect(h.rt.sitePolicy.defaultRule.lists == ["shields.ads", "shields.trackers", "shields.cookies"])
     #expect(h.rt.sitePolicy.defaultRule.autoplay == "sound")
-    #expect(h.rt.sitePolicy.defaultRule.scripts == ["shields.scriptlets"])
+    #expect(h.rt.sitePolicy.defaultRule.scripts == ["shields.scriptlets", "shields.sites"])
     #expect(h.rt.sitePolicy.httpsFirst)
     // The guard: parameters, bounce, lookalike.
     let p = h.rt.call("shields", "navigate", ["url": "https://news.example/a?utm_campaign=x&id=2"])

@@ -8,6 +8,7 @@ These files are data, not den's code, and keep their own licences. den's code is
 | `trackers.json.lzfse` | EasyPrivacy (network rules), https://easylist.to | CC BY-SA 3.0 Unported (same dual licence) |
 | `cookies.json.lzfse` | EasyList Cookie List, https://easylist.to | CC BY 3.0 Unported (the list's own header) |
 | `scriptlets.json` | uBlock Origin's uAssets filters (`filters.txt`, `quick-fixes.txt`, YouTube sections), https://github.com/uBlockOrigin/uAssets, translated by hand into den's scriptlet rule format | GPL-3.0 (uAssets' licence). Data read by `scriptlets.js`, not linked into den's code |
+| `sites.json` | uBlock Origin's uAssets filters (`filters.txt` and `quick-fixes.txt`, assembled), their `##+js(…)` rules for named hosts, converted by `scripts/shields/build-scriptlets.swift` | GPL-3.0 (uAssets' licence). Data read by `scriptlets.js` |
 | `scriptlets.js` | den's own scriptlet engine (the scriptlet names and argument meanings follow uBlock Origin's documentation) | MIT, like den |
 
 Attribution: "The EasyList authors (https://easylist.to/)". Licence texts: https://creativecommons.org/licenses/by-sa/3.0/ and https://creativecommons.org/licenses/by/3.0/, and https://easylist.to/pages/licence.html.

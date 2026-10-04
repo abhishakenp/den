@@ -396,6 +396,106 @@ struct SitePolicyTests {
     #expect(cpc["lactMilliseconds"] as? String != "-1", "\(cpc)")
   }
 
+  /// Site scriptlets split per site: a page gets only its site's sets (parent domains included).
+  @Test func perSiteScriptsCarryOnlyTheirSitesRules() async throws {
+    let rt = ServiceTests.runtime()
+    // The layout scripts/shields/build-scriptlets.swift writes (hosts in byte order, one per line).
+    let text = """
+      {"version":"1","source":"test","hosts":{
+      "a.test":[0],
+      "b.test":[1],
+      "c.test":[1]
+      },"sets":[
+      [["set","canRunAds","true"]],
+      [["set","isAdBlockActive","false"]]
+      ]}
+
+      """
+    #expect((try? JSONSerialization.jsonObject(with: Data(text.utf8))) != nil)
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("den-scr-\(UUID())")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let data = dir.appendingPathComponent("sites.json")
+    try Data(text.utf8).write(to: data)
+    let loaded = events(rt, "sitepolicy.loaded")
+    rt.call("sitepolicy", "script", ["name": "test.sites", "file": .string(Self.engine.path), "data": .string(data.path), "perSite": true])
+    #expect(try await until { loaded().contains { $0.str("name") == "test.sites" && $0.flag("ok") } })
+    let info = (rt.call("sitepolicy", "list").array ?? []).first { $0.str("name") == "test.sites" }
+    #expect(info?["perSite"] == true && info?["siteHosts"] == .int(3) && info?["sets"] == .int(2))
+    // The shipped file indexes too (every host line and set line found, lookups by binary search).
+    let shipped = try #require(SitePolicyService.buildScript(js: Self.engine, data: [Self.repo.appendingPathComponent("Plugins/shields/resources/sites.json")], perSite: true)?.site)
+    #expect(shipped.hostLines.count > 10_000 && shipped.setLines.count > 1_000)
+    #expect(!shipped.sets(of: "theverge.com").isEmpty && shipped.sets(of: "example.com").isEmpty)
+    #expect((try? JSONSerialization.jsonObject(with: Data(shipped.rules(shipped.sets(of: "theverge.com")[0]).utf8))) is [Any])
+    rt.call("sitepolicy", "rules", ["default": ["lists": [], "scripts": ["test.sites"]], "hosts": [:]])
+    let js = "return JSON.stringify({canRunAds: String(window.canRunAds), active: String(window.isAdBlockActive), hooked: typeof window[tok] === 'function'})"
+    let a = try await pageState(rt, try await page(rt, "s", "<p>a</p>", "https://www.sub.a.test/"), js)
+    #expect(a["canRunAds"] as? String == "true" && a["active"] as? String == "undefined", "\(a)")
+    let w = try await page(rt, "s", "<p>c</p>", "https://c.test/")
+    let c = try await pageState(rt, w, js)
+    #expect(c["canRunAds"] as? String == "undefined" && c["active"] as? String == "false", "\(c)")
+    // The page's script carries c.test's set only.
+    let src = w.configuration.userContentController.userScripts.first { $0.source.contains("isAdBlockActive") }?.source ?? ""
+    #expect(!src.contains("canRunAds"))
+    let d = try await pageState(rt, try await page(rt, "s", "<p>d</p>", "https://d.test/"), js)
+    #expect(d["hooked"] as? Bool == false, "\(d)")
+  }
+
+  /// uBO's common site scriptlets, each on its own trap, all on one page.
+  @Test func siteScriptletsDefuseAdblockWalls() async throws {
+    let rt = ServiceTests.runtime()
+    let rules: [[String]] = [
+      ["aopr", "adblockDetector"],
+      ["acs", "document.createElement", "blockadblock"],
+      ["nostif", "showWall", "1000"],
+      ["aeld", "load", "detectAdblock"],
+      ["nowoif", "popunder"],
+      ["no-fetch-if", "pagead2"],
+      ["ra", "data-wall", "#wall"],
+      ["rc", "blurred", "body"],
+      ["nofab"],
+      ["set", "ads.ok", "trueFunc"],
+    ]
+    let obj: [String: Any] = ["version": "1", "sets": [["hosts": ["wall.test"], "rules": rules]]]
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("den-scr-\(UUID())")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let data = dir.appendingPathComponent("d.json")
+    try JSONSerialization.data(withJSONObject: obj).write(to: data)
+    try await loadScript(rt, data)
+    rt.call("sitepolicy", "rules", ["default": ["lists": [], "scripts": ["test.scr"]], "hosts": [:]])
+    let html = """
+      <body class="blurred keep"><div id=wall data-wall=1>wall</div>
+      <script>
+      const R = window.R = {};
+      try { window.adblockDetector.run(); R.aopr = 'ran'; } catch (e) { R.aopr = 'aborted'; }
+      R.acs = 'ran'; try { (function blockadblock() { eval('document.createElement("div"); R.acsInner = "ran"'); })(); } catch (e) { R.acs = 'aborted'; }
+      R.timer = 'none'; setTimeout(function showWall() { R.timer = 'wall'; }, 1000); setTimeout(function fine() { R.fine = 'ran'; }, 10);
+      window.addEventListener('load', function detectAdblock() { R.listener = 'ran'; });
+      window.addEventListener('load', function other() { R.other = 'ran'; });
+      R.open = String(window.open('https://popunder.test/x'));
+      fetch('https://pagead2.googlesyndication.com/x.js').then(r => r.text()).then(t => { R.fetch = 'resolved:' + t.length; }, () => { R.fetch = 'failed'; });
+      R.fab = typeof fuckAdBlock;
+      window.ads = {}; R.set = typeof window.ads.ok === 'function' && window.ads.ok() === true;
+      </script>
+      """
+    let w = try await page(rt, "f", html, "https://wall.test/")
+    try await Task.sleep(for: .milliseconds(1500))
+    let js = """
+      return JSON.stringify(Object.assign({}, window.R, {attr: document.getElementById('wall').hasAttribute('data-wall'),
+        blurred: document.body.classList.contains('blurred'), keep: document.body.classList.contains('keep'), count: window[tok]()}));
+      """
+    let r = try await pageState(rt, w, js)
+    #expect(r["aopr"] as? String == "aborted", "\(r)")
+    #expect(r["acs"] as? String == "aborted", "\(r)")
+    #expect(r["timer"] as? String == "none" && r["fine"] as? String == "ran", "\(r)")
+    #expect(r["listener"] == nil && r["other"] as? String == "ran", "\(r)")
+    #expect(r["open"] as? String == "null", "\(r)")
+    #expect(r["fetch"] as? String == "resolved:0", "\(r)")
+    #expect(r["fab"] as? String == "object", "\(r)")
+    #expect(r["set"] as? Bool == true, "\(r)")
+    #expect(r["attr"] as? Bool == false && r["blurred"] as? Bool == false && r["keep"] as? Bool == true, "\(r)")
+    #expect(r["count"] as? Int ?? 0 >= 8, "\(r)")
+  }
+
   @Test func scriptDataPicksTheNewestCopy() throws {
     let old = try Self.scriptletData(version: "2026.01.01"), new = try Self.scriptletData(version: "2026.10.04")
     let a = try #require(SitePolicyService.buildScript(js: Self.engine, data: [old, new]))

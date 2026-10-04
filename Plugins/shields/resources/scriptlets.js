@@ -33,7 +33,6 @@
 const host = location.hostname;
 const W = window;
 const token = typeof denToken === 'string' && denToken ? denToken : '';
-if (token && Object.prototype.hasOwnProperty.call(W, token)) return;
 
 const rules = [];
 for (const set of (denData && denData.sets) || []) {
@@ -214,10 +213,18 @@ const hookXHR = () => {
 };
 
 // --- set-constant ---
-const constant = v => ({ undefined: undefined, null: null, true: true, false: false, '0': 0, '1': 1, "''": '', '""': '', '[]': [], '{}': {} })[v];
+// uBO's set-constant values: fixed constants, small integers and do-nothing functions; never code.
+const constants = {
+  undefined: () => undefined, null: () => null, true: () => true, false: () => false, "''": () => '', '""': () => '', emptyStr: () => '',
+  '[]': () => [], emptyArr: () => [], '{}': () => ({}), emptyObj: () => ({}), yes: () => 'yes', no: () => 'no',
+  noopFunc: () => function () {}, trueFunc: () => function () { return true; }, falseFunc: () => function () { return false; },
+  throwFunc: () => function () { throw new Error(); }, noopPromiseResolve: () => function () { return Promise.resolve(); },
+};
+const isConstant = v => Object.prototype.hasOwnProperty.call(constants, v) || /^-?\d{1,5}$/.test(v);
+const constant = v => (Object.prototype.hasOwnProperty.call(constants, v) ? constants[v]() : /^-?\d{1,5}$/.test(v) ? parseInt(v, 10) : undefined);
 const trapLists = new WeakMap();  // our accessor getters -> the property paths they trap
 const setConstant = (chain, raw) => {
-  if (!/^[\w$]+(\.[\w$]+)*$/.test(chain) || !(raw in { undefined: 1, null: 1, true: 1, false: 1, '0': 1, '1': 1, "''": 1, '""': 1, '[]': 1, '{}': 1 })) return;
+  if (!/^[\w$]+(\.[\w$]+)*$/.test(chain) || !isConstant(raw)) return;
   const value = () => constant(raw);
   const trap = (owner, path) => {
     const dot = path.indexOf('.');
@@ -272,13 +279,23 @@ const preventDomBypass = (chain) => {
   }
 };
 
-const removeNodeText = (nodeName, pat) => {
+/** uBO's trailing "key, value" arguments. */
+const varargs = list => { const o = {}; for (let i = 0; i + 1 < list.length; i += 2) o[String(list[i])] = String(list[i + 1]); return o; };
+const removeNodeText = (nodeName, pat, extra = []) => {
   const re = pattern(pat);
   if (!re) return;
+  const opts = varargs(extra);
+  const exclude = opts.excludes ? pattern(opts.excludes) : null;
+  const include = opts.includes || opts.condition ? pattern(opts.includes || opts.condition) : null;
   const name = String(nodeName || 'script').toUpperCase();
   const handle = n => {
     if (n.nodeName !== name || n === document.currentScript) return;
-    try { if (matches(re, n.textContent)) { n.textContent = ''; removed++; } } catch (e) {}
+    try {
+      const t = n.textContent;
+      if (!matches(re, t) || (exclude && matches(exclude, t)) || (include && !matches(include, t))) return;
+      n.textContent = '';
+      removed++;
+    } catch (e) {}
   };
   const observer = new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) handle(n); });
   observer.observe(document, { childList: true, subtree: true });
@@ -287,18 +304,20 @@ const removeNodeText = (nodeName, pat) => {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', stop, { once: true }); else stop();
 };
 
-const adjustSetTimeout = (pat, delayArg, factorArg) => {
+/** uBO's nano-stb / nano-sib: scale a timer's delay when the callback and delay match. */
+const adjustTimer = (name, pat, delayArg, factorArg) => {
   const re = pattern(pat);
   const delay = delayArg === '*' ? -1 : parseInt(delayArg, 10) || 1000;
   let f = parseFloat(factorArg);
   f = isFinite(f) ? Math.min(Math.max(f, 0.001), 50) : 0.05;
-  W.setTimeout = new Proxy(W.setTimeout, {
+  W[name] = new Proxy(W[name], {
     apply(t, self, args) {
-      try { if ((delay === -1 || args[1] === delay) && matches(re, String(args[0]))) args[1] = args[1] * f; } catch (e) {}
+      try { if ((delay === -1 || args[1] === delay) && matches(re, fnText(args[0]))) args[1] = args[1] * f; } catch (e) {}
       return ReflectApply(t, self, args);
     },
   });
 };
+const adjustSetTimeout = (pat, delayArg, factorArg) => adjustTimer('setTimeout', pat, delayArg, factorArg);
 
 // --- edit-outbound-json: edits request objects as the page serializes them (uBO's
 // trusted-edit-inbound-object on JSON.stringify). Paths are plain dotted keys; "" is the object.
@@ -492,6 +511,191 @@ const youtubeRecover = o => {
   }
 };
 
+// --- uBO's common site scriptlets (anti-adblock walls, pop-unders), same names and arguments.
+/** A needle: "" matches all, "!x" negates, "/re/" is a regex, else a substring. */
+const needle = raw => {
+  raw = String(raw || '');
+  const not = raw.startsWith('!');
+  const re = pattern(not ? raw.slice(1) : raw);
+  return s => (re ? matches(re, s) : true) !== not;
+};
+const fnText = f => { try { return typeof f === 'function' ? Function.prototype.toString.call(f) : String(f); } catch (e) { return ''; } };
+/** uBO's delay ranges: "1000", "1000-", "-1000", "500-2000", "!…"; "" matches any. */
+const range = raw => {
+  raw = String(raw || '');
+  const not = raw.startsWith('!');
+  const s = not ? raw.slice(1) : raw;
+  if (s === '') return () => true;
+  const pos = s.indexOf('-');
+  const min = pos !== 0 ? parseInt(s, 10) || 0 : undefined;
+  const max = pos === -1 ? min : (parseInt(s.slice(pos + 1), 10) || Number.MAX_SAFE_INTEGER);
+  return v => { const n = Number(v) || 0; return ((min === undefined || n >= min) && (max === undefined || n <= max)) !== not; };
+};
+
+/** Traps a property chain on window: `hooks.get/set` run on the leaf (uBO's trapPropertyFn). */
+const trapChain = (chain, hooks) => {
+  if (!/^[\w$]+(\.[\w$]+)*$/.test(chain)) return;
+  const trap = (owner, path) => {
+    const dot = path.indexOf('.');
+    if (dot === -1) {
+      const d = getDesc(owner, path);
+      if (d && !d.configurable) return;
+      let cur = d ? (d.get ? d.get.call(owner) : d.value) : owner[path];  // an inherited method too
+      defineProperty(owner, path, {
+        configurable: true,
+        get() { if (hooks.get) hooks.get(); return cur; },
+        set(v) { if (hooks.set) hooks.set(v); cur = v; },
+      });
+      return;
+    }
+    const prop = path.slice(0, dot), rest = path.slice(dot + 1);
+    const v = owner[prop];
+    if (v instanceof Object) return trap(v, rest);
+    const d = getDesc(owner, prop);
+    if (d && !d.configurable) return;
+    let cur = v;
+    defineProperty(owner, prop, {
+      configurable: true,
+      get() { return cur; },
+      set(nv) { cur = nv; if (nv instanceof Object) { try { trap(nv, rest); } catch (e) {} } },
+    });
+  };
+  trap(W, chain);
+};
+const abort = () => { removed++; throw new ReferenceError(Math.random().toString(36).slice(2)); };
+const abortOnRead = chain => trapChain(chain, { get: abort });
+const abortOnWrite = chain => trapChain(chain, { set: abort });
+const abortCurrentScript = (chain, needleRaw, contextRaw) => {
+  const text = needle(needleRaw), ctx = needle(contextRaw);
+  const textOf = W.Node && getDesc(Node.prototype, 'textContent').get;
+  const check = () => {
+    const e = document.currentScript;
+    if (!(e instanceof HTMLScriptElement)) return;
+    if (contextRaw && !ctx(e.src)) return;
+    let t = '';
+    try { t = textOf.call(e); } catch (err) {}
+    if (!t.trim() && e.src.startsWith('data:')) { try { const m = /^data:([^,]*),(.+)$/.exec(e.src.trim()); t = m[1].endsWith(';base64') ? atob(m[2]) : decodeURIComponent(m[2]); } catch (err) {} }
+    if (text(t)) abort();
+  };
+  trapChain(chain, { get: check, set: check });
+};
+const preventTimer = (name, needleRaw, delayRaw) => {
+  const text = needle(needleRaw), delay = range(delayRaw);
+  if (!needleRaw && !delayRaw) return;
+  W[name] = new Proxy(W[name], {
+    apply(t, self, args) {
+      try { if (text(fnText(args[0])) && delay(args[1])) { args[0] = function () {}; removed++; } } catch (e) {}
+      return ReflectApply(t, self, args);
+    },
+  });
+};
+const preventListener = (typeRaw, needleRaw) => {
+  if (!typeRaw && !needleRaw) return;
+  const typeRe = typeRaw ? (pattern(typeRaw) && /^\/.+\/[a-z]*$/s.test(typeRaw) ? pattern(typeRaw) : { test: s => s === typeRaw }) : null;
+  const text = needle(needleRaw);
+  EventTarget.prototype.addEventListener = new Proxy(EventTarget.prototype.addEventListener, {
+    apply(t, self, args) {
+      try {
+        const h = args[1];
+        const src = typeof h === 'function' ? fnText(h) : (h && typeof h.handleEvent === 'function' ? fnText(h.handleEvent) : String(h));
+        if ((!typeRe || matches(typeRe, String(args[0]))) && text(src)) { args[1] = function () {}; removed++; }
+      } catch (e) {}
+      return ReflectApply(t, self, args);
+    },
+  });
+};
+const noWindowOpen = (needleRaw, delayRaw, decoy) => {
+  const text = needle(needleRaw);
+  W.open = new Proxy(W.open, {
+    apply(t, self, args) {
+      if (!text(String(args[0] || ''))) return ReflectApply(t, self, args);
+      removed++;
+      if (decoy) {
+        // A stand-in window object the page can poke at without opening anything.
+        return new Proxy({}, { get: (o, k) => (k === 'closed' ? false : typeof k === 'string' && k in W ? (typeof W[k] === 'function' ? function () {} : undefined) : undefined), set: () => true });
+      }
+      return null;
+    },
+  });
+};
+const noFetch = propsRaw => {
+  const props = String(propsRaw || '').trim();
+  if (!props) return;
+  const tests = props.split(/\s+/).map(p => { const i = p.indexOf(':'); return i > 0 && /^[a-z]+$/i.test(p.slice(0, i)) ? [p.slice(0, i), needle(p.slice(i + 1))] : ['url', needle(p)]; });
+  W.fetch = new Proxy(W.fetch, {
+    apply(t, self, args) {
+      try {
+        const a = args[0], o = args[1] || {};
+        const details = { url: urlOf(a), method: String((o.method || (a && a.method) || 'GET')).toUpperCase() };
+        if (tests.every(([k, f]) => k in details && f(details[k]))) { removed++; return Promise.resolve(new NativeResponse('', { status: 200, statusText: 'OK' })); }
+      } catch (e) {}
+      return ReflectApply(t, self, args);
+    },
+  });
+};
+const noXHR = propsRaw => {
+  const props = String(propsRaw || '').trim();
+  if (!props) return;
+  const tests = props.split(/\s+/).map(p => { const i = p.indexOf(':'); return i > 0 && /^[a-z]+$/i.test(p.slice(0, i)) ? [p.slice(0, i), needle(p.slice(i + 1))] : ['url', needle(p)]; });
+  const blocked = new WeakSet();
+  const proto = W.XMLHttpRequest.prototype;
+  proto.open = new Proxy(proto.open, {
+    apply(t, self, args) {
+      try { const details = { method: String(args[0]).toUpperCase(), url: urlOf(args[1]) }; if (tests.every(([k, f]) => k in details && f(details[k]))) blocked.add(self); else blocked.delete(self); } catch (e) {}
+      return ReflectApply(t, self, args);
+    },
+  });
+  proto.send = new Proxy(proto.send, {
+    apply(t, self, args) {
+      if (!blocked.has(self)) return ReflectApply(t, self, args);
+      removed++;
+      // Answer with an empty 200, as if the server sent nothing.
+      try {
+        for (const [k, v] of [['readyState', 4], ['status', 200], ['statusText', 'OK'], ['responseText', ''], ['response', '']]) defineProperty(self, k, { value: v, configurable: true });
+        setTimeout(() => { for (const e of ['readystatechange', 'load', 'loadend']) self.dispatchEvent(new Event(e)); }, 1);
+      } catch (e) {}
+    },
+  });
+};
+const noWebRTC = () => {
+  const Real = W.RTCPeerConnection;
+  if (typeof Real !== 'function') return;
+  const Fake = function () { removed++; };
+  Fake.prototype = { close() {}, createDataChannel() { return {}; }, createOffer() { return Promise.resolve({}); }, setLocalDescription() { return Promise.resolve(); }, addEventListener() {} };
+  W.RTCPeerConnection = Fake;
+  if (W.webkitRTCPeerConnection) W.webkitRTCPeerConnection = Fake;
+};
+/** Stubs for FuckAdBlock / BlockAdBlock: present, and never detecting anything. */
+const noAdblockDetector = () => {
+  const Stub = function () {};
+  Stub.prototype = { check() { return true; }, clearEvent() {}, emitEvent() { return this; }, on(d, f) { if (!d && typeof f === 'function') setTimeout(f, 1); return this; },
+    onDetected() { return this; }, onNotDetected(f) { if (typeof f === 'function') setTimeout(f, 1); return this; }, setOption() { return this; } };
+  for (const n of ['FuckAdBlock', 'BlockAdBlock', 'SniffAdBlock']) { try { defineProperty(W, n, { value: Stub }); } catch (e) {} }
+  for (const n of ['fuckAdBlock', 'blockAdBlock', 'sniffAdBlock']) { try { defineProperty(W, n, { value: new Stub() }); } catch (e) {} }
+};
+const noEval = needleRaw => {
+  const text = needle(needleRaw);
+  W.eval = new Proxy(W.eval, { apply(t, self, args) { if (text(String(args[0]))) { removed++; return undefined; } return ReflectApply(t, self, args); } });
+};
+/** remove-attr / remove-class on matching elements, now and as the page adds them. */
+const removeFrom = (kind, namesRaw, selectorRaw) => {
+  const names = String(namesRaw || '').split('|').map(s => s.trim()).filter(Boolean);
+  if (!names.length) return;
+  const selector = String(selectorRaw || '') || (kind === 'attr' ? names.map(n => '[' + CSS.escape(n) + ']').join(',') : names.map(n => '.' + CSS.escape(n)).join(','));
+  const run = () => {
+    let els = [];
+    try { els = document.querySelectorAll(selector); } catch (e) { return; }
+    for (const el of els) for (const n of names) {
+      if (kind === 'attr' && el.hasAttribute(n)) { el.removeAttribute(n); removed++; }
+      if (kind === 'class' && el.classList.contains(n)) { el.classList.remove(n); removed++; }
+    }
+  };
+  let pending = false;
+  const later = () => { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; run(); }); };
+  const start = () => { run(); new MutationObserver(later).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: kind === 'class' ? ['class'] : names }); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
+};
+
 const hidden = [];
 const hide = () => {
   if (!hidden.length) return;
@@ -524,9 +728,26 @@ for (const rule of rules) {
       case 'replace-fetch-response': if (pattern(a)) { fetchRules.push({ kind: 'replace', re: pattern(a), with: b, url: pattern(c) }); hookFetch(); } break;
       case 'replace-xhr-response': if (pattern(a)) { xhrRules.push({ kind: 'replace', re: pattern(a), with: b, url: pattern(c) }); hookXHR(); } break;
       case 'prevent-dom-bypass': preventDomBypass(a); break;
-      case 'remove-node-text': removeNodeText(a, b); break;
+      case 'remove-node-text': removeNodeText(a, b, rule.slice(3)); break;
       case 'adjust-setTimeout': adjustSetTimeout(a, b, c); break;
       case 'hide': if (a.trim() && !/[{}]/.test(a)) hidden.push(a); break;
+      case 'abort-on-property-read': case 'aopr': abortOnRead(a); break;
+      case 'abort-on-property-write': case 'aopw': abortOnWrite(a); break;
+      case 'abort-current-script': case 'acs': case 'acis': abortCurrentScript(a, b, c); break;
+      case 'no-setTimeout-if': case 'nostif': case 'prevent-setTimeout': preventTimer('setTimeout', a, b); break;
+      case 'no-setInterval-if': case 'nosiif': case 'prevent-setInterval': preventTimer('setInterval', a, b); break;
+      case 'addEventListener-defuser': case 'aeld': case 'prevent-addEventListener': preventListener(a, b); break;
+      case 'no-window-open-if': case 'nowoif': case 'prevent-window-open': noWindowOpen(a, b, c); break;
+      case 'no-fetch-if': case 'prevent-fetch': noFetch(a); break;
+      case 'no-xhr-if': case 'prevent-xhr': noXHR(a); break;
+      case 'nowebrtc': noWebRTC(); break;
+      case 'nofab': case 'nobab': case 'fuckadblock.js-3.2.0': noAdblockDetector(); break;
+      case 'noeval': noEval(''); break;
+      case 'noeval-if': noEval(a); break;
+      case 'remove-attr': case 'ra': removeFrom('attr', a, b); break;
+      case 'remove-class': case 'rc': removeFrom('class', a, b); break;
+      case 'adjust-setInterval': case 'nano-sib': adjustTimer('setInterval', a, b, c); break;
+      case 'nano-stb': adjustTimer('setTimeout', a, b, c); break;
       default: break;
     }
   } catch (e) {}
@@ -536,5 +757,7 @@ hide();
 // The count den reads (main frame): what was removed, plus elements the hide rules match now.
 if (token) {
   const hiddenNow = () => { if (!hidden.length) return 0; let n = 0; for (const s of hidden) { try { n += document.querySelectorAll(s).length; } catch (e) {} } return n; };
-  try { defineProperty(W, token, { value: () => removed + hiddenNow(), enumerable: false }); } catch (e) {}
+  // Another page script (the other data set) may have counted already: report the sum.
+  const before = typeof W[token] === 'function' ? W[token] : () => 0;
+  try { defineProperty(W, token, { value: () => before() + removed + hiddenNow(), enumerable: false, configurable: true }); } catch (e) {}
 }

@@ -33,5 +33,13 @@ enum ShieldsLists {
   static let scriptletsCode = "scriptlets.js"
   static let scriptletsData = "scriptlets.json"
   static let scriptletsURL = "https://raw.githubusercontent.com/abhishakenp/den/main/Plugins/shields/resources/scriptlets.json"
+  /// uBlock Origin's site scriptlets (anti-adblock walls, pop-unders) for ~20,000 sites, built by
+  /// scripts/shields/build-scriptlets.swift; split per site by the host (`perSite`).
+  static let sites = "shields.sites"
+  static let sitesData = "sites.json"
+  static let sitesURL = "https://raw.githubusercontent.com/abhishakenp/den/main/Plugins/shields/resources/sites.json"
+  static let sitesSource = "Site scriptlets from uBlock Origin's filters (https://github.com/uBlockOrigin/uAssets). GPL-3.0"
+  /// Data files refreshed daily: (file, url).
+  static let refreshed = [(scriptletsData, scriptletsURL), (sitesData, sitesURL)]
   static let scriptletsSource = "Scriptlets for YouTube, translated from uBlock Origin's filters (https://github.com/uBlockOrigin/uAssets). GPL-3.0"
 }

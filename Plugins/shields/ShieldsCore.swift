@@ -190,9 +190,12 @@ final class ShieldsCore {
     scriptletsRequested = true
     let r = env.call("sitepolicy", "script", ["name": .string(ShieldsLists.scriptlets), "plugin": "shields",
                                               "file": .string(ShieldsLists.scriptletsCode), "data": .string(ShieldsLists.scriptletsData)])
-    if r.isErr {
+    // The other sites' scriptlets: the same engine, data split per site by the host.
+    let s = env.call("sitepolicy", "script", ["name": .string(ShieldsLists.sites), "plugin": "shields", "perSite": true,
+                                              "file": .string(ShieldsLists.scriptletsCode), "data": .string(ShieldsLists.sitesData)])
+    if r.isErr || s.isErr {
       scriptletsRequested = false
-      env.log("shields: " + r.s("error"))
+      env.log("shields: " + r.s("error") + s.s("error"))
     }
   }
 
@@ -211,17 +214,23 @@ final class ShieldsCore {
     guard on("blocker") || sites.values.contains(where: { $0.blocker == true }) else { return }
     let last = load("scriptletsChecked").int ?? 0
     guard env.now() - last >= Self.day - 3600 * 1000 else { return }
-    env.call("sitepolicy", "fetch", ["plugin": "shields", "file": .string(ShieldsLists.scriptletsData), "url": .string(ShieldsLists.scriptletsURL)])
+    for (file, url) in ShieldsLists.refreshed {
+      env.call("sitepolicy", "fetch", ["plugin": "shields", "file": .string(file), "url": .string(url)])
+    }
   }
 
   func fetched(_ v: Value) {
-    guard v.s("plugin") == "shields", v.s("file") == ShieldsLists.scriptletsData else { return }
+    guard v.s("plugin") == "shields", ShieldsLists.refreshed.contains(where: { $0.0 == v.s("file") }) else { return }
     if v.b("ok") { save("scriptletsChecked", .int(env.now())) } else { env.log("shields: scriptlet data refresh failed: " + v.s("error")) }
     if v.b("changed"), scriptletsRequested { loadScriptlets(force: true) }
   }
 
   func listLoaded(_ v: Value) {
     let n = v.s("name")
+    if n == ShieldsLists.sites {
+      if !v.b("ok") { env.log("shields: site scriptlets failed: " + v.s("error")) }
+      return
+    }
     if n == ShieldsLists.scriptlets {
       scriptletsReady = v.b("ok")
       if v.b("ok") { scriptletsVersion = v.s("version") } else { scriptletsRequested = false; env.log("shields: scriptlets failed: " + v.s("error")) }
@@ -238,7 +247,7 @@ final class ShieldsCore {
 
   /// The page scripts a site gets: the scriptlets wherever the blocker is on (they run only on
   /// the sites their data lists).
-  func scriptNames(blocker: Bool) -> Value { blocker ? [.string(ShieldsLists.scriptlets)] : [] }
+  func scriptNames(blocker: Bool) -> Value { blocker ? [.string(ShieldsLists.scriptlets), .string(ShieldsLists.sites)] : [] }
 
   func rules() -> Value {
     var hosts: Value = .object([])
@@ -766,6 +775,7 @@ final class ShieldsCore {
     var lists = ""
     for (i, l) in ShieldsLists.all.enumerated() { lists += (i > 0 ? "\n" : "") + l.source + ". " + l.licence }
     lists += "\n" + ShieldsLists.scriptletsSource + (scriptletsVersion.isEmpty ? "" : " (" + scriptletsVersion + ")")
+    lists += "\n" + ShieldsLists.sitesSource
     var controls: [Value] = [
       ["key": "blocker", "type": "toggle", "title": "Block trackers and ads", "default": true,
        "subtitle": "EasyList and EasyPrivacy, built into WebKit. Turn it off for one site with the shield in the address pill (⌥⌘S) or ⌥⌘B."],

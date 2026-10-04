@@ -68,9 +68,93 @@ public final class SitePolicyService: HostService {
     let version: String
     /// WebKit injects it only into frames on `hosts` (match patterns): attached to every page.
     let framesFiltered: Bool
+    /// `perSite`: the data's sets by host; a page gets a script with only its site's sets.
+    let site: SiteIndex?
+  }
+  /// A big data file split by site, without parsing it: the file stays memory-mapped (clean,
+  /// file-backed pages), and only the byte ranges of its lines are kept. Layout (what
+  /// scripts/shields/build-scriptlets.swift writes, still one JSON document): a header line, one
+  /// `"host":[set, …],` line per host in byte order, `},"sets":[`, then one set's rules per line.
+  struct SiteIndex {
+    let code: String
+    let data: Data
+    /// Where each host line and set line starts (4 bytes a line; a line ends at its newline).
+    let hostStarts: [UInt32]
+    let setStarts: [UInt32]
+    var hostLines: [Range<Int>] { hostStarts.map(line) }
+    var setLines: [Range<Int>] { setStarts.map(line) }
+
+    func line(_ start: UInt32) -> Range<Int> {
+      var end = Int(start)
+      while end < data.count, data[data.startIndex + end] != 0x0A { end += 1 }
+      return Int(start)..<end
+    }
+
+    nonisolated init?(code: String, data: Data) {
+      var hosts: [UInt32] = [], sets: [UInt32] = []
+      var section = 0  // 0 header, 1 hosts, 2 sets
+      var start = 0
+      let bytes = data
+      let n = bytes.count
+      var i = 0
+      func line(_ r: Range<Int>) {
+        guard !r.isEmpty else { return }
+        let first = bytes[bytes.startIndex + r.lowerBound]
+        switch section {
+        case 0: if r.upperBound - r.lowerBound >= 9, bytes[bytes.startIndex + r.upperBound - 1] == 0x7B { section = 1 }  // ends with "{"
+        case 1: if first == 0x22 { hosts.append(UInt32(r.lowerBound)) } else { section = 2 }  // `"host":…` until `},"sets":[`
+        default: if first == 0x5B { sets.append(UInt32(r.lowerBound)) }  // `[[…]]`
+        }
+      }
+      while i < n {
+        if bytes[bytes.startIndex + i] == 0x0A { line(start..<i); start = i + 1 }
+        i += 1
+      }
+      line(start..<n)
+      guard !hosts.isEmpty, !sets.isEmpty, n < Int(UInt32.max) else { return nil }
+      self.code = code
+      self.data = data
+      hostStarts = hosts
+      setStarts = sets
+    }
+
+    /// `"host":[1,2],` → ("host", [1, 2]).
+    func entry(_ r: Range<Int>) -> (host: Substring, sets: [Int])? {
+      let s = String(decoding: data[(data.startIndex + r.lowerBound)..<(data.startIndex + r.upperBound)], as: UTF8.self)
+      guard let colon = s.range(of: "\":[") else { return nil }
+      let host = s[s.index(after: s.startIndex)..<colon.lowerBound]
+      let list = s[colon.upperBound...].prefix { $0 != "]" }
+      return (host, list.split(separator: ",").compactMap { Int($0) })
+    }
+
+    /// The sets listing exactly `host` (binary search over the sorted host lines).
+    func sets(of host: String) -> [Int] {
+      let key = Array(host.utf8)
+      var lo = 0, hi = hostStarts.count - 1
+      while lo <= hi {
+        let mid = (lo + hi) / 2
+        guard let e = entry(line(hostStarts[mid])) else { return [] }
+        let k = Array(e.host.utf8)
+        if k == key { return e.sets }
+        if k.lexicographicallyPrecedes(key) { lo = mid + 1 } else { hi = mid - 1 }
+      }
+      return []
+    }
+
+    /// One set's rules (`[[…]]`, without the line's trailing comma).
+    func rules(_ i: Int) -> String {
+      guard i >= 0, i < setStarts.count else { return "[]" }
+      var r = line(setStarts[i])
+      if data[data.startIndex + r.upperBound - 1] == 0x2C { r = r.lowerBound..<(r.upperBound - 1) }
+      return String(decoding: data[(data.startIndex + r.lowerBound)..<(data.startIndex + r.upperBound)], as: UTF8.self)
+    }
+
+    var bytes: Int { code.utf8.count + data.count }
   }
   private(set) var scripts: [String: PageScript] = [:]
   private var scriptIds: [String: String] = [:]
+  /// Per-site scripts built so far, by "<name>|<set indexes>" (a few hundred bytes of data each).
+  private var siteScripts: [String: WKUserScript] = [:]
 
   final class Page {
     var lists: [String: WKContentRuleList] = [:]
@@ -115,6 +199,7 @@ public final class SitePolicyService: HostService {
         if let s = scripts[n] {
           v = v.with("id", .string(s.id)).with("version", .string(s.version)).with("bytes", .int(Int64(s.bytes)))
             .with("hosts", .array(s.hosts.map { .string($0) })).with("allFrames", .bool(s.framesFiltered))
+          if let site = s.site { v = v.with("perSite", true).with("siteHosts", .int(Int64(site.hostStarts.count))).with("sets", .int(Int64(site.setStarts.count))) }
         }
         return v
       })
@@ -309,8 +394,9 @@ public final class SitePolicyService: HostService {
     scriptIds[n] = token
     let t0 = Date()
     let pageToken = pageToken
+    let perSite = args.flag("perSite")
     DispatchQueue.global(qos: .utility).async {
-      let built = Self.buildScript(js: js, data: data, token: pageToken)
+      let built = Self.buildScript(js: js, data: data, token: pageToken, perSite: perSite)
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
           guard self.scriptIds[n] == token else { return }
@@ -322,8 +408,15 @@ public final class SitePolicyService: HostService {
           let id = n + "@" + Self.fnv(built.source)
           let cached = self.scripts[n]?.id == id
           if !cached {
-            let (user, filtered) = Self.userScript(built.source, hosts: built.hosts)
-            self.scripts[n] = PageScript(id: id, hosts: built.hosts, user: user, bytes: built.source.utf8.count, version: built.version, framesFiltered: filtered)
+            if let site = built.site {
+              // Nothing is built until a page on one of its hosts asks.
+              self.siteScripts = self.siteScripts.filter { !$0.key.hasPrefix(n + "|") }
+              let placeholder = WKUserScript(source: "", injectionTime: .atDocumentStart, forMainFrameOnly: true)
+              self.scripts[n] = PageScript(id: id, hosts: [], user: placeholder, bytes: site.bytes, version: built.version, framesFiltered: false, site: site)
+            } else {
+              let (user, filtered) = Self.userScript(built.source, hosts: built.hosts)
+              self.scripts[n] = PageScript(id: id, hosts: built.hosts, user: user, bytes: built.source.utf8.count, version: built.version, framesFiltered: filtered, site: nil)
+            }
           }
           let ms = (Date().timeIntervalSince(t0) * 1000).rounded()
           self.host.emit("sitepolicy.loaded", ["name": .string(n), "ok": true, "kind": "script", "cached": .bool(cached), "ms": .double(ms),
@@ -342,12 +435,27 @@ public final class SitePolicyService: HostService {
     let source: String
     let hosts: [String]
     let version: String
+    var site: SiteIndex? = nil
   }
 
   /// The wrapped source, the data's hosts and version. The data copy with the greatest `version`.
   /// `token` names the count function the script may leave on `window` (`window[token]()`).
-  nonisolated static func buildScript(js: URL, data: [URL], token: String = "") -> BuiltScript? {
+  /// `perSite`: no single source; the data's sets are indexed by host instead (`site`).
+  nonisolated static func buildScript(js: URL, data: [URL], token: String = "", perSite: Bool = false) -> BuiltScript? {
     guard let code = try? String(contentsOf: js, encoding: .utf8) else { return nil }
+    if perSite {
+      // Mapped, never parsed: the version from the header, the line ranges for lookups.
+      var best: (data: Data, version: String)?
+      for u in data {
+        guard let d = try? Data(contentsOf: u, options: .alwaysMapped), d.count <= 4 * 1024 * 1024 else { continue }
+        let head = String(decoding: d.prefix(160), as: UTF8.self)
+        guard let r = head.range(of: #""version":"([^"]*)""#, options: .regularExpression) else { continue }
+        let v = String(head[r].dropFirst(11).dropLast())
+        if best == nil || v > best!.version { best = (d, v) }
+      }
+      guard let best, let site = SiteIndex(code: code, data: best.data) else { return nil }
+      return BuiltScript(source: code + "\u{0}" + best.version + "\u{0}" + String(best.data.count), hosts: [], version: best.version, site: site)
+    }
     var best: (json: String, obj: [String: Any], version: String)?
     for u in data {
       guard let d = try? Data(contentsOf: u), d.count <= 2 * 1024 * 1024,
@@ -490,7 +598,12 @@ public final class SitePolicyService: HostService {
     }
     var wantScripts: [String: WKUserScript] = [:]
     for n in rule.scripts {
-      if let s = scripts[n], s.framesFiltered || Self.matches(host, s.hosts) { wantScripts[n] = s.user }
+      guard let s = scripts[n] else { continue }
+      if let site = s.site {
+        if let u = siteScript(n, site, host: host) { wantScripts[n] = u }
+      } else if s.framesFiltered || Self.matches(host, s.hosts) {
+        wantScripts[n] = s.user
+      }
     }
     guard wantScripts.count != p.scripts.count || wantScripts.contains(where: { p.scripts[$0.key] !== $0.value }) else { return }
     if !p.scripts.isEmpty {
@@ -507,6 +620,31 @@ public final class SitePolicyService: HostService {
     }
     for n in wantScripts.keys.sorted() { c.addUserScript(wantScripts[n]!) }
     p.scripts = wantScripts
+  }
+
+  /// The script of a `perSite` page script for a page on `host`: the engine with only the sets
+  /// listing the host or one of its parent domains, injected (match patterns) into that site's
+  /// frames. nil when no set lists it. Built once per combination of sets.
+  func siteScript(_ name: String, _ site: SiteIndex, host: String) -> WKUserScript? {
+    var h = PageStyleService.key(host), keys: [String] = [], sets: [(String, [Int])] = []
+    while h.contains(".") {
+      let s = site.sets(of: h)
+      if !s.isEmpty { keys.append(h); sets.append((h, s)) }
+      guard let dot = h.firstIndex(of: ".") else { break }
+      h = String(h[h.index(after: dot)...])
+    }
+    guard !sets.isEmpty else { return nil }
+    let key = name + "|" + sets.map { $0.0 + ":" + $0.1.map(String.init).joined(separator: ",") }.joined(separator: ";")
+    if let u = siteScripts[key] { return u }
+    // Each set as the engine reads it: the host it was listed for, and its rules.
+    var parts: [String] = []
+    for (hostKey, list) in sets { for i in list { parts.append("{\"hosts\":[\"" + hostKey + "\"],\"rules\":" + site.rules(i) + "}") } }
+    let data = ("{\"sets\":[" + parts.joined(separator: ",") + "]}").replacingOccurrences(of: "\u{2028}", with: "\\u2028").replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+    let source = "(function (denData, denToken) {\n" + site.code + "\n})(" + data + ", \"" + pageToken + "\");\n"
+    let (u, _) = Self.userScript(source, hosts: keys)
+    if siteScripts.count > 256 { siteScripts.removeAll() }
+    siteScripts[key] = u
+    return u
   }
 
   func applyAll() {
