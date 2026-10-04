@@ -154,6 +154,11 @@ struct MediaTests {
     #expect(await Wait.until("the close button pauses") { await Wait.asyncJS(web, "return document.querySelector('video').paused") as? Bool == true })
     #expect(await wait(10) { rt.media.active.isEmpty })
     #expect(back.count == 1, "the close button doesn't go back to the tab")
+    // The system window finishes closing before the next one opens.
+    #expect(await wait(10) { NativePiP.systemWindows().isEmpty })
+    try await Task.sleep(for: .seconds(1))
+    var pipEvents: [String] = []
+    _ = rt.host.on("media.pip") { v in pipEvents.append("\(v.str("webview")):\(v["open"] == true ? "open" : "closed")") }
 
 
     // By hand: the focused pane's video, kept across a tab switch, toggled back out.
@@ -165,7 +170,8 @@ struct MediaTests {
     _ = rt.call("content", "show", ["panes": [.string(other)]])
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     try await Task.sleep(for: .seconds(1))
-    #expect(rt.media.active.contains(id), "a PiP you started stays when you come back")
+    #expect(rt.media.active.contains(id), "a PiP you started stays when you come back: \(pipEvents)")
+
     #expect(rt.call("media", "toggle") == ["webview": .string(id), "pip": false])
     #expect(await wait(10) { rt.media.active.isEmpty })
     #expect(rt.call("media", "toggle", ["webview": "nope"])["error"].string != nil)

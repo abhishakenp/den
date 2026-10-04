@@ -317,10 +317,14 @@ public enum MediaScenarios {
     // WindowServer: `DEN_PIP_FULLSCREEN=1`, for CI's runner, never on a desktop someone uses).
     if env["DEN_PIP_FULLSCREEN"] == "1" {
       rt.call("tabs", "select", ["id": .string(id)])
-      _ = await js(rt, id, "const v = document.querySelector('video'); await v.play(); await v.requestFullscreen(); return true")
+      // Full screen is for the app in front (a runner's den may not be).
+      NSApp.activate(ignoringOtherApps: true)
+      rt.window.window.makeKeyAndOrderFront(nil)
+      await sleep(1)
+      let res = await js(rt, id, "const v = document.querySelector('video'); await v.play(); try { await v.requestFullscreen(); return 'ok'; } catch (e) { return String(e); }")
       let web = rt.webviews.record(id)?.webView
-      let full = await until(8) { web?.window != nil && rt.windows.containing(web?.window) == nil }
-      check("fullscreen.entered", full, web?.window.map { NSStringFromClass(type(of: $0)) } ?? "no window")
+      let full = await until(10) { web?.window != nil && rt.windows.containing(web?.window) == nil }
+      check("fullscreen.entered", full, "request=\(res) window=\(web?.window.map { NSStringFromClass(type(of: $0)) } ?? "none") active=\(NSApp.isActive)")
       await sleep(2)
       let spaces = Spaces.list()
       log("scenario.pip spaces \(spaces) current=\(Spaces.current())")
@@ -332,11 +336,15 @@ public enum MediaScenarios {
         frameCheck("fullscreen")
         Spaces.switchTo(fullSpace)
         check("fullscreen.back.exits", await until(8) { out() }, "current=\(Spaces.current())")
-        _ = await js(rt, id, "await document.exitFullscreen().catch(() => {}); return true")
-        _ = await until(5) { rt.windows.containing(web?.window) != nil }
       }
+      if full {
+        _ = await js(rt, id, "await document.exitFullscreen().catch(() => {}); return true")
+        _ = await until(8) { rt.windows.containing(web?.window) != nil }
+        await sleep(1)
+      }
+      _ = rt.call("media", "exit")
+      _ = await until(5) { out() }
     }
-
 
     // 10. The setting turns it off.
     rt.call("media", "settings", ["autoPip": false])
@@ -344,7 +352,8 @@ public enum MediaScenarios {
     _ = await until(5) { rt.webviews.record(id)?.videoFrame != nil }
     rt.call("tabs", "select", ["id": .string(other)])
     await sleep(1)
-    check("setting.off", out() && NativePiP.systemWindows().isEmpty)
+    check("setting.off", out() && NativePiP.systemWindows().isEmpty, "active=\(rt.media.active.sorted()) windows=\(NativePiP.systemWindows().count)")
+
     rt.call("media", "settings", ["autoPip": true])
 
     log("scenario.done ok=\(allOK)")
