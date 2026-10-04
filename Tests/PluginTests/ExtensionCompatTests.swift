@@ -133,6 +133,7 @@ struct ExtensionCompatTests {
     out.getAllFrames = typeof chrome.webNavigation?.getAllFrames;
     out.setZoom = typeof chrome.tabs?.setZoom;
     out.getBrowserInfo = typeof chrome.runtime?.getBrowserInfo;
+    out.ua = navigator.userAgent;
     out.setAccessLevelNative = String(chrome.storage?.session?.setAccessLevel).includes('[native code]');
     const events = {webNavigation: ['onHistoryStateUpdated', 'onReferenceFragmentUpdated', 'onCommitted', 'onCompleted', 'onBeforeNavigate', 'onDOMContentLoaded'],
       tabs: ['onRemoved', 'onActivated', 'onReplaced', 'onUpdated', 'onCreated'], windows: ['onFocusChanged', 'onRemoved', 'onCreated'],
@@ -424,7 +425,7 @@ struct ExtensionCompatTests {
     await report(h, id)
     _ = await probe(h, id, page: "pages/options.html", Self.apiProbe)
     let ok = await vimiumOnPage(h, id, mock: mock)
-    #expect(ok["content script"] == true && ok["f link hints"] == true && ok["j scroll down"] == true)
+    #expect(ok.filter { !$0.value }.map(\.key).sorted() == [], "Vimium keys that did nothing")
   }
 
   @Test func vimiumFromFirefoxAddons() async throws {
@@ -439,7 +440,7 @@ struct ExtensionCompatTests {
     await report(h, id)
     _ = await probe(h, id, page: "pages/options.html", Self.apiProbe)
     let ok = await vimiumOnPage(h, id, mock: mock)
-    #expect(ok["content script"] == true && ok["f link hints"] == true && ok["j scroll down"] == true)
+    #expect(ok.filter { !$0.value }.map(\.key).sorted() == [], "Vimium keys that did nothing")
   }
 
   /// Installs each, then reports: installed, loaded, background, popup (opens and renders).

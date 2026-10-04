@@ -73,12 +73,12 @@ Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatT
 | Grammarly | Partial | Starts; popup opens. Signing in (`identity`) isn't available |
 | LanguageTool | Works | Starts; popup opens |
 | Raindrop.io | Works | Starts; popup opens |
-| Vimium (Chrome Web Store) | Partial | Works: link hints show (`f`, `F`, `Esc`), scrolling (`j`, `d`, `G`, `gg`), the Vomnibar (`o`), find (`/`), next tab (`K`). Not yet: following a hint's link. Not in den: bookmarks (the Vomnibar finds none), history from before you installed it |
-| Vimium (Firefox Add-ons) | Partial | Same as above; its toolbar icon shows an error, because that build lacks the icons Vimium asks for outside Firefox. Prefer the Chrome Web Store build |
+| Vimium (Chrome Web Store) | Works | Link hints (`f` follows a link, `F` opens it in a new tab, `Esc`), scrolling (`j`, `d`, `G`, `gg`), the Vomnibar (`o`), find (`/`), next tab (`K`). Not in den: bookmarks (the Vomnibar finds none), history from before you installed it |
+| Vimium (Firefox Add-ons) | Works | Same as above; its toolbar icon shows an error, because that build lacks the icons Vimium asks for outside Firefox. Prefer the Chrome Web Store build |
 | ColorPick Eyedropper | Partial | The popup opens; its background doesn't start, so picking colors doesn't work |
 | Bitwarden | Not yet | Installs and its popup opens, but its background doesn't start. den tells you so when you add it |
 
-An extension's keyboard shortcuts work: they're listed, with their keys, in the **Extensions** menu in the menu bar.
+An extension's keyboard shortcuts work: they're listed, with their keys, in the **Extensions** menu in the menu bar. Its right-click items show at the end of a page's right-click menu.
 
 den fills some gaps itself, in its own copy of each extension, so an extension that touches a missing API keeps running instead of stopping silently: events WebKit leaves out (such as `webNavigation.onHistoryStateUpdated`, which stopped Vimium), an empty `bookmarks`, a `history` of pages visited since the extension was added, `sessions` for tabs closed since then, and `search`. Folders in `~/.den/extensions` are left exactly as they are.
 
@@ -86,9 +86,5 @@ WebKit's extension support is good but not Chrome's. These don't exist on WebKit
 
 - **blocking `webRequest`**: so full **uBlock Origin can't work**. Use **uBlock Origin Lite**, which does.
 - `identity`, `downloads`, side panels, offscreen documents; den's real `history` and `bookmarks`.
-
-And these aren't wired into den yet:
-
-- an extension's items in right-click menus
 
 Extensions that talk to a desktop app through native messaging (for example a password manager's desktop integration) need a bridge den doesn't have yet. See [Coming soon](coming-soon.md).

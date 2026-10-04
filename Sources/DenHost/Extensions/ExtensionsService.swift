@@ -372,6 +372,12 @@ public final class ExtensionsService: NSObject, HostService {
       cfg = .nonPersistent()
       cfg.defaultWebsiteDataStore = .nonPersistent()
     }
+    // Extensions' own pages and backgrounds identify as Safari, like den's tabs: WebKit's default
+    // user agent has no "Safari/", and extensions that pick their code path from it (Bitwarden)
+    // found no browser and stopped.
+    let base: WKWebViewConfiguration = cfg.webViewConfiguration ?? WKWebViewConfiguration()
+    base.applicationNameForUserAgent = WebViewsService.applicationNameForUserAgent
+    cfg.webViewConfiguration = base
     let c = WKWebExtensionController(configuration: cfg)
     c.delegate = delegateObject
     controller = c
