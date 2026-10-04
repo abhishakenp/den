@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.04",
+  "version": "2026.10.04.2",
   "source": "Translated from uBlock Origin's uAssets filters.txt and quick-fixes.txt (GPL-3.0), YouTube section",
   "sets": [
     {
@@ -10,9 +10,12 @@
         ["set", "ytInitialPlayerResponse.adPlacements", "undefined"],
         ["set", "ytInitialPlayerResponse.adSlots", "undefined"],
         ["set", "playerResponse.adPlacements", "undefined"],
+        ["set", "ytInitialPlayerResponse.auxiliaryUi.messageRenderers.enforcementMessageViewModel", "undefined"],
         ["json-prune", "playerResponse.adPlacements playerResponse.playerAds playerResponse.adSlots adPlacements playerAds adSlots"],
+        ["json-prune", "auxiliaryUi.messageRenderers.enforcementMessageViewModel playerResponse.auxiliaryUi.messageRenderers.enforcementMessageViewModel"],
         ["json-prune", "entries.[-].command.reelWatchEndpoint.adClientParams.isAd"],
-        ["json-prune-fetch-response", "adPlacements adSlots playerAds playerResponse.adPlacements playerResponse.adSlots playerResponse.playerAds [].playerResponse.adPlacements [].playerResponse.adSlots [].playerResponse.playerAds", "/player?"],
+        ["json-prune-fetch-response", "adPlacements adSlots playerAds playerResponse.adPlacements playerResponse.adSlots playerResponse.playerAds [].playerResponse.adPlacements [].playerResponse.adSlots [].playerResponse.playerAds auxiliaryUi.messageRenderers.enforcementMessageViewModel", "/player?"],
+        ["json-prune-fetch-response", "playerAds adPlacements adSlots", "/player/ad_break"],
         ["json-prune-fetch-response", "adPlacements adSlots playerResponse.adPlacements playerResponse.adSlots", "/playlist?"],
         ["json-prune-fetch-response", "reelWatchSequenceResponse.entries.[-].command.reelWatchEndpoint.adClientParams.isAd entries.[-].command.reelWatchEndpoint.adClientParams.isAd", "/reel_watch_sequence?"],
         ["json-prune-xhr-response", "adPlacements adSlots playerAds playerResponse.adPlacements playerResponse.adSlots playerResponse.playerAds [].playerResponse.adPlacements [].playerResponse.adSlots", "/\\/player(?:\\?.+)?$/"],
@@ -26,6 +29,21 @@
         ["prevent-dom-bypass", "Request"],
         ["prevent-dom-bypass", "JSON.parse"],
         ["adjust-setTimeout", "[native code]", "17000", "0.001"],
+        ["neutralize-callback", "Promise.prototype.then", "onAbnormalityDetected"],
+        ["edit-outbound-json", {"when": [["attestationRequest", "exists"], ["context.client.userAgent", "contains", "channel"], ["context.client.clientName", "equals", "WEB"]],
+                                "merge": [["context.client", {"clientScreen": "CHANNEL"}]]}],
+        ["edit-outbound-json", {"when": [["attestationRequest", "exists"], ["context.client.userAgent", "contains", "lactmilli"]], "merge": [["", {"params": "8AUB"}]]}],
+        ["edit-outbound-json", {"when": [["attestationRequest", "exists"], ["context.client.userAgent", "contains", "yahi"]], "merge": [["", {"params": "YAHI"}]]}],
+        ["edit-outbound-json", {"when": [["attestationRequest", "exists"], ["context.client.userAgent", "contains", "instream"], ["playbackContext.contentPlaybackContext", "exists"]],
+                                "merge": [["playbackContext", {"adPlaybackContext": {"adType": "AD_TYPE_INSTREAM"}}]]}],
+        ["edit-outbound-json", {"when": [["attestationRequest", "exists"], ["context.client.userAgent", "matches", "/channel|lactmilli|instream/"]],
+                                "now": ["playbackContext.contentPlaybackContext.lactMilliseconds"]}],
+        ["edit-outbound-json", {"when": [["attestationRequest", "exists"], ["context.client.userAgent", "matches", "/adunit|channel|lactmilli|instream|inline|yahi|eafg/"], ["playbackContext.contentPlaybackContext.referer", "exists"]],
+                                "replace": [["playbackContext.contentPlaybackContext.referer", "/(?:#reloadxhr)?$/", "#reloadxhr"]]}],
+        ["youtube-recover", {"markers": ["channel", "lactmilli", "instream", "yahi"], "adStats": "SSAP, AD",
+                             "unplayable": "https://support.google.com/youtube/answer/3037019", "pageType": "WEB_PAGE_TYPE_UNKNOWN",
+                             "premium": "YOUTUBE_PREMIUM_LOGO", "skip": ["https://www.youtube.com/tv#/", "https://www.youtube.com/embed/"],
+                             "stallSnackbar": "onSnackbarMessage", "stallChunks": [104, 105], "reloadTag": "reloadxhr"}],
         ["hide", "ytd-ad-slot-renderer"],
         ["hide", "ytd-rich-item-renderer:has(> #content > ytd-ad-slot-renderer)"],
         ["hide", "ytd-in-feed-ad-layout-renderer"],
@@ -41,7 +59,8 @@
         ["hide", "ytm-companion-ad-renderer"],
         ["hide", "ad-slot-renderer"],
         ["hide", "tp-yt-paper-dialog:has(ytd-enforcement-message-view-model)"],
-        ["hide", "ytd-enforcement-message-view-model"]
+        ["hide", "ytd-enforcement-message-view-model"],
+        ["hide", "body:has(ytd-enforcement-message-view-model) tp-yt-iron-overlay-backdrop"]
       ]
     }
   ]

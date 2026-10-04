@@ -1,0 +1,105 @@
+<!-- YouTube's anti-adblock dialog (ytd-enforcement-message-view-model) as Chrome 114 rendered it, copied from
+     https://github.com/AdguardTeam/AdguardFilters/issues/156546 (2023). The dialog wrapper and the backdrop around it
+     follow the selectors uBlock Origin's element picker reported in that issue. -->
+<ytd-app><ytd-popup-container class="style-scope ytd-app"><tp-yt-paper-dialog class="style-scope ytd-popup-container" role="dialog" tabindex="-1" style="outline: none; z-index: 2202; position: fixed; left: 300px; top: 100px;">
+<ytd-enforcement-message-view-model class="style-scope ytd-popup-container" tabindex="-1" style="outline: none;"><!--css-build:shady--><!--css-build:shady--><div id="container" class="style-scope ytd-enforcement-message-view-model">
+<div id="header" class="style-scope ytd-enforcement-message-view-model">
+  <yt-image id="logo-icon" height="24" preserve-height="" class="style-scope ytd-enforcement-message-view-model"><img alt="" height="24" class="yt-core-image--fill-parent-width yt-core-image yt-core-image--content-mode-scale-aspect-fill yt-core-image--loaded" src="https://www.gstatic.com/youtube/img/promos/growth/7a4b9bd20cc245474ee2f5fa265c92410480b3e49f72a5342ccfeeb442905946_318x72.png"></yt-image>
+  <yt-button-view-model id="dismiss-button" class="style-scope ytd-enforcement-message-view-model" icon="COUNTDOWN_TO_CLOSE"><button-view-model class="yt-spec-button-view-model"><button class="yt-spec-button-shape-next yt-spec-button-shape-next--text yt-spec-button-shape-next--mono yt-spec-button-shape-next--size-m yt-spec-button-shape-next--icon-button " aria-label="Close" style=""><div class="yt-spec-button-shape-next__icon" aria-hidden="true"><yt-icon style="width: 24px; height: 24px;"><!--css-build:shady--><!--css-build:shady--><yt-icon-shape class="style-scope yt-icon"><icon-shape class="yt-spec-icon-shape"><div style="width: 100%; height: 100%; fill: currentcolor;"><svg viewBox="-50 -50 100 100" width="100" focusable="false" style="pointer-events: none; display: block; width: 100%; height: 100%;">
+  <style>
+    path.circle {
+      animation-name: anim;
+      animation-duration: var(--yt-timer-to-cross-animation-duration, 14s);
+      animation-timing-function: linear;
+      animation-iteration-count: 1;
+      animation-fill-mode: forwards;
+    }
+
+    @keyframes anim {
+      0% {
+          opacity: 1;
+          stroke-dasharray: 0, 365;
+      }
+      35% {
+        opacity: 1;
+      }
+      37% {
+        opacity: 0;
+      }
+      100% {
+        opacity: 0;
+        stroke-dasharray: 365;
+      }
+    }
+    .fade-in {
+      opacity: 0;
+      animation: fade-in 0.1s forwards var(--yt-timer-to-cross-animation-duration, 4.7s);
+    }
+
+    @keyframes fade-in {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+    .fade-out {
+      opacity: 1;
+      animation: fade-out 0.1s forwards var(--yt-timer-to-cross-animation-duration, 4.8s);
+    }
+
+    @keyframes fade-out {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0;
+      }
+    }
+
+  </style>
+  <circle cx="0" cy="0" r="40" fill="none" stroke="currentcolor" stroke-width="5" class="fade-out"></circle>
+  <path class="circle" stroke-width="40" fill="none" stroke="currentcolor" d="M20,0 A20,20 0 0 1 -20,0 A20,20 0 0 1 20,0" transform="rotate(-90 0 0)"></path>
+  <path stroke-width="2" stroke="currentcolor" d="M-28,-28 L28,28" class="fade-in"></path>
+  <path stroke-width="2" stroke="currentcolor" d="M28,-28 L-28,28" class="fade-in"></path>
+</svg></div></icon-shape></yt-icon-shape></yt-icon></div><yt-touch-feedback-shape style="border-radius: inherit;"><div class="yt-spec-touch-feedback-shape yt-spec-touch-feedback-shape--touch-response" aria-hidden="true"><div class="yt-spec-touch-feedback-shape__stroke" style=""></div><div class="yt-spec-touch-feedback-shape__fill" style=""></div></div></yt-touch-feedback-shape></button></button-view-model></yt-button-view-model>
+</div>
+
+<div id="header-image" class="style-scope ytd-enforcement-message-view-model" hidden="">
+  <yt-image height="64" preserve-height="" class="style-scope ytd-enforcement-message-view-model"></yt-image>
+</div>
+
+<div id="title" class="style-scope ytd-enforcement-message-view-model">
+  <yt-attributed-string class="style-scope ytd-enforcement-message-view-model"><span class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap" role="text"><span class="" style="">Ad blockers are not allowed on YouTube</span></span></yt-attributed-string>
+</div>
+
+<ul id="body" class="style-scope ytd-enforcement-message-view-model">
+  
+    <li class="style-scope ytd-enforcement-message-view-model">
+      <yt-attributed-string class="body-message style-scope ytd-enforcement-message-view-model"><span class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap" role="text"><span class="" style="">It looks like you may be using an ad blocker. Video playback will be blocked unless YouTube is allowlisted or the ad blocker is disabled.</span></span></yt-attributed-string>
+    </li>
+  
+    <li class="style-scope ytd-enforcement-message-view-model">
+      <yt-attributed-string class="body-message style-scope ytd-enforcement-message-view-model"><span class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap" role="text"><span class="" style="">Ads allow YouTube to stay free for billions of users worldwide.</span></span></yt-attributed-string>
+    </li>
+  
+    <li class="style-scope ytd-enforcement-message-view-model">
+      <yt-attributed-string class="body-message style-scope ytd-enforcement-message-view-model"><span class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap" role="text"><span class="" style="">You can go ad-free with YouTube Premium, and creators can still get paid from your subscription.</span></span></yt-attributed-string>
+    </li>
+  <dom-repeat as="item" class="style-scope ytd-enforcement-message-view-model"><template is="dom-repeat"></template></dom-repeat>
+</ul>
+
+<div id="buttons" class="style-scope ytd-enforcement-message-view-model">
+  <yt-button-view-model class="action-button style-scope ytd-enforcement-message-view-model"><button-view-model class="yt-spec-button-view-model"><button class="yt-spec-button-shape-next yt-spec-button-shape-next--filled yt-spec-button-shape-next--mono yt-spec-button-shape-next--size-m " aria-label="Allow YouTube Ads" style=""><div class="cbox yt-spec-button-shape-next__button-text-content">Allow YouTube Ads</div><yt-touch-feedback-shape style="border-radius: inherit;"><div class="yt-spec-touch-feedback-shape yt-spec-touch-feedback-shape--touch-response-inverse" aria-hidden="true"><div class="yt-spec-touch-feedback-shape__stroke" style=""></div><div class="yt-spec-touch-feedback-shape__fill" style=""></div></div></yt-touch-feedback-shape></button></button-view-model></yt-button-view-model>
+  <yt-button-view-model class="action-button style-scope ytd-enforcement-message-view-model" dialog-dismiss=""><button-view-model class="yt-spec-button-view-model"><a class="yt-spec-button-shape-next yt-spec-button-shape-next--tonal yt-spec-button-shape-next--mono yt-spec-button-shape-next--size-m " aria-label="Try YouTube Premium" href="/premium" rel="nofollow" target="" force-new-state="true" style=""><div class="cbox yt-spec-button-shape-next__button-text-content">Try YouTube Premium</div><yt-touch-feedback-shape style="border-radius: inherit;"><div class="yt-spec-touch-feedback-shape yt-spec-touch-feedback-shape--touch-response" aria-hidden="true"><div class="yt-spec-touch-feedback-shape__stroke" style=""></div><div class="yt-spec-touch-feedback-shape__fill" style=""></div></div></yt-touch-feedback-shape></a></button-view-model></yt-button-view-model>
+</div>
+
+<div id="divider" class="style-scope ytd-enforcement-message-view-model"></div>
+
+<div id="feedback" class="style-scope ytd-enforcement-message-view-model">
+  <yt-attributed-string id="feedback-message" class="style-scope ytd-enforcement-message-view-model"><span class="yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap"><span class="" style="">Not using an ad blocker? </span><span class="yt-core-attributed-string--link-inherit-color" style="color: rgb(62, 166, 255);"><a class="yt-core-attributed-string__link yt-core-attributed-string__link--display-type yt-core-attributed-string__link--call-to-action-color" tabindex="0" role="button" href="javascript:void(0);">Report issue</a></span></span></yt-attributed-string>
+</div>
+</div></ytd-enforcement-message-view-model>
+</tp-yt-paper-dialog></ytd-popup-container></ytd-app>
+<tp-yt-iron-overlay-backdrop opened="" class="opened" style="z-index: 2201; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6);"></tp-yt-iron-overlay-backdrop>

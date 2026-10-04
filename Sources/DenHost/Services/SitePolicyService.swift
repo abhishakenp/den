@@ -66,6 +66,8 @@ public final class SitePolicyService: HostService {
     let user: WKUserScript
     let bytes: Int
     let version: String
+    /// WebKit injects it only into frames on `hosts` (match patterns): attached to every page.
+    let framesFiltered: Bool
   }
   private(set) var scripts: [String: PageScript] = [:]
   private var scriptIds: [String: String] = [:]
@@ -73,6 +75,9 @@ public final class SitePolicyService: HostService {
   final class Page {
     var lists: [String: WKContentRuleList] = [:]
     var scripts: [String: WKUserScript] = [:]
+    /// What the page scripts removed in the main frame (their `window[token]()`), -1 before a read.
+    var scripted = -1
+    var countPending = false
     var blocked: [String: Int] = [:]
     var rewrites: [Value] = []
     var pendingRewrites: [Value] = []
@@ -109,7 +114,7 @@ public final class SitePolicyService: HostService {
         var v: Value = ["name": .string(n), "kind": "script", "ready": .bool(scripts[n] != nil)]
         if let s = scripts[n] {
           v = v.with("id", .string(s.id)).with("version", .string(s.version)).with("bytes", .int(Int64(s.bytes)))
-            .with("hosts", .array(s.hosts.map { .string($0) }))
+            .with("hosts", .array(s.hosts.map { .string($0) })).with("allFrames", .bool(s.framesFiltered))
         }
         return v
       })
@@ -303,8 +308,9 @@ public final class SitePolicyService: HostService {
     let token = UUID().uuidString
     scriptIds[n] = token
     let t0 = Date()
+    let pageToken = pageToken
     DispatchQueue.global(qos: .utility).async {
-      let built = Self.buildScript(js: js, data: data)
+      let built = Self.buildScript(js: js, data: data, token: pageToken)
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
           guard self.scriptIds[n] == token else { return }
@@ -316,8 +322,8 @@ public final class SitePolicyService: HostService {
           let id = n + "@" + Self.fnv(built.source)
           let cached = self.scripts[n]?.id == id
           if !cached {
-            let user = WKUserScript(source: built.source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
-            self.scripts[n] = PageScript(id: id, hosts: built.hosts, user: user, bytes: built.source.utf8.count, version: built.version)
+            let (user, filtered) = Self.userScript(built.source, hosts: built.hosts)
+            self.scripts[n] = PageScript(id: id, hosts: built.hosts, user: user, bytes: built.source.utf8.count, version: built.version, framesFiltered: filtered)
           }
           let ms = (Date().timeIntervalSince(t0) * 1000).rounded()
           self.host.emit("sitepolicy.loaded", ["name": .string(n), "ok": true, "kind": "script", "cached": .bool(cached), "ms": .double(ms),
@@ -339,7 +345,8 @@ public final class SitePolicyService: HostService {
   }
 
   /// The wrapped source, the data's hosts and version. The data copy with the greatest `version`.
-  nonisolated static func buildScript(js: URL, data: [URL]) -> BuiltScript? {
+  /// `token` names the count function the script may leave on `window` (`window[token]()`).
+  nonisolated static func buildScript(js: URL, data: [URL], token: String = "") -> BuiltScript? {
     guard let code = try? String(contentsOf: js, encoding: .utf8) else { return nil }
     var best: (json: String, obj: [String: Any], version: String)?
     for u in data {
@@ -356,7 +363,41 @@ public final class SitePolicyService: HostService {
     }
     // JSON is a JavaScript expression; U+2028/9 are escaped for older parsers' sake.
     let arg = (best?.json ?? "null").replacingOccurrences(of: "\u{2028}", with: "\\u2028").replacingOccurrences(of: "\u{2029}", with: "\\u2029")
-    return BuiltScript(source: "(function (denData) {\n" + code + "\n})(" + arg + ");\n", hosts: hosts, version: best?.version ?? "")
+    return BuiltScript(source: "(function (denData, denToken) {\n" + code + "\n})(" + arg + ", \"" + token + "\");\n", hosts: hosts, version: best?.version ?? "")
+  }
+
+  /// A random name for page scripts' count function, the same for this den's whole run (so a
+  /// rebuilt script with the same data is the same script).
+  public let pageToken: String = {
+    let letters = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    return String((0..<12).map { _ in letters.randomElement()! })
+  }()
+
+  /// WebKit match patterns for hosts: `*://*.<host>/*` (the host and its subdomains), or
+  /// `*://<ip>/*` for an IP address.
+  nonisolated static func matchPatterns(_ hosts: [String]) -> [String] {
+    hosts.map { h in h.allSatisfy { $0.isNumber || $0 == "." || $0 == ":" } ? "*://\(h)/*" : "*://*.\(h)/*" }
+  }
+
+  static let initWithPatterns = NSSelectorFromString("_initWithSource:injectionTime:forMainFrameOnly:includeMatchPatternStrings:excludeMatchPatternStrings:associatedURL:contentWorld:")
+
+  /// A document-start, every-frame page-world script. With hosts, and when WebKit has the SPI
+  /// (`-[WKUserScript _initWithSource:…includeMatchPatternStrings:…]`, what extension content scripts
+  /// use), WebKit itself injects it only into frames on those hosts, whatever the top-level site:
+  /// `filtered` is then true. Without the SPI it's a plain user script and the host attaches it only
+  /// to pages whose main frame is on those hosts.
+  static func userScript(_ source: String, hosts: [String]) -> (WKUserScript, filtered: Bool) {
+    if !hosts.isEmpty, WKUserScript.instancesRespond(to: initWithPatterns),
+       let alloc = (WKUserScript.self as AnyObject).perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject {
+      typealias Init = @convention(c) (AnyObject, Selector, NSString, Int, Bool, NSArray, NSArray, NSURL?, WKContentWorld) -> WKUserScript?
+      let imp = alloc.method(for: initWithPatterns)
+      let f = unsafeBitCast(imp, to: Init.self)
+      if let s = f(alloc, initWithPatterns, source as NSString, WKUserScriptInjectionTime.atDocumentStart.rawValue, false,
+                   matchPatterns(hosts) as NSArray, [] as NSArray, nil, .page) {
+        return (s, true)
+      }
+    }
+    return (WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page), false)
   }
 
   /// Whether a page on `host` gets a script limited to `hosts` (none: every page).
@@ -449,15 +490,20 @@ public final class SitePolicyService: HostService {
     }
     var wantScripts: [String: WKUserScript] = [:]
     for n in rule.scripts {
-      if let s = scripts[n], Self.matches(host, s.hosts) { wantScripts[n] = s.user }
+      if let s = scripts[n], s.framesFiltered || Self.matches(host, s.hosts) { wantScripts[n] = s.user }
     }
     guard wantScripts.count != p.scripts.count || wantScripts.contains(where: { p.scripts[$0.key] !== $0.value }) else { return }
     if !p.scripts.isEmpty {
-      // WKUserContentController removes only all user scripts at once: keep everyone else's.
-      let mine = Set(p.scripts.values.map(ObjectIdentifier.init))
-      let others = c.userScripts.filter { !mine.contains(ObjectIdentifier($0)) }
-      c.removeAllUserScripts()
-      others.forEach(c.addUserScript)
+      let remove = NSSelectorFromString("_removeUserScript:")
+      if c.responds(to: remove) {
+        for s in p.scripts.values { c.perform(remove, with: s) }
+      } else {
+        // Public API removes only all user scripts at once: keep everyone else's.
+        let mine = Set(p.scripts.values.map(ObjectIdentifier.init))
+        let others = c.userScripts.filter { !mine.contains(ObjectIdentifier($0)) }
+        c.removeAllUserScripts()
+        others.forEach(c.addUserScript)
+      }
     }
     for n in wantScripts.keys.sorted() { c.addUserScript(wantScripts[n]!) }
     p.scripts = wantScripts
@@ -573,6 +619,7 @@ public final class SitePolicyService: HostService {
   func committed(_ r: WebRecord, _ w: WKWebView) {
     let p = page(r.id)
     p.blocked = [:]
+    p.scripted = -1
     p.rewrites = p.pendingRewrites
     p.pendingRewrites = []
     p.upgraded = p.upgrading != nil && w.url?.scheme == "https"
@@ -639,12 +686,20 @@ public final class SitePolicyService: HostService {
       byList = byList.with(n, .int(Int64(p.blocked[n] ?? 0)))
       total += p.blocked[n] ?? 0
     }
+    // Page scripts' removals (ad fields pruned, ad elements hidden), read from the page: the value
+    // last read now, and a fresh read that emits `changed` when it moved.
+    if p.scripted > 0 {
+      byList = byList.with("scripts", .int(Int64(p.scripted)))
+      total += p.scripted
+    }
+    refreshScripted(r, p)
     let scheme = u?.scheme?.lowercased() ?? ""
     let secure = scheme == "https" && (r.webView?.hasOnlySecureContent ?? true)
     return [
       "host": .string(h), "url": .string(u?.absoluteString ?? ""), "lists": .array(rule.lists.map { .string($0) }),
       "active": .array(p.lists.keys.sorted().map { .string($0) }),
       "scripts": .array(p.scripts.keys.sorted().map { .string($0) }),
+      "scripted": .int(Int64(p.scripted)),
       "blocked": .int(Int64(total)), "blockedByList": byList,
       "blockedCounts": .bool(NSClassFromString("_WKContentRuleListAction") != nil),
       "rewrites": .array(p.rewrites), "upgraded": .bool(p.upgraded),
@@ -653,6 +708,23 @@ public final class SitePolicyService: HostService {
       "autoplay": rule.autoplay.map { .string($0) } ?? .null, "popups": rule.popups.map { .string($0) } ?? .null,
       "interstitial": .bool(p.interstitial != nil),
     ]
+  }
+
+  /// Reads the main frame's `window[pageToken]()` (page world) when the page has scripts.
+  func refreshScripted(_ r: WebRecord, _ p: Page) {
+    guard !p.scripts.isEmpty, !p.countPending, let w = r.webView else { return }
+    p.countPending = true
+    w.callAsyncJavaScript("return typeof window[t] === 'function' ? window[t]() : -1", arguments: ["t": pageToken], in: nil, in: .page) { [weak self, weak p] result in
+      MainActor.assumeIsolated {
+        guard let p else { return }
+        p.countPending = false
+        let n = ((try? result.get()) as? NSNumber)?.intValue ?? -1
+        if n != p.scripted {
+          p.scripted = n
+          self?.changed(r.id)
+        }
+      }
+    }
   }
 
   func mediaKeys(_ h: String) -> [(String, Bool)] {

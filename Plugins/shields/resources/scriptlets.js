@@ -1,12 +1,13 @@
 // den Shields scriptlets: a small engine for the uBlock Origin-style scriptlets that content rules
 // can't express (docs/plugin-services.md#shields-plugin-shields). The host runs it at document
-// start in the page's own world, in every frame, only on sites `scriptlets.json` lists, as
-// `(function (denData) { <this file> })(<scriptlets.json>)`.
+// start in the page's own world, in every frame of the sites `scriptlets.json` lists (a YouTube
+// embed on any site too), as `(function (denData, denToken) { <this file> })(<scriptlets.json>, "<random>")`.
 //
-// The data is rules, never code: each rule is [name, ...string arguments], and only the names
-// below exist. A newer scriptlets.json (delivered with a plugin update or over the air) can
-// change what is pruned, replaced or hidden, but can't run anything this file doesn't define.
-// Every rule is wrapped in try/catch: a rule that no longer fits the site never breaks the page.
+// The data is rules, never code: each rule is [name, ...arguments] (strings, or plain JSON objects
+// where noted), and only the names below exist. A newer scriptlets.json (delivered with a plugin
+// update or over the air) can change what is pruned, replaced, edited or hidden, but can't run
+// anything this file doesn't define. Every rule is wrapped in try/catch: a rule that no longer
+// fits the site never breaks the page.
 //
 // Patterns: "/re/flags" is a regular expression, anything else a plain substring.
 //   ["set", "a.b.c", "undefined"|"null"|"true"|"false"|"0"|"''"|"[]"|"{}"]   (uBO set-constant)
@@ -15,18 +16,24 @@
 //   ["json-prune-xhr-response", "paths", "urlPattern"]        XMLHttpRequest JSON bodies
 //   ["replace-fetch-response", "pattern", "replacement", "urlPattern"]
 //   ["replace-xhr-response", "pattern", "replacement", "urlPattern"]
+//   ["edit-outbound-json", {when, merge?, set?, now?, replace?}]   objects about to be JSON.stringify'd
+//   ["neutralize-callback", "Promise.prototype.then", "pattern"]  callbacks whose source matches become no-ops
+//   ["youtube-recover", {markers, adStats, unplayable, pageType, premium, skip, stallSnackbar, stallChunks, reloadTag}]
 //   ["prevent-dom-bypass", "fetch"]   an appended about:blank iframe gets this window's patched method
 //   ["remove-node-text", "script", "pattern"]   empties matching inline scripts before they run
 //   ["adjust-setTimeout", "pattern", "delay", "factor"]
 //   ["hide", "css selector list"]
 // Paths follow uBO's json-prune: "a.b" deletes b of a, "[]" / "{}" / "*" walk every element,
 // "[-]" removes array elements that contain the rest of the path.
+//
+// What it removed is counted; `window[denToken]()` returns the count (plus the hidden elements
+// on the page), which den adds to the page's blocked count. Nothing else is left on `window`.
 
 'use strict';
 const host = location.hostname;
 const W = window;
-if (W.__denScriptlets) return;
-try { Object.defineProperty(W, '__denScriptlets', { value: true }); } catch (e) { return; }
+const token = typeof denToken === 'string' && denToken ? denToken : '';
+if (token && Object.prototype.hasOwnProperty.call(W, token)) return;
 
 const rules = [];
 for (const set of (denData && denData.sets) || []) {
@@ -34,6 +41,7 @@ for (const set of (denData && denData.sets) || []) {
   if (hosts.some(h => host === h || host.endsWith('.' + h))) rules.push(...(set.rules || []));
 }
 if (!rules.length) return;
+let removed = 0;
 
 // Natives, taken before the page can touch them.
 const JSONparse = JSON.parse, JSONstringify = JSON.stringify;
@@ -63,20 +71,22 @@ const walk = (node, keys, i, remove) => {
     if (key === '*') {
       const all = Object.keys(node);
       for (const k of all) delete node[k];
+      removed += all.length;
       return all.length > 0;
     }
     if (!hasOwn.call(node, key)) return false;
     delete node[key];
+    removed++;
     return true;
   }
   let hit = false;
   if (key === '[-]' && Array.isArray(node)) {
     // Drop the elements that contain the rest of the path.
-    for (let j = node.length - 1; j >= 0; j--) if (walk(node[j], keys, i + 1, false)) { node.splice(j, 1); hit = true; }
+    for (let j = node.length - 1; j >= 0; j--) if (walk(node[j], keys, i + 1, false)) { node.splice(j, 1); hit = true; removed++; }
     return hit;
   }
   if (key === '{-}') {
-    for (const k of Object.keys(node)) if (walk(node[k], keys, i + 1, false)) { delete node[k]; hit = true; }
+    for (const k of Object.keys(node)) if (walk(node[k], keys, i + 1, false)) { delete node[k]; hit = true; removed++; }
     return hit;
   }
   if ((key === '[]' && Array.isArray(node)) || key === '{}' || key === '*') {
@@ -122,7 +132,7 @@ const rewriteBody = (list, url, text) => {
         if (!matches(r.re, out)) continue;
         const re = r.re.plain ? r.re.source : r.re;
         const next = r.re.plain ? out.split(re).join(r.with) : out.replace(re, r.with);
-        if (next !== out) { out = next; changed = true; obj = undefined; }
+        if (next !== out) { out = next; changed = true; obj = undefined; removed++; }
       } else {
         if (obj === undefined) { try { obj = JSONparse(out); } catch (e) { obj = null; } }
         if (obj && prune(obj, r.paths, [])) { out = JSONstringify(obj); changed = true; }
@@ -205,6 +215,7 @@ const hookXHR = () => {
 
 // --- set-constant ---
 const constant = v => ({ undefined: undefined, null: null, true: true, false: false, '0': 0, '1': 1, "''": '', '""': '', '[]': [], '{}': {} })[v];
+const trapLists = new WeakMap();  // our accessor getters -> the property paths they trap
 const setConstant = (chain, raw) => {
   if (!/^[\w$]+(\.[\w$]+)*$/.test(chain) || !(raw in { undefined: 1, null: 1, true: 1, false: 1, '0': 1, '1': 1, "''": 1, '""': 1, '[]': 1, '{}': 1 })) return;
   const value = () => constant(raw);
@@ -213,6 +224,7 @@ const setConstant = (chain, raw) => {
     if (dot === -1) {
       const d = getDesc(owner, path);
       if (d && !d.configurable) return;
+      if (d && 'value' in d && d.value !== undefined && d.value !== constant(raw)) removed++;
       defineProperty(owner, path, { configurable: true, enumerable: false, get: value, set() {} });
       return;
     }
@@ -220,10 +232,11 @@ const setConstant = (chain, raw) => {
     const d = getDesc(owner, prop);
     if (d && !d.configurable) { if (owner[prop] instanceof Object) trap(owner[prop], rest); return; }
     const traps = [rest];
-    if (d && d.get && d.get.__denTraps) { d.get.__denTraps.push(rest); return void (owner[prop] instanceof Object && trap(owner[prop], rest)); }
+    const mine = d && d.get && trapLists.get(d.get);
+    if (mine) { mine.push(rest); return void (owner[prop] instanceof Object && trap(owner[prop], rest)); }
     let cur = d ? (d.get ? d.get.call(owner) : d.value) : undefined;
     const get = function () { return cur; };
-    defineProperty(get, '__denTraps', { value: traps });
+    trapLists.set(get, traps);
     defineProperty(owner, prop, {
       configurable: true, enumerable: true, get,
       set(v) { cur = v; if (v instanceof Object) for (const r of traps) { try { trap(v, r); } catch (e) {} } },
@@ -265,7 +278,7 @@ const removeNodeText = (nodeName, pat) => {
   const name = String(nodeName || 'script').toUpperCase();
   const handle = n => {
     if (n.nodeName !== name || n === document.currentScript) return;
-    try { if (matches(re, n.textContent)) n.textContent = ''; } catch (e) {}
+    try { if (matches(re, n.textContent)) { n.textContent = ''; removed++; } } catch (e) {}
   };
   const observer = new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) handle(n); });
   observer.observe(document, { childList: true, subtree: true });
@@ -287,6 +300,198 @@ const adjustSetTimeout = (pat, delayArg, factorArg) => {
   });
 };
 
+// --- edit-outbound-json: edits request objects as the page serializes them (uBO's
+// trusted-edit-inbound-object on JSON.stringify). Paths are plain dotted keys; "" is the object.
+const getPath = (o, path) => { if (path === '') return o; for (const k of path.split('.')) { if (o === null || typeof o !== 'object' || !hasOwn.call(o, k)) return undefined; o = o[k]; } return o; };
+const setPath = (o, path, v) => {
+  const keys = path.split('.'), last = keys.pop();
+  for (const k of keys) { if (o === null || typeof o !== 'object' || !hasOwn.call(o, k)) return false; o = o[k]; }
+  if (o === null || typeof o !== 'object') return false;
+  o[last] = v;
+  return true;
+};
+const plain = v => (v && typeof v === 'object' ? JSONparse(JSONstringify(v)) : v);
+const outboundEdits = [];
+const editOutbound = obj => {
+  for (const e of outboundEdits) {
+    try {
+      const ok = e.when.every(([path, op, arg]) => {
+        const v = getPath(obj, path);
+        switch (op) {
+          case 'exists': return v !== undefined;
+          case 'equals': return v === arg;
+          case 'contains': return typeof v === 'string' && v.includes(String(arg));
+          case 'matches': { const re = pattern(String(arg)); return typeof v === 'string' && !!re && matches(re, v); }
+          default: return false;
+        }
+      });
+      if (!ok) continue;
+      for (const [path, add] of e.merge) { const t = getPath(obj, path); if (t && typeof t === 'object' && add && typeof add === 'object') Object.assign(t, plain(add)); }
+      for (const [path, v] of e.set) setPath(obj, path, plain(v));
+      for (const path of e.now) setPath(obj, path, String(Date.now()));
+      for (const [path, re, repl] of e.replace) {
+        const v = getPath(obj, path), r = pattern(String(re));
+        if (typeof v === 'string' && r) setPath(obj, path, r.plain ? v.split(r.source).join(String(repl)) : v.replace(r, String(repl)));
+      }
+    } catch (err) {}
+  }
+};
+let stringifyHooked = false;
+const hookStringify = () => {
+  if (stringifyHooked) return;
+  stringifyHooked = true;
+  JSON.stringify = new Proxy(JSON.stringify, {
+    apply(t, self, args) {
+      const o = args[0];
+      if (o && typeof o === 'object' && !Array.isArray(o)) editOutbound(o);
+      return ReflectApply(t, self, args);
+    },
+  });
+};
+const addOutboundEdit = spec => {
+  if (!spec || typeof spec !== 'object' || !Array.isArray(spec.when) || !spec.when.length) return;
+  const list = k => (Array.isArray(spec[k]) ? spec[k].filter(x => Array.isArray(x) || typeof x === 'string') : []);
+  outboundEdits.push({ when: spec.when.filter(Array.isArray), merge: list('merge'), set: list('set'), now: list('now').filter(x => typeof x === 'string'), replace: list('replace') });
+  hookStringify();
+};
+
+// --- neutralize-callback: a callback whose source matches becomes a no-op (uBO's quick fix for
+// YouTube's `onAbnormalityDetected`, which stops playback when it sees a blocker).
+const neutralizeCallback = (chain, pat) => {
+  const re = pattern(pat);
+  if (!re || chain !== 'Promise.prototype.then') return;
+  const seen = new WeakMap();
+  const noop = function () {};
+  const hit = f => {
+    if (typeof f !== 'function') return false;
+    let v = seen.get(f);
+    if (v === undefined) { v = matches(re, Function.prototype.toString.call(f)); seen.set(f, v); }
+    return v;
+  };
+  Promise.prototype.then = new Proxy(Promise.prototype.then, {
+    apply(t, self, args) {
+      try { if (hit(args[0])) { args[0] = noop; removed++; } } catch (e) {}
+      return ReflectApply(t, self, args);
+    },
+  });
+};
+
+// --- youtube-recover: uBO's YouTube quick fix (quick-fixes.txt, "serverContract"), as engine code
+// driven by data. When a logged-in watch page answers with "This content isn't available" (an
+// anti-adblock UNPLAYABLE) or stalls with an empty buffer, it tags the client's user agent with the
+// next marker (the `edit-outbound-json` rules turn a tagged player request into one YouTube serves
+// without stitched ads) and reloads the video where it was. A server-stitched ad that still plays
+// ("SSAP, AD" in the player's stats) is skipped by seeking to its end.
+const youtubeRecover = o => {
+  if (!o || typeof o !== 'object') return;
+  const all = Array.isArray(o.markers) ? o.markers.map(String) : [];
+  let markers = all.slice(), pending = false, baseUA = null, last = 0, timer = 0;
+  const client = () => { try { return W.ytcfg.data_.INNERTUBE_CONTEXT.client; } catch (e) { return null; } };
+  const setMarker = m => {
+    const c = client();
+    if (!c || typeof c.userAgent !== 'string') return;
+    if (baseUA === null) baseUA = c.userAgent;
+    const pre = (baseUA.match(/Mozilla\/5\.0 \([^)]+/) || [])[0];
+    c.userAgent = m && pre ? baseUA.replace(pre, pre + '; ' + m) : baseUA;
+  };
+  const premium = () => {
+    if (!o.premium) return false;
+    try { if (W.ytInitialData.topbar.desktopTopbarRenderer.logo.topbarLogoRenderer.iconImage.iconType === o.premium) return true; } catch (e) {}
+    const m = document.getElementById('masthead');
+    return !!(m && m.getAttribute('logo-type') === o.premium);
+  };
+  const state = () => {
+    const player = document.getElementById('movie_player');
+    const call = n => { try { return player && typeof player[n] === 'function' ? player[n]() : undefined; } catch (e) { return undefined; } };
+    const ps = call('getPlayerStateObject');
+    return { player, response: call('getPlayerResponse'), stats: call('getStatsForNerds'), progress: call('getProgressState'), buffering: !!(ps && ps.isBuffering) };
+  };
+  const stalled = s => s.buffering && !!s.stats && s.stats.buffer_health_seconds === '0.00 s' && s.stats.resolution === '0x0' && markers.length > 0;
+  const noteStall = () => {
+    const s = state();
+    if (!s.player || !stalled(s)) return;
+    try { if (String(s.response.playbackTracking.videostatsPlaybackUrl.baseUrl).includes(o.reloadTag || 'reloadxhr')) markers = markers.slice(1); } catch (e) {}
+    pending = true;
+  };
+  const errorRuns = r => {
+    const e = r && r.playabilityStatus && r.playabilityStatus.errorScreen;
+    if (!e) return '';
+    try {
+      const a = e.playerErrorMessageRenderer && e.playerErrorMessageRenderer.subreason && e.playerErrorMessageRenderer.subreason.runs;
+      const b = e.playerInterstitialRenderer && e.playerInterstitialRenderer.content && e.playerInterstitialRenderer.content.interstitialViewModel
+        && e.playerInterstitialRenderer.content.interstitialViewModel.description && e.playerInterstitialRenderer.content.interstitialViewModel.description.commandRuns;
+      return JSONstringify(a || b) || '';
+    } catch (err) { return ''; }
+  };
+  const check = () => {
+    const s = state(), p = s.progress, r = s.response;
+    if (!s.player || !location.href.includes('/watch?')) { markers = all.slice(); return; }
+    const live = !!(r && r.videoDetails && r.videoDetails.isLive);
+    const playing = p && p.duration > 0 && (p.loaded < p.duration || p.duration - p.current > 1);
+    if (!playing && !live) return;
+    const dbg = s.stats && s.stats.debug_info;
+    if (o.adStats && typeof dbg === 'string' && dbg.startsWith(o.adStats)) {
+      if (p && p.duration > 0 && typeof s.player.seekTo === 'function') { s.player.seekTo(p.duration); removed++; }
+      return;
+    }
+    const id = r && r.videoDetails && r.videoDetails.videoId;
+    const start = (r && r.playerConfig && r.playerConfig.playbackStartConfig && r.playerConfig.playbackStartConfig.startSeconds) || 0;
+    const load = () => { if (id && typeof s.player.loadVideoById === 'function') s.player.loadVideoById(id, start); };
+    const status = r && r.playabilityStatus;
+    const runs = errorRuns(r);
+    const captcha = !!(status && status.errorScreen && status.errorScreen.playerErrorMessageRenderer && status.errorScreen.playerErrorMessageRenderer.playerCaptchaViewModel);
+    if (status && status.status === 'UNPLAYABLE' && !captcha && o.pageType && o.unplayable && runs.includes(o.pageType) && runs.includes(o.unplayable)) {
+      markers = markers.slice(1);
+      setMarker(markers[0] || '');
+      pending = false;
+      load();
+    } else if (markers.length === 0) {
+      pending = false;
+      setMarker('');
+    } else if (stalled(s) && pending) {
+      setMarker(markers[0]);
+      pending = false;
+      load();
+    } else if (!pending && p && p.current - start < 5 && location.href.includes('&list=') && typeof s.player.getPlaylistId === 'function' && s.player.getPlaylistId() === null) {
+      // A reloaded video loses its playlist panel: put it back.
+      const m = document.querySelector('yt-playlist-manager');
+      const data = m && typeof m.getPlaylistData === 'function' ? m.getPlaylistData() : null;
+      if (data) {
+        if (typeof m.setPlaylistData === 'function') m.setPlaylistData(data);
+        if (typeof m.setPlayerPlaybackControlData === 'function') m.setPlayerPlaybackControlData({ playlistPanelRenderer: data });
+      }
+    }
+  };
+  // At most every 100 ms (the page mutates constantly), with a trailing check.
+  const schedule = () => {
+    const now = performance.now();
+    if (now - last >= 100) { last = now; try { check(); } catch (e) {} return; }
+    if (!timer) timer = setTimeout(() => { timer = 0; last = performance.now(); try { check(); } catch (e) {} }, 100);
+  };
+  const begin = () => {
+    if (premium() || (o.skip || []).some(x => location.href.startsWith(String(x)))) return;
+    schedule();
+    new MutationObserver(schedule).observe(document, { childList: true, subtree: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true }); else begin();
+  // Stall signals the player gives before its buffer runs dry.
+  if (o.stallSnackbar) {
+    Map.prototype.has = new Proxy(Map.prototype.has, {
+      apply(t, self, args) { if (args[0] === o.stallSnackbar && !pending) { try { noteStall(); } catch (e) {} } return ReflectApply(t, self, args); },
+    });
+  }
+  const chunks = Array.isArray(o.stallChunks) ? o.stallChunks.map(Number) : [];
+  if (chunks.length) {
+    Array.prototype.push = new Proxy(Array.prototype.push, {
+      apply(t, self, args) {
+        const x = args[0];
+        if (x instanceof Uint8Array && x.buffer && x.buffer.byteLength === x.length && chunks.includes(x.length)) { try { noteStall(); } catch (e) {} }
+        return ReflectApply(t, self, args);
+      },
+    });
+  }
+};
+
 const hidden = [];
 const hide = () => {
   if (!hidden.length) return;
@@ -305,9 +510,13 @@ const hide = () => {
 
 for (const rule of rules) {
   if (!Array.isArray(rule)) continue;
-  const [name, a = '', b = '', c = ''] = rule.map(x => (x == null ? '' : String(x)));
+  const [name, a = '', b = '', c = ''] = rule.map(x => (x == null ? '' : typeof x === 'object' ? '' : String(x)));
+  const spec = rule[1];
   try {
     switch (name) {
+      case 'edit-outbound-json': addOutboundEdit(spec); break;
+      case 'neutralize-callback': neutralizeCallback(a, b); break;
+      case 'youtube-recover': youtubeRecover(spec); break;
       case 'set': setConstant(a, b); break;
       case 'json-prune': parsePruners.push({ paths: splitPaths(a), needles: splitPaths(b) }); hookJSON(); break;
       case 'json-prune-fetch-response': fetchRules.push({ kind: 'prune', paths: splitPaths(a), url: pattern(b) }); hookFetch(); break;
@@ -323,3 +532,9 @@ for (const rule of rules) {
   } catch (e) {}
 }
 hide();
+
+// The count den reads (main frame): what was removed, plus elements the hide rules match now.
+if (token) {
+  const hiddenNow = () => { if (!hidden.length) return 0; let n = 0; for (const s of hidden) { try { n += document.querySelectorAll(s).length; } catch (e) {} } return n; };
+  try { defineProperty(W, token, { value: () => removed + hiddenNow(), enumerable: false }); } catch (e) {}
+}
