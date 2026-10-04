@@ -283,7 +283,9 @@ public enum MediaScenarios {
       let a = await probe(tab)
       await sleep(1)
       let b = await probe(tab)
-      return (!b.flag("paused") && b.num("t") > a.num("t") + 0.5, "t=\(String(format: "%.1f", a.num("t")))->\(String(format: "%.1f", b.num("t")))")
+      // The test video loops: from its last second and a half back to its start moves too.
+      let looped = a.num("dur") > 0 && a.num("t") > a.num("dur") - 1.5 && b.num("t") < 1.5
+      return (!b.flag("paused") && (b.num("t") > a.num("t") + 0.5 || looped), "t=\(String(format: "%.1f", a.num("t")))->\(String(format: "%.1f", b.num("t")))")
     }
     func frameCheck(_ what: String) {
       guard let f = pipBlackFraction(what) else { log("scenario.pip \(what).frame skipped: no screen capture"); return }
