@@ -191,7 +191,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
   - ✅ menu bar, command bar rows (menu glyph order ⌃⌥⇧⌘; Copy URL as Markdown ⌥⇧⌘C)
   - ✅ hover-card button tooltips (and the shortcuts act on the hovered tab while its card is open, a remapped chord too)
   - ✅ tab, folder and space context menus (with ⌥ alternates); page context menu (Back, Forward, Reload, Cut, Copy, Paste, Inspect Element)
-  - ✅ icon-button tooltips: sidebar toggle, Back, Forward, Reload/Stop, Copy Link, Library, New Space, space icons (⌃1…⌃9), split pane ×, Peek, find bar, mini player; Settings rows and toasts in glyphs
+  - ✅ icon-button tooltips: sidebar toggle, Back, Forward, Reload/Stop, Copy Link, Library, New Space, space icons (⌃1…⌃9), split pane ×, Peek, find bar; Settings rows and toasts in glyphs
 - ✅ No row tooltips: tab rows, tiles, split rows and list rows show hover cards instead
 - ✅ User guide ([docs/guide](docs/guide/)), with Tips & hidden gems
 - 🟡 Detail audit: every interaction compared with Arc/Dia (hover states, click targets, tooltips, context menus, animations, empty states, error pages, keyboard coverage) and fixed, plus Dia's micro-interactions
