@@ -52,3 +52,17 @@ for n in ads trackers cookies; do
   sed -i '' -E "/static let $n = List\(/s/rules: [0-9_]+/rules: $pretty/" $swift_file
 done
 echo "lists $version:"; ls -la Plugins/shields/resources/*.lzfse
+# What the daily Shields lists workflow publishes (.github/workflows/shields-lists.yml): the lists
+# under versioned names plus lists.json, which den fetches every day (ShieldsCore.refreshLists).
+pub=$work/publish
+rm -rf $pub && mkdir -p $pub
+entries=()
+for n in ads trackers cookies; do
+  f=$n-$version.json.lzfse
+  cp Plugins/shields/resources/$n.json.lzfse $pub/$f
+  count=$(grep "^$n:" $work/prepare.log | sed -E 's/.* rules=([0-9]+) .*/\1/')
+  sum=$(shasum -a 256 $pub/$f | cut -d' ' -f1)
+  entries+=("\"$n\":{\"file\":\"$f\",\"rules\":$count,\"bytes\":$(stat -f%z $pub/$f),\"sha256\":\"$sum\"}")
+done
+print -r -- "{\"version\":\"$version\",\"lists\":{${(j:,:)entries}}}" > $pub/lists.json
+cat $pub/lists.json

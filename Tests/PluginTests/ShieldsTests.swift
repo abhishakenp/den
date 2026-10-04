@@ -131,6 +131,60 @@ struct ShieldsTests {
     #expect(h.rt.sitePolicy.defaultRule.scripts.isEmpty)
   }
 
+  /// Daily lists: a newer lists.json starts three checked downloads; when all three are in, the
+  /// plugin loads them under the new version (a compile and swap in `sitepolicy`); a downloaded list
+  /// that won't load sends it back to the bundled ones. An older or incomplete manifest does nothing.
+  @Test func newerDailyListsAreDownloadedAndLoaded() async throws {
+    let h = Harness()
+    let core = start(h)
+    core.listsBase = "https://127.0.0.1:9/"  // nothing listens: the real downloads fail, the test drives the results
+    let sha = String(repeating: "a", count: 64)
+    func manifest(_ v: String) -> Value {
+      ["version": .string(v), "lists": ["ads": ["file": .string("ads-" + v + ".json.lzfse"), "sha256": .string(sha)],
+                                        "trackers": ["file": .string("trackers-" + v + ".json.lzfse"), "sha256": .string(sha)],
+                                        "cookies": ["file": .string("cookies-" + v + ".json.lzfse"), "sha256": .string(sha)]]]
+    }
+    core.listsManifest(manifest("2020.01.01-old"))
+    #expect(core.pendingVersion.isEmpty)
+    var incomplete = manifest("2099.01.01-x")
+    incomplete.put("lists", ["ads": ["file": "ads-2099.01.01-x.json.lzfse", "sha256": .string(sha)]])
+    core.listsManifest(incomplete)
+    #expect(core.pendingVersion.isEmpty)
+
+    let v = "2099.01.01-test"
+    // What the three downloads would leave in the update root: small valid lists.
+    let dir = try #require(h.rt.sitePolicy.resourceRoots.first).appendingPathComponent("shields")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    for n in ["ads", "trackers", "cookies"] {
+      let json = #"[{"trigger":{"url-filter":"den-daily-"# + n + #""},"action":{"type":"block"}}]"#
+      try ((Data(json.utf8) as NSData).compressed(using: .lzfse) as Data).write(to: dir.appendingPathComponent(n + "-" + v + ".json.lzfse"))
+    }
+    core.listsManifest(manifest(v))
+    #expect(core.pendingVersion == v && core.pendingFiles.count == 3)
+    for n in ["ads", "trackers"] { core.listFileFetched(["plugin": "shields", "file": .string(n + "-" + v + ".json.lzfse"), "ok": true, "changed": true]) }
+    #expect(core.listsVersion.isEmpty)
+    core.listFileFetched(["plugin": "shields", "file": .string("cookies-" + v + ".json.lzfse"), "ok": true, "changed": true])
+    #expect(core.listsVersion == v)
+    #expect(h.storage("shields", "listsVersion") == .string(v))
+    #expect(core.listFile(ShieldsLists.ads) == "ads-" + v + ".json.lzfse")
+    // sitepolicy compiles them and swaps them in under the new version.
+    #expect(try await until(150) {  // behind the bundled lists' compiles of earlier tests
+      (h.rt.call("sitepolicy", "list").array ?? []).filter { $0.str("id").hasSuffix("@" + v) && $0.flag("ready") }.count == 3
+    }, "\(h.rt.call("sitepolicy", "list")) roots=\(h.rt.sitePolicy.resourceRoots)")
+    #expect(h.rt.sitePolicy.defaultRule.lists.contains("shields.ads"))
+    // A downloaded list that won't load sends den back to the bundled lists.
+    core.listLoaded(["name": "shields.ads", "ok": false, "error": "gone"])
+    #expect(core.listsVersion.isEmpty)
+    #expect(h.storage("shields", "listsVersion") == "")
+    #expect(core.listFile(ShieldsLists.ads) == "ads.json.lzfse")
+    // A failed download abandons that version.
+    core.listsManifest(manifest(v))
+    core.listFileFetched(["plugin": "shields", "file": .string("ads-" + v + ".json.lzfse"), "ok": false, "error": "sha256 mismatch"])
+    #expect(core.pendingVersion.isEmpty && core.listsVersion.isEmpty)
+    #expect(ShieldsCore.newer("2026.10.04-7f6dd3ec", "2026.09.27-989747b8") && !ShieldsCore.newer("2026.09.27-989747b8", "2026.10.04-7f6dd3ec"))
+    core.stop()
+  }
+
   /// The shipped scriptlet engine and data load (YouTube's hosts), and a refresh that brings
   /// changed data reloads them.
   @Test func scriptletsLoadForYouTube() async throws {

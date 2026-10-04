@@ -1,0 +1,58 @@
+name: Shields lists
+
+# Daily: EasyList, EasyPrivacy and the EasyList Cookie List converted to WebKit content rules
+# (scripts/shields/build-lists.sh: adblock-rust, then validated against macOS 26's WebKit) and
+# published as assets of the rolling release `shields-lists`: <list>-<version>.json.lzfse plus
+# lists.json. den checks lists.json once a day and swaps newer lists in without a relaunch
+# (docs/plugin-services.md#shields-plugin-shields). Nothing is committed: the repository doesn't grow.
+# A failed day publishes nothing; den keeps what it has.
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+  push:
+    branches: ["lists/**"] # test runs of this workflow from a branch
+
+permissions:
+  contents: write # the shields-lists release
+
+concurrency:
+  group: shields-lists
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Convert and publish (macOS 26)
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rust (adblock-rust converter)
+        run: |
+          command -v cargo || { curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; echo "$HOME/.cargo/bin" >> $GITHUB_PATH; }
+
+      - name: Build the lists
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          SHIELDS_HOST=local scripts/shields/build-lists.sh
+
+      - name: Publish (unchanged lists are skipped)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          pub=build/shields-lists/publish
+          version=$(python3 -c "import json;print(json.load(open('$pub/lists.json'))['version'])")
+          gh release view shields-lists >/dev/null 2>&1 || gh release create shields-lists --title "Shields lists" --latest=false \
+            --notes "Daily WebKit content rules for den's Shields (EasyList, EasyPrivacy, EasyList Cookie List). Made by .github/workflows/shields-lists.yml. Licences: Plugins/shields/resources/NOTICE.md."
+          current=$(gh release download shields-lists -p lists.json -O - 2>/dev/null | python3 -c "import json,sys;print(json.load(sys.stdin)['version'])" 2>/dev/null || true)
+          if [[ "$current" == "$version" ]]; then echo "lists $version already published"; exit 0; fi
+          # New list files first, then the manifest that points at them, then the old files.
+          gh release upload shields-lists $pub/*-$version.json.lzfse --clobber
+          gh release upload shields-lists $pub/lists.json --clobber
+          for a in $(gh release view shields-lists --json assets -q '.assets[].name'); do
+            [[ $a == lists.json || $a == *-$version.json.lzfse ]] || gh release delete-asset shields-lists "$a" -y
+          done
+          echo "published lists $version" >> $GITHUB_STEP_SUMMARY
+          cat $pub/lists.json >> $GITHUB_STEP_SUMMARY

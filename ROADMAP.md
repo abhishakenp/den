@@ -226,7 +226,7 @@ Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 - ✅ Scriptlets for ~21,000 other sites (anti-adblock walls, pop-unders): uBlock Origin's site rules, converted to data for den's engine and delivered per site ([Shields](docs/plugin-services.md#shields-plugin-shields))
 - ⏳ Procedural cosmetic filters, and uBO scriptlets that carry code (`rpnt`, `trusted-*`) or need entities (`name.*`)
 - ❌ Twitch pre-rolls: not served to den from the test network (logged out, 5 channels, playlists without ad markers), so a Twitch blocker could not be verified and isn't shipped
-- ⏳ Content-rule list updates between releases (scriptlet data already refreshes daily through `sitepolicy.fetch` into `~/.den/updates/lists`; the EasyList lists still come with releases)
+- ✅ Filter lists refresh daily without a release: a scheduled workflow converts EasyList, EasyPrivacy and the Cookie List and publishes them; den downloads, compiles off the main thread and swaps them into open pages, no relaunch ([Shields](docs/plugin-services.md#shields-plugin-shields))
 - ✅ uBlock Origin Lite works (full uBlock Origin can't, since WebKit has no blocking `webRequest`)
 - ✅ Minimum macOS: 26 Tahoe. No support for older versions; newer-OS APIs (macOS 27) used when available
 

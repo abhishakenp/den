@@ -1,5 +1,6 @@
 import AppKit
 import CordisValue
+import CryptoKit
 import WebKit
 
 /// `sitepolicy`: per-site web policy for every web view. The host half of the `shields` plugin;
@@ -57,6 +58,8 @@ public final class SitePolicyService: HostService {
   /// Compiled lists by name, and the identifier each one was loaded as.
   public private(set) var lists: [String: WKContentRuleList] = [:]
   private var identifiers: [String: String] = [:]
+  /// The identifier of the list now in `lists` (an older one while its successor compiles).
+  private var listIds: [String: String] = [:]
   private var listInfo: [String: Value] = [:]
 
   /// A page script: one document-start `WKUserScript` in the page's world, every frame.
@@ -322,9 +325,9 @@ public final class SitePolicyService: HostService {
   /// Looks the list up in the store; compiles it from `source` (read off the main thread) only
   /// when this identifier was never compiled. Emits `sitepolicy.loaded`.
   func prepare(_ n: String, id: String, source: @escaping @Sendable () -> String?) -> Value {
-    if identifiers[n] == id { return ["pending": .bool(lists[n] == nil), "ready": .bool(lists[n] != nil)] }
+    if identifiers[n] == id { return ["pending": .bool(listIds[n] != id), "ready": .bool(listIds[n] == id)] }
     identifiers[n] = id
-    lists[n] = nil
+    // A list being replaced keeps working until its successor is compiled (`ready` swaps it).
     guard let store else { return .error("sitepolicy: no rule list store") }
     let t0 = Date()
     store.lookUpContentRuleList(forIdentifier: id) { [weak self] found, _ in
@@ -357,10 +360,15 @@ public final class SitePolicyService: HostService {
   }
 
   func ready(_ n: String, _ id: String, _ list: WKContentRuleList, _ t0: Date, cached: Bool) {
+    let replaced = listIds[n]
     lists[n] = list
+    listIds[n] = id
     let ms = (Date().timeIntervalSince(t0) * 1000).rounded()
     listInfo[n] = ["name": .string(n), "id": .string(id), "cached": .bool(cached), "ms": .double(ms)]
-    host.emit("sitepolicy.loaded", ["name": .string(n), "ok": true, "cached": .bool(cached), "ms": .double(ms)])
+    var event: Value = ["name": .string(n), "ok": true, "cached": .bool(cached), "ms": .double(ms)]
+    if let replaced { event = event.with("replaced", .string(replaced)) }
+    host.emit("sitepolicy.loaded", event)
+    // Every live page swaps to the new list now; its next loads are filtered by it (no reload).
     applyAll()
     // Older compiled versions of this list only take disk space.
     store?.getAvailableContentRuleListIdentifiers { ids in
@@ -372,7 +380,8 @@ public final class SitePolicyService: HostService {
 
   func failed(_ n: String, _ error: String) {
     listInfo[n] = ["name": .string(n), "error": .string(error)]
-    identifiers[n] = nil
+    // A failed replacement leaves the list that was working.
+    identifiers[n] = listIds[n]
     host.emit("sitepolicy.loaded", ["name": .string(n), "ok": false, "error": .string(error)])
   }
 
@@ -513,12 +522,19 @@ public final class SitePolicyService: HostService {
     hosts.isEmpty || hosts.contains { host == $0 || host.hasSuffix("." + $0) }
   }
 
-  /// `fetch {plugin, file, url}`: downloads a newer JSON data file (≤ 2 MB, an https URL) into the
-  /// first update root, `<root>/<plugin>/<file>`, where `script`/`load` find it. Ephemeral session,
-  /// no cookies. `{pending}`, then `sitepolicy.fetched {plugin, file, ok, changed, version?, error?}`.
+  /// `fetch {plugin, file, url, sha256?, prune?}`: downloads a newer data file (an https URL) into
+  /// the first update root, `<root>/<plugin>/<file>`, where `script`/`load` find it. Ephemeral
+  /// session, no cookies. `*.json`: a JSON object of at most 2 MB. `*.json.lzfse` (a compiled-list
+  /// source): `sha256` required and matched, at most 8 MB, and it must inflate to a JSON array.
+  /// `prune`: after a write, other files in that folder whose names start with it are removed (older
+  /// versions). `{pending}`, then `sitepolicy.fetched {plugin, file, ok, changed, version?, error?}`.
   func fetch(_ args: Value) -> Value {
     let plugin = args.str("plugin"), file = args.str("file")
-    guard Self.validName(plugin), Self.validName(file), file.hasSuffix(".json") else { return .error("sitepolicy: fetch needs a plugin and a .json file name") }
+    let lzfse = file.hasSuffix(".json.lzfse")
+    guard Self.validName(plugin), Self.validName(file), file.hasSuffix(".json") || lzfse else { return .error("sitepolicy: fetch needs a plugin and a .json or .json.lzfse file name") }
+    let sha = args.str("sha256").lowercased()
+    if lzfse, sha.count != 64 { return .error("sitepolicy: fetch of a .json.lzfse file needs its sha256") }
+    let prune = args.str("prune")
     guard let url = URL(string: args.str("url")), url.scheme == "https" else { return .error("sitepolicy: fetch needs an https url") }
     guard let root = resourceRoots.first else { return .error("sitepolicy: no update root") }
     let dest = root.appendingPathComponent(plugin, isDirectory: true).appendingPathComponent(file)
@@ -528,17 +544,48 @@ public final class SitePolicyService: HostService {
     let session = URLSession(configuration: config)
     session.dataTask(with: url) { data, response, error in
       session.finishTasksAndInvalidate()
-      let (ok, changed, version, why) = Self.store(data, response, error, at: dest)
+      let (ok, changed, version, why) = lzfse ? Self.storeList(data, response, error, sha256: sha, at: dest) : Self.store(data, response, error, at: dest)
+      if ok, !prune.isEmpty { Self.prune(prefix: prune, keeping: dest) }
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
           var v: Value = ["plugin": .string(plugin), "file": .string(file), "ok": .bool(ok), "changed": .bool(changed)]
           if !version.isEmpty { v = v.with("version", .string(version)) }
+          // A small JSON file (a manifest) comes back whole.
+          if ok, !lzfse, let d = try? Data(contentsOf: dest), d.count <= 16 * 1024, let value = ValueJSON.parse(d) { v = v.with("value", value) }
           if !why.isEmpty { v = v.with("error", .string(why)) }
           self.host.emit("sitepolicy.fetched", v)
         }
       }
     }.resume()
     return ["pending": true]
+  }
+
+  /// Writes a downloaded LZFSE list source to `dest` when its SHA-256 matches and it inflates to a
+  /// JSON array. (ok, changed, version, error)
+  nonisolated static func storeList(_ data: Data?, _ response: URLResponse?, _ error: Error?, sha256: String, at dest: URL) -> (Bool, Bool, String, String) {
+    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+    guard let data, status == 200, data.count <= 8 * 1024 * 1024 else {
+      return (false, false, "", error?.localizedDescription ?? (status != 200 ? "HTTP \(status)" : "larger than 8 MB"))
+    }
+    guard SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == sha256 else { return (false, false, "", "sha256 mismatch") }
+    guard let raw = try? (data as NSData).decompressed(using: .lzfse) as Data,
+          (try? JSONSerialization.jsonObject(with: raw)) is [Any] else { return (false, false, "", "not an LZFSE-compressed JSON array") }
+    if (try? Data(contentsOf: dest)) == data { return (true, false, "", "") }
+    do {
+      try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try data.write(to: dest, options: .atomic)
+      return (true, true, "", "")
+    } catch {
+      return (false, false, "", error.localizedDescription)
+    }
+  }
+
+  /// Removes the other files next to `keeping` whose names start with `prefix`.
+  nonisolated static func prune(prefix: String, keeping: URL) {
+    let dir = keeping.deletingLastPathComponent()
+    for name in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where name.hasPrefix(prefix) && name != keeping.lastPathComponent {
+      try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+    }
   }
 
   /// Writes a downloaded JSON object to `dest` when it differs. (ok, changed, version, error)
@@ -767,7 +814,7 @@ public final class SitePolicyService: HostService {
 
   /// WebKit's rule-list action callback (SPI): one blocked or upgraded load.
   func performed(_ r: WebRecord, list identifier: String, blocked: Bool) {
-    guard blocked, let n = identifiers.first(where: { $0.value == identifier })?.key else { return }
+    guard blocked, let n = identifiers.first(where: { $0.value == identifier })?.key ?? listIds.first(where: { $0.value == identifier })?.key else { return }
     let p = page(r.id)
     p.blocked[n, default: 0] += 1
     changed(r.id)

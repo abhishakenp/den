@@ -39,6 +39,11 @@ enum ShieldsLists {
   static let sitesData = "sites.json"
   static let sitesURL = "https://raw.githubusercontent.com/abhishakenp/den/main/Plugins/shields/resources/sites.json"
   static let sitesSource = "Site scriptlets from uBlock Origin's filters (https://github.com/uBlockOrigin/uAssets). GPL-3.0"
+  /// Newer builds of the three lists, made daily by .github/workflows/shields-lists.yml and published
+  /// as assets of the rolling release `shields-lists`: lists.json names `<list>-<version>.json.lzfse`
+  /// with its rule count and SHA-256.
+  static let listsManifest = "lists.json"
+  static let listsBase = "https://github.com/abhishakenp/den/releases/download/shields-lists/"
   /// Data files refreshed daily: (file, url).
   static let refreshed = [(scriptletsData, scriptletsURL), (sitesData, sitesURL)]
   static let scriptletsSource = "Scriptlets for YouTube, translated from uBlock Origin's filters (https://github.com/uBlockOrigin/uAssets). GPL-3.0"

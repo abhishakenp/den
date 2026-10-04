@@ -125,6 +125,9 @@ final class ShieldsCore {
     httpAllowed = load("httpAllowed").array?.compactMap { $0.string } ?? []
     lookalikeAllowed = load("lookalikeAllowed").array?.compactMap { $0.string } ?? []
     uboOffered = load("uboOffered").bool ?? false
+    // Downloaded lists, unless this den bundles newer ones.
+    listsVersion = load("listsVersion").string ?? ""
+    if !Self.newer(listsVersion, ShieldsLists.version) { listsVersion = "" }
   }
 
   func saveSites() {
@@ -178,9 +181,81 @@ final class ShieldsCore {
     if needed.contains(ShieldsLists.ads.name) { loadScriptlets() }
     for l in ShieldsLists.all where needed.contains(l.name) && !requested.contains(l.name) {
       requested.append(l.name)
-      let r = env.call("sitepolicy", "load", ["name": .string(l.name), "plugin": "shields", "file": .string(l.file), "version": .string(ShieldsLists.version)])
-      if r.isErr { env.log("shields: " + r.s("error")) }
+      loadList(l)
     }
+  }
+
+  func loadList(_ l: ShieldsLists.List) {
+    let r = env.call("sitepolicy", "load", ["name": .string(l.name), "plugin": "shields", "file": .string(listFile(l)), "version": .string(listVersion())])
+    if r.isErr {
+      env.log("shields: " + r.s("error"))
+      if !listsVersion.isEmpty { fallBackToBundledLists() }
+    }
+  }
+
+  // MARK: Daily lists (built by .github/workflows/shields-lists.yml)
+
+  /// The downloaded lists in use ("" = the ones in den's bundle). Storage `listsVersion`.
+  var listsVersion = ""
+  /// A download in progress: its version and the files still missing.
+  var pendingVersion = ""
+  var pendingFiles: [String] = []
+  var listsBase = ShieldsLists.listsBase
+
+  /// "2026.10.04-7f6dd3ec" after "2026.09.27-989747b8": byte order (the date comes first).
+  static func newer(_ a: String, _ b: String) -> Bool { Array(b.utf8).lexicographicallyPrecedes(Array(a.utf8)) }
+
+  func listVersion() -> String { listsVersion.isEmpty ? ShieldsLists.version : listsVersion }
+  static func short(_ l: ShieldsLists.List) -> String { Text.dropPrefix(l.name, "shields.") }
+  /// `<list>-<version>.json.lzfse` in den's update root, or the bundled file.
+  func listFile(_ l: ShieldsLists.List) -> String { listsVersion.isEmpty ? l.file : Self.short(l) + "-" + listsVersion + ".json.lzfse" }
+
+  /// lists.json arrived: when it names lists newer than the ones in use, fetch them (checked
+  /// against their SHA-256); once all three are in, `sitepolicy` compiles them off the main thread
+  /// and swaps them into every page, with no relaunch.
+  func listsManifest(_ m: Value) {
+    let v = m.s("version")
+    guard !v.isEmpty, Self.newer(v, listVersion()), v != pendingVersion else { return }
+    var files: [(String, String, String)] = []
+    for l in ShieldsLists.all {
+      let e = m["lists"][Self.short(l)]
+      let file = e.s("file"), sha = e.s("sha256")
+      guard file == Self.short(l) + "-" + v + ".json.lzfse", sha.utf8.count == 64 else { return env.log("shields: lists.json " + v + " is incomplete") }
+      files.append((file, sha, Self.short(l) + "-"))
+    }
+    pendingVersion = v
+    pendingFiles = files.map { $0.0 }
+    for (file, sha, prefix) in files {
+      env.call("sitepolicy", "fetch", ["plugin": "shields", "file": .string(file), "url": .string(listsBase + file),
+                                       "sha256": .string(sha), "prune": .string(prefix)])
+    }
+  }
+
+  func listFileFetched(_ v: Value) {
+    let file = v.s("file")
+    guard !pendingVersion.isEmpty, pendingFiles.contains(file) else { return }
+    guard v.b("ok") else {
+      env.log("shields: list download failed (" + file + "): " + v.s("error"))
+      pendingVersion = ""
+      pendingFiles = []
+      return
+    }
+    pendingFiles.removeAll { $0 == file }
+    guard pendingFiles.isEmpty else { return }
+    listsVersion = pendingVersion
+    pendingVersion = ""
+    save("listsVersion", .string(listsVersion))
+    env.log("shields: lists " + listsVersion + " downloaded, compiling")
+    for l in ShieldsLists.all where requested.contains(l.name) { loadList(l) }
+    registerSettings()
+  }
+
+  /// A downloaded list that won't load: back to the bundled ones.
+  func fallBackToBundledLists() {
+    env.log("shields: downloaded lists " + listsVersion + " failed; using the bundled lists")
+    listsVersion = ""
+    save("listsVersion", "")
+    for l in ShieldsLists.all where requested.contains(l.name) { loadList(l) }
   }
 
   /// The scriptlets (engine + data) for sites content rules can't clean (YouTube). Asked once
@@ -217,10 +292,17 @@ final class ShieldsCore {
     for (file, url) in ShieldsLists.refreshed {
       env.call("sitepolicy", "fetch", ["plugin": "shields", "file": .string(file), "url": .string(url)])
     }
+    env.call("sitepolicy", "fetch", ["plugin": "shields", "file": .string(ShieldsLists.listsManifest), "url": .string(listsBase + ShieldsLists.listsManifest)])
   }
 
   func fetched(_ v: Value) {
-    guard v.s("plugin") == "shields", ShieldsLists.refreshed.contains(where: { $0.0 == v.s("file") }) else { return }
+    guard v.s("plugin") == "shields" else { return }
+    if v.s("file") == ShieldsLists.listsManifest {
+      if v.b("ok") { listsManifest(v["value"]) } else { env.log("shields: lists.json: " + v.s("error")) }
+      return
+    }
+    if Text.hasSuffix(v.s("file"), ".json.lzfse") { return listFileFetched(v) }
+    guard ShieldsLists.refreshed.contains(where: { $0.0 == v.s("file") }) else { return }
     if v.b("ok") { save("scriptletsChecked", .int(env.now())) } else { env.log("shields: scriptlet data refresh failed: " + v.s("error")) }
     if v.b("changed"), scriptletsRequested { loadScriptlets(force: true) }
   }
@@ -239,6 +321,10 @@ final class ShieldsCore {
     guard requested.contains(n) else { return }
     if v.b("ok") {
       if !ready.contains(n) { ready.append(n) }
+      if !v.s("replaced").isEmpty { env.log("shields: " + n + " swapped to " + listVersion() + " (" + String(v.i("ms")) + " ms)") }
+    } else if !listsVersion.isEmpty {
+      env.log("shields: list " + n + " failed: " + v.s("error"))
+      fallBackToBundledLists()
     } else {
       requested.removeAll { $0 == n }
       env.log("shields: list " + n + " failed: " + v.s("error"))
@@ -797,7 +883,7 @@ final class ShieldsCore {
     if uboInstalled {
       controls.append(["key": "ubo", "type": "info", "title": "uBlock Origin Lite is installed", "value": "Turning off den’s blocker avoids filtering every page twice."])
     }
-    controls.append(["key": "lists", "type": "info", "title": .string("Filter lists (" + ShieldsLists.version + ")"), "value": .string(lists)])
+    controls.append(["key": "lists", "type": "info", "title": .string("Filter lists (" + listVersion() + ")"), "value": .string(lists)])
     let r = env.call("settings", "register", ["id": .string(Self.ns), "title": "Shields", "icon": "sf:shield.lefthalf.filled", "order": 25, "controls": .array(controls)])
     guard !r.isErr else { return }
     if !settingsListening {

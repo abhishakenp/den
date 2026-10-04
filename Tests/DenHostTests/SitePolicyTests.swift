@@ -1,5 +1,6 @@
 import AppKit
 import CordisValue
+import CryptoKit
 import Foundation
 import Testing
 import WebKit
@@ -83,6 +84,72 @@ struct SitePolicyTests {
     _ = try? await w.evaluateJavaScript("window.open('https://pop.test/signin', 'signin'); 1")
     #expect(try await until { opened().contains { $0.str("url") == "https://pop.test/signin" } })
     #expect(opened().count == 1)
+  }
+
+  /// A newer version of a list compiles while the old one keeps blocking, then every live page
+  /// swaps to it: the next loads in a page that was never reloaded follow the new rules.
+  @Test func newerListSwapsIntoLivePagesWithoutAReload() async throws {
+    let rt = ServiceTests.runtime()
+    let loaded = events(rt, "sitepolicy.loaded")
+    let v1 = #"[{"trigger":{"url-filter":"den-old-tracker"},"action":{"type":"block"}}]"#
+    let v2 = #"[{"trigger":{"url-filter":"den-new-tracker"},"action":{"type":"block"}}]"#
+    rt.call("sitepolicy", "define", ["name": "test.swap", "json": .string(v1)])
+    #expect(try await until { loaded().count == 1 })
+    rt.call("sitepolicy", "rules", ["default": ["lists": ["test.swap"]], "hosts": [:]])
+    let w = try await page(rt, "w", "<p>page</p>", "https://news.test/")
+    let load = { (name: String) in
+      _ = try? await w.callAsyncJavaScript("const i = new Image(); i.src = 'https://tracker.invalid/' + n + '.png?' + Math.random(); document.body.append(i)",
+                                           arguments: ["n": name], contentWorld: .page)
+    }
+    await load("den-old-tracker")
+    #expect(try await until { rt.call("sitepolicy", "get", ["id": "w"])["blocked"].int ?? 0 == 1 })
+
+    rt.call("sitepolicy", "define", ["name": "test.swap", "json": .string(v2)])
+    // Until the new list is ready the old one still blocks.
+    #expect(rt.sitePolicy.lists["test.swap"] != nil)
+    #expect(try await until { loaded().count == 2 })
+    #expect(loaded().last?.str("replaced").hasPrefix("test.swap@") == true)
+    await load("den-new-tracker")
+    #expect(try await until { rt.call("sitepolicy", "get", ["id": "w"])["blocked"].int ?? 0 == 2 })
+    await load("den-old-tracker")  // no longer blocked
+    try await Task.sleep(for: .milliseconds(400))
+    #expect(rt.call("sitepolicy", "get", ["id": "w"])["blocked"].int == 2)
+    #expect(w.url?.absoluteString == "https://news.test/")
+  }
+
+  /// `fetch` of a list source: the SHA-256 must match and it must inflate to a JSON array; older
+  /// versions are pruned after a good download.
+  @Test func fetchesListSourcesCheckedAndPrunesOldOnes() async throws {
+    let rt = ServiceTests.runtime()
+    let got = events(rt, "sitepolicy.fetched")
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("den-upd-\(UUID())")
+    rt.sitePolicy.resourceRoots = [dir]
+    let old = dir.appendingPathComponent("shields/ads-2026.01.01-aaaa.json.lzfse")
+    try FileManager.default.createDirectory(at: old.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("old".utf8).write(to: old)
+    let packed = try (Data(Self.blockJSON.utf8) as NSData).compressed(using: .lzfse) as Data
+    let sha = SHA256.hash(data: packed).map { String(format: "%02x", $0) }.joined()
+    let src = dir.appendingPathComponent("src.lzfse")
+    try packed.write(to: src)
+    let file = "ads-2026.10.04-bbbb.json.lzfse"
+    // A file: URL stands in for the download (the session reads it like any response); https is
+    // required of real callers, so the test calls the storing step directly.
+    let bad = SitePolicyService.storeList(packed, HTTPURLResponse(url: src, statusCode: 200, httpVersion: nil, headerFields: nil), nil,
+                                          sha256: String(repeating: "0", count: 64), at: dir.appendingPathComponent("shields/" + file))
+    #expect(bad.0 == false && bad.3 == "sha256 mismatch")
+    let good = SitePolicyService.storeList(packed, HTTPURLResponse(url: src, statusCode: 200, httpVersion: nil, headerFields: nil), nil,
+                                           sha256: sha, at: dir.appendingPathComponent("shields/" + file))
+    #expect(good.0 && good.1)
+    SitePolicyService.prune(prefix: "ads-", keeping: dir.appendingPathComponent("shields/" + file))
+    #expect(!FileManager.default.fileExists(atPath: old.path))
+    // And the stored file loads as a list.
+    let loaded = events(rt, "sitepolicy.loaded")
+    rt.call("sitepolicy", "load", ["name": "shields.ads", "plugin": "shields", "file": .string(file), "version": "2026.10.04-bbbb"])
+    #expect(try await until { loaded().contains { $0.flag("ok") } })
+    // Callers must name the hash, and use https.
+    #expect(rt.call("sitepolicy", "fetch", ["plugin": "shields", "file": .string(file), "url": "https://example.invalid/x"]).isError)
+    #expect(rt.call("sitepolicy", "fetch", ["plugin": "shields", "file": "lists.json", "url": "http://example.invalid/x"]).isError)
+    _ = got
   }
 
   @Test func loadLooksUpBeforeCompiling() async throws {

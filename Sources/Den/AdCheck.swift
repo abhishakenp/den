@@ -77,6 +77,14 @@ final class AdCheck: NSObject, WKScriptMessageHandler {
     var url = urls.removeFirst()
     if !tab.isEmpty { rt.call("tabs", "close", ["id": .string(tab)]) }
     if url.hasPrefix("embed:") { return embed(String(url.dropFirst(6))) }
+    // `wait:<s>`: let den idle (the daily refresh runs a minute after launch), then list the rule lists.
+    if url.hasPrefix("wait:") {
+      DispatchQueue.main.asyncAfter(deadline: .now() + (Double(url.dropFirst(5)) ?? 60)) {
+        for l in self.rt.call("sitepolicy", "list").array ?? [] { print("scenario.ad list \(l.str("name")) id=\(l.str("id")) ready=\(l.flag("ready")) cached=\(l.flag("cached")) ms=\(l.num("ms"))") }
+        self.next()
+      }
+      return
+    }
     // `noshields:<url>`: the same page with Shields off for its site (a baseline).
     if url.hasPrefix("noshields:") {
       url = String(url.dropFirst(10))
