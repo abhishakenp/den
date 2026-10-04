@@ -24,13 +24,14 @@ struct ExtensionsTests {
          "action": {"default_popup": "popup.html", "default_title": "Den Test"},
          "background": {"service_worker": "bg.js"},
          "options_page": "options.html",
+         "commands": {"hello": {"suggested_key": {"default": "Alt+Shift+Y"}, "description": "Say hello"}},
          "content_scripts": [{"matches": ["http://127.0.0.1/*"], "js": ["cs.js"], "run_at": "document_start"}],
          "declarative_net_request": {"rule_resources": [{"id": "r", "enabled": true, "path": "rules.json"}]},
          "icons": {"64": "icon.png"}}
         """,
       "rules.json": #"[{"id": 1, "priority": 1, "action": {"type": "block"}, "condition": {"urlFilter": "blocked.js", "resourceTypes": ["script"]}}]"#,
       "cs.js": "document.documentElement.dataset.denExt = '1';",
-      "bg.js": "chrome.action.setBadgeText({text: '7'});",
+      "bg.js": "chrome.action.setBadgeText({text: '7'}); chrome.commands.onCommand.addListener((c) => chrome.action.setBadgeText({text: c === 'hello' ? 'H' : '?'}));",
       "popup.html": "<!doctype html><title>Den Test Popup</title><body style='margin:0;width:220px;height:140px;font:13px -apple-system'>Popup</body>",
       "options.html": "<!doctype html><title>Den Test Options</title><body>Options</body>",
     ]
@@ -71,6 +72,7 @@ struct ExtensionsTests {
     mock.page("/blocked.js", "window.adRan = true;", type: "text/javascript")
     let dir = try Self.fixture()
     let h = Harness()
+    NSApp.mainMenu = NSMenu()
     h.startTabs()
     h.record(["webext.installed", "webext.failed", "webext.changed"])
     // A tab open before the first install: its web view is rebuilt with the controller.
@@ -156,6 +158,14 @@ struct ExtensionsTests {
     // has run: this checks den's badge plumbing, not WebKit's worker timing.
     do { try await ctx.loadBackgroundContent() } catch { print("loadBackgroundContent:", error) }
     #expect(await wait { h.rt.extensions.menuItems().first?.badge == "7" })
+
+    // Its keyboard shortcut is in the menu bar's Extensions menu, with its key; choosing it
+    // runs the command in the extension.
+    let commands = try #require(h.rt.extensions.commandsMenu)
+    let hello = try #require(commands.items.first { $0.title.hasSuffix("Say hello") })
+    #expect(hello.keyEquivalent.lowercased() == "y" && hello.keyEquivalentModifierMask.contains(.option))
+    commands.performActionForItem(at: commands.index(of: hello))
+    #expect(await wait { h.rt.extensions.menuItems().first?.badge == "H" })
 
     // Pin, site access, disable, enable.
     #expect(h.rt.call("webext", "setPinned", ["id": .string(extId), "pinned": false]) == .ok)

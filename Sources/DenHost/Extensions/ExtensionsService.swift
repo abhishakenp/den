@@ -215,6 +215,38 @@ public final class ExtensionsService: NSObject, HostService {
   func changed() {
     host.emit("webext.changed", ["extensions": .array(registry.items.map(describe))])
     refreshUI()
+    syncCommands()
+  }
+
+  // thin-host: feature-specific, migrate to plugin
+  // MARK: Keyboard shortcuts (`commands`)
+
+  /// The "Extensions" menu in the menu bar: every loaded extension's keyboard shortcuts (its
+  /// `commands` with a key), where macOS finds key equivalents while a page has focus, shown with
+  /// their keys. No menu while no extension has a shortcut.
+  var commandsMenu: NSMenu?
+
+  func syncCommands() {
+    guard let main = NSApp.mainMenu else { return }
+    var items: [NSMenuItem] = []
+    for id in contexts.keys.sorted() {
+      guard let ctx = contexts[id] else { continue }
+      let name = ctx.webExtension.displayShortName ?? ctx.webExtension.displayName ?? id
+      for c in ctx.commands where !(c.activationKey ?? "").isEmpty {
+        let mi = c.menuItem
+        mi.title = "\(name): \(c.title)"
+        items.append(mi)
+      }
+    }
+    if items.isEmpty {
+      if let m = commandsMenu, let it = main.items.first(where: { $0.submenu === m }) { main.removeItem(it) }
+      commandsMenu = nil
+      return
+    }
+    let m = commandsMenu ?? MainMenu.menu(named: "Extensions", in: main)
+    commandsMenu = m
+    m.removeAllItems()
+    items.forEach(m.addItem)
   }
 
   static func failure(_ s: String) -> NSError { NSError(domain: "den.extensions", code: 1, userInfo: [NSLocalizedDescriptionKey: s]) }

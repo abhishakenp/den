@@ -75,8 +75,8 @@ struct ExtensionCompatTests {
   static func probePage(_ h: Harness, _ id: String) -> String {
     guard let e = h.rt.extensions.registry.item(id) else { return "x.html" }
     let dir = URL(fileURLWithPath: h.rt.extensions.registry.path(e))
-    try? "<!doctype html><title>probe</title>".write(to: dir.appendingPathComponent("__den/probe.html"), atomically: true, encoding: .utf8)
-    return "__den/probe.html"
+    try? "<!doctype html><title>probe</title>".write(to: dir.appendingPathComponent("__den_probe.html"), atomically: true, encoding: .utf8)
+    return "__den_probe.html"
   }
 
   /// Loads the manifest's background scripts into the page one by one and reports what throws.
@@ -302,7 +302,12 @@ struct ExtensionCompatTests {
           const orig = DomUtils.simulateClick.bind(DomUtils);
           DomUtils.simulateClick = (el, mods) => { d.denSim = (el && el.tagName) + ' ' + JSON.stringify(mods || {}); try { return orig(el, mods); } catch (e) { d.denErr += 'simulateClick ' + e + ';'; throw e; } };
           const exit = HintCoordinator.exit.bind(HintCoordinator);
-          HintCoordinator.exit = (r) => { d.denExit = JSON.stringify(r) + ' onExit=' + HintCoordinator.onExit.length; try { return exit(r); } catch (e) { d.denErr += 'exit ' + e + ' ' + String(e.stack).slice(0, 200) + ';'; throw e; } };
+          const act = LinkHintsMode.prototype.activateLink;
+          LinkHintsMode.prototype.activateLink = function (m, over) {
+            d.denAct = 'local=' + (m && m.isLocalMarker && m.isLocalMarker()) + ' over=' + over + ' el=' + (m && m.localHint && m.localHint.element && m.localHint.element.tagName) + ' reason=' + (m && m.localHint && m.localHint.reason);
+            try { return act.call(this, m, over); } finally { d.denAct += ' onExitAfter=' + HintCoordinator.onExit.map(f => String(f).replace(/\\s+/g, ' ').slice(0, 50)).join(' | '); }
+          };
+          HintCoordinator.exit = (r) => { d.denExit = (r && r.isSuccess) + ' onExit=' + HintCoordinator.onExit.map(f => String(f).replace(/\\s+/g, ' ').slice(0, 50)).join(' | ') + ' act=' + d.denAct; try { return exit(r); } catch (e) { d.denErr += 'exit ' + e + ' ' + String(e.stack).slice(0, 200) + ';'; throw e; } };
         } catch (e) { d.denErr += 'wrap ' + e + ';'; }
       }});
       try { await chrome.tabs.sendMessage(t.id, {denPing: 'noFrameId'}); } catch (e) {}
