@@ -93,6 +93,9 @@ if [[ -f build/den.app/Contents/PlugIns/theme.dylib ]]; then shot theme-picker-l
 if [[ -f build/den.app/Contents/PlugIns/commandbar.dylib ]]; then
   soft shot window-new newWindow light 4
   soft shot window-private privateWindow dark 8
+  # Pop-ups (PopupScenarios): a sign-in pop-up window, and the URL pill's "Pop-up blocked" button.
+  soft shot popup-window popupWindow light 7
+  soft shot popup-blocked popupBlocked light 7
   soft shot window-handoff windowHandoff light 5
 fi
 if [[ -f build/den.app/Contents/PlugIns/quit.dylib ]]; then shot quit-dialog dialog light; shot quit-dialog-dark dialog dark; fi

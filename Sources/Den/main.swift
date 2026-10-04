@@ -439,6 +439,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       #if Scenarios
       DiscardScenarios.apply(s, runtime: rt)
       #endif
+    case "popupWindow", "popupBlocked":
+      snapMini = s == "popupWindow"
+      #if Scenarios
+      PopupScenarios.apply(s, url: nil, runtime: rt)
+      #endif
     case "popupClick":
       #if Scenarios
       PopupScenarios.apply(s, url: arg("--url"), runtime: rt)
