@@ -85,6 +85,7 @@ final class ExtensionsUI {
     let o = svc?.selectedStoreOffer()
     guard o != storeOffer else { return }
     storeOffer = o
+    if let o, svc?.ui === self { svc?.storeNotice(o) }
     NotificationCenter.default.post(name: Self.changedNotification, object: self)
   }
 

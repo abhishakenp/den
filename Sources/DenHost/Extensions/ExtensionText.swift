@@ -44,6 +44,18 @@ public enum ExtensionText {
     return out
   }
 
+  static let ublockLite = StoreRef(source: .chrome, id: "ddkjiahejlhfcafbddmgiahcphecmpfh")
+
+  /// Store items WebKit can't run as designed, by Chrome id or AMO slug: what to tell the user on
+  /// their store page and in the install prompt, and what to get instead.
+  public static func storeNotice(_ id: String) -> (text: String, actionTitle: String?, alternative: StoreRef?)? {
+    switch id {
+    case "cjpalhdlnbpafiamejdnhcphjbkeiagm", "ublock-origin", "uBlock0@raymondhill.net":
+      return ("uBlock Origin can’t block ads in den: it needs to stop web requests, which Safari’s engine doesn’t allow. uBlock Origin Lite blocks them", "Get uBlock Origin Lite", ublockLite)
+    default: return nil
+    }
+  }
+
   /// Why an install failed, in plain words, from the technical reason (logged as is).
   public static func failureReason(_ technical: String) -> String {
     let t = technical.lowercased()

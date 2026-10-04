@@ -90,6 +90,7 @@ public final class DenRuntime {
                                      : storageRoot.appendingPathComponent("extensions", isDirectory: true),
                                    persistent: isDefault)
     extensions.content = content
+    extensions.attach(windows: windows)
     settings = SettingsService(host: host, storage: storage)
     speech = SpeechService(host: host)
     translate = TranslateService(host: host)

@@ -56,7 +56,11 @@ public final class ExtensionsService: NSObject, HostService {
   var tabObjects: [String: ExtTab] = [:]
   lazy var delegateObject = ExtensionControllerDelegate(svc: self)
   var selectedTab: String?
-  let ui: ExtensionsUI
+  /// One per den window (main first): each window's URL pill shows the extension buttons.
+  var uis: [ExtensionsUI]
+  weak var windowSet: WindowSet?
+  /// The active window's: popups and the menu open where the user is.
+  var ui: ExtensionsUI { windowSet.flatMap { ws in uis.first { $0.wc === ws.active } } ?? uis[0] }
 
   public init(host: ServiceHost, webviews: WebViewsService, window: DenWindowController, root: URL, persistent: Bool) {
     self.host = host
@@ -64,21 +68,48 @@ public final class ExtensionsService: NSObject, HostService {
     self.window = window
     self.root = root
     self.persistent = persistent
-    ui = ExtensionsUI(window: window)
+    uis = [ExtensionsUI(window: window)]
     super.init()
-    ui.svc = self
+    uis[0].svc = self
     webviews.extensionHooks = self
   }
 
   /// Called once `call` and `subscribe` are wired. Listens on the plugin bus, which carries both
   /// host events (forwarded) and plugin events.
+  /// Every den window gets its own extensions UI (pill buttons, menu, popups), now and later.
+  public func attach(windows: WindowSet) {
+    windowSet = windows
+    windows.each { [weak self] wc in
+      guard let self, !self.uis.contains(where: { $0.wc === wc }) else { return }
+      let u = ExtensionsUI(window: wc)
+      u.svc = self
+      self.uis.append(u)
+      u.refresh()
+    }
+    windows.onRemove.append { [weak self] wc in
+      guard let self, let i = self.uis.firstIndex(where: { $0.wc === wc }), i > 0 else { return }
+      self.uis.remove(at: i).close()
+    }
+  }
+
+  /// Every window's UI: what the pills and menus show is the same in all of them.
+  func refreshUI() { uis.forEach { $0.refresh() } }
+  func storeState(pending: String?) { uis.forEach { $0.storeState(pending: pending) } }
+  func closePopups(of id: String) { for u in uis where u.popupFor == id { u.close() } }
+
   public func start() {
     subscribe("ui.action") { [weak self] v in
       MainActor.assumeIsolated {
-        if v.str("id") == Self.problemToast, v.str("action") == "toast" { self?.showProblemDetails() } else { self?.dialogAction(v) }
+        if v.str("id") == Self.problemToast, v.str("action") == "toast" {
+          self?.showProblemDetails()
+        } else if v.str("id") == Self.storeNoticeToast, v.str("action") == "toast" {
+          self?.openAlternative()
+        } else {
+          self?.dialogAction(v)
+        }
       }
     }
-    subscribe("tabs.selected") { [weak self] _ in MainActor.assumeIsolated { self?.ui.refreshStoreOffer() } }
+    subscribe("tabs.selected") { [weak self] _ in MainActor.assumeIsolated { self?.uis.forEach { $0.refreshStoreOffer() } } }
     subscribe("schedule.fire") { [weak self] v in
       MainActor.assumeIsolated { if v.str("id") == Self.updateScheduleId { self?.checkUpdates(force: false) } }
     }
@@ -183,7 +214,7 @@ public final class ExtensionsService: NSObject, HostService {
 
   func changed() {
     host.emit("webext.changed", ["extensions": .array(registry.items.map(describe))])
-    ui.refresh()
+    refreshUI()
   }
 
   static func failure(_ s: String) -> NSError { NSError(domain: "den.extensions", code: 1, userInfo: [NSLocalizedDescriptionKey: s]) }
@@ -256,14 +287,14 @@ public final class ExtensionsService: NSObject, HostService {
         self.selectedTab = id
         c.didActivateTab(self.tab(id), previousActiveTab: prev)
         c.didSelectTabs([self.tab(id)])
-        self.ui.refresh()
+        self.refreshUI()
       }
     }
     for (event, prop) in [("webviews.url", WKWebExtension.TabChangedProperties.URL), ("webviews.title", .title), ("webviews.audio", .playingAudio)] {
       host.on(event) { [weak self] v in
         guard let self, let c = self.controller, let id = v["id"].string, self.tabObjects[id] != nil || self.webviews.record(id) != nil else { return }
         c.didChangeTabProperties(prop, for: self.tab(id))
-        if prop == .URL { self.ui.refresh() }
+        if prop == .URL { self.refreshUI() }
       }
     }
     host.on("webviews.progress") { [weak self] v in
@@ -478,7 +509,7 @@ public final class ExtensionsService: NSObject, HostService {
   // thin-host: feature-specific, migrate to plugin
   func installFromStore(_ ref: StoreRef, request: String) async {
     host.emit("webext.installing", ["request": .string(request), "source": .string(ref.source.rawValue), "storeId": .string(ref.id)])
-    ui.storeState(pending: ref.id)
+    storeState(pending: ref.id)
     do {
       let (data, storeId) = try await download(ref)
       let dir = staging.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -487,7 +518,7 @@ public final class ExtensionsService: NSObject, HostService {
     } catch {
       failed(request, error)
     }
-    ui.storeState(pending: nil)
+    storeState(pending: nil)
   }
 
   // thin-host: feature-specific, migrate to plugin
@@ -557,7 +588,7 @@ public final class ExtensionsService: NSObject, HostService {
       let iconPath = writeIcon(staged, id: "staged-\(id)")
       let ok = await withCheckedContinuation { cont in
         prompt(title: existing == nil ? "Add “\(name)” to den?" : "Update “\(name)”?", icon: iconPath, lines: ExtensionText.describe(permissions: perms, patterns: patterns),
-               unsupported: unsupportedPermissions(staged), confirm: existing == nil ? "Add Extension" : "Update") { cont.resume(returning: $0) }
+               unsupported: unsupportedPermissions(staged), note: ExtensionText.storeNotice(storeId ?? "")?.text, confirm: existing == nil ? "Add Extension" : "Update") { cont.resume(returning: $0) }
       }
       try? FileManager.default.removeItem(atPath: iconPath)
       guard ok else { throw ExtensionPackageError("cancelled") }
@@ -602,7 +633,7 @@ public final class ExtensionsService: NSObject, HostService {
       if let ctx = contexts[id] { checkBackground(ctx, name: name) }
     }
     changed()
-    ui.storeState(pending: nil)
+    storeState(pending: nil)
   }
 
   /// Starts a fresh install's background once, so a worker that fails (or never finishes
@@ -797,7 +828,7 @@ public final class ExtensionsService: NSObject, HostService {
 
   func uninstall(_ id: String) -> Value {
     guard let e = registry.item(id) else { return .error("webext: no extension '\(id)'") }
-    if ui.popupFor == id { ui.close() }
+    closePopups(of: id)
     if let ctx = contexts.removeValue(forKey: id), let c = controller {
       retire(ctx, id: id, from: c) {
         c.fetchDataRecord(ofTypes: WKWebExtensionController.allExtensionDataTypes, for: ctx) { rec in
@@ -822,7 +853,7 @@ public final class ExtensionsService: NSObject, HostService {
       ensureController()
       Task { await load(registry.item(id) ?? e); changed() }
     } else if let ctx = contexts.removeValue(forKey: id) {
-      if ui.popupFor == id { ui.close() }
+      closePopups(of: id)
       if let c = controller { retire(ctx, id: id, from: c) }
     }
     changed()
@@ -877,7 +908,7 @@ public final class ExtensionsService: NSObject, HostService {
     return nil
   }
 
-  func actionChanged(_ context: WKWebExtensionContext) { ui.refresh() }
+  func actionChanged(_ context: WKWebExtensionContext) { refreshUI() }
 
   /// Pinned (and all) extensions for the URL pill and the menu.
   // thin-host: feature-specific, migrate to plugin
@@ -912,7 +943,7 @@ public final class ExtensionsService: NSObject, HostService {
     let lines = ExtensionText.describe(permissions: permissions, patterns: patterns)
     let name = ctx.webExtension.displayName ?? ctx.uniqueIdentifier
     guard !lines.isEmpty else { return done(true) }
-    prompt(title: "“\(name)” wants more access", icon: registry.iconPath(ctx.uniqueIdentifier), lines: lines, unsupported: [], confirm: "Allow") { [weak self] ok in
+    prompt(title: "“\(name)” wants more access", icon: registry.iconPath(ctx.uniqueIdentifier), lines: lines, unsupported: [], note: nil, confirm: "Allow") { [weak self] ok in
       if ok, let self {
         self.registry.update(ctx.uniqueIdentifier) {
           $0.granted = Array(Set($0.granted + permissions)).sorted()
@@ -925,8 +956,9 @@ public final class ExtensionsService: NSObject, HostService {
     }
   }
 
-  func prompt(title: String, icon: String, lines: [String], unsupported: [String], confirm: String, done: @escaping (Bool) -> Void) {
+  func prompt(title: String, icon: String, lines: [String], unsupported: [String], note: String?, confirm: String, done: @escaping (Bool) -> Void) {
     var message = lines.isEmpty ? "It needs no special access." : "It can:\n" + lines.map { "•  " + $0 }.joined(separator: "\n")
+    if let note { message += "\n\n" + note }
     if !unsupported.isEmpty { message += "\n\nNot available in den: " + unsupported.joined(separator: ", ") + "." }
     let id = "extensions.prompt:\(nextPrompt)"
     nextPrompt += 1
@@ -984,7 +1016,7 @@ public final class ExtensionsService: NSObject, HostService {
   /// Any other page costs one host comparison.
   func pageChanged(_ w: WKWebView) {
     let onStore = w.url?.host.map(ExtensionPackage.isStoreHost) ?? false
-    if onStore || ui.storeOffer != nil { ui.refreshStoreOffer() }
+    for u in uis where onStore || u.storeOffer != nil { u.refreshStoreOffer() }
     guard onStore else { return }
     let ucc = w.configuration.userContentController
     ucc.removeScriptMessageHandler(forName: "denStore", contentWorld: Self.storeWorld)
@@ -997,6 +1029,26 @@ public final class ExtensionsService: NSObject, HostService {
     w.callAsyncJavaScript(StoreButton.script, arguments: ["installed": installed, "pending": ui.storePending ?? ""], in: nil, in: Self.storeWorld) { r in
       if case let .failure(e) = r { Self.log.error("store button: \(e.localizedDescription, privacy: .public)") }
     }
+  }
+
+  // thin-host: feature-specific, migrate to plugin
+  static let storeNoticeToast = "webext.storeNotice"
+  var noticeAlternative: StoreRef?
+
+  /// On the store page of an extension WebKit can't run as designed: say so, and offer the one
+  /// that works (a toast with a button). Once per visit to the page.
+  func storeNotice(_ ref: StoreRef) {
+    guard let n = ExtensionText.storeNotice(ref.id) else { return }
+    noticeAlternative = n.alternative
+    var tree: Value = ["type": "toast", "id": .string(Self.storeNoticeToast), "text": .string(n.text), "icon": "sf:exclamationmark.triangle.fill", "duration": 12000]
+    if let a = n.actionTitle { tree = tree.with("action", .string(a)) }
+    _ = host.call("ui", "set", ["slot": "toast", "tree": tree])
+  }
+
+  func openAlternative() {
+    guard let a = noticeAlternative else { return }
+    let u = a.source == .chrome ? "https://chromewebstore.google.com/detail/\(a.id)" : "https://addons.mozilla.org/firefox/addon/\(a.id)/"
+    _ = openTab(URL(string: u), active: true, pinned: false)
   }
 
   /// The selected tab's store item, unless it's installed already.
