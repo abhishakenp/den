@@ -321,7 +321,9 @@ public enum MediaScenarios {
       NSApp.activate(ignoringOtherApps: true)
       rt.window.window.makeKeyAndOrderFront(nil)
       await sleep(1)
-      let res = await js(rt, id, "const v = document.querySelector('video'); await v.play(); try { await v.requestFullscreen(); return 'ok'; } catch (e) { return String(e); }")
+      // Full screen first: the call's user gesture is short-lived (an awaited play() can outlast it).
+      let res = await js(rt, id, "const v = document.querySelector('video'); const f = v.requestFullscreen(); v.play().catch(() => {}); try { await f; return 'ok'; } catch (e) { return String(e); }")
+
       let web = rt.webviews.record(id)?.webView
       let full = await until(10) { web?.window != nil && rt.windows.containing(web?.window) == nil }
       check("fullscreen.entered", full, "request=\(res) window=\(web?.window.map { NSStringFromClass(type(of: $0)) } ?? "none") active=\(NSApp.isActive)")
