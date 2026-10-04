@@ -122,6 +122,27 @@ struct ExtensionsTests {
     #expect(win.tabs?(for: ctx).count == h.rt.extensions.tabIds().count)
     #expect((win.activeTab?(for: ctx) as? ExtTab)?.id == tab)
 
+    // Two tabs of the extension's own pages (it opens its options twice): each gets its own
+    // configuration; sharing one made WebKit throw on den's second handler and den crashed.
+    for _ in 0..<2 { #expect(h.rt.call("webext", "openOptions", ["id": .string(extId)]) == .ok) }
+    #expect(await wait { h.rt.webviews.records.values.filter { $0.webView?.url?.scheme == "webkit-extension" }.count == 2 })
+    h.tabs("select", ["id": .string(tab)])
+
+    // A second window's URL pill shows the extension buttons too (not only the first window's).
+    h.rt.call("window", "new")
+    let w2 = try #require(h.rt.windows.find("w2"))
+    let ui2 = try #require(ExtensionsUI.of(w2.window))
+    #expect(ui2 !== ExtensionsUI.of(h.rt.windows.main.window))
+    #expect(await wait(10) { ui2.pinnedItems.map(\.id) == [extId] })
+    func pill(_ v: NSView) -> URLPillNode? { (v as? URLPillNode) ?? v.subviews.lazy.compactMap(pill).first }
+    if let side = h.rt.ui.sidebar(of: "w2"), let p = pill(side) {
+      #expect(await wait(10) { p.extensionButtons.map(\.id) == [extId, "menu"] })
+    } else {
+      Issue.record("no URL pill in the second window")
+    }
+    h.rt.call("window", "focus", ["id": "w1"])
+    h.tabs("select", ["id": .string(tab)])
+
     // Popup: shown in den's popover, sized by its page.
 
     #expect(h.rt.call("webext", "action", ["id": .string(extId)]) == .ok)

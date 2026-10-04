@@ -84,6 +84,11 @@ struct ExtensionCompatTests {
     const m = chrome.runtime.getManifest(), bg = m.background || {};
     const files = bg.service_worker ? [bg.service_worker] : (bg.scripts || []);
     const errors = [];
+    // A worker's importScripts, synchronously, so the wrapped worker's scripts run here too.
+    globalThis.importScripts = (...urls) => {
+      // (MV3 pages can't eval: ordered script tags instead; their errors arrive as 'error' events.)
+      for (const u of urls) { const s = document.createElement('script'); s.async = false; s.src = u; document.head.appendChild(s); }
+    };
     addEventListener('error', (e) => errors.push((e.filename || '').split('/').pop() + ':' + e.lineno + ':' + e.colno + ' ' + e.message));
     addEventListener('unhandledrejection', (e) => errors.push('rejection ' + String(e.reason && (e.reason.stack || e.reason)).slice(0, 300)));
     for (const f of files) {
@@ -280,12 +285,27 @@ struct ExtensionCompatTests {
 
     // f, then a hint: the link opens in this tab.
     await fresh()
+    // Which messages reach the content script world: Vimium's own, and tabs.sendMessage with and
+    // without a frameId (link hints' "exit" is broadcast without one).
+    let delivery = await probe(h, extId, page: "pages/options.html", """
+      const [t] = (await chrome.tabs.query({})).filter(t => /\\/links$/.test(t.url || ''));
+      if (!t) return 'no tab';
+      await chrome.scripting.executeScript({target: {tabId: t.id}, func: () => {
+        document.documentElement.dataset.denMsgs = '';
+        chrome.runtime.onMessage.addListener((m) => { document.documentElement.dataset.denMsgs += (m.denPing || m.messageType || m.handler || '?') + ','; return false; });
+      }});
+      try { await chrome.tabs.sendMessage(t.id, {denPing: 'noFrameId'}); } catch (e) {}
+      try { await chrome.tabs.sendMessage(t.id, {denPing: 'frame0'}, {frameId: 0}); } catch (e) {}
+      await new Promise(r => setTimeout(r, 500));
+      return 'sent';
+      """)
+    notes.append("delivery=\(String(describing: delivery)) got=\(await Wait.js(w, "document.documentElement.dataset.denMsgs") ?? "?")")
     press(w, "f", 3)
     _ = await wait(10) { await markers() > 0 }
     let hintA = await Wait.js(w, "document.querySelector('.vimiumHintMarker')?.textContent || ''") as? String ?? ""
     for ch in hintA.lowercased() { press(w, String(ch), Self.hintKeys[ch] ?? 0) }
     ok["f follows a link"] = await wait(10) { w.url?.query != nil }
-    notes.append("f \(hintA) -> \(w.url?.absoluteString ?? "?") markers=\(await markers()) clicks=\(await Wait.js(w, "JSON.stringify(window.__clicks)") ?? "?")")
+    notes.append("f \(hintA) -> \(w.url?.absoluteString ?? "?") markers=\(await markers()) msgs=\(await Wait.js(w, "document.documentElement.dataset.denMsgs") ?? "?") clicks=\(await Wait.js(w, "JSON.stringify(window.__clicks)") ?? "?")")
 
     await fresh()
     let tabsBefore = h.ids("today").count
@@ -440,12 +460,52 @@ struct ExtensionCompatTests {
                      ("chrome", "ldgfbffkinooeloadekpmfoklnobpien", "Raindrop.io")])
   }
 
+  /// What a YouTube watch page carries for ads (the player response's ad fields), and the ad
+  /// requests it made. uBOL's scriptlets prune the fields in the page's own world.
+  static let youTubeAds = """
+    const r = window.ytInitialPlayerResponse;
+    const ads = performance.getEntriesByType('resource').map(e => e.name).filter(u => /doubleclick|googlesyndication|pagead|ptracking|api\\/stats\\/ads/.test(u));
+    return JSON.stringify({response: !!r, adPlacements: r ? (r.adPlacements ? r.adPlacements.length : 0) : -1, playerAds: r ? (r.playerAds ? r.playerAds.length : 0) : -1, adRequests: ads.length, adHosts: [...new Set(ads.map(u => new URL(u).host))].slice(0, 6)});
+    """
+
+  func youTube(_ h: Harness, _ tab: String, _ label: String) async {
+    h.rt.call("tabs", "navigate", ["id": .string(tab), "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw"])
+    try? await Task.sleep(for: .seconds(1))
+    _ = await wait(40) { h.rt.webviews.record(tab)?.loading == false }
+    try? await Task.sleep(for: .seconds(6))
+    guard let w = h.rt.webviews.record(tab)?.webView else { return }
+    print("compat youtube \(label): \(String(describing: await Wait.asyncJS(w, Self.youTubeAds, seconds: 20)))")
+  }
+
   @Test func blockers() async throws {
     let h = Harness()
     h.startTabs()
     h.record(["webext.installed", "webext.failed"])
-    await survey(h, [("chrome", "ddkjiahejlhfcafbddmgiahcphecmpfh", "uBlock Origin Lite"), ("chrome", "cjpalhdlnbpafiamejdnhcphjbkeiagm", "uBlock Origin (Chrome Web Store)"),
-                     ("firefox", "ublock-origin", "uBlock Origin (Firefox Add-ons)")])
+    let tab = h.tabs("open", ["url": "about:blank"]).s("id")
+    h.tabs("select", ["id": .string(tab)])
+    await youTube(h, tab, "before")
+    await survey(h, [("chrome", "ddkjiahejlhfcafbddmgiahcphecmpfh", "uBlock Origin Lite")])
+    let ubol = "ddkjiahejlhfcafbddmgiahcphecmpfh"
+    if h.rt.extensions.contexts[ubol] != nil {
+      _ = await probe(h, ubol, page: Self.probePage(h, ubol), """
+        const out = {};
+        try { out.perms = JSON.stringify(await chrome.permissions.getAll()); } catch (e) { out.perms = 'error ' + e; }
+        try { const s = await chrome.scripting.getRegisteredContentScripts(); out.registered = s.length; out.worlds = [...new Set(s.map(x => x.world || 'ISOLATED'))]; out.sample = s.slice(0, 3).map(x => x.id + ' ' + (x.matches || []).slice(0, 2).join(' ')); } catch (e) { out.registered = 'error ' + e; }
+        try { out.rulesets = JSON.stringify(await chrome.declarativeNetRequest.getEnabledRulesets()); } catch (e) { out.rulesets = 'error ' + e; }
+        try { out.mode = JSON.stringify(await chrome.storage.local.get(null)).slice(0, 300); } catch (e) { out.mode = 'error ' + e; }
+        return JSON.stringify(out);
+        """)
+      // DNR rules compile in the background after a load (seconds).
+      try? await Task.sleep(for: .seconds(15))
+      await youTube(h, tab, "with uBOL")
+    }
+    // Full uBlock Origin's store page: den says it can't block here and offers Lite.
+    h.rt.call("tabs", "navigate", ["id": .string(tab), "url": "https://addons.mozilla.org/en-US/firefox/addon/ublock-origin/"])
+    let offered = await wait(40) { h.rt.extensions.ui.storeOffer?.id == "ublock-origin" }
+    let notice = await wait(5) { h.rt.ui.toasts.contains { $0.toastId == ExtensionsService.storeNoticeToast } }
+    print("compat uBO store page offered=\(offered) notice=\(notice) toasts=\(h.rt.ui.toasts.map { $0.label.stringValue })")
+    #expect(offered && notice)
+    await survey(h, [("chrome", "cjpalhdlnbpafiamejdnhcphjbkeiagm", "uBlock Origin (Chrome Web Store)"), ("firefox", "ublock-origin", "uBlock Origin (Firefox Add-ons)")])
   }
 
   @Test func otherPopularExtensions() async throws {

@@ -114,6 +114,16 @@ struct ExtensionPackageTests {
     (try JSONSerialization.jsonObject(with: Data(contentsOf: d.appendingPathComponent("manifest.json"))) as? [String: Any]) ?? [:]
   }
 
+  @Test func fullUBlockOriginPointsToLite() {
+    for id in ["cjpalhdlnbpafiamejdnhcphjbkeiagm", "ublock-origin"] {
+      let n = ExtensionText.storeNotice(id)
+      #expect(n?.text.hasPrefix("uBlock Origin can’t block ads in den") == true)
+      #expect(n?.actionTitle == "Get uBlock Origin Lite")
+      #expect(n?.alternative == StoreRef(source: .chrome, id: "ddkjiahejlhfcafbddmgiahcphecmpfh"))
+    }
+    #expect(ExtensionText.storeNotice("ddkjiahejlhfcafbddmgiahcphecmpfh") == nil)
+  }
+
   @Test func failureReasonsArePlain() {
     #expect(ExtensionText.failureReason("the store answered 204") == "the store didn’t hand over a download")
     #expect(ExtensionText.failureReason("The Internet connection appears to be offline.").hasPrefix("den couldn’t reach the store"))
