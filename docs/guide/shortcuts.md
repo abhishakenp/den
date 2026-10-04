@@ -1,6 +1,6 @@
 # Keyboard shortcuts
 
-Every shortcut is in den's menu bar (except the mini player's playback keys below), so you can always look one up there. In den, type **Keyboard Shortcuts** in the command bar (⌘T) for a searchable list you can run from.
+Every shortcut is in den's menu bar, so you can always look one up there. In den, type **Keyboard Shortcuts** in the command bar (⌘T) for a searchable list you can run from.
 
 Where Arc and Safari disagree, den follows Arc, and keeps Safari's key as a second shortcut when it's free. The side-by-side comparison with Safari, Chrome and Arc is in [docs/shortcuts.md](../shortcuts.md).
 
@@ -82,23 +82,7 @@ Mouse back/forward buttons and two-finger swipes on the page work too.
 |---|---|
 | Play / pause what's playing | ⌃⌘P, or the play/pause key |
 | Next / previous track | ⌃⌘→ / ⌃⌘←, or the keyboard's media keys |
-
-## Mini player
-
-While the mini player is the active window:
-
-| Action | Keys |
-|---|---|
-| Play / pause | Space |
-| Back / forward 5 s | ← / → |
-| Back / forward a tenth of the video | ⌘← / ⌘→ |
-| Start / end | Home / End |
-| Volume up / down | ↑ / ↓ |
-| Mute / unmute | M, or ⌘↓ / ⌘↑ |
-| Subtitles on / off | C |
-| Keep on top on / off | T |
-| Back to the tab | Esc |
-| Close the player | ⌘W |
+| Picture in picture on / off | ⌥⌘P |
 
 ## Copying
 

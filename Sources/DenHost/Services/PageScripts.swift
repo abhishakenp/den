@@ -6,15 +6,14 @@ import WebKit
 ///
 /// It posts `denMedia` messages only when something changes (never on a timer):
 ///   {k: "s", a, p, d, pip, v, n}  state: a = audible media playing, p = any media playing,
-///                              d = unsaved form input, pip = system PiP active,
-///                              v = the frame's main playing video (or the mini player's video),
+///                              d = unsaved form input, pip = a video of this frame is in picture
+///                              in picture (WebKit's), v = the frame's main playing video,
 ///                              n = now playing: the last media element that played audibly, with
 ///                              the page's Media Session info {title, artist, album, art, paused,
 ///                              dur, video, acts} (acts = the page's Media Session action handlers)
-///   {k: "t", t, dur, paused, muted, vol, rate, cc}  playback, only while the mini player shows this
-///                              frame's video: on timeupdate (≤ 4/s) and on play/pause/seek/volume
-/// and exposes `window.__denMedia` (in the `den` world only) for the host: `isolate(on)`,
-/// `cmd(action, value)`, `act(action, value)` (the now-playing element), `pip()`, `exitPip()`, `live(on)`.
+/// and exposes `window.__denMedia` (in the `den` world only) for the host: `act(action, value)`
+/// (the now-playing element), `pip()` / `exitPip()` (the standard picture-in-picture API, which
+/// WebKit implements with the system PiP window), `probe()`.
 ///
 /// `sessionHook` is the only page-world part: it remembers the page's Media Session action
 /// handlers (WebKit has no way to call them from outside) and tells the den world when they or
@@ -30,7 +29,7 @@ enum PageScripts {
   const H = webkit.messageHandlers.denMedia;
   const post = m => { try { H.postMessage(m) } catch (e) {} };
   const edited = new Set();
-  let last = '', live = false, lastTick = 0, timer = 0, target = null;
+  let last = '', timer = 0;
   // Now playing: the last element that played audibly (`cur`), unless den stopped it.
   let cur = null, stopped = null, acts = [];
   const fin = d => isFinite(d) ? d : (d === Infinity ? -1 : 0);
@@ -88,18 +87,12 @@ enum PageScripts {
       p = true;
       if (!m.muted && m.volume > 0) a = true;
     }
-    const v = target && target.isConnected ? target : best();
-    const s = { k: 's', a, p, d: dirty(), pip: !!document.pictureInPictureElement, v: v && (!v.paused || v === target) ? info(v) : null, n: nowInfo() };
+    const v = best();
+    const s = { k: 's', a, p, d: dirty(), pip: !!document.pictureInPictureElement, v: v ? info(v) : null, n: nowInfo() };
     const key = JSON.stringify(s, (k, x) => k === 't' ? undefined : x);
     if (key !== last) { last = key; post(s); }
   };
   const soon = () => { if (!timer) timer = setTimeout(state, 50); };
-  const tick = force => {
-    const v = target, now = Date.now();
-    if (!v || (!force && now - lastTick < 250)) return;
-    lastTick = now;
-    post({ k: 't', t: v.currentTime, dur: fin(v.duration), paused: v.paused, muted: v.muted, vol: v.volume, rate: v.playbackRate, cc: cc(v) });
-  };
   // An element that plays (or is unmuted while playing) with sound becomes the now-playing one.
   const follow = ev => {
     const m = ev.target;
@@ -109,12 +102,12 @@ enum PageScripts {
   };
   for (const e of ['play', 'playing', 'pause', 'ended', 'volumechange', 'emptied', 'ratechange', 'durationchange', 'loadedmetadata',
                    'seeked', 'enterpictureinpicture', 'leavepictureinpicture']) {
-    document.addEventListener(e, ev => { follow(ev); if (live && ev.target === target) tick(true); soon(); }, true);
+    document.addEventListener(e, ev => { follow(ev); soon(); }, true);
   }
   // Media Session handlers or metadata changed in the page (sessionHook, page world).
   document.addEventListener('__denms', ev => { try { const a = JSON.parse(String(ev.detail || '[]')); if (Array.isArray(a)) acts = a.map(String).slice(0, 16); } catch (e) {} soon(); }, true);
   const fire = a => { try { document.dispatchEvent(new CustomEvent('__denmsdo', { detail: a })); } catch (e) {} return true; };
-  document.addEventListener('timeupdate', ev => { if (live && ev.target === target) tick(false); }, true);
+
   document.addEventListener('input', ev => { if (ev.target && ev.target.nodeType === 1) { edited.add(ev.target); soon(); } }, true);
   document.addEventListener('submit', () => { edited.clear(); soon(); }, true);
   document.addEventListener('reset', () => { edited.clear(); soon(); }, true);
@@ -122,75 +115,21 @@ enum PageScripts {
   document.addEventListener('visibilitychange', state, true);
   window.addEventListener('pagehide', () => { edited.clear(); last = ''; post({ k: 's', a: false, p: false, d: false, pip: false, v: null }); }, true);
 
-  // thin-host: feature-specific, migrate to plugin (isolation CSS belongs to the mini player plugin)
-  // Mini player isolation: the video (or, from a parent frame, the iframe holding it) fills the
-  // viewport on black, everything else is invisible. Layout is untouched, so undoing it is exact.
-  const CSS = 'html.den-mini,html.den-mini body{overflow:hidden!important;background:#000!important}' +
-    'html.den-mini body *{visibility:hidden!important;pointer-events:none!important}' +
-    'html.den-mini [data-den-mini-anc]{transform:none!important;filter:none!important;perspective:none!important;contain:none!important;' +
-    'will-change:auto!important;backdrop-filter:none!important;clip-path:none!important;mask:none!important;content-visibility:visible!important}' +
-    'html.den-mini [data-den-mini]{position:fixed!important;inset:0!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;' +
-    'max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;' +
-    'transform:none!important;object-fit:contain!important;background:#000!important;z-index:2147483647!important;visibility:visible!important;opacity:1!important}';
-  const mark = (el, on) => {
-    const root = document.documentElement;
-    let st = document.getElementById('den-mini-style');
-    document.querySelectorAll('[data-den-mini],[data-den-mini-anc]').forEach(n => { n.removeAttribute('data-den-mini'); n.removeAttribute('data-den-mini-anc'); });
-    if (!on || !el) { root.classList.remove('den-mini'); if (st) st.remove(); return; }
-    if (!st) { st = document.createElement('style'); st.id = 'den-mini-style'; st.textContent = CSS; (document.head || root).appendChild(st); }
-    el.setAttribute('data-den-mini', '');
-    for (let n = el.parentElement; n && n !== root; n = n.parentElement) n.setAttribute('data-den-mini-anc', '');
-    root.classList.add('den-mini');
+  // The video picture in picture shows: the one in it, else the biggest playing one, else the
+  // biggest one that has something to show (a paused video).
+  const pipVideo = () => {
+    if (document.pictureInPictureElement) return document.pictureInPictureElement;
+    let b = best();
+    if (b) return b;
+    let ba = 0;
+    for (const v of document.querySelectorAll('video')) {
+      if (!(v.readyState > 0) || v.disablePictureInPicture) continue;
+      const r = v.getBoundingClientRect(), a = r.width * r.height;
+      if (a >= ba) { ba = a; b = v; }
+    }
+    return b;
   };
-  const up = on => { try { if (window.parent !== window) window.parent.postMessage({ __denMini: on ? 1 : 0 }, '*'); } catch (e) {} };
-  window.addEventListener('message', e => {
-    const m = e.data;
-    if (!m || typeof m !== 'object' || !('__denMini' in m)) return;
-    const f = Array.from(document.querySelectorAll('iframe,frame')).find(x => x.contentWindow === e.source);
-    if (!f) return;
-    mark(m.__denMini ? f : null, !!m.__denMini);
-    up(!!m.__denMini);
-  });
   window.__denMedia = {
-    isolate(on) {
-      if (on) { target = target && target.isConnected ? target : best(); if (!target) return false; }
-      mark(target, on);
-      up(on);
-      if (!on) { live = false; target = null; }
-      state();
-      return true;
-    },
-    live(on) { live = on; if (on) { target = target && target.isConnected ? target : best(); tick(true); } return !!target; },
-    cmd(a, x) {
-      const v = target && target.isConnected ? target : (best() || document.querySelector('video'));
-      if (!v) return false;
-      const d = isFinite(v.duration) ? v.duration : Infinity;
-      switch (a) {
-        case 'play': v.play().catch(() => {}); break;
-        case 'pause': v.pause(); break;
-        case 'toggle': if (v.paused) v.play().catch(() => {}); else v.pause(); break;
-        case 'seek': v.currentTime = Math.max(0, Math.min(x, d)); break;
-        case 'skip': v.currentTime = Math.max(0, Math.min(v.currentTime + x, d)); break;
-        case 'volume': v.volume = Math.max(0, Math.min(1, x)); v.muted = x <= 0; break;
-        case 'mute': v.muted = !!x; break;
-        case 'rate': v.playbackRate = x; break;
-        // Firefox's PiP keys: ⌘←/⌘→ seek by a tenth of the video, Home/End go to its start/end.
-        case 'seekpct': if (isFinite(d)) v.currentTime = Math.max(0, Math.min(v.currentTime + x * d, d)); break;
-        case 'start': v.currentTime = 0; break;
-        case 'end': if (isFinite(d)) v.currentTime = Math.max(0, d - 0.1); break;
-        case 'cc': {
-          const ts = tracks(v);
-          if (!ts.length) return false;
-          if (ts.some(t => t.mode === 'showing')) ts.forEach(t => { t.mode = 'disabled'; });
-          else { const lang = String(navigator.language || '').slice(0, 2); (ts.find(t => String(t.language || '').slice(0, 2) === lang) || ts[0]).mode = 'showing'; }
-          soon();
-          break;
-        }
-        default: return false;
-      }
-      tick(true);
-      return true;
-    },
     // The now-playing element (the sidebar's dock, Control Center, the tab row's hover controls).
     act(a, x) {
       const m = cur && cur.isConnected ? cur : null;
@@ -210,14 +149,23 @@ enum PageScripts {
       soon();
       return true;
     },
+    // WebKit's picture in picture (the system PiP window). Called with a user gesture
+    // (callAsyncJavaScript), which `requestPictureInPicture` needs.
     async pip() {
-      const v = target && target.isConnected ? target : best();
+      const v = pipVideo();
       if (!v) return false;
+      if (document.pictureInPictureElement === v) return true;
       try { await v.requestPictureInPicture(); return true; } catch (e) {}
-      try { v.webkitSetPresentationMode('picture-in-picture'); return true; } catch (e) { return false; }
+      try { if (v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture')) { v.webkitSetPresentationMode('picture-in-picture'); return true; } } catch (e) {}
+      return false;
     },
-    async exitPip() { try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); } catch (e) {} return true; },
-    probe() { const v = target && target.isConnected ? target : (best() || document.querySelector('video')); return v ? info(v) : null; },
+    async exitPip() {
+      if (!document.pictureInPictureElement) return false;
+      try { await document.exitPictureInPicture(); } catch (e) { return false; }
+      return true;
+    },
+    probe() { const v = pipVideo() || document.querySelector('video'); return v ? Object.assign(info(v), { inPip: document.pictureInPictureElement === v }) : null; },
+
   };
 })();
 """#

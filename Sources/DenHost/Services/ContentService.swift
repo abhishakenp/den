@@ -35,9 +35,10 @@ public final class ContentService: HostService {
   public var holdWebViews = false
   /// Space accent for the focused-pane ring (set by the ui service on palette changes).
   public var accent: NSColor? { didSet { current.accent = accent } }
-  /// Asked for each live page leaving the screen: true when the mini player takes its web view.
-  public var adoptLeaving: ((String) -> Bool)?
-  /// Called before a page's web view goes (back) into its card: the mini player lets go of it.
+  /// Told about each live page leaving the screen (a tab switch), its web view still in the
+  /// window (the `media` service may put its video in picture in picture).
+  public var leaving: ((String) -> Void)?
+  /// Called before a live page's web view goes (back) into its card (a PiP den started ends).
   public var willAttach: ((String) -> Void)?
   /// Longest a restore placeholder stays up.
   public var coverTimeout: TimeInterval = 1.5
@@ -127,11 +128,6 @@ public final class ContentService: HostService {
 
   /// Whether a restore placeholder is up (tests, scenarios).
   public func isCovered(_ id: String) -> Bool { byWindow.values.contains { $0.isCovered(id) } }
-
-  /// Takes a pane's live web view out of its card (the mini player shows it while den's window
-  /// isn't visible); `reattach` puts it back.
-  public func detachForMini(_ id: String) -> WKWebView? { current.detachForMini(id) }
-  public func reattach(_ id: String) { current.reattach(id) }
 
   /// Ends `holdWebViews`: creates and attaches the web views of the panes on screen, in every
   /// window (restored windows included), the active one last so it wins a shared page.
@@ -240,7 +236,7 @@ final class WindowContent {
       elsewhere.removeValue(forKey: id)?.removeFromSuperview()
       uncover(id, animated: false)
       guard let r = webviews.record(id), let w = r.webView, w.superview != nil, w.superview === cards[id]?.clip else { continue }
-      if svc.adoptLeaving?(id) == true { continue }
+      svc.leaving?(id)
       // Keep a picture of the page on disk (for a later restore and for previews), then let it go.
       parking.frame = cards[id]?.frame ?? w.frame
       parking.addSubview(w)
@@ -375,21 +371,6 @@ final class WindowContent {
     for v in card.clip.subviews where !(v is ElsewhereView) { v.removeFromSuperview() }
   }
 
-  func detachForMini(_ id: String) -> WKWebView? {
-    guard panes.contains(id), let w = webviews.record(id)?.webView, w.superview === cards[id]?.clip else { return nil }
-    w.removeFromSuperview()
-    return w
-  }
-
-  func reattach(_ id: String) {
-    guard panes.contains(id), let card = cards[id], let w = webviews.record(id)?.webView, w.superview !== card.clip else { return }
-    if let other = svc.owner(of: w), other !== self { other.lost(id) }
-    svc.willAttach?(id)
-    elsewhere.removeValue(forKey: id)?.removeFromSuperview()
-    card.clip.addSubview(w)
-    card.needsLayout = true
-    if id == focused { wc.window.makeFirstResponder(w) }
-  }
 
   /// Shows `id` in the side column (nil hides it), sliding it out from (or back into) the sidebar
   /// edge while the panes make room. The previous side web view leaves the window.

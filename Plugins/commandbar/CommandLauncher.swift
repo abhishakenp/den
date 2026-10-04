@@ -37,8 +37,9 @@ extension CommandBarCore {
     PluginSetting(service: "tabs", field: "batterySaver", title: "Battery saver", pane: "Tabs", icon: "sf:battery.75percent",
                   type: "toggle", options: [], keywords: ["energy", "low power", "battery", "autoplay", "power"]),
     // Arc: "Enable Picture in Picture when you leave a video tab" (host `media` service).
-    PluginSetting(service: "media", field: "autoMiniPlayer", title: "Mini player when you leave a playing video", pane: "Tabs", icon: "sf:pip",
-                  type: "toggle", options: [], keywords: ["picture in picture", "pip", "video", "mini player", "youtube"]),
+    PluginSetting(service: "media", field: "autoPip", title: "Picture in Picture when you leave a playing video", pane: "Tabs", icon: "sf:pip",
+                  type: "toggle", options: [], keywords: ["picture in picture", "pip", "video", "mini player", "youtube", "automatic"]),
+
     PluginSetting(service: "briefing", field: "enabled", title: "Morning briefing", pane: "Briefing", icon: "sf:sun.max", type: "toggle",
                   options: [], keywords: ["daily", "schedule", "summary"]),
   ]

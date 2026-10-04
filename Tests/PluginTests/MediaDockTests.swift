@@ -20,7 +20,7 @@ struct MediaDockTests {
     let base = h.env
     var env = base
     env.invoke = { s, m, a in
-      if (s == "webviews" && (m == "mediaControl" || m == "setMuted")) || (s == "tabs" && m == "select") {
+      if (s == "webviews" && (m == "mediaControl" || m == "setMuted")) || (s == "tabs" && m == "select") || s == "media" {
         calls.list.append((s + "." + m, a))
         return ["ok": true]
       }
@@ -31,8 +31,8 @@ struct MediaDockTests {
     return core
   }
 
-  func now(_ title: String, paused: Bool = false, next: Bool = false) -> Value {
-    ["title": .string(title), "artist": "Artist", "album": "", "art": "", "paused": .bool(paused), "dur": 200, "video": false,
+  func now(_ title: String, paused: Bool = false, next: Bool = false, video: Bool = false) -> Value {
+    ["title": .string(title), "artist": "Artist", "album": "", "art": "", "paused": .bool(paused), "dur": 200, "video": .bool(video),
      "acts": next ? ["nexttrack", "previoustrack"] : []]
   }
 
@@ -95,14 +95,10 @@ struct MediaDockTests {
     #expect(titles(h) == ["First", "Second"])
     #expect(dock(h).list("children")[0].list("children")[1].list("children")[3].str("icon") == "sf:speaker.slash.fill")
 
-    // The tab on screen and the mini player's aren't listed.
+    // The tab on screen isn't listed.
     h.rt.plugins.emit("tabs.selected", ["id": "a"])
     #expect(titles(h) == ["Second"])
-    h.rt.plugins.emit("media.miniPlayer", ["webview": "b", "open": true])
-    #expect(dock(h).isNull)
     #expect(h.rt.nowPlaying.info.str("title") == "First", "the tab on screen is still what the media keys drive")
-    h.rt.plugins.emit("media.miniPlayer", ["webview": "b", "open": false])
-    #expect(titles(h) == ["Second"])
 
     // Stopped or closed: gone; the last one gone clears everything.
     emit(h, "b", nil)
@@ -113,10 +109,38 @@ struct MediaDockTests {
   @Test func keysAreBoundInTheViewMenu() {
     let h = Harness()
     let core = start(h, Calls())
-    for chord in ["ctrl+cmd+p", "ctrl+cmd+right", "ctrl+cmd+left"] { #expect(h.rt.keys.bindings[chord]?.menu == "View", "\(chord)") }
+    for chord in ["ctrl+cmd+p", "ctrl+cmd+right", "ctrl+cmd+left", "cmd+opt+p"] { #expect(h.rt.keys.bindings[chord]?.menu == "View", "\(chord)") }
+    #expect(h.rt.keys.bindings["cmd+opt+p"]?.title == "Picture in Picture")
     core.stop()
-    #expect(h.rt.keys.bindings["ctrl+cmd+p"] == nil)
+    #expect(h.rt.keys.bindings["ctrl+cmd+p"] == nil && h.rt.keys.bindings["cmd+opt+p"] == nil)
   }
+
+  /// Picture in picture around the system window: ⌥⌘P asks the host to toggle (with the newest
+  /// playing tab as the fallback), and a video's card has a PiP button that follows `media.pip`.
+  /// The tab in PiP stays listed, so den's own controls (mute, play/pause, stop) work on it.
+  @Test func pictureInPictureKeyAndButton() {
+    let h = Harness()
+    defer { _ = h.rt.call("nowplaying", "clear") }
+    let calls = Calls()
+    start(h, calls)
+    emit(h, "a", now("Song"))
+    emit(h, "v", now("Clip", video: true))
+    func buttons(_ i: Int) -> [Value] { dock(h).list("children")[i].list("children")[1].list("children") }
+    h.action("media.more", "click")
+    #expect(buttons(0).map { $0.str("id") } == ["media.previous:v", "media.toggle:v", "media.next:v", "media.mute:v", "media.pip:v", "media.stop:v"])
+    #expect(!buttons(1).contains { $0.str("id") == "media.pip:a" }, "audio has no PiP button")
+    #expect(buttons(0)[4].str("icon") == "sf:pip.enter")
+    h.key("cmd+opt+p")
+    h.action("media.pip:v", "click")
+    h.rt.plugins.emit("media.pip", ["webview": "v", "open": true, "auto": false])
+    #expect(titles(h) == ["Clip", "Song"], "the tab in PiP is still listed")
+    #expect(buttons(0)[4].str("icon") == "sf:pip.exit" && buttons(0)[4].str("tooltip") == "Exit Picture in Picture")
+    h.action("media.pip:v", "click")
+    h.rt.plugins.emit("media.pip", ["webview": "v", "open": false, "auto": false])
+    #expect(buttons(0)[4].str("icon") == "sf:pip.enter")
+    #expect(calls.list.map { $0.0 + " " + $0.1.str("webview") + $0.1.str("fallback") } == ["media.toggle v", "media.enter v", "media.exit v"])
+  }
+
 
   /// The tabs plugin puts the page's playback state on its row (the hover buttons) and sends
   /// their clicks to the page.

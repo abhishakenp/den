@@ -2091,8 +2091,10 @@ final class TabsCore {
       guard changed else { return }
       if favorites.contains(id) { renderFavorites() } else if let sid = spaceOf(id) { renderPage(sid) }
     }
-    // The mini player's "back to tab" (host `media` service).
-    env.on("media.backToTab") { [self] v in if tabs[v.s("webview")] != nil { select(v.s("webview")) } }
+    // The picture-in-picture window's return button (host `media` service): its tab, in its
+    // space and window.
+    env.on("media.backToTab") { [self] v in if tabs[v.s("webview")] != nil || ptabs[v.s("webview")] != nil { select(v.s("webview")) } }
+
     // target=_blank and window.open (foreground); ⌘-click / middle-click / "Open Link in New Tab"
     // come with `background: true` (⌘⇧-click: false).
     startPopups()

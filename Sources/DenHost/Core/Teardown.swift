@@ -28,7 +28,6 @@ extension DenRuntime {
       w.removeFromSuperview()
       if w.responds(to: close) { w.perform(close) }
     }
-    media.panel?.orderOut(nil)
     for w in windows.all { w.window.orderOut(nil) }
     pids.formUnion(webviews.destroyedProcessIds)
     return pids.sorted()

@@ -2,7 +2,7 @@
 
 den's shortcuts next to Safari's, Chrome's and Arc's. Arc's come from its live menus and nib (spec §9, `docs/research/arc.md` §15). Where Arc and Safari disagree, Arc wins, and the standard key is kept as a second shortcut when it's free.
 
-Every shortcut is an item in den's menu bar (den, File, Edit, View, History, Spaces, Tabs, Window, Help; the mini player's playback keys are the exception), so it shows its key and goes through AppKit's normal key-equivalent path. A second key for the same action is a hidden alternate of that item. `ShortcutTests.everyShortcutDispatchesThroughTheMainMenu` sends the chords below through the real main menu as keyboard events and checks the command each reaches (not yet covered: Esc for Close Peek, ⌘Z Reopen Peek, ⌥⌘H, Reader ⌃⌘R, Capture ⇧⌘2).
+Every shortcut is an item in den's menu bar (den, File, Edit, View, History, Spaces, Tabs, Window, Help), so it shows its key and goes through AppKit's normal key-equivalent path. A second key for the same action is a hidden alternate of that item. `ShortcutTests.everyShortcutDispatchesThroughTheMainMenu` sends the chords below through the real main menu as keyboard events and checks the command each reaches (not yet covered: Esc for Close Peek, ⌘Z Reopen Peek, ⌥⌘H, Reader ⌃⌘R, Capture ⇧⌘2).
 
 **Remapping.** In `~/.den/config.toml`, `[shortcuts]` maps a chord to a menu item id (the last column), or to a command bar command id:
 
@@ -104,6 +104,7 @@ The newest playing tab (the top of the sidebar's now-playing dock) is den's "now
 | Play / pause media | – | ⌃⌘P | View ▸ Play or Pause Media |
 | Next track | – | ⌃⌘→ | View ▸ Next Track |
 | Previous track | – | ⌃⌘← | View ▸ Previous Track |
+| Picture in picture on / off (WebKit's, the system PiP window) | – | ⌥⌘P | View ▸ Picture in Picture |
 
 ## Address and sharing
 
@@ -142,23 +143,6 @@ den ▸ Hide Others is ⌥⌘H (`app.hideOthers`).
 | Space 1…9 | ⌃1…9 | ⌃1…9 (listed by name) | Spaces menu |
 | Next / previous space | ⌥⌘→ / ⌥⌘← | ⌥⌘→ / ⌥⌘← | `spaces.next`, `spaces.prev` |
 | Two-finger swipe in the sidebar | ✓ | ✓ | – |
-
-## Mini player
-
-While the mini player window is key (a playing video you left, see [guide/media.md](guide/media.md)). These are the panel's own keys, not menu items, so they can't be remapped.
-
-| Action | den |
-|---|---|
-| Play / pause | Space |
-| Back / forward 5 s | ← / → |
-| Back / forward a tenth of the video (Firefox) | ⌘← / ⌘→ |
-| Start / end (Firefox) | Home / End |
-| Volume up / down | ↑ / ↓ |
-| Mute / unmute | M; ⌘↓ / ⌘↑ (Firefox) |
-| Subtitles on / off | C |
-| Keep on top on / off | T |
-| Back to the tab | Esc |
-| Close the player (Firefox) | ⌘W |
 
 ## Edit
 

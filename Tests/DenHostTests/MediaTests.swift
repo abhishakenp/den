@@ -7,8 +7,9 @@ import WebKit
 
 @testable import DenHost
 
-/// The mini player and the page's media/form reports, on a local page playing
-/// Tests/Fixtures/test-video.mp4 from MockServices (no network).
+/// Picture in picture (WebKit's native PiP, the system window Safari uses) and the page's
+/// media/form reports, on a local page playing Tests/Fixtures/test-video.mp4 from MockServices
+/// (no network). den has no player window of its own.
 @MainActor
 @Suite(.serialized, .watchdog)
 struct MediaTests {
@@ -35,7 +36,11 @@ struct MediaTests {
     #expect(mock.file("video/mp4", Data(0..<100), range: nil).0 == 200)
   }
 
-  @Test func miniPlayerFollowsTheVideoOnTabSwitch() async throws {
+  /// Leaving a tab whose video plays with sound puts that video in WebKit's picture in picture
+  /// (WebKit's delegate says so, and the system PiP window is on screen); it keeps playing there
+  /// and the page can't be discarded; coming back takes it out, still playing. The old mini
+  /// player is gone: no den window or panel ever holds the web view.
+  @Test func tabSwitchUsesNativePictureInPicture() async throws {
     let rt = ServiceTests.runtime()
     rt.window.window.orderFront(nil)
     defer { rt.window.window.orderOut(nil) }
@@ -51,39 +56,137 @@ struct MediaTests {
     // Unsaved input is reported (and keeps a page from being discarded).
     _ = await Wait.asyncJS(web, "const i = document.getElementById('i'); i.value = 'draft'; i.dispatchEvent(new Event('input')); return true")
     #expect(await wait { rt.webviews.record(id)?.media.dirty == true })
+    let windowsBefore = Set(NSApp.windows.map(ObjectIdentifier.init))
 
     _ = rt.call("content", "show", ["panes": [.string(other)]])
-    #expect(rt.media.playerId == id)
-    #expect(web.window === rt.media.panel)
-    #expect(rt.call("webviews", "suspend", ["id": .string(id)])["reason"] == "media")
-    let isolated = { await Wait.asyncJS(web, "return document.documentElement.classList.contains('den-mini')", seconds: 5) as? Bool }
-    #expect(await Wait.until("the page isolated in the mini player") { await isolated() == true })
-    #expect(rt.call("media", "control", ["action": "pause"]) == .ok)
-    #expect(await wait { rt.media.panel?.player.controls.paused == true })
+    #expect(await wait(10) { rt.media.active.contains(id) }, "WebKit reports the video in PiP")
+    #expect(rt.media.auto.contains(id) && rt.call("media", "get")["pip"] == [.string(id)])
+    #expect(rt.call("webviews", "get", ["id": .string(id)])["media"]["pip"] == true)
+    #expect(await wait(5) { !NativePiP.systemWindows().isEmpty }, "the system PiP window is on screen")
+    #expect(rt.call("webviews", "suspend", ["id": .string(id)])["reason"] == "pip")
+    // den drew nothing: the web view is in none of den's windows, and no window of den's own
+    // appeared (PIP.framework's in-process PIPPanel is the system's).
+    #expect(web.window == nil || web.window === rt.window.window)
+    let added = NSApp.windows.filter { !windowsBefore.contains(ObjectIdentifier($0)) }.map { NSStringFromClass(type(of: $0)) }
+    #expect(!added.contains { $0.hasPrefix("DenHost.") || $0.contains("Mini") }, "\(added)")
 
-    // Back: inline again, isolation undone, the player gone.
+    // Live in PiP: the clock moves.
+    let t0 = await Wait.asyncJS(web, "return document.querySelector('video').currentTime") as? Double ?? 0
+    #expect(await Wait.until("the video plays on in PiP") { (await Wait.asyncJS(web, "return document.querySelector('video').currentTime") as? Double ?? 0) > t0 + 1 })
+
+    // Back: out of PiP, inline, still playing.
     _ = rt.call("content", "show", ["panes": [.string(id)]])
-    #expect(rt.media.playerId == nil && rt.media.panel == nil)
+    #expect(await wait(10) { !rt.media.active.contains(id) && rt.media.auto.isEmpty })
     #expect(web.superview === rt.content.card(id)?.clip)
-    #expect(await Wait.until("the page back inline") { await isolated() == false })
-    // Paused: nothing to follow.
+    #expect(await Wait.asyncJS(web, "return !document.pictureInPictureElement && !document.querySelector('video').paused") as? Bool == true)
+
+    // Paused: nothing to put in PiP.
+    _ = await Wait.asyncJS(web, "document.querySelector('video').pause(); return true")
+    #expect(await wait { rt.media.eligibleVideo(id) == nil })
     _ = rt.call("content", "show", ["panes": [.string(other)]])
-    #expect(rt.media.playerId == nil)
+    try await Task.sleep(for: .seconds(1))
+    #expect(rt.media.active.isEmpty)
+    // Off: not even a playing one.
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    _ = await Wait.asyncJS(web, "await document.querySelector('video').play(); return true")
+    #expect(rt.call("media", "settings", ["autoPip": false]) == ["autoPip": false])
+    #expect(rt.call("storage", "get", ["ns": "media", "key": "settings"])["autoPip"] == false)
+    _ = rt.call("content", "show", ["panes": [.string(other)]])
+    try await Task.sleep(for: .seconds(1))
+    #expect(rt.media.active.isEmpty)
+    _ = rt.call("media", "settings", ["autoPip": true])
     mock.stop()
   }
 
-  /// The controls darken the top and bottom edges (scrims) so white controls read over video.
-  @Test func controlsDrawScrims() throws {
-    let v = MiniControlsView(frame: NSRect(x: 0, y: 0, width: 400, height: 225))
-    v.layoutSubtreeIfNeeded()
-    let rep = try #require(v.bitmapImageRepForCachingDisplay(in: v.bounds))
-    v.cacheDisplay(in: v.bounds, to: rep)
-    let top = rep.colorAt(x: 200 * Int(rep.pixelsWide) / 400, y: 2)?.alphaComponent ?? 0
-    // Sample in points, not pixels: 82 pt from the top is between the scrims (0–60 pt, 141–225 pt)
-    // at any backing scale (a fixed pixel offset landed inside the top scrim on 1x displays).
-    let mid = rep.colorAt(x: 150 * Int(rep.pixelsWide) / 400, y: 82 * rep.pixelsHigh / 225)?.alphaComponent ?? 1
-    let bottom = rep.colorAt(x: 200 * Int(rep.pixelsWide) / 400, y: rep.pixelsHigh - 2)?.alphaComponent ?? 0
-    #expect(top > 0.4 && bottom > 0.4 && mid < 0.05, "top \(top) mid \(mid) bottom \(bottom)")
+  /// The PiP window's buttons, as PIP.framework calls them on WebKit (`pipShouldClose:` is the
+  /// return button, `pipActionStop:` the close button): return goes back to the tab
+  /// (`media.backToTab`), close pauses and stays away. And Picture in Picture by hand
+  /// (`media.toggle`, ⌥⌘P) isn't undone by a tab switch, like Safari.
+  @Test func pipWindowButtonsAndToggle() async throws {
+    let rt = ServiceTests.runtime()
+    rt.window.window.orderFront(nil)
+    defer { rt.window.window.orderOut(nil) }
+    let mock = try Self.served()
+    let id = rt.call("webviews", "create", ["id": "b", "url": .string(mock.base + "/v.html")])["id"].string!
+    let other = rt.call("webviews", "create", ["id": "c"])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    let web = try #require(rt.webviews.record(id)?.webView)
+    #expect(await wait { !web.isLoading && web.url != nil })
+    let play = "const v = document.querySelector('video'); v.muted = false; await v.play(); return true"
+    _ = await Wait.asyncJS(web, play)
+    #expect(await wait { rt.media.eligibleVideo(id) != nil })
+    var back: [Value] = []
+    // What the tabs plugin does: select the tab, so its web view is back in the window, where
+    // WebKit puts the video back.
+    _ = rt.host.on("media.backToTab") { v in
+      back.append(v)
+      _ = rt.call("content", "show", ["panes": [v["webview"]]])
+    }
+
+
+    // Return button.
+    _ = rt.call("content", "show", ["panes": [.string(other)]])
+    #expect(await wait(10) { rt.media.active.contains(id) })
+    try await Task.sleep(for: .seconds(1))  // the PiP window's opening animation
+    #expect(MediaScenarios.pressPipButton("pipShouldClose:"))
+    #expect(await wait(10) { !rt.media.active.contains(id) })
+    #expect(back == [["webview": .string(id)]])
+    #expect(await Wait.asyncJS(web, "return document.querySelector('video').paused") as? Bool == false)
+
+    // Close button.
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    _ = rt.call("content", "show", ["panes": [.string(other)]])
+    #expect(await wait(10) { rt.media.active.contains(id) })
+    try await Task.sleep(for: .seconds(1))
+    #expect(MediaScenarios.pressPipCloseButton())
+    #expect(await Wait.until("the close button pauses") { await Wait.asyncJS(web, "return document.querySelector('video').paused") as? Bool == true })
+    #expect(await wait(10) { rt.media.active.isEmpty })
+    #expect(back.count == 1, "the close button doesn't go back to the tab")
+
+
+    // By hand: the focused pane's video, kept across a tab switch, toggled back out.
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    _ = await Wait.asyncJS(web, play)
+    #expect(await wait { rt.media.eligibleVideo(id) != nil })
+    #expect(rt.call("media", "toggle") == ["webview": .string(id), "pip": true])
+    #expect(await wait(10) { rt.media.active.contains(id) && !rt.media.auto.contains(id) })
+    _ = rt.call("content", "show", ["panes": [.string(other)]])
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    try await Task.sleep(for: .seconds(1))
+    #expect(rt.media.active.contains(id), "a PiP you started stays when you come back")
+    #expect(rt.call("media", "toggle") == ["webview": .string(id), "pip": false])
+    #expect(await wait(10) { rt.media.active.isEmpty })
+    #expect(rt.call("media", "toggle", ["webview": "nope"])["error"].string != nil)
+    mock.stop()
+  }
+
+  /// The old player's failure: with the video scrolled partly or fully out of view, its window
+  /// showed only what was still visible (the rest black). WebKit's PiP takes the whole video
+  /// from its player, not from the page: it enters, and plays on, from a scrolled page.
+  @Test func scrolledVideoEntersPictureInPicture() async throws {
+    let rt = ServiceTests.runtime()
+    rt.window.window.orderFront(nil)
+    defer { rt.window.window.orderOut(nil) }
+    let mock = try Self.served()
+    mock.files["/tall.html"] = ("text/html", Data("<title>T</title><video src='/v.mp4' style='width:640px' loop></video><div style='height:4000px'></div>".utf8))
+    let id = rt.call("webviews", "create", ["id": "s", "url": .string(mock.base + "/tall.html")])["id"].string!
+    let other = rt.call("webviews", "create", ["id": "t"])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    let web = try #require(rt.webviews.record(id)?.webView)
+    #expect(await wait { !web.isLoading && web.url != nil })
+    _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.muted = false; await v.play(); return true")
+    #expect(await wait { rt.media.eligibleVideo(id) != nil })
+    for y in [200, 2000] {
+      _ = await Wait.asyncJS(web, "window.scrollTo(0, \(y)); return window.scrollY")
+      try await Task.sleep(for: .milliseconds(400))
+      _ = rt.call("content", "show", ["panes": [.string(other)]])
+      #expect(await wait(10) { rt.media.active.contains(id) }, "scrolled \(y)")
+      let t0 = await Wait.asyncJS(web, "return document.querySelector('video').currentTime") as? Double ?? 0
+      #expect(await Wait.until("plays on in PiP, scrolled \(y)") { (await Wait.asyncJS(web, "return document.querySelector('video').currentTime") as? Double ?? 0) > t0 + 1 })
+      _ = rt.call("content", "show", ["panes": [.string(id)]])
+      #expect(await wait(10) { rt.media.active.isEmpty })
+    }
+    mock.stop()
   }
 
   /// A discarded page's WKWebView is released at once (nothing in den keeps it), which is what
@@ -118,10 +221,10 @@ struct MediaTests {
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     let web = try #require(rt.webviews.record(id)?.webView)
     #expect(await wait { !web.isLoading && web.url != nil })
-    // Audible (WebKit already pauses muted video that isn't visible); the mini player is off so
-    // the page really goes to the background.
-    _ = rt.call("media", "settings", ["autoMiniPlayer": false])
-    defer { _ = rt.call("media", "settings", ["autoMiniPlayer": true]) }
+    // Audible (WebKit already pauses muted video that isn't visible); picture in picture is off
+    // so the page really goes to the background.
+    _ = rt.call("media", "settings", ["autoPip": false])
+    defer { _ = rt.call("media", "settings", ["autoPip": true]) }
     _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.muted = false; await v.play(); return true")
     #expect(await wait { rt.webviews.record(id)?.media.playing == true })
     #expect(rt.call("webviews", "get", ["id": .string(id)])["media"]["audible"] == true)
@@ -157,13 +260,12 @@ struct MediaTests {
     mock.stop()
   }
 
-  @Test func playerGeometry() {
-    let vf = NSRect(x: 0, y: 0, width: 1440, height: 900)
-    let f = MiniPlayerPanel.frame(corner: .bottomRight, size: NSSize(width: 400, height: 225), in: vf)
-    #expect(f == NSRect(x: 1024, y: 16, width: 400, height: 225))
-    #expect(MiniPlayerPanel.nearestCorner(NSRect(x: 100, y: 700, width: 300, height: 150), in: vf) == .topLeft)
-    #expect(MiniPlayerPanel.nearestCorner(f, in: vf) == .bottomRight)
-    #expect(MiniControlsView.clock(65) == "1:05" && MiniControlsView.clock(3723) == "1:02:03")
-    #expect(MiniControlsView.rateText(1.5) == "1.5×" && MiniControlsView.rateText(2) == "2×")
+  /// The custom mini player is gone for good: no player panel class in den, no isolation CSS in
+  /// the page script, and the old setting reads as the new one.
+  @Test func noCustomPlayerLeft() {
+    #expect(NSClassFromString("DenHost.MiniPlayerPanel") == nil && NSClassFromString("MiniPlayerPanel") == nil)
+    #expect(!PageScripts.media.contains("den-mini") && !PageScripts.media.contains("isolate("))
+    #expect(PageScripts.media.contains("requestPictureInPicture"))
   }
 }
+

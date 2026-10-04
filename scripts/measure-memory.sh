@@ -3,8 +3,8 @@
 # for (WebContent, Networking, GPU), with `footprint` (phys_footprint, Activity Monitor's Memory).
 # usage: scripts/measure-memory.sh <scenario> [wait-seconds]
 #   scenarios: blank (no web view: den only), main (1 live tab), load10 (10 tabs loaded, all live),
-#              load10discard (10 tabs loaded, then 9 discarded), mini (a video playing in the mini player),
-#              miniInline (the same video playing in its tab). SETTLE=<s> waits longer after scenario.ready.
+#              load10discard (10 tabs loaded, then 9 discarded), pipAway (a video playing in picture in picture),
+#              pipInline (the same video playing in its tab). SETTLE=<s> waits longer after scenario.ready.
 # CPU=1 also samples %CPU of every process for 10 s (top).
 # APP=path/to/den.app overrides build/den.app. FOOTPRINT_RAW=1 also prints footprint's own output.
 #   DEN_EXTENSIONS_FROM=<an extensions folder> (extensions.json + <id>/ + icons/) measures with those installed.
@@ -29,7 +29,7 @@ for i in {1..100}; do pid=$(pgrep -f -- "--storage $store" | head -1 || true); [
 [[ -n $pid ]] || { echo "den did not start"; exit 1; }
 # Never leave a den behind, even if a reader of this script's output stops early (SIGPIPE).
 trap 'kill -9 $pid 2>/dev/null; rm -rf "$store"' EXIT
-if [[ $scenario == load10* || $scenario == mini* ]]; then
+if [[ $scenario == load10* || $scenario == pip* ]]; then
   for i in {1..150}; do grep -q scenario.ready "$store/out.txt" && break; sleep 1; done
   sleep ${SETTLE:-5}
 else

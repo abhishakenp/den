@@ -547,7 +547,7 @@ public final class IconButton: NSView, Themable, Hoverable {
     let tip = Shortcuts.tip(t, tipRef, fallback: tipFallback)
     if toolTip != tip { toolTip = tip.isEmpty ? nil : tip }
   }
-  /// Acts on the click that also focuses its window (the mini player, which never activates den).
+  /// Acts on the click that also focuses its window (in a panel that never activates den).
   var firstMouse = false
   public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { firstMouse }
   public override func mouseDown(with event: NSEvent) {}

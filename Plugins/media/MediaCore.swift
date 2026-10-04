@@ -9,11 +9,15 @@
 /// `webviews.nowPlaying` events (the page's own media events and Media Session metadata; no
 /// polling). The dock shows them in the `sidebar.dock` slot: artwork, title, artist, and
 /// previous / play-pause / next / mute / stop; a click on the artwork or title goes to the tab.
-/// The tab on screen and the one in the mini player aren't listed (their controls are right
-/// there), like Arc. With more than one, only the newest shows until "N more" expands the stack.
+/// The tab on screen isn't listed (its controls are right there), like Arc; a tab whose video is
+/// in picture in picture is, with a button that brings it back (den's controls around the system
+/// PiP window, which den never draws over). With more than one, only the newest shows until
+/// "N more" expands the stack.
 ///
 /// The newest one is den's "now playing" (`nowplaying.set`): Control Center and the media keys
-/// drive it (`nowplaying.command`), and so do ⌃⌘P, ⌃⌘← and ⌃⌘→.
+/// drive it (`nowplaying.command`), and so do ⌃⌘P, ⌃⌘← and ⌃⌘→. ⌥⌘P (View ▸ Picture in
+/// Picture, the command bar's "Picture in Picture") puts the tab on screen's video, else the
+/// newest one's, in WebKit's picture in picture, or takes it out (host `media.toggle`).
 ///
 /// Cost: nothing is rendered or registered with the system until something plays; the slot is
 /// cleared and `nowplaying.clear` called when the last one stops.
@@ -34,13 +38,15 @@ final class MediaCore {
   static let toggleChord = "ctrl+cmd+p"
   static let nextChord = "ctrl+cmd+right"
   static let previousChord = "ctrl+cmd+left"
+  static let pipChord = "cmd+opt+p"
 
   let env: PluginEnv
   var entries: [String: Entry] = [:]
   /// Most recent first: new entries, and entries that start playing again, move to the front.
   var order: [String] = []
   var selected: String?
-  var miniPlayer: String?
+  /// Tabs whose video is in picture in picture.
+  var pip: [String] = []
   var expanded = false
   var rendered = false
   var published: Value = .null
@@ -64,10 +70,13 @@ final class MediaCore {
       selected = v.sOpt("id")
       render()
     }
-    env.on("media.miniPlayer") { [self] v in
-      miniPlayer = v.b("open") ? v.sOpt("webview") : (miniPlayer == v.s("webview") ? nil : miniPlayer)
+    env.on("media.pip") { [self] v in
+      let id = v.s("webview")
+      pip.removeAll { $0 == id }
+      if v.b("open") { pip.append(id) }
       render()
     }
+    env.on("media.key.pip") { [self] _ in togglePip() }
     env.on("ui.action") { [self] v in action(v.s("id"), v.s("action"), v["value"]) }
     env.on("nowplaying.command") { [self] v in if let id = order.first { control(id, v.s("command")) } }
     env.on("media.key.toggle") { [self] _ in if let id = order.first { control(id, "toggle") } }
@@ -75,13 +84,13 @@ final class MediaCore {
     env.on("media.key.previous") { [self] _ in if let id = order.first { control(id, "previous") } }
     selected = env.call("tabs", "selected")["id"].string
     for (chord, event, title) in [(Self.toggleChord, "media.key.toggle", "Play or Pause Media"), (Self.nextChord, "media.key.next", "Next Track"),
-                                  (Self.previousChord, "media.key.previous", "Previous Track")] {
+                                  (Self.previousChord, "media.key.previous", "Previous Track"), (Self.pipChord, "media.key.pip", "Picture in Picture")] {
       env.call("keys", "bind", ["chord": .string(chord), "event": .string(event), "title": .string(title), "menu": "View"])
     }
   }
 
   func stop() {
-    for c in [Self.toggleChord, Self.nextChord, Self.previousChord] { env.call("keys", "unbind", ["chord": .string(c)]) }
+    for c in [Self.toggleChord, Self.nextChord, Self.previousChord, Self.pipChord] { env.call("keys", "unbind", ["chord": .string(c)]) }
     if rendered { env.call("ui", "set", ["slot": .string(Self.slot), "tree": .null]) }
     if !published.isNull { env.call("nowplaying", "clear") }
   }
@@ -113,8 +122,16 @@ final class MediaCore {
     render()
   }
 
-  /// The entries the dock lists: everything except the tab on screen and the mini player's.
-  var listed: [Entry] { order.compactMap { entries[$0] }.filter { $0.id != selected && $0.id != miniPlayer } }
+  /// The entries the dock lists: everything except the tab on screen.
+  var listed: [Entry] { order.compactMap { entries[$0] }.filter { $0.id != selected } }
+
+  /// ⌥⌘P: out of picture in picture when a video is in it, else in, the tab on screen first and
+  /// the newest playing one next (the host picks; WebKit shows it in the system PiP window).
+  func togglePip() {
+    var args: Value = [:]
+    if let id = order.first { args.put("fallback", .string(id)) }
+    env.call("media", "toggle", args)
+  }
 
   // MARK: Actions
 
@@ -123,6 +140,7 @@ final class MediaCore {
     switch command {
     case "mute": env.call("webviews", "setMuted", ["id": .string(id), "muted": .bool(!e.muted)])
     case "jump": env.call("tabs", "select", ["id": .string(id)])
+    case "pip": env.call("media", pip.contains(id) ? "exit" : "enter", ["webview": .string(id)])
     case "next": if e.hasNext { env.call("webviews", "mediaControl", ["id": .string(id), "action": "next"]) }
     case "play", "pause", "toggle", "previous", "stop":
       env.call("webviews", "mediaControl", ["id": .string(id), "action": .string(command)])
@@ -187,13 +205,19 @@ final class MediaCore {
       if first && !chord.isEmpty { b.put("shortcut", .string(chord)) }
       return b
     }
-    let controls: Value = ["type": "stack", "axis": "h", "distribute": "equal", "spacing": 2, "children": [
+    var buttons: [Value] = [
       button("previous", "sf:backward.fill", "Previous Track", Self.previousChord),
       button("toggle", e.paused ? "sf:play.fill" : "sf:pause.fill", e.paused ? "Play" : "Pause", Self.toggleChord),
       button("next", "sf:forward.fill", "Next Track", Self.nextChord, enabled: e.hasNext),
       button("mute", e.muted ? "sf:speaker.slash.fill" : "sf:speaker.wave.2.fill", e.muted ? "Unmute Tab" : "Mute Tab", ""),
-      button("stop", "sf:xmark", "Stop", ""),
-    ]]
+    ]
+    if e.now.b("video") {
+      let inPip = pip.contains(id)
+      buttons.append(button("pip", inPip ? "sf:pip.exit" : "sf:pip.enter", inPip ? "Exit Picture in Picture" : "Picture in Picture", ""))
+    }
+    buttons.append(button("stop", "sf:xmark", "Stop", ""))
+    let controls: Value = ["type": "stack", "axis": "h", "distribute": "equal", "spacing": 2, "children": .array(buttons)]
+
     return ["type": "stack", "id": .string("media.card:" + id), "axis": "v", "fill": "panel", "radius": 10, "padding": [6, 6, 2, 6], "spacing": 2,
             "children": [head, controls]]
   }

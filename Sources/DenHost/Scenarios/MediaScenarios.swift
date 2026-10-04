@@ -4,23 +4,28 @@ import AppKit
 import CordisValue
 import WebKit
 
-/// `--scenario` runs for the mini player, in the real app with the demo tabs (they need the tabs
-/// plugin). A local page plays `Tests/Fixtures/test-video.mp4` from `MockServices` (byte ranges,
-/// no network), started through `callAsyncJavaScript` like a click would.
+/// `--scenario` runs for picture in picture (WebKit's native PiP, the system window Safari uses),
+/// in the real app with the demo tabs (they need the tabs plugin). A local page plays
+/// `Tests/Fixtures/test-video.mp4` from `MockServices` (byte ranges, no network), started through
+/// `callAsyncJavaScript` like a click would.
 ///
-/// - `mini`: opens the video tab, plays it, switches to another tab: the mini player opens and
-///   stays (for `--snapshot`, memory and CPU measurements). Prints `scenario.ready …`.
-/// - `miniPlayer`: the whole check list, through the real code paths: tab switch, controls
-///   (play/pause, seek, skip, volume, mute, speed), back to the tab (position kept, still
-///   playing), den hidden / deactivated / minimized / window ordered out and back, a close that
-///   is remembered, a video inside a cross-origin iframe, and the setting. One line per check
-///   (`scenario.mini <name> ok=…`), then `scenario.done ok=…`, and it exits 0 or 1.
-/// - `miniURL`: like `mini` with `DEN_MINI_URL` (e.g. a YouTube watch page), for manual checks.
-/// - `miniExtras`: like `mini` on a video with a subtitle track, subtitles on and the controls
-///   showing (the host chip, keep on top, CC).
+/// - `pip`: the whole check list, through the real code paths, one line per check
+///   (`scenario.pip <name> ok=…`), then `scenario.done ok=…`, exit 0 or 1: a tab switch puts the
+///   video in the system PiP window (CGWindowList), it keeps playing there and the window shows the
+///   whole frame (a screen capture of the PiP window, when this process may capture), also with the
+///   video scrolled half and fully out of view; coming back takes it out; den minimized / hidden /
+///   ordered out and back; the PiP window's return button (the call it makes into WebKit) goes back
+///   to the tab, its close button pauses; Picture in Picture (⌥⌘P) by hand, which a tab switch
+///   doesn't undo; a video in a cross-origin iframe; the setting. `DEN_PIP_FULLSCREEN=1` adds a
+///   full-screen video whose window stops being visible (it takes over the display for a moment).
+/// - `pipAway`: plays the video, switches tabs, stays (memory and CPU with the video in PiP).
+/// - `pipInline`: the same video playing in its tab (the baseline).
+/// - `pipURL`: `DEN_PIP_URL` (default a YouTube video): plays it, scrolls `DEN_PIP_SCROLL` pt (default
+///   400, the player partly out of view), switches tabs and prints the PiP window's id, so a script
+///   can capture it (`screencapture -l <id>`).
 @MainActor
 public enum MediaScenarios {
-  public static let names = ["mini", "miniOff", "miniInline", "miniPlayer", "miniURL", "miniExtras"]
+  public static let names = ["pip", "pipAway", "pipInline", "pipURL"]
 
   public static func apply(_ name: String, runtime rt: DenRuntime) {
     Task { @MainActor in await run(name, rt) }
@@ -42,10 +47,10 @@ public enum MediaScenarios {
     <!doctype html><html><head><title>Test Video</title><style>
     body{margin:0;font:15px -apple-system;background:#f6f4ff;color:#222;padding:40px 56px}
     video{width:640px;border-radius:10px;background:#000;display:block;margin:16px 0}
-    p{max-width:640px;color:#555;line-height:1.5}</style></head>
-    <body><h1>Test video</h1><p>A local page with a 30 s video. Switch to another tab while it plays and it follows you in den's mini player.</p>
+    p{max-width:640px;color:#555;line-height:1.5}.tall{height:3000px}</style></head>
+    <body><h1>Test video</h1><p>A local page with a 30 s video. Switch to another tab while it plays and it goes to picture in picture.</p>
     <video src="/test-video.mp4" controls playsinline loop></video>
-    <p>Everything else on this page is hidden while the mini player shows the video.</p></body></html>
+    <div class=tall></div></body></html>
     """
 
   static func sleep(_ s: Double) async { try? await Task.sleep(for: .milliseconds(Int(s * 1000))) }
@@ -75,188 +80,217 @@ public enum MediaScenarios {
     return cond()
   }
 
+  /// Presses a button of the system PiP window the way the window does: PIP.framework calls its
+  /// delegate (WebKit's video presentation object) with `pipShouldClose:` for the return button
+  /// and `pipActionStop:` for the close button. The PiP window itself belongs to the system agent
+  /// and isn't driven. False when there's no PiP view controller in this process.
+  @discardableResult
+  public static func pressPipButton(_ selector: String) -> Bool {
+    guard let vc = pipViewController(), let d = vc.value(forKey: "delegate") as? NSObject, d.responds(to: NSSelectorFromString(selector)) else { return false }
+    _ = d.perform(NSSelectorFromString(selector), with: vc)
+    return true
+  }
+
+  static func pipViewController() -> NSViewController? {
+    NSApp.windows.compactMap(\.contentViewController).first { NSStringFromClass(type(of: $0)).contains("PIPViewController") }
+  }
+
+  /// The close button: WebKit's `pipActionStop:` (it pauses the video), then the window closes
+  /// itself (PIP.framework's dismissal, which tells WebKit it closed).
+  @discardableResult
+  public static func pressPipCloseButton() -> Bool {
+    guard pressPipButton("pipActionStop:"), let vc = pipViewController() else { return false }
+    let s = NSSelectorFromString("dismissPictureInPictureWithCompletionHandler:")
+    guard vc.responds(to: s) else { return false }
+    let done: @convention(block) () -> Void = {}
+    _ = vc.perform(s, with: done)
+    return true
+
+  }
+
+
+  /// The system PiP window's id, size and layer, for the log.
+  static func pipWindow() -> (id: Int, text: String)? {
+    guard let w = NativePiP.systemWindows().first, let n = w[kCGWindowNumber as String] as? Int else { return nil }
+    let b = w[kCGWindowBounds as String] as? [String: CGFloat] ?? [:]
+    return (n, "window=\(n) size=\(Int(b["Width"] ?? 0))x\(Int(b["Height"] ?? 0)) layer=\(w[kCGWindowLayer as String] as? Int ?? -1)")
+  }
+
+  /// Captures the system PiP window (`screencapture -l`) and measures how much of its lower three
+  /// quarters is near-black (the old mini player's failure: only the top of the frame drawn).
+  /// nil when this process may not capture the screen.
+  static func pipBlackFraction(_ tag: String) -> Double? {
+    guard let w = pipWindow() else { return nil }
+    let path = FileManager.default.temporaryDirectory.appendingPathComponent("den-pip-\(getpid())-\(tag).png").path
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+    p.arguments = ["-x", "-o", "-l\(w.id)", path]
+    guard (try? p.run()) != nil else { return nil }
+    p.waitUntilExit()
+    guard let data = FileManager.default.contents(atPath: path), let rep = NSBitmapImageRep(data: data), rep.pixelsWide > 40 else { return nil }
+    var dark = 0, all = 0
+    // Inset from the rounded corners; rows from a quarter down to the bottom.
+    for y in stride(from: rep.pixelsHigh / 4, to: rep.pixelsHigh - 12, by: 6) {
+      for x in stride(from: 12, to: rep.pixelsWide - 12, by: 6) {
+        guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+        all += 1
+        if c.redComponent + c.greenComponent + c.blueComponent < 0.12 { dark += 1 }
+      }
+    }
+    log("scenario.pip capture \(tag) \(path)")
+    return all == 0 ? nil : Double(dark) / Double(all)
+  }
+
   static func run(_ name: String, _ rt: DenRuntime) async {
     let mock = MockServices()
     try? mock.start()
-    guard let video = fixture() else { log("scenario.mini fixture missing"); exit(1) }
+    guard let video = fixture() else { log("scenario.pip fixture missing"); exit(1) }
     mock.files = [
       "/video.html": ("text/html; charset=utf-8", Data(page.utf8)), "/test-video.mp4": ("video/mp4", video),
-      "/video-cc.html": ("text/html; charset=utf-8", Data(page.replacingOccurrences(of: "loop></video>", with: "loop><track kind=subtitles srclang=en label=English src=/subs.vtt></video>").utf8)),
-      "/subs.vtt": ("text/vtt", Data("WEBVTT\n\n00:00.000 --> 00:30.000\nden keeps the video playing while you browse.\n".utf8)),
       "/embed.html": ("text/html; charset=utf-8", Data("<!doctype html><title>Embedded Video</title><body style='margin:0;padding:30px;background:#fff'><h2>Embed</h2><iframe src='http://localhost:\(mock.port)/video.html' width=760 height=560 style='border:0' allow='autoplay; picture-in-picture'></iframe></body>".utf8)),
     ]
-    let url = name == "miniURL" ? (ProcessInfo.processInfo.environment["DEN_MINI_URL"] ?? "https://www.youtube.com")
-      : mock.base + (name == "miniExtras" ? "/video-cc.html" : "/video.html")
+    let env = ProcessInfo.processInfo.environment
+    let url = name == "pipURL" ? (env["DEN_PIP_URL"] ?? "https://www.youtube.com/watch?v=aqz-KE-bpKQ") : mock.base + "/video.html"
     let other = rt.call("tabs", "selected")["id"].string ?? ""
     let id = rt.call("tabs", "open", ["url": .string(url)])["id"].string ?? ""
     var allOK = true
     func check(_ what: String, _ ok: Bool, _ detail: String = "") {
       allOK = allOK && ok
-      log("scenario.mini \(what) ok=\(ok)\(detail.isEmpty ? "" : " " + detail)")
+      log("scenario.pip \(what) ok=\(ok)\(detail.isEmpty ? "" : " " + detail)")
     }
-    func probe() async -> Value { await js(rt, id, "return window.__denMedia.probe()", frame: rt.webviews.record(id)?.videoFrame?.frame) }
-    func isolated() async -> Bool {
-      await js(rt, id, "return document.documentElement.classList.contains('den-mini')", frame: rt.webviews.record(id)?.videoFrame?.frame) == true
+    func probe(_ tab: String = id) async -> Value { await js(rt, tab, "return window.__denMedia.probe()", frame: rt.webviews.record(tab)?.videoFrame?.frame) }
+    func inPip(_ tab: String = id) -> Bool { rt.media.active.contains(tab) && !NativePiP.systemWindows().isEmpty }
+    func out(_ tab: String = id) -> Bool { !rt.media.active.contains(tab) }
+    /// Still playing, and the clock moves (the video is live, not a frozen frame).
+    func advancing(_ tab: String = id) async -> (Bool, String) {
+      let a = await probe(tab)
+      await sleep(1)
+      let b = await probe(tab)
+      return (!b.flag("paused") && b.num("t") > a.num("t") + 0.5, "t=\(String(format: "%.1f", a.num("t")))->\(String(format: "%.1f", b.num("t")))")
     }
-    func startVideo() async -> Bool {
-      _ = await until(20) { rt.webviews.record(id)?.webView?.isLoading == false }
-      await sleep(name == "miniURL" ? 3 : 0.3)
+    func frameCheck(_ what: String) {
+      guard let f = pipBlackFraction(what) else { log("scenario.pip \(what).frame skipped: no screen capture"); return }
+      check("\(what).frame", f < 0.2, String(format: "black=%.0f%%", f * 100))
+    }
+    func startVideo(_ tab: String = id) async -> Bool {
+      _ = await until(20) { rt.webviews.record(tab)?.webView?.isLoading == false }
+      await sleep(name == "pipURL" ? 3 : 0.3)
       // Like a click on play: callAsyncJavaScript runs with a user gesture.
-      _ = await js(rt, id, "const v = document.querySelector('video'); if (!v) return false; v.muted = false; v.volume = 1; await v.play().catch(() => {}); return !v.paused", frame: nil)
-      return await until(10) { rt.media.eligibleVideo(id) != nil }
+      _ = await js(rt, tab, "const v = document.querySelector('video'); if (!v) return false; v.muted = false; v.volume = 1; await v.play().catch(() => {}); return !v.paused", frame: nil)
+      return await until(10) { rt.media.eligibleVideo(tab) != nil }
     }
+    func scroll(_ y: Int) async { _ = await js(rt, id, "window.scrollTo(0, \(y)); return window.scrollY") }
 
     check("playing", await startVideo(), rt.webviews.record(id)?.videoFrame?.media.video.map { "video=\($0.num("vw"))x\($0.num("vh")) dur=\($0.num("dur"))" } ?? "")
-    if name == "miniInline" {
-      // The same video playing inline, for the mini player's memory/CPU baseline.
+    if name == "pipInline" {
       await sleep(3)
       log("scenario.ready inline t=\((await probe()).num("t"))")
       return
     }
-    // 1. Switch away from the tab. (`miniOff`: the same with the setting off, the mini player's
-    // memory/CPU baseline: the video keeps playing in its hidden tab.)
-    if name == "miniOff" {
-      rt.call("media", "settings", ["autoMiniPlayer": false])
+    if name == "pipURL" {
+      await scroll(Int(env["DEN_PIP_SCROLL"] ?? "400") ?? 400)
+      await sleep(1)
       rt.call("tabs", "select", ["id": .string(other)])
-      await sleep(3)
-      log("scenario.ready off t=\((await probe()).num("t")) mini=\(rt.media.playerId ?? "-")")
+      check("tabSwitch.enters", await until(5) { inPip() }, pipWindow()?.text ?? "no PiP window")
+      let (live, d) = await advancing()
+      check("tabSwitch.live", live, d)
+      frameCheck("url")
+      log("scenario.ready pip=\(rt.media.active.contains(id)) \(pipWindow()?.text ?? "")")
       return
     }
+    // 1. Switch away from the tab: the system PiP window, live.
     rt.call("tabs", "select", ["id": .string(other)])
-    check("tabSwitch.opens", rt.media.playerId == id && rt.media.panel?.isVisible == true)
-    _ = await until(3) { false }  // let isolation apply and a few frames play
-    check("tabSwitch.isolated", await isolated())
-    if name != "miniPlayer" {
-      if name == "miniExtras" {
-        rt.call("media", "control", ["action": "cc"])
-        _ = await until(3) { rt.media.panel?.player.controls.captionState == 2 }
-      }
-      rt.media.panel?.player.showControls(true, animated: false)
-      let p = await probe()
-      log("scenario.ready mini=\(rt.media.playerId ?? "-") t=\(p.num("t")) paused=\(p.flag("paused")) frame=\(rt.media.panel.map { NSStringFromRect($0.frame) } ?? "-")")
+    check("tabSwitch.enters", await until(5) { inPip() }, pipWindow()?.text ?? "no PiP window")
+    check("tabSwitch.auto", rt.media.auto.contains(id) && rt.call("webviews", "get", ["id": .string(id)])["media"]["pip"] == true)
+    check("tabSwitch.keptLive", rt.call("webviews", "suspend", ["id": .string(id)])["reason"] == "pip")
+    let (live, d) = await advancing()
+    check("tabSwitch.live", live, d)
+    frameCheck("tabSwitch")
+    if name == "pipAway" {
+      log("scenario.ready pip=\(rt.media.active.contains(id)) \(pipWindow()?.text ?? "")")
       return
     }
 
-    // 2. Controls, through the same entry point as the panel's buttons.
-    rt.call("media", "control", ["action": "pause"])
-    await sleep(0.4)
-    check("control.pause", (await probe()).flag("paused"))
-    check("control.pause.ui", rt.media.panel?.player.controls.paused == true)
-    rt.call("media", "control", ["action": "toggle"])
-    await sleep(0.4)
-    check("control.play", !(await probe()).flag("paused"))
-    rt.call("media", "control", ["action": "seek", "value": 12])
-    await sleep(0.5)
-    let t12 = (await probe()).num("t")
-    check("control.seek", t12 >= 11.9 && t12 < 14, "t=\(t12)")
-    rt.call("media", "control", ["action": "skip", "value": 10])
-    await sleep(0.5)
-    let t22 = (await probe()).num("t")
-    check("control.skip", t22 >= 21.9 && t22 < 24.5, "t=\(t22)")
-    rt.call("media", "control", ["action": "skip", "value": -10])
-    await sleep(0.3)
-    rt.call("media", "control", ["action": "volume", "value": 0.4])
-    await sleep(0.3)
-    check("control.volume", abs((await probe()).num("vol") - 0.4) < 0.01)
-    rt.call("media", "control", ["action": "mute", "value": 1])
-    await sleep(0.3)
-    check("control.mute", (await probe()).flag("muted") && rt.media.panel?.player.controls.muted == true)
-    rt.call("media", "control", ["action": "mute", "value": 0])
-    rt.call("media", "control", ["action": "volume", "value": 1])
-    rt.call("media", "control", ["action": "rate", "value": 1.5])
-    await sleep(0.3)
-    check("control.rate", (await probe()).num("rate") == 1.5 && rt.media.panel?.player.controls.speed.title == "1.5×")
-    rt.call("media", "control", ["action": "rate", "value": 1])
-    // Keyboard: space toggles.
-    if let p = rt.media.panel {
-      let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: p.windowNumber, context: nil,
-                               characters: " ", charactersIgnoringModifiers: " ", isARepeat: false, keyCode: 49)!
-      p.keyDown(with: e)
-      await sleep(0.3)
-      check("key.space", (await probe()).flag("paused"))
-      p.keyDown(with: e)
-      await sleep(0.3)
-      check("key.space.again", !(await probe()).flag("paused"))
-    }
-    let before = (await probe()).num("t")
-    await sleep(1)
-
-    // 3. Back to the tab: inline, same position, still playing.
+    // 2. Back to the tab: out of PiP, inline, still playing.
     rt.call("tabs", "select", ["id": .string(id)])
-    let web = rt.webviews.record(id)?.webView
-    check("back.closes", rt.media.playerId == nil && rt.media.panel == nil)
-    check("back.inline", web?.superview === rt.content.card(id)?.clip)
-    await sleep(0.4)
-    let after = await probe()
-    check("back.position", after.num("t") >= before + 0.5 && after.num("t") < before + 3, "before=\(before) after=\(after.num("t"))")
-    check("back.playing", !after.flag("paused"))
-    check("back.unisolated", !(await isolated()))
+    check("back.exits", await until(5) { out() && NativePiP.systemWindows().isEmpty })
+    await sleep(0.5)
+    let back = await probe()
+    check("back.inline", !back.flag("inPip") && rt.webviews.record(id)?.webView?.superview === rt.content.card(id)?.clip)
+    check("back.playing", !back.flag("paused"))
 
-    // 4. den away: hidden, deactivated, minimized, window ordered out; and back.
-    let debounce = rt.media.debounce
-    func away(_ what: String, _ go: () -> Void, _ back: () -> Void) async {
-      // Another app (or another den) may have taken the focus: this check needs den in front.
-      guard await until(3, { rt.media.windowVisible && rt.media.playerId == nil }) else {
-        log("scenario.mini \(what) skipped: den's window isn't in front (resignedActive=\(!NSApp.isActive))")
+    // 3. The video partly, then fully, scrolled out of view: the PiP window still shows the whole frame.
+    for (what, y) in [("scrolledHalf", 260), ("scrolledAway", 1600)] {
+      await scroll(y)
+      await sleep(0.6)
+      rt.call("tabs", "select", ["id": .string(other)])
+      check("\(what).enters", await until(5) { inPip() })
+      let (l, d) = await advancing()
+      check("\(what).live", l, d)
+      frameCheck(what)
+      rt.call("tabs", "select", ["id": .string(id)])
+      _ = await until(5) { out() }
+      await scroll(0)
+      await sleep(0.4)
+    }
+
+    // 4. den away: minimized, hidden, ordered out; and back.
+    func away(_ what: String, _ go: () -> Void, _ comeBack: () -> Void) async {
+      guard await until(3, { rt.media.windowVisible && out() }) else {
+        log("scenario.pip \(what) skipped: den's window isn't visible")
         return
       }
       let t0 = Date()
       go()
-      let opened = await until(3) { rt.media.playerId == id }
-      check("\(what).opens", opened && rt.media.fromWindow, String(format: "after=%.0fms", Date().timeIntervalSince(t0) * 1000))
+      check("\(what).enters", await until(5) { inPip() }, String(format: "after=%.0fms", Date().timeIntervalSince(t0) * 1000))
       await sleep(0.6)
-      let tBack = Date()
-      back()
-      // macOS activation is cooperative: a den started by a script may not get activation back
-      // after `unhide` + `activate()` while another app is in front (a click on den would). Then
-      // the notification AppKit sends on activation is posted, and says so.
-      if what == "hide" {
-        await sleep(0.3)
-        if !NSApp.isActive {
-          log("scenario.mini hide: macOS didn't reactivate den within 300 ms; posting didBecomeActive")
-          NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
-        }
-      }
-      let returned = await until(3) { rt.media.playerId == nil && web?.superview === rt.content.card(id)?.clip }
-      check("\(what).returns", returned, String(format: "after=%.0fms", Date().timeIntervalSince(tBack) * 1000))
+      comeBack()
+      check("\(what).exits", await until(5) { out() })
       check("\(what).playing", !(await probe()).flag("paused"))
       await sleep(0.4)
     }
     let w = rt.window.window
-    await away("hide", { NSApp.hide(nil) }, { NSApp.unhide(nil); NSApp.activate() })
-    // ⌘-Tab to another app: den can't make another app active here (and must not drive one), and
-    // NSApp.deactivate() is undone by macOS at once when no other app takes over, so the two
-    // notifications AppKit sends for it are posted; the observers and everything after are real.
-    let nc = NotificationCenter.default
-    await away("resignActive", { nc.post(name: NSApplication.didResignActiveNotification, object: NSApp) },
-               { nc.post(name: NSApplication.didBecomeActiveNotification, object: NSApp) })
-    await away("miniaturize", { w.miniaturize(nil) }, { w.deminiaturize(nil); NSApp.activate() })
-    await away("orderOut", { w.orderOut(nil) }, { w.makeKeyAndOrderFront(nil); NSApp.activate() })
-    // A quick away-and-back inside the debounce never opens the player.
-    var flickered = false
-    _ = await until(3) { rt.media.windowVisible }
-    let obs = rt.host.on("media.miniPlayer") { _ in flickered = true }
-    w.orderOut(nil)
-    await sleep(debounce * 0.4)
-    w.makeKeyAndOrderFront(nil)
-    await sleep(debounce + 0.4)
-    rt.host.off(obs)
-    check("debounce.noFlicker", !flickered && rt.media.playerId == nil)
-    log(String(format: "scenario.mini notifications %@", rt.media.lastNotifications.map { "\($0.0.replacingOccurrences(of: "NSApplication", with: "").replacingOccurrences(of: "NSWindow", with: "").replacingOccurrences(of: "Notification", with: ""))@\(Int(($0.1 - (rt.media.lastNotifications.first?.1 ?? 0)) * 1000))" }.joined(separator: " ")))
+    await away("miniaturize", { w.miniaturize(nil) }, { w.deminiaturize(nil) })
+    await away("hide", { NSApp.hide(nil) }, { NSApp.unhide(nil) })
+    await away("orderOut", { w.orderOut(nil) }, { w.orderFront(nil) })
 
-    // 5. Close: pauses, and the same video doesn't reopen it this session.
+    // 5. The PiP window's return button: back to the tab (selected), video inline and playing.
     rt.call("tabs", "select", ["id": .string(other)])
-    check("again.opens", rt.media.playerId == id)
-    rt.call("media", "close")
+    _ = await until(5) { inPip() }
+    var backToTab = false
+    let obs = rt.host.on("media.backToTab") { _ in backToTab = true }
+    check("returnButton.pressed", pressPipButton("pipShouldClose:"))
+    check("returnButton.backToTab", await until(5) { backToTab && out() && rt.call("tabs", "selected")["id"].string == id })
     await sleep(0.4)
-    check("close.pauses", (await probe()).flag("paused") && rt.media.playerId == nil)
+    check("returnButton.playing", !(await probe()).flag("paused"))
+    rt.host.off(obs)
+
+    // 6. Its close button: pauses, stays on the other tab.
+    rt.call("tabs", "select", ["id": .string(other)])
+    _ = await until(5) { inPip() }
+    backToTab = false
+    let obs2 = rt.host.on("media.backToTab") { _ in backToTab = true }
+    check("closeButton.pressed", pressPipButton("pipActionStop:"))
+    check("closeButton.pauses", await until(5) { rt.webviews.record(id)?.videoFrame == nil })
+    check("closeButton.staysAway", !backToTab && rt.call("tabs", "selected")["id"].string == other)
+    rt.host.off(obs2)
+    _ = rt.call("media", "exit")
+    _ = await until(5) { out() }
+
+    // 7. Picture in Picture by hand (⌥⌘P, the media plugin's key): a tab switch doesn't end it.
     rt.call("tabs", "select", ["id": .string(id)])
     _ = await js(rt, id, "await document.querySelector('video').play(); return true")
-    _ = await until(3) { rt.webviews.record(id)?.videoFrame?.media.video?.flag("paused") == false }
+    _ = await until(5) { rt.media.eligibleVideo(id) != nil }
+    rt.plugins.emit("media.key.pip")
+    check("toggle.enters", await until(5) { inPip() && !rt.media.auto.contains(id) })
     rt.call("tabs", "select", ["id": .string(other)])
-    check("close.remembered", rt.media.playerId == nil)
+    rt.call("tabs", "select", ["id": .string(id)])
+    await sleep(0.6)
+    check("toggle.staysOnReturn", inPip())
+    rt.plugins.emit("media.key.pip")
+    check("toggle.exits", await until(5) { out() })
 
-    // 6. A video in a cross-origin iframe.
+    // 8. A video in a cross-origin iframe.
     let emb = rt.call("tabs", "open", ["url": .string(mock.base + "/embed.html")])["id"].string ?? ""
     _ = await until(10) { rt.webviews.record(emb)?.webView?.isLoading == false }
     await sleep(1)
@@ -265,21 +299,43 @@ public enum MediaScenarios {
     }
     _ = await until(5) { rt.media.eligibleVideo(emb) != nil }
     rt.call("tabs", "select", ["id": .string(other)])
-    check("iframe.opens", rt.media.playerId == emb)
-    await sleep(1)
-    let frameIsolated = await js(rt, emb, "return document.querySelector('iframe').hasAttribute('data-den-mini') && document.documentElement.classList.contains('den-mini')")
-    check("iframe.isolated", frameIsolated == true)
+    check("iframe.enters", await until(5) { inPip(emb) })
+    let (iframeLive, iframeD) = await advancing(emb)
+    check("iframe.live", iframeLive, iframeD)
     rt.call("tabs", "select", ["id": .string(emb)])
-    await sleep(0.4)
-    let frameRestored = await js(rt, emb, "return !document.querySelector('[data-den-mini]') && !document.documentElement.classList.contains('den-mini')")
-    check("iframe.restored", frameRestored == true)
+    check("iframe.exits", await until(5) { out(emb) })
     _ = await js(rt, emb, "return true")
 
-    // 7. The setting turns it off.
-    rt.call("media", "settings", ["autoMiniPlayer": false])
+    // 9. A full-screen video whose window stops being visible (its Space switched away from):
+    // here a window covers it, which is the same occlusion change.
+    if env["DEN_PIP_FULLSCREEN"] == "1", let web = rt.webviews.record(emb)?.webView {
+      if let frame = rt.webviews.record(emb)?.frames.first(where: { !$0.value.frame.isMainFrame })?.value.frame {
+        _ = await js(rt, emb, "await document.querySelector('video').requestFullscreen(); return true", frame: frame)
+      }
+      let full = await until(8) { web.window != nil && rt.windows.containing(web.window) == nil }
+      check("fullscreen.entered", full)
+      await sleep(2)
+      if full, let fw = web.window {
+        let cover = NSPanel(contentRect: fw.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        cover.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        cover.level = .screenSaver
+        cover.backgroundColor = .black
+        cover.orderFrontRegardless()
+        check("fullscreen.away.enters", await until(5) { inPip(emb) })
+        cover.orderOut(nil)
+        check("fullscreen.back.exits", await until(5) { out(emb) })
+        _ = await js(rt, emb, "await document.exitFullscreen().catch(() => {}); return true")
+      }
+    }
+
+    // 10. The setting turns it off.
+    rt.call("media", "settings", ["autoPip": false])
+    rt.call("tabs", "select", ["id": .string(id)])
+    _ = await until(5) { rt.webviews.record(id)?.videoFrame != nil }
     rt.call("tabs", "select", ["id": .string(other)])
-    check("setting.off", rt.media.playerId == nil)
-    rt.call("media", "settings", ["autoMiniPlayer": true])
+    await sleep(1)
+    check("setting.off", out() && NativePiP.systemWindows().isEmpty)
+    rt.call("media", "settings", ["autoPip": true])
 
     log("scenario.done ok=\(allOK)")
     exit(allOK ? 0 : 1)

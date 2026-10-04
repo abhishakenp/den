@@ -613,6 +613,9 @@ final class CommandBarCore {
     Builtin(id: "den.toggleSidebar", title: "Toggle Sidebar", icon: "sf:sidebar.left", keywords: ["hide", "show"], shortcut: "⌘S", needsTab: false, service: "window"),
     Builtin(id: "den.theme", title: "Edit Theme", icon: "sf:paintpalette", keywords: ["color", "appearance", "dark", "light"], shortcut: "", needsTab: false, service: nil, listener: "spaces.editTheme"),
     Builtin(id: "den.reload", title: "Reload Page", icon: "sf:arrow.clockwise", keywords: ["refresh"], shortcut: "⌘R", needsTab: true, service: "webviews"),
+    // WebKit's own picture in picture (the system PiP window); the media plugin handles the key.
+    Builtin(id: "den.pip", title: "Picture in Picture", icon: "sf:pip.enter", keywords: ["pip", "video", "float", "mini player", "exit picture in picture"],
+            shortcut: "⌥⌘P", needsTab: false, service: nil, listener: "media.key.pip"),
     Builtin(id: "den.splitRight", title: "Split Right", icon: "sf:rectangle.split.2x1", keywords: ["split view", "side by side"], shortcut: "", needsTab: true, service: "peek"),
     Builtin(id: "den.quit", title: "Quit den", icon: "sf:power", keywords: ["exit", "close"], shortcut: "⌘Q", needsTab: false, service: "app"),
     // Destinations: den's own screens. Each is hidden until the service that owns it is loaded.
@@ -719,7 +722,10 @@ final class CommandBarCore {
       env.call("window", "toggleSidebar")
     case "den.theme":
       env.emit("spaces.editTheme", ["id": env.call("spaces", "current")["id"]])
+    case "den.pip":
+      env.emit("media.key.pip", [:])
     case "den.reload":
+
       env.call("webviews", "reload", ["id": .string(tabId)])
     case "den.splitRight":
       if !isOpen {

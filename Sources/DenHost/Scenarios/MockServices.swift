@@ -29,7 +29,7 @@ public final class MockServices: @unchecked Sendable {
   public static let dCookie = "xoxd-mock-session"
   public static let tokens = ["T01ACME": "xoxc-mock-acme", "T02DEN": "xoxc-mock-den"]
   public static let me = "U01ME"
-  /// Static files by path (the mini player scenario's test page and video), with byte ranges:
+  /// Static files by path (the media scenarios' test page and video), with byte ranges:
   /// WebKit's media loader asks for `Range: bytes=…` and needs 206 answers.
   public var files: [String: (type: String, data: Data)] {
     get { lock.withLock { _files } }

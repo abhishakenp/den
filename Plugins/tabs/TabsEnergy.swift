@@ -79,7 +79,8 @@ extension TabsCore {
 
   /// Background pages' media: with battery saver on, video (and silent media) pauses; once you've
   /// been away `idlePauseSeconds`, silent media pauses. Audible audio (music, a podcast) keeps
-  /// playing. The host refuses a page on screen (a pane, peek, the mini player) or in picture in
+  /// playing. The host refuses a page on screen (a pane, peek, Little Arc) or in picture in
+
   /// picture; sites kept active are left alone.
   func pauseBackgroundMedia(userIdle: Bool) {
     guard saving || userIdle else { return }

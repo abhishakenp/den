@@ -7,7 +7,7 @@ export const StoryStage = () => (
     <div className="st-persp">
       <div
         role="img"
-        aria-label="A den window: tabs appear in the sidebar, the space swipes to Work, the command bar opens, a link opens in a Peek, a tab is dragged into split view, a pull request preview appears on hover, a video floats off into the mini player, and the briefing opens."
+        aria-label="A den window: tabs appear in the sidebar, the space swipes to Work, the command bar opens, a link opens in a Peek, a tab is dragged into split view, a pull request preview appears on hover, a video floats off into picture in picture, and the briefing opens."
         className="st-window"
       >
         <div className="st-ui">

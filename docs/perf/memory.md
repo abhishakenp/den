@@ -1,5 +1,7 @@
 # Memory: discarded tabs and the mini player
 
+> The mini player measured below was removed: den now uses WebKit's native picture in picture (`--scenario pipAway` / `pipInline`). The numbers are kept as history.
+
 Measured on 2026-09-27/28 on macOS 26.5 (Apple silicon) with `scripts/measure-memory.sh`. It
 launches den through LaunchServices (`open -g`, `--background`: no focus stolen), so den is the
 "responsible" process of its WebKit processes, which `scripts/lib/denprocs.swift` finds (WebKit's

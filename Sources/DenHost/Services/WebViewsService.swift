@@ -9,11 +9,11 @@ public struct PageMedia: Equatable {
   public var audible = false
   /// Any media is playing, muted or not.
   public var playing = false
-  /// System picture in picture is active.
+  /// A video of the page is in (WebKit's, the system's) picture in picture.
   public var pip = false
   /// A form field holds input that wasn't submitted.
   public var dirty = false
-  /// The frame's main playing video (or the mini player's video, even while paused).
+  /// The frame's main playing video.
   public var video: Value?
   /// Now playing: the last media element that played with sound, and the page's Media Session
   /// info `{title, artist, album, art, paused, dur, video, acts}`. nil once it's gone or stopped.
@@ -59,6 +59,8 @@ public final class WebRecord {
   public var muted = false
   /// Media and form state per frame ("main", or the subframe's URL), and the frame it came from.
   public fileprivate(set) var frames: [String: (frame: WKFrameInfo, media: PageMedia)] = [:]
+  /// WebKit says a video of this page is in picture in picture (`_webView:hasVideoInPictureInPictureDidChange:`).
+  public fileprivate(set) var nativePip = false
   /// Set while the view is being discarded, so nothing adopts it on the way out.
   public fileprivate(set) var discarding = false
   public fileprivate(set) var webView: WKWebView?
@@ -95,6 +97,7 @@ public final class WebRecord {
   /// The page's media state, all frames together.
   public var media: PageMedia {
     var m = PageMedia()
+    m.pip = nativePip
     for (_, f) in frames {
       m.audible = m.audible || f.media.audible
       m.playing = m.playing || f.media.playing
@@ -196,11 +199,11 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   weak var extensionHooks: ExtensionsService?
   /// zoom / find / print / inspect / viewSource (PageActions.swift); set by `DenRuntime`.
   public internal(set) var pageActions: PageActions?
-  /// Playback updates (`{k: "t", ...}`) of a page whose video the mini player shows.
-  public var onPlayback: ((String, Value) -> Void)?
-  /// A page's media state changed (the mini player follows it).
-  public var onMedia: ((WebRecord) -> Void)?
-  /// A live view is about to be discarded or closed (the mini player lets go of it).
+  /// A page's video entered or left picture in picture (WebKit's delegate call; the `media` service).
+  public var onPip: ((String, Bool) -> Void)?
+  /// The picture-in-picture window's return button was clicked for this page (the `media` service).
+  public var onReturnToInline: ((String) -> Void)?
+  /// A live view is about to be discarded or closed (the `media` service closes its PiP).
   public var willDestroy: ((String) -> Void)?
   /// A navigation finished or failed (the restore placeholder waits for it).
   public var onFinish: ((String) -> Void)?
@@ -489,6 +492,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     r.observers.forEach { $0.invalidate() }
     r.observers = []
     r.frames = [:]
+    r.nativePip = false
+
     if r.audio {
       r.audio = false
       host.emit("webviews.audio", ["id": .string(r.id), "playing": false])
@@ -520,7 +525,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   public private(set) var autoplayAllowed = true
 
   /// Pauses a background page's media (battery saver). A page on screen (a pane, peek, Little
-  /// Arc, the mini player) or in picture in picture keeps playing.
+  /// Arc) or in picture in picture keeps playing.
   func pauseMedia(_ r: WebRecord) -> Value {
     guard let w = r.webView else { return ["paused": false, "reason": "notLive"] }
     if r.media.pip { return ["paused": false, "reason": "pip"] }
@@ -539,7 +544,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if m.playing { return "media" }
     if w.cameraCaptureState != .none || w.microphoneCaptureState != .none { return "capture" }
     if m.dirty { return "form" }
-    if w.window != nil { return "visible" }  // a pane, peek, Little Arc, the mini player (or its snapshot being taken)
+    if w.window != nil { return "visible" }  // a pane, peek, Little Arc (or its snapshot being taken)
+
     return nil
   }
 
@@ -1151,10 +1157,6 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
     guard let w = msg.webView, let r = recordFor(w), r.webView === w else { return }
     let body = Self.jsValue(msg.body)
-    if body.str("k") == "t" {
-      onPlayback?(r.id, body)
-      return
-    }
     guard body.str("k") == "s" else { return }
     let key = msg.frameInfo.isMainFrame ? "main" : (msg.frameInfo.request.url?.absoluteString ?? "frame")
     let media = PageMedia(body)
@@ -1196,7 +1198,6 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       r.audio = m.audible
       host.emit("webviews.audio", ["id": .string(r.id), "playing": .bool(m.audible)])
     }
-    onMedia?(r)
     host.emit("webviews.media", ["id": .string(r.id), "playing": .bool(m.playing), "pip": .bool(m.pip), "dirty": .bool(m.dirty)])
     if m.now != r.nowPlaying {
       r.nowPlaying = m.now
@@ -1211,5 +1212,27 @@ final class ScriptMessageProxy: NSObject, WKScriptMessageHandler {
   init(_ fn: @escaping @MainActor (WKScriptMessage) -> Void) { self.fn = fn }
   func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
     MainActor.assumeIsolated { fn(message) }
+  }
+}
+
+// MARK: Picture in picture (WebKit's private WKUIDelegate calls; see NativePiP)
+
+extension WebViewsService {
+  /// A video of the page entered or left picture in picture (any way: den, the page, the video's
+  /// own controls or context menu, the PiP window's buttons).
+  @objc(_webView:hasVideoInPictureInPictureDidChange:)
+  func _webView(_ w: WKWebView, hasVideoInPictureInPictureDidChange on: Bool) {
+    guard let r = recordFor(w), r.nativePip != on else { return }
+    r.nativePip = on
+    onPip?(r.id, on)
+    mediaChanged(r)
+  }
+
+  /// The PiP window's return button (WebKit's `pipShouldClose:`): the video goes back into the
+  /// page, which should come forward (Safari selects its tab).
+  @objc(_webViewFullscreenMayReturnToInline:)
+  func _webViewFullscreenMayReturnToInline(_ w: WKWebView) {
+    guard let r = recordFor(w) else { return }
+    onReturnToInline?(r.id)
   }
 }

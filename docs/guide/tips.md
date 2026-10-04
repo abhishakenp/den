@@ -88,9 +88,9 @@ Everything in den that you won't find by looking at it. One line each, with a li
 - **⌘E** searches the page for the selected text. [Page tools](page-tools.md#find)
 - **Zoom sticks per site**; ⌘0 forgets it. [Page tools](page-tools.md#zoom-remembered-per-site)
 - **⌃⌘R** toggles Reader; **⇧⌘2** captures a region of the page. [Page tools](page-tools.md#reader)
-- **Leave a playing video's tab** and it follows you in den's mini player. [Media](media.md#the-mini-player)
+- **Leave a playing video's tab** and it floats along in the Mac's picture in picture; its return button brings you back. **⌥⌘P** does it by hand. [Media](media.md#picture-in-picture)
 - **Music in a tab you left** shows at the bottom of the sidebar; your keyboard's play/pause and skip keys and Control Center drive it, and so do ⌃⌘P, ⌃⌘← and ⌃⌘→. [Media](media.md#now-playing-at-the-bottom-of-the-sidebar)
-- **Drag the mini player past the screen's edge** to tuck it away while the sound plays; click the strip to bring it back. **T** toggles keep on top, **C** subtitles. [Media](media.md#the-mini-player)
+- **Drag the picture-in-picture window past the screen's edge** to tuck it away while the sound plays. [Media](media.md#picture-in-picture)
 - **⌃⌘S** shows a web panel (Slack, WhatsApp, Claude…) beside every tab; hidden, it sleeps. [Media](media.md#web-panels)
 - **Type "dark"** in the command bar to force a site dark or light. [Privacy](privacy-and-passwords.md#dark-mode-for-every-website)
 

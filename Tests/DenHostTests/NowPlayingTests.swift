@@ -9,7 +9,7 @@ import WebKit
 @testable import DenHost
 
 /// Now playing (the page script's Media Session report, `webviews.mediaControl`, the
-/// `nowplaying` service), the mini player's extras, the side column and the sidebar dock slot.
+/// `nowplaying` service), the side column and the sidebar dock slot.
 /// Local pages from MockServices playing Tests/Fixtures/test-video.mp4 (no network).
 @MainActor
 @Suite(.serialized, .watchdog)
@@ -32,8 +32,6 @@ struct NowPlayingTests {
     mock.files = [
       "/s.html": ("text/html", Data(sessionPage.utf8)),
       "/plain.html": ("text/html", Data("<title>Plain</title><video src='/v.mp4' style='width:640px' loop></video>".utf8)),
-      "/cc.html": ("text/html", Data("<title>CC</title><video src='/v.mp4' style='width:640px' loop><track kind=subtitles srclang=en src=/s.vtt></video>".utf8)),
-      "/s.vtt": ("text/vtt", Data("WEBVTT\n\n00:00.000 --> 00:30.000\nHello\n".utf8)),
       "/v.mp4": ("video/mp4", video),
     ]
     return mock
@@ -151,73 +149,6 @@ struct NowPlayingTests {
     #expect(rt.call("nowplaying", "clear") == .ok)
     #expect(MPNowPlayingInfoCenter.default().nowPlayingInfo == nil)
     #expect(rt.call("nowplaying", "get")["active"] == false)
-  }
-
-  @Test func miniPlayerExtras() async throws {
-    let rt = ServiceTests.runtime()
-    rt.window.window.orderFront(nil)
-    defer { rt.window.window.orderOut(nil) }
-    let mock = try Self.served()
-    let web = try await playing(rt, mock, "/cc.html", id: "cc")
-    _ = rt.call("webviews", "create", ["id": "o"])
-    #expect(await wait { rt.media.eligibleVideo("cc") != nil })
-    #expect(rt.media.eligibleVideo("cc")?.num("cc") == 1, "a subtitle track is available")
-    _ = rt.call("content", "show", ["panes": ["o"]])
-    let p = try #require(rt.media.panel)
-    #expect(rt.media.playerId == "cc")
-    // The host chip.
-    #expect(p.player.controls.host.title == "127.0.0.1" && !p.player.controls.host.isHidden)
-    // Keep on top: on by default, off by the button's action (and remembered).
-    #expect(p.level == .floating && rt.media.keepOnTop)
-    #expect(rt.call("media", "control", ["action": "keepOnTop", "value": 0]) == .ok)
-    #expect(p.level == .normal && rt.call("media", "get")["settings"]["keepOnTop"] == false)
-    #expect(rt.call("storage", "get", ["ns": "media", "key": "settings"])["keepOnTop"] == false)
-    func key(_ code: UInt16, _ chars: String, _ flags: NSEvent.ModifierFlags = []) -> NSEvent {
-      NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: p.windowNumber, context: nil,
-                       characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
-    }
-    p.keyDown(with: key(17, "t"))
-    #expect(p.level == .floating && rt.media.keepOnTop)
-    // Subtitles: C shows them (the page's text track), and the CC button fills.
-    #expect(await wait(10, "the CC button") { p.player.controls.captionState == 1 && !p.player.controls.captions.isHidden })
-    p.keyDown(with: key(8, "c"))
-    #expect(await wait(10, "subtitles showing") { p.player.controls.captionState == 2 && p.player.controls.captions.selected })
-    let mode = await Wait.asyncJS(web, "return document.querySelector('video').textTracks[0].mode")
-    #expect(mode as? String == "showing")
-    // Firefox's keys: Home, ⌘→ (a tenth: 3 s of 30), End.
-    func t() async -> Double { (await Wait.asyncJS(web, "return document.querySelector('video').currentTime") as? Double) ?? -1 }
-    p.keyDown(with: key(115, ""))
-    #expect(await Wait.until("Home") { await t() < 1.5 })
-    let t0 = await t()
-    p.keyDown(with: key(124, "", .command))
-    #expect(await Wait.until("⌘→") { await t() >= t0 + 2.5 })
-    p.keyDown(with: key(125, "", .command))
-    #expect(await wait(10, "⌘↓ mutes") { p.player.controls.muted })
-    p.keyDown(with: key(126, "", .command))
-    #expect(await wait(10, "⌘↑ unmutes") { !p.player.controls.muted })
-    // Tucked off the right edge, then back.
-    let vf = p.screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-    p.setFrameOrigin(NSPoint(x: vf.maxX - p.frame.width / 3, y: vf.minY + 40))
-    p.snap()
-    #expect(p.stashed == .right && p.player.stashed == .right && !p.player.stashTab.isHidden)
-    #expect(rt.call("media", "get")["stashed"] == "right")
-    #expect(rt.call("media", "control", ["action": "unstash"]) == .ok)
-    #expect(p.stashed == nil && p.player.stashTab.isHidden)
-    // ⌘W closes it (and pauses the video).
-    p.keyDown(with: key(13, "w", .command))
-    #expect(rt.media.playerId == nil)
-    mock.stop()
-  }
-
-  @Test func stashGeometry() {
-    let vf = NSRect(x: 0, y: 0, width: 1440, height: 900)
-    #expect(MiniPlayerPanel.stashSide(NSRect(x: -250, y: 100, width: 400, height: 225), in: vf) == .left)
-    #expect(MiniPlayerPanel.stashSide(NSRect(x: 1300, y: 100, width: 400, height: 225), in: vf) == .right)
-    #expect(MiniPlayerPanel.stashSide(NSRect(x: 1100, y: 100, width: 400, height: 225), in: vf) == nil)
-    #expect(MiniPlayerPanel.stashFrame(NSRect(x: -250, y: 100, width: 400, height: 225), side: .left, in: vf) == NSRect(x: -372, y: 100, width: 400, height: 225))
-    // Kept on screen vertically.
-    #expect(MiniPlayerPanel.stashFrame(NSRect(x: 1300, y: 800, width: 400, height: 225), side: .right, in: vf) == NSRect(x: 1412, y: 659, width: 400, height: 225))
-    #expect(MediaService.hostLabel("https://www.youtube.com/watch?v=1") == "youtube.com" && MediaService.hostLabel("about:blank") == "")
   }
 
   /// `content.side`: a web view beside the panes, the panes making room; hidden, it leaves the window.

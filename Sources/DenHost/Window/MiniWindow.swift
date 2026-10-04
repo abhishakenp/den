@@ -42,7 +42,7 @@ final class MiniWindowController: NSObject, NSWindowDelegate {
     } else {
       panel.isFloatingPanel = true  // spec §8: AXSystemDialog-style floating panel
       panel.level = .floating
-      panel.collectionBehavior = [.fullScreenAuxiliary, .canJoinAllSpaces, .ignoresCycle]
+      panel.collectionBehavior = [.fullScreenAuxiliary]
       panel.minSize = Tokens.miniMinSize
     }
     panel.hidesOnDeactivate = false

@@ -691,7 +691,7 @@
       animation-range: cover 28% cover 38%, cover 16% cover 22%;
     }
 
-    /* 7 · the video floats off into the mini player */
+    /* 7 · the video floats off into picture in picture */
     .st-list-b-sel {
       animation: st-sel-down linear both, st-sel-up linear forwards;
       animation-timeline: --b7, --b7;

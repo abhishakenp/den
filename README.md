@@ -68,7 +68,7 @@ Each item is covered by `swift test` or a `--scenario` run of the real app. The 
 - **[Spaces & themes](docs/guide/spaces-and-themes.md):** a theme per space, two-finger swipe, the space menu, footer drag-reorder, a separate profile (logins, cookies) per space
 - **[Command bar](docs/guide/command-bar.md):** tabs in every space, the archive, URLs, web search, site keywords, every command, and settings you can flip right from the bar (⌘T / ⌘L)
 - **[Peek, split view & Little Arc](docs/guide/peek-split-little-arc.md):** ⇧-click any link to Peek, 2–4 panes by dragging a tab onto the page, an opt-in mini window for links from other apps
-- **Mini player:** leave a playing video (another tab, another app, a covered or minimized window) and it follows you in a floating player with den's own controls
+- **Picture in picture:** the Mac's own, the one Safari uses. Leave a playing video (another tab or space, a covered, hidden or minimized window) and it floats along on top of everything, on every Space; come back and it slides home. ⌥⌘P any time
 - **[Hover previews](docs/guide/hover-previews.md):** rest on a tab for its PR checks and reviews, next meeting, unread mail, or a snapshot
 - **[Connections & briefing](docs/guide/connections-and-briefing.md):** Slack and GitHub through your own session in den, a morning briefing with todos, on-device summaries
 - **[Extensions](docs/guide/extensions.md):** Chrome Web Store and Firefox Add-ons ("Add to den"), popups, per-site access; uBlock Origin Lite, Dark Reader verified

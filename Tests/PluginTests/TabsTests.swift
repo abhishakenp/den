@@ -376,7 +376,7 @@ struct TabsTests {
     #expect(!h.ids("today", s0).contains(today[1]))
   }
 
-  @Test func miniPlayerBackToTabSelectsIt() {
+  @Test func pipReturnButtonSelectsTheTab() {
     let h = Harness()
     h.startTabs()
     let id = h.ids("today")[2]

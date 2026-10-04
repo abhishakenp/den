@@ -232,7 +232,7 @@ Rules for every service:
 ### 3.2 `window.open`: one primitive for Little Arc, mini player and settings
 
 - **Little Arc.** `{kind: panel, corner: topRight, margin: 20, size: [1185, 832], titlebar: {height: 47, tree: <URL field + "Open in Space ⌘O">}, webview}`. The bar tree and every string come from `peek`. The ⌘O binding already lives in the plugin.
-- **Mini player.** `{kind: panel, level: floating, allSpaces, nonActivating, aspectLock, snap: corners, margin: 16, minWidth: 256, webview, tree: <controls with showOn: hover>}`. Eligibility, keys and rates live in the `media` plugin.
+- **Mini player.** Removed: den uses WebKit's native picture in picture (the system window), so no panel is needed. What remains host-side is the auto-PiP policy in `MediaService` (to move into the `media` plugin).
 - **Settings.** `{kind: window, title, size: [740, 540], autosave: "den.settings", tree: <split: list | scroll of groups>}`. Sections are a `settings` plugin service that other plugins register with.
 
 ### 3.3 Services removed or shrunk
@@ -430,7 +430,7 @@ Feature-specific host code is marked with one line, so `git grep "thin-host:"` l
 // thin-host: feature-specific, migrate to plugin
 ```
 
-Marked so far: `ConfigService.apply()` (shortcuts and keywords), `LivePlugins.toast` (load and build failure strings), and `main.swift` `sessionSummary()`, `CommandBarView` (row, banner and framing; the launcher's index, ranking, aliases, settings and strings are already in the `commandbar` plugin) and `LauncherSettingsStub` in `CommandBarScenarios.swift` (a snapshot-only settings registry). Also marked: the extensions code (Appendix), the Addendum's **marked** rows, the mini player (`MediaService`, `MiniPlayerPanel`, the isolation CSS in `PageScripts`), passwords (`VaultService`, the `overlay.passwords` slot in `UIService`, the suggestion-view case in `CardView.layout`), dark mode's page-tone heuristic (`PageStyleService`), and the dev scenarios `PageToolsScenarios`, `VaultScenarios` and the password pages in `MockServices`. `git grep "thin-host:"` is the complete list. The launcher added only generic blocks to the host: row `shortcut` keycaps and a `toggle` switch, the bar's `right`/`back` actions, `window.focusMini`, `app.showAbout` and `payload` in `keys.list`.
+Marked so far: `ConfigService.apply()` (shortcuts and keywords), `LivePlugins.toast` (load and build failure strings), and `main.swift` `sessionSummary()`, `CommandBarView` (row, banner and framing; the launcher's index, ranking, aliases, settings and strings are already in the `commandbar` plugin) and `LauncherSettingsStub` in `CommandBarScenarios.swift` (a snapshot-only settings registry). Also marked: the extensions code (Appendix), the Addendum's **marked** rows, automatic picture in picture (`MediaService`; the mini player panel and its isolation CSS are gone), passwords (`VaultService`, the `overlay.passwords` slot in `UIService`, the suggestion-view case in `CardView.layout`), dark mode's page-tone heuristic (`PageStyleService`), and the dev scenarios `PageToolsScenarios`, `VaultScenarios` and the password pages in `MockServices`. `git grep "thin-host:"` is the complete list. The launcher added only generic blocks to the host: row `shortcut` keycaps and a `toggle` switch, the bar's `right`/`back` actions, `window.focusMini`, `app.showAbout` and `payload` in `keys.list`.
 
 Updates ([updates.md](../updates.md)) follow the rule from the start:
 

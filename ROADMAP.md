@@ -91,7 +91,7 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
   - ✅ camera and microphone prompts, HTTP sign-in, file panels, JS alert/confirm/prompt
   - ⏳ location, notifications
 - 🟡 Picture-in-picture and media controls (see Media)
-  - ✅ mini player: a playing video follows you when you leave its tab or den (den's own controls; system PiP as a fallback)
+  - ✅ picture in picture: WebKit's own (the system PiP window Safari uses); automatic when you leave a playing video's tab or den, ⌥⌘P by hand
   - ✅ tab mute from the sidebar speaker (WebKit page mute)
 - ✅ Web Inspector, inspect element, console, view source
 - ✅ Default browser handling: Settings, menu bar, command bar banner, "Try for a week"
@@ -200,12 +200,12 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 
 ## Media
 
-- 🟡 Mini player: den's own frameless, always-on-top player (seek, volume/mute, ±10 s, speed, back to tab, resize/snap), native PiP as the fallback
-- ✅ Mini player extras: "Keep on top" toggle (T), tuck off the screen edge (stash), hostname chip back to the tab, Firefox's PiP keys, subtitles (C) when the page has text tracks ([guide](docs/guide/media.md#the-mini-player))
+- ✅ Picture in picture is the system's (WebKit's native PiP, the window Safari uses: on top of every app, every Space and full-screen apps, stash, resize, the system's play/pause, skip, close and return-to-tab). den's custom mini player is gone. ⌥⌘P / View ▸ Picture in Picture / the command bar toggle it; the now-playing dock, the tab speaker, ⌃⌘P, media keys and Control Center control the video while it floats ([guide](docs/guide/media.md#picture-in-picture))
+- ⏳ Around the native window: per-tab volume and playback speed from den (the system window has neither)
 - ✅ Now-playing dock at the bottom of the sidebar, Control Center and media keys ([guide](docs/guide/media.md#now-playing-at-the-bottom-of-the-sidebar)). ⏳ Verify on a real Mac how macOS picks between den's Now Playing entry and WebKit's own (CI has no media keys)
 - ✅ Hover play/pause/skip on the row of any tab playing (or paused) media
 - ✅ Web panels (optional `panels` plugin, ⌃⌘S; [guide](docs/guide/media.md#web-panels)). ⏳ Drag to resize a panel
-- ✅ AutoPiP like Safari, on by default: den's own mini player opens when leaving a tab or app while a video plays
+- ✅ AutoPiP like Safari's video viewer, on by default: leaving a playing video's tab or space, or minimizing, hiding or covering den (or a full-screen video's Space switched away) puts it in native picture in picture; coming back takes it out
 - ✅ Tabs playing audio are never archived or unloaded, and updates never relaunch during playback
 - ⏳ Camera, mic and screen-share badges on tabs, click to turn off
 - ✅ Meeting reminder card with Join, View and Dismiss (window's top-right corner, 2 minutes before by default), plus an "in 8m" countdown on the Calendar favorite

@@ -136,8 +136,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 
 | Feature | Arc | Dia | Zen | den | Notes |
 |---|---|---|---|---|---|
-| [Mini player when leaving a video tab](guide/media.md) | ✅ | ✅ | ? | ✅ | den's own player, on by default: frameless, on top, seek, volume/mute, ±10 s, speed, back to tab, resize/snap. Native PiP as the fallback |
-| [Mini player extras: keep-on-top toggle, tuck off-screen, hostname chip, Firefox's PiP keys, subtitles](guide/media.md#the-mini-player) | ? | ✅ | ? | ✅ | Subtitles for pages that expose text tracks |
+| [Picture in picture when leaving a video tab](guide/media.md#picture-in-picture) | ✅ | ✅ | ? | ✅ | The system's own PiP window (WebKit's, as in Safari), on by default; ⌥⌘P by hand; the return button goes back to the tab |
 | [Audio controls in sidebar](guide/media.md) | ✅ | ✅ | ✅ | ✅ | Speaker and mute; hover play/pause/skip on the tab row; the now-playing dock (artwork, title, artist, previous/next, several at once); Control Center and media keys |
 | [Calendar countdown, Join button, meeting reminder](guide/connections-and-briefing.md#google-calendar) | ✅ | ✅ meeting groups | ❌ | ✅ | Join on the calendar hover card, a reminder card with Join before each meeting, "in 8m" on the Calendar favorite. ⏳ dragging the card, meeting groups |
 | Camera, mic and screen-share badges on tabs | ✅ | ✅ | ? | ⏳ | |
@@ -246,6 +245,6 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | Split drop indicators tinted to the theme | ✅ | |
 | Animations for clearing tabs, dropping tabs, fullscreen, PiP | (unverified) | |
 | [Command bar always centered; shortcut again dismisses it](guide/command-bar.md) | ✅ | |
-| [Media follows you: video in the mini player bottom-right, audio in sidebar](guide/media.md) | ✅ | |
+| [Media follows you: video in picture in picture, audio in sidebar](guide/media.md) | ✅ | |
 | Optional UI sounds | — | |
 | Exact sizes (sidebar width, corner radius, timings) | 🟡 | From [arc-ui-spec](reference/arc-ui-spec.md); values still marked "estimate" in `Tokens.swift` need measuring on real Arc |

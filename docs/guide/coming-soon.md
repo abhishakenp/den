@@ -14,10 +14,6 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 - Auto tab grouping and tidying with Apple's on-device model.
 - Copy a clean URL with tracking parameters stripped.
 
-## Media
-
-- **Automatic system picture in picture** like Safari's, when you leave a tab playing video (today den's own mini player follows you instead).
-
 ## Connections & briefing
 
 - **Auto-connect** like Dia: if you're already signed in to GitHub or Slack in den, or sign in later, it connects without a click, with a "GitHub connected · Undo" toast.

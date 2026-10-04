@@ -53,7 +53,7 @@ export const BEATS: Beat[] = [
   {
     id: "media",
     title: "The video comes with you.",
-    body: "Switch tabs while a video plays and it floats off into a mini player. Come back and it slides home, still playing.",
+    body: "Switch tabs while a video plays and it floats off into the Mac's own picture in picture, on top of everything. Come back and it slides home, still playing.",
     href: doc("docs/guide/media.md"),
   },
   {
