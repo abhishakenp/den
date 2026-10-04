@@ -120,6 +120,7 @@ public enum PopupScenarios {
     // DEN_TYPE: typed as key presses into whatever has focus after the click.
     if let text = env["DEN_TYPE"] {
       try? await Task.sleep(for: .seconds(1))
+      print("scenario.focus \(String(describing: w.window?.firstResponder.map { Swift.type(of: $0) }))")
       for ch in text {
         type(w, ch)
         try? await Task.sleep(for: .milliseconds(80))
@@ -155,6 +156,11 @@ public enum PopupScenarios {
   static func type(_ w: WKWebView, _ ch: Character) {
     guard let win = w.window else { return }
     let s = String(ch)
+    // Text input goes in the way an input method delivers it (the focused field, any frame).
+    if let client = win.firstResponder as? NSTextInputClient {
+      client.insertText(s, replacementRange: NSRange(location: NSNotFound, length: 0))
+      return
+    }
     for t in [NSEvent.EventType.keyDown, .keyUp] {
       guard let e = NSEvent.keyEvent(with: t, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: win.windowNumber,
                                      context: nil, characters: s, charactersIgnoringModifiers: s, isARepeat: false, keyCode: 0) else { continue }
