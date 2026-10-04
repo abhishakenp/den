@@ -154,20 +154,34 @@ jobs:
       - name: Bundle den.app (with the Scenarios trait)
         run: DEN_SCENARIOS=1 scripts/bundle.sh
 
-      # MediaScenarios `pip`: WebKit's native PiP through every trigger, the PiP window's buttons,
-      # and (DEN_PIP_FULLSCREEN) a full-screen video whose Space is switched away from. A visible
-      # den on the runner's own display; one line per check, exit 0 only when all pass.
+      # Another app to switch to (scripts/ci/pip-cover.swift): one covering den, one in full screen.
+      - name: Build PipCover.app
+        run: |
+          app=build/PipCover.app/Contents
+          mkdir -p "$app/MacOS"
+          xcrun swiftc -swift-version 5 -O scripts/ci/pip-cover.swift -o "$app/MacOS/PipCover"
+          /usr/libexec/PlistBuddy -c 'Add :CFBundleIdentifier string io.github.abhishakenp.pipcover' -c 'Add :CFBundleExecutable string PipCover' \
+            -c 'Add :CFBundlePackageType string APPL' -c 'Add :CFBundleName string PipCover' "$app/Info.plist"
+          codesign --force --sign - build/PipCover.app
+
+      # MediaScenarios `pip`: WebKit's native PiP through every trigger (tab switch, minimize,
+      # hide, order out, switching to Terminal / a covering app / a full-screen app's Space), the
+      # PiP window's buttons, (DEN_PIP_FULLSCREEN) a full-screen video whose Space is switched away
+      # from, and (DEN_PIP_YOUTUBE) a real YouTube page. A visible den on the runner's own display;
+      # one line per check plus den's own `media.log` decisions, exit 0 only when all pass.
       - name: Run --scenario pip
         env:
           DEN_PIP_FULLSCREEN: "1"
+          DEN_PIP_YOUTUBE: https://www.youtube.com/watch?v=aqz-KE-bpKQ
         run: |
           mkdir -p build/ci-logs
           store=$(mktemp -d)
+          export DEN_PIP_COVER="$PWD/build/PipCover.app"
           set +e
-          perl -e 'alarm 300; exec @ARGV' build/den.app/Contents/MacOS/den --no-den-home --storage "$store" --scenario pip > build/ci-logs/pip-scenario.log 2>&1
+          perl -e 'alarm 480; exec @ARGV' build/den.app/Contents/MacOS/den --no-den-home --storage "$store" --scenario pip > build/ci-logs/pip-scenario.log 2>&1
           rc=$?
           set -e
-          grep -E "scenario\." build/ci-logs/pip-scenario.log | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -E "scenario\.|media\.log" build/ci-logs/pip-scenario.log | tee -a "$GITHUB_STEP_SUMMARY"
           cp "${TMPDIR:-/tmp}"/den-pip-*.png build/ci-logs/ 2>/dev/null || true
           exit $rc
 
