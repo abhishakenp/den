@@ -218,7 +218,7 @@ final class PeekCore {
 
   func open(_ url: String, source: String?) -> Value {
     if peek != nil { hide(record: false) }
-    let profile = source.map { env.call("webviews", "get", ["id": .string($0)]).sOpt("profile") ?? "default" } ?? "default"
+    let profile = profileFor(source: source)
     guard let id = newWebview("peek-", url: url, profile: profile) else { return .err("peek: cannot create a web view") }
     peek = id
     peekSource = source
@@ -230,6 +230,21 @@ final class PeekCore {
     unbindUndo()
     env.emit("peek.opened", ["id": .string(id), "url": .string(url)])
     return ["id": .string(id)]
+  }
+
+  /// The website data a peek uses: its source page's profile; without a source, the page in front
+  /// (the tab a private window shows, or the space's), and in an empty private window that
+  /// window's own ephemeral profile. Never the normal profile for a private window.
+  func profileFor(source: String?) -> String {
+    let front = env.call("tabs", "selected")
+    for id in [source, front.sOpt("id")] {
+      guard let id else { continue }
+      let st = env.call("webviews", "get", ["id": .string(id)])
+      if !st.isErr, let p = st.sOpt("profile") { return p }
+    }
+    let w = env.call("window", "get")
+    if w.b("private") { return "private:" + w.s("id") }
+    return "default"
   }
 
   /// Current URL of the peek (it may have navigated since it opened).

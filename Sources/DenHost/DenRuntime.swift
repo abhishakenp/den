@@ -80,7 +80,9 @@ public final class DenRuntime {
     webviews.downloads = downloads
     downloads.webView = { [weak webviews] preferred in
       guard let webviews else { return nil }
-      return webviews.record(preferred)?.webView ?? webviews.records.values.lazy.compactMap(\.webView).first
+      // The fallback is never a private page's view: its ephemeral session must not carry a
+      // download that isn't its own.
+      return webviews.record(preferred)?.webView ?? webviews.records.values.lazy.filter { !$0.isPrivate }.compactMap(\.webView).first
     }
     downloads.isPrivateWebview = { [weak webviews] id in webviews?.record(id)?.isPrivate ?? id.hasPrefix("ptab-") }
     webviews.uploadPicker = UploadPicker(downloads: downloads)
