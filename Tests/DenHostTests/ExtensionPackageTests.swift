@@ -207,7 +207,20 @@ struct ExtensionPackageTests {
     defer { try? FileManager.default.removeItem(at: d) }
     try #"{"manifest_version": 3, "name": "C", "version": "1", "background": {"service_worker": "sw.js"}}"#.write(to: d.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
     #expect(try ExtensionShim.apply(to: d))
-    #expect(try String(contentsOf: d.appendingPathComponent("__den/worker.js"), encoding: .utf8) == "importScripts(\"/__den/background.js\", \"/__den/shim.js\", \"/sw.js\");\n")
+    #expect(try String(contentsOf: d.appendingPathComponent("__den_worker.js"), encoding: .utf8) == "importScripts(\"/__den/background.js\", \"/__den/shim.js\", \"/sw.js\");\n")
+    #expect((try Self.manifest(d)["background"] as? [String: Any])?["service_worker"] as? String == "__den_worker.js")
+    #expect(try !ExtensionShim.apply(to: d))
+    // A worker in a folder gets its wrapper in that folder (bundles load chunks next to it); a
+    // copy shimmed by an older den (wrapper in __den/) is moved there too.
+    let g = Self.tempDir()
+    defer { try? FileManager.default.removeItem(at: g) }
+    try FileManager.default.createDirectory(at: g.appendingPathComponent("__den"), withIntermediateDirectories: true)
+    try #"{"manifest_version": 3, "name": "G", "version": "1", "background": {"service_worker": "__den/worker.js"}}"#.write(to: g.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
+    try "importScripts(\"/__den/background.js\", \"/__den/shim.js\", \"/src/js/bg.js\");\n".write(to: g.appendingPathComponent("__den/worker.js"), atomically: true, encoding: .utf8)
+    try FileManager.default.createDirectory(at: g.appendingPathComponent("src/js"), withIntermediateDirectories: true)
+    #expect(try ExtensionShim.apply(to: g))
+    #expect((try Self.manifest(g)["background"] as? [String: Any])?["service_worker"] as? String == "src/js/__den_worker.js")
+    #expect(try String(contentsOf: g.appendingPathComponent("src/js/__den_worker.js"), encoding: .utf8).contains("\"/src/js/bg.js\""))
     let f = Self.tempDir()
     defer { try? FileManager.default.removeItem(at: f) }
     try #"{"manifest_version": 3, "name": "F", "version": "1", "background": {"scripts": ["main.js"], "type": "module"}}"#.write(to: f.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)

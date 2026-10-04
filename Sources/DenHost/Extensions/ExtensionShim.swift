@@ -12,11 +12,15 @@ import Foundation
 public enum ExtensionShim {
   static let dir = "__den"
   static let script = "__den/shim.js"
-  static let worker = "__den/worker.js"
+  /// A classic service worker's wrapper, written next to the worker: bundlers load chunks
+  /// relative to the worker's own URL (Bitwarden, Grammarly), so it must live in the same folder.
+  static let workerName = "__den_worker.js"
+  /// Where shim v1–4 put the wrapper (chunks then resolved under __den/ and failed to load).
+  static let oldWorker = "__den/worker.js"
   /// Marks the background context, where the shim records visits and closed tabs.
   static let backgroundFlag = "__den/background.js"
   /// Bumped when `source` changes, so installed copies get the new one on their next load.
-  static let version = 4
+  static let version = 5
 
   /// Adds the shim to an unpacked extension. Idempotent; returns whether anything changed.
   /// `validPattern` says whether WebKit takes a match pattern: content script entries lose the
@@ -46,14 +50,20 @@ public enum ExtensionShim {
     // code runs as Firefox's module background scripts), so it becomes module background
     // scripts, which WebKit runs for Manifest V3 too. Scripts and pages get the shim prepended.
     if var bg = m["background"] as? [String: Any] {
-      if let sw = bg["service_worker"] as? String, sw != worker {
-        let path = sw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+      if let sw = bg["service_worker"] as? String, (sw as NSString).lastPathComponent != workerName {
+        var path = sw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if path == oldWorker, let old = try? String(contentsOf: root.appendingPathComponent(oldWorker), encoding: .utf8),
+           let orig = old.components(separatedBy: "\"").filter({ $0.hasPrefix("/") }).last {
+          path = String(orig.dropFirst())
+        }
         if (bg["type"] as? String) == "module" {
           bg["service_worker"] = nil
           bg["scripts"] = [path]
         } else {
-          try "importScripts(\"/\(backgroundFlag)\", \"/\(script)\", \"/\(path)\");\n".write(to: root.appendingPathComponent(worker), atomically: true, encoding: .utf8)
-          bg["service_worker"] = worker
+          let folder = (path as NSString).deletingLastPathComponent
+          let wrapper = folder.isEmpty ? workerName : folder + "/" + workerName
+          try "importScripts(\"/\(backgroundFlag)\", \"/\(script)\", \"/\(path)\");\n".write(to: root.appendingPathComponent(wrapper), atomically: true, encoding: .utf8)
+          bg["service_worker"] = wrapper
         }
         changed = true
       }
