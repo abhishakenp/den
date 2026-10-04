@@ -1,0 +1,48 @@
+{
+  "version": "2026.10.04",
+  "source": "Translated from uBlock Origin's uAssets filters.txt and quick-fixes.txt (GPL-3.0), YouTube section",
+  "sets": [
+    {
+      "name": "youtube",
+      "hosts": ["youtube.com", "youtube-nocookie.com", "youtubekids.com"],
+      "rules": [
+        ["set", "ytInitialPlayerResponse.playerAds", "undefined"],
+        ["set", "ytInitialPlayerResponse.adPlacements", "undefined"],
+        ["set", "ytInitialPlayerResponse.adSlots", "undefined"],
+        ["set", "playerResponse.adPlacements", "undefined"],
+        ["json-prune", "playerResponse.adPlacements playerResponse.playerAds playerResponse.adSlots adPlacements playerAds adSlots"],
+        ["json-prune", "entries.[-].command.reelWatchEndpoint.adClientParams.isAd"],
+        ["json-prune-fetch-response", "adPlacements adSlots playerAds playerResponse.adPlacements playerResponse.adSlots playerResponse.playerAds [].playerResponse.adPlacements [].playerResponse.adSlots [].playerResponse.playerAds", "/player?"],
+        ["json-prune-fetch-response", "adPlacements adSlots playerResponse.adPlacements playerResponse.adSlots", "/playlist?"],
+        ["json-prune-fetch-response", "reelWatchSequenceResponse.entries.[-].command.reelWatchEndpoint.adClientParams.isAd entries.[-].command.reelWatchEndpoint.adClientParams.isAd", "/reel_watch_sequence?"],
+        ["json-prune-xhr-response", "adPlacements adSlots playerAds playerResponse.adPlacements playerResponse.adSlots playerResponse.playerAds [].playerResponse.adPlacements [].playerResponse.adSlots", "/\\/player(?:\\?.+)?$/"],
+        ["replace-xhr-response", "\"adPlacements\"", "\"no_ads\"", "/playlist\\?list=|\\/player(?:\\?.+)?$|watch\\?[tv]=/"],
+        ["replace-xhr-response", "\"adSlots\"", "\"no_ads\"", "/playlist\\?list=|\\/player(?:\\?.+)?$|watch\\?[tv]=/"],
+        ["replace-fetch-response", "\"adPlacements\"", "\"no_ads\"", "player?"],
+        ["replace-fetch-response", "\"adSlots\"", "\"no_ads\"", "player?"],
+        ["replace-fetch-response", "\"adSlots\"", "\"no_ads\"", "/get_watch?"],
+        ["remove-node-text", "script", "window,\"fetch\""],
+        ["prevent-dom-bypass", "fetch"],
+        ["prevent-dom-bypass", "Request"],
+        ["prevent-dom-bypass", "JSON.parse"],
+        ["adjust-setTimeout", "[native code]", "17000", "0.001"],
+        ["hide", "ytd-ad-slot-renderer"],
+        ["hide", "ytd-rich-item-renderer:has(> #content > ytd-ad-slot-renderer)"],
+        ["hide", "ytd-in-feed-ad-layout-renderer"],
+        ["hide", "ytd-promoted-sparkles-web-renderer"],
+        ["hide", "ytd-promoted-video-renderer"],
+        ["hide", "ytd-display-ad-renderer"],
+        ["hide", "ytd-banner-promo-renderer"],
+        ["hide", "ytd-statement-banner-renderer"],
+        ["hide", "ytd-search-pyv-renderer"],
+        ["hide", "#masthead-ad"],
+        ["hide", "ytd-merch-shelf-renderer"],
+        ["hide", "ytm-promoted-sparkles-web-renderer"],
+        ["hide", "ytm-companion-ad-renderer"],
+        ["hide", "ad-slot-renderer"],
+        ["hide", "tp-yt-paper-dialog:has(ytd-enforcement-message-view-model)"],
+        ["hide", "ytd-enforcement-message-view-model"]
+      ]
+    }
+  ]
+}

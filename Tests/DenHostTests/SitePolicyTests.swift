@@ -143,6 +143,116 @@ struct SitePolicyTests {
     #expect(actions().count == 1)
   }
 
+  // MARK: Page scripts (Shields' scriptlets engine, the real file, on offline pages)
+
+  static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+  static let engine = repo.appendingPathComponent("Plugins/shields/resources/scriptlets.js")
+
+  /// A data file like scriptlets.json, for the site `yt.test`.
+  static func scriptletData(version: String = "1") throws -> URL {
+    let rules: [[String]] = [
+      ["set", "ytInitialPlayerResponse.adPlacements", "undefined"],
+      ["set", "ytInitialPlayerResponse.playerAds", "undefined"],
+      ["json-prune", "playerResponse.adPlacements adPlacements"],
+      ["json-prune-fetch-response", "adPlacements playerResponse.adSlots", "data:application/json"],
+      ["replace-xhr-response", "\"adSlots\"", "\"no_ads\"", "data:application/json"],
+      ["hide", ".ad-slot"],
+      ["hide", "this is :not a selector {"],
+      ["not-a-scriptlet", "x"],
+    ]
+    let obj: [String: Any] = ["version": version, "sets": [["hosts": ["yt.test"], "rules": rules]]]
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("den-scr-\(UUID())")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let u = dir.appendingPathComponent("data.json")
+    try JSONSerialization.data(withJSONObject: obj).write(to: u)
+    return u
+  }
+
+  static let adPage = """
+    <div class=ad-slot id=slot>ad</div><div id=keep>keep</div>
+    <script>
+    var ytInitialPlayerResponse = {adPlacements: [1], playerAds: [2], videoDetails: {videoId: 'v'}};
+    window.parsed = JSON.parse('{"playerResponse":{"adPlacements":[1],"streamingData":1},"adPlacements":[2],"other":3}');
+    </script>
+    """
+
+  static let check = """
+    const r = window.ytInitialPlayerResponse || {};
+    const f = await fetch('data:application/json,{"adPlacements":[1],"playerResponse":{"adSlots":[1],"x":1},"ok":1}').then(r => r.json());
+    const x = await new Promise(res => { const q = new XMLHttpRequest(); q.open('GET', 'data:application/json,{"adSlots":[1]}');
+      q.onload = () => res(q.responseText); q.onerror = () => res('error'); q.send(); });
+    return JSON.stringify({hooked: !!window.__denScriptlets, initAds: 'adPlacements' in r && r.adPlacements !== undefined,
+      playerAds: r.playerAds !== undefined, video: !!(r.videoDetails && r.videoDetails.videoId),
+      parsedAds: !!(window.parsed && (window.parsed.playerResponse.adPlacements || window.parsed.adPlacements)),
+      parsedKept: !!(window.parsed && window.parsed.playerResponse.streamingData === 1 && window.parsed.other === 3),
+      fetchAds: !!(f.adPlacements || f.playerResponse.adSlots), fetchKept: f.ok === 1 && f.playerResponse.x === 1, xhr: x,
+      slotHidden: getComputedStyle(document.getElementById('slot')).display === 'none',
+      keepShown: getComputedStyle(document.getElementById('keep')).display !== 'none'});
+    """
+
+  func pageState(_ w: WKWebView) async throws -> [String: Any] {
+    let s = try await w.callAsyncJavaScript(Self.check, contentWorld: .page) as? String ?? "{}"
+    return try JSONSerialization.jsonObject(with: Data(s.utf8)) as? [String: Any] ?? [:]
+  }
+
+  @Test func scriptletsRunOnlyWhereTheirDataAndRuleSay() async throws {
+    let rt = ServiceTests.runtime()
+    let loaded = events(rt, "sitepolicy.loaded")
+    let data = try Self.scriptletData()
+    #expect(rt.call("sitepolicy", "script", ["name": "test.scr", "file": .string(Self.engine.path), "data": .string(data.path)])["pending"] == true)
+    #expect(try await until { loaded().contains { $0.str("name") == "test.scr" && $0.flag("ok") } })
+    let info = (rt.call("sitepolicy", "list").array ?? []).first { $0.str("name") == "test.scr" }
+    #expect(info?["kind"] == "script")
+    #expect(info?["hosts"] == ["yt.test"])
+    rt.call("sitepolicy", "rules", ["default": ["lists": [], "scripts": ["test.scr"]], "hosts": ["off.yt.test": ["lists": [], "scripts": []]]])
+
+    // On the site: the player response is pruned at assignment, JSON.parse, fetch and XHR
+    // bodies lose their ad fields and nothing else, ad slots are hidden. A bad rule is skipped.
+    let w = try await page(rt, "y", Self.adPage, "https://www.yt.test/watch")
+    let on = try await pageState(w)
+    #expect(on["hooked"] as? Bool == true, "\(on)")
+    #expect(on["initAds"] as? Bool == false, "\(on)")
+    #expect(on["playerAds"] as? Bool == false, "\(on)")
+    #expect(on["video"] as? Bool == true, "\(on)")
+    #expect(on["parsedAds"] as? Bool == false, "\(on)")
+    #expect(on["parsedKept"] as? Bool == true, "\(on)")
+    #expect(on["fetchAds"] as? Bool == false, "\(on)")
+    #expect(on["fetchKept"] as? Bool == true, "\(on)")
+    #expect(on["xhr"] as? String == #"{"no_ads":[1]}"#, "\(on)")
+    #expect(on["slotHidden"] as? Bool == true, "\(on)")
+    #expect(on["keepShown"] as? Bool == true, "\(on)")
+    #expect(rt.call("sitepolicy", "get", ["id": "y"])["scripts"] == ["test.scr"])
+
+    // Another site: the rule names the script, but its data doesn't list the host.
+    let o = try await page(rt, "o", Self.adPage, "https://other.test/")
+    let off = try await pageState(o)
+    #expect(off["hooked"] as? Bool == false, "\(off)")
+    #expect(off["initAds"] as? Bool == true, "\(off)")
+    #expect(off["parsedAds"] as? Bool == true, "\(off)")
+    #expect(rt.call("sitepolicy", "get", ["id": "o"])["scripts"] == .array([]))
+
+    // A site whose own rule turns scripts off (Shields off there), in the same web view.
+    let w2 = try await page(rt, "y", Self.adPage, "https://off.yt.test/")
+    let siteOff = try await pageState(w2)
+    #expect(siteOff["hooked"] as? Bool == false, "\(siteOff)")
+    #expect(siteOff["initAds"] as? Bool == true, "\(siteOff)")
+    // And back on: the web view's other user scripts survived the removal (den's media script).
+    let w3 = try await page(rt, "y", Self.adPage, "https://yt.test/again")
+    #expect(try await pageState(w3)["hooked"] as? Bool == true)
+    #expect(w3.configuration.userContentController.userScripts.contains { $0.source.contains("__denMedia") })
+  }
+
+  @Test func scriptDataPicksTheNewestCopy() throws {
+    let old = try Self.scriptletData(version: "2026.01.01"), new = try Self.scriptletData(version: "2026.10.04")
+    let a = try #require(SitePolicyService.buildScript(js: Self.engine, data: [old, new]))
+    let b = try #require(SitePolicyService.buildScript(js: Self.engine, data: [new, old]))
+    #expect(a.version == "2026.10.04" && b.version == "2026.10.04")
+    #expect(a.hosts == ["yt.test"])
+    #expect(a.source.hasPrefix("(function (denData) {\n"))
+    #expect(SitePolicyService.matches("www.yt.test", ["yt.test"]) && SitePolicyService.matches("yt.test", ["yt.test"]))
+    #expect(!SitePolicyService.matches("notyt.test", ["yt.test"]))
+  }
+
   @Test func unsavedInputIsDetected() async throws {
     let rt = ServiceTests.runtime()
     let got = events(rt, "sitepolicy.unsaved")

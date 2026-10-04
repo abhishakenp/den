@@ -415,6 +415,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       guard let u = arg("--url") else { print("scenario.page needs --url"); exit(1) }
       let id = rt.call("tabs", "open", ["url": .string(u)])["id"]
       rt.call("tabs", "select", ["id": id])
+    case "adCheck":
+      // Shields against real ads: opens each --url (space separated) in turn once the lists and
+      // scriptlets are ready. YouTube watch pages: plays muted (like a click on play) and samples
+      // the player for 30 s. Other pages: WebKit's blocked count. One `scenario.ad` line per URL,
+      // then `scenario.adDone ok=…`, and den exits.
+      AdCheck(rt: rt, urls: (arg("--url") ?? "").split(separator: " ").map(String.init)).start()
     case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
     case "commandEdit": rt.plugins.emit("commands.key.edit")  // Cmd-L
     case "commandActions":

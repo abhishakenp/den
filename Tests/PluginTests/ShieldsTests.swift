@@ -96,6 +96,7 @@ struct ShieldsTests {
     let core = start(h)
     #expect(h.rt.sitePolicy.defaultRule.lists == ["shields.ads", "shields.trackers", "shields.cookies"])
     #expect(h.rt.sitePolicy.defaultRule.autoplay == "sound")
+    #expect(h.rt.sitePolicy.defaultRule.scripts == ["shields.scriptlets"])
     #expect(h.rt.sitePolicy.httpsFirst)
     // The guard: parameters, bounce, lookalike.
     let p = h.rt.call("shields", "navigate", ["url": "https://news.example/a?utm_campaign=x&id=2"])
@@ -112,6 +113,7 @@ struct ShieldsTests {
     // Per site: blocker off drops the ad and tracker lists there and stops link cleaning.
     #expect(h.rt.call("shields", "site", ["host": "news.example", "blocker": false]).isError == false)
     #expect(h.rt.sitePolicy.rule(for: "www.news.example").lists == ["shields.cookies"])
+    #expect(h.rt.sitePolicy.rule(for: "www.news.example").scripts.isEmpty)
     #expect(h.rt.call("shields", "navigate", ["url": "https://news.example/a?utm_campaign=x"]).isNull)
     #expect(h.storage("shields", "sites")["news.example"]["blocker"] == false)
     // Back to the global choice: no exception left.
@@ -126,6 +128,22 @@ struct ShieldsTests {
     #expect(!h.rt.sitePolicy.httpsFirst)
     core.stop()
     #expect(h.rt.sitePolicy.defaultRule.lists.isEmpty)
+    #expect(h.rt.sitePolicy.defaultRule.scripts.isEmpty)
+  }
+
+  /// The shipped scriptlet engine and data load (YouTube's hosts), and a refresh that brings
+  /// changed data reloads them.
+  @Test func scriptletsLoadForYouTube() async throws {
+    let h = Harness()
+    let core = start(h)
+    #expect(try await until { core.scriptletsReady })
+    let info = (h.rt.call("sitepolicy", "list").array ?? []).first { $0.str("name") == "shields.scriptlets" }
+    #expect(info?["hosts"].array?.contains("youtube.com") == true)
+    #expect(core.handle("get", ["host": "youtube.com"])["scriptlets"] == true)
+    #expect(!core.scriptletsVersion.isEmpty)
+    core.fetched(["plugin": "shields", "file": "scriptlets.json", "ok": true, "changed": true])
+    #expect(h.storage("shields", "scriptletsChecked").int ?? 0 > 0)
+    core.stop()
   }
 
   @Test func panelTogglesOfferAReloadAndWarnAboutUnsavedInput() async throws {

@@ -25,4 +25,13 @@ enum ShieldsLists {
                             source: "EasyList Cookie List (https://easylist.to), blocking and hiding rules",
                             licence: "CC BY 3.0 (per the list header). © The EasyList authors")
   static let all = [ads, trackers, cookies]
+
+  /// Scriptlets for what content rules can't do (YouTube's same-origin ads): the engine
+  /// `scriptlets.js` (fixed code) runs the rules in `scriptlets.json` (data only), in the page's
+  /// world, on the sites the data lists. The data is refreshed daily from `scriptletsURL`.
+  static let scriptlets = "shields.scriptlets"
+  static let scriptletsCode = "scriptlets.js"
+  static let scriptletsData = "scriptlets.json"
+  static let scriptletsURL = "https://raw.githubusercontent.com/abhishakenp/den/main/Plugins/shields/resources/scriptlets.json"
+  static let scriptletsSource = "Scriptlets for YouTube, translated from uBlock Origin's filters (https://github.com/uBlockOrigin/uAssets). GPL-3.0"
 }

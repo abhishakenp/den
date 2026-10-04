@@ -71,6 +71,10 @@ public final class DenRuntime {
                                    storeRoot: storageRoot.standardizedFileURL == StorageService.defaultRoot.standardizedFileURL
                                      ? storageRoot.deletingLastPathComponent().appendingPathComponent("ContentRules", isDirectory: true)
                                      : storageRoot.appendingPathComponent("contentrules", isDirectory: true))
+    // Downloaded filter data goes next to any storage root but the real one (tests, --storage).
+    if storageRoot.standardizedFileURL != StorageService.defaultRoot.standardizedFileURL {
+      sitePolicy.resourceRoots = [storageRoot.appendingPathComponent("updates/lists", isDirectory: true)]
+    }
     vault = VaultService(host: host, webviews: webviews)
     downloads = DownloadsService(host: host, storage: storage)
     webviews.downloads = downloads

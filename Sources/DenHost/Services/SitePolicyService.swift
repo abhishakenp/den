@@ -35,6 +35,8 @@ public final class SitePolicyService: HostService {
 
   public struct Rule: Equatable {
     public var lists: [String] = []
+    /// Page scripts (`script`) for this site; each runs only where its data's hosts match.
+    public var scripts: [String] = []
     /// `allow`, `sound` (autoplay only without sound) or `none`; nil leaves WebKit's default.
     public var autoplay: String?
     /// `allow` (every pop-up) or `block` (only from a click; the rest blocked with a notice, like
@@ -57,8 +59,20 @@ public final class SitePolicyService: HostService {
   private var identifiers: [String: String] = [:]
   private var listInfo: [String: Value] = [:]
 
+  /// A page script: one document-start `WKUserScript` in the page's world, every frame.
+  struct PageScript {
+    let id: String
+    let hosts: [String]
+    let user: WKUserScript
+    let bytes: Int
+    let version: String
+  }
+  private(set) var scripts: [String: PageScript] = [:]
+  private var scriptIds: [String: String] = [:]
+
   final class Page {
     var lists: [String: WKContentRuleList] = [:]
+    var scripts: [String: WKUserScript] = [:]
     var blocked: [String: Int] = [:]
     var rewrites: [Value] = []
     var pendingRewrites: [Value] = []
@@ -86,9 +100,18 @@ public final class SitePolicyService: HostService {
     switch method {
     case "load": return load(args)
     case "define": return define(args)
+    case "script": return script(args)
+    case "fetch": return fetch(args)
     case "list":
       return .array(identifiers.keys.sorted().map { n in
         (listInfo[n] ?? ["name": .string(n)]).with("ready", .bool(lists[n] != nil))
+      } + scriptIds.keys.sorted().map { n in
+        var v: Value = ["name": .string(n), "kind": "script", "ready": .bool(scripts[n] != nil)]
+        if let s = scripts[n] {
+          v = v.with("id", .string(s.id)).with("version", .string(s.version)).with("bytes", .int(Int64(s.bytes)))
+            .with("hosts", .array(s.hosts.map { .string($0) }))
+        }
+        return v
       })
     case "rules":
       defaultRule = Self.rule(args["default"])
@@ -138,6 +161,7 @@ public final class SitePolicyService: HostService {
 
   static func rule(_ v: Value) -> Rule {
     Rule(lists: v.list("lists").compactMap(\.string),
+         scripts: v.list("scripts").compactMap(\.string),
          autoplay: v["autoplay"].string.flatMap { ["allow", "sound", "none"].contains($0) ? $0 : nil },
          popups: v["popups"].string.flatMap { ["allow", "block"].contains($0) ? $0 : nil })
   }
@@ -155,17 +179,23 @@ public final class SitePolicyService: HostService {
 
   // MARK: Content rule lists
 
-  func resolve(_ args: Value) -> URL? {
-    let file = args.str("file")
-    guard !file.isEmpty, !file.contains("..") else { return nil }
-    if file.hasPrefix("/") { return FileManager.default.fileExists(atPath: file) ? URL(fileURLWithPath: file) : nil }
+  func resolve(_ args: Value, key: String = "file") -> URL? { candidates(args, key: key).first }
+
+  /// Every existing copy of a plugin file, newest source first: the update roots, then the
+  /// plugin's resource folder. An absolute path is the only candidate.
+  func candidates(_ args: Value, key: String = "file") -> [URL] {
+    let file = args.str(key)
+    guard !file.isEmpty, !file.contains("..") else { return [] }
+    if file.hasPrefix("/") { return FileManager.default.fileExists(atPath: file) ? [URL(fileURLWithPath: file)] : [] }
     let plugin = args.str("plugin")
-    guard !plugin.isEmpty, !plugin.contains("/") else { return nil }
+    guard !plugin.isEmpty, !plugin.contains("/") else { return [] }
+    var out: [URL] = []
     for root in resourceRoots {
       let u = root.appendingPathComponent(plugin, isDirectory: true).appendingPathComponent(file)
-      if FileManager.default.fileExists(atPath: u.path) { return u }
+      if FileManager.default.fileExists(atPath: u.path) { out.append(u) }
     }
-    return resource?(plugin, file)
+    if let u = resource?(plugin, file), FileManager.default.fileExists(atPath: u.path) { out.append(u) }
+    return out
   }
 
   static func validName(_ n: String) -> Bool {
@@ -256,6 +286,129 @@ public final class SitePolicyService: HostService {
     host.emit("sitepolicy.loaded", ["name": .string(n), "ok": false, "error": .string(error)])
   }
 
+  // MARK: Page scripts
+
+  /// `script {name, plugin, file, data?}`: a document-start script in the page's own world, every
+  /// frame, for sites a rule's `scripts` names. The source is `(function (denData) {<file>})(<data>)`.
+  /// `data` is a JSON object; its `sets[].hosts` (host suffixes) limit where the script runs at
+  /// all. When the data file exists in an update root and in the plugin's resources, the one with
+  /// the greater `version` string wins, so a stale download never shadows a newer den.
+  /// Files are read off the main thread; `{pending}`, then `sitepolicy.loaded {name, ok, kind: "script"}`.
+  func script(_ args: Value) -> Value {
+    let n = args.str("name")
+    guard Self.validName(n) else { return .error("sitepolicy: script needs a name of letters, digits, . - _") }
+    guard let js = resolve(args) else { return .error("sitepolicy: no script file '\(args.str("file"))'") }
+    let data = candidates(args, key: "data")
+    if !args.str("data").isEmpty, data.isEmpty { return .error("sitepolicy: no data file '\(args.str("data"))'") }
+    let token = UUID().uuidString
+    scriptIds[n] = token
+    let t0 = Date()
+    DispatchQueue.global(qos: .utility).async {
+      let built = Self.buildScript(js: js, data: data)
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          guard self.scriptIds[n] == token else { return }
+          guard let built else {
+            self.scriptIds[n] = nil
+            self.host.emit("sitepolicy.loaded", ["name": .string(n), "ok": false, "kind": "script", "error": "can't read the script or its data"])
+            return
+          }
+          let id = n + "@" + Self.fnv(built.source)
+          let cached = self.scripts[n]?.id == id
+          if !cached {
+            let user = WKUserScript(source: built.source, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
+            self.scripts[n] = PageScript(id: id, hosts: built.hosts, user: user, bytes: built.source.utf8.count, version: built.version)
+          }
+          let ms = (Date().timeIntervalSince(t0) * 1000).rounded()
+          self.host.emit("sitepolicy.loaded", ["name": .string(n), "ok": true, "kind": "script", "cached": .bool(cached), "ms": .double(ms),
+                                               "version": .string(built.version)])
+          if !cached {
+            self.activate()
+            self.applyAll()
+          }
+        }
+      }
+    }
+    return ["pending": true]
+  }
+
+  struct BuiltScript {
+    let source: String
+    let hosts: [String]
+    let version: String
+  }
+
+  /// The wrapped source, the data's hosts and version. The data copy with the greatest `version`.
+  nonisolated static func buildScript(js: URL, data: [URL]) -> BuiltScript? {
+    guard let code = try? String(contentsOf: js, encoding: .utf8) else { return nil }
+    var best: (json: String, obj: [String: Any], version: String)?
+    for u in data {
+      guard let d = try? Data(contentsOf: u), d.count <= 2 * 1024 * 1024,
+            let obj = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
+            let json = String(data: d, encoding: .utf8) else { continue }
+      let v = obj["version"] as? String ?? ""
+      if best == nil || v > best!.version { best = (json, obj, v) }
+    }
+    if !data.isEmpty, best == nil { return nil }
+    var hosts: [String] = []
+    for set in best?.obj["sets"] as? [[String: Any]] ?? [] {
+      for h in set["hosts"] as? [String] ?? [] where !h.isEmpty && !hosts.contains(PageStyleService.key(h)) { hosts.append(PageStyleService.key(h)) }
+    }
+    // JSON is a JavaScript expression; U+2028/9 are escaped for older parsers' sake.
+    let arg = (best?.json ?? "null").replacingOccurrences(of: "\u{2028}", with: "\\u2028").replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+    return BuiltScript(source: "(function (denData) {\n" + code + "\n})(" + arg + ");\n", hosts: hosts, version: best?.version ?? "")
+  }
+
+  /// Whether a page on `host` gets a script limited to `hosts` (none: every page).
+  nonisolated static func matches(_ host: String, _ hosts: [String]) -> Bool {
+    hosts.isEmpty || hosts.contains { host == $0 || host.hasSuffix("." + $0) }
+  }
+
+  /// `fetch {plugin, file, url}`: downloads a newer JSON data file (≤ 2 MB, an https URL) into the
+  /// first update root, `<root>/<plugin>/<file>`, where `script`/`load` find it. Ephemeral session,
+  /// no cookies. `{pending}`, then `sitepolicy.fetched {plugin, file, ok, changed, version?, error?}`.
+  func fetch(_ args: Value) -> Value {
+    let plugin = args.str("plugin"), file = args.str("file")
+    guard Self.validName(plugin), Self.validName(file), file.hasSuffix(".json") else { return .error("sitepolicy: fetch needs a plugin and a .json file name") }
+    guard let url = URL(string: args.str("url")), url.scheme == "https" else { return .error("sitepolicy: fetch needs an https url") }
+    guard let root = resourceRoots.first else { return .error("sitepolicy: no update root") }
+    let dest = root.appendingPathComponent(plugin, isDirectory: true).appendingPathComponent(file)
+    let config = URLSessionConfiguration.ephemeral
+    config.requestCachePolicy = .reloadIgnoringLocalCacheData
+    config.timeoutIntervalForRequest = 30
+    let session = URLSession(configuration: config)
+    session.dataTask(with: url) { data, response, error in
+      session.finishTasksAndInvalidate()
+      let (ok, changed, version, why) = Self.store(data, response, error, at: dest)
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          var v: Value = ["plugin": .string(plugin), "file": .string(file), "ok": .bool(ok), "changed": .bool(changed)]
+          if !version.isEmpty { v = v.with("version", .string(version)) }
+          if !why.isEmpty { v = v.with("error", .string(why)) }
+          self.host.emit("sitepolicy.fetched", v)
+        }
+      }
+    }.resume()
+    return ["pending": true]
+  }
+
+  /// Writes a downloaded JSON object to `dest` when it differs. (ok, changed, version, error)
+  nonisolated static func store(_ data: Data?, _ response: URLResponse?, _ error: Error?, at dest: URL) -> (Bool, Bool, String, String) {
+    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+    guard let data, status == 200, data.count <= 2 * 1024 * 1024, let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+      return (false, false, "", error?.localizedDescription ?? (status != 200 ? "HTTP \(status)" : "not a JSON object of at most 2 MB"))
+    }
+    let version = obj["version"] as? String ?? ""
+    guard (try? Data(contentsOf: dest)) != data else { return (true, false, version, "") }
+    do {
+      try FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try data.write(to: dest, options: .atomic)
+      return (true, true, version, "")
+    } catch {
+      return (false, false, version, error.localizedDescription)
+    }
+  }
+
   // MARK: Web view hooks
 
   func activate() {
@@ -277,11 +430,13 @@ public final class SitePolicyService: HostService {
   func configure(_ r: WebRecord, _ config: WKWebViewConfiguration) {
     let p = Page()
     pages[r.id] = p
-    apply(p, config.userContentController, rule(for: PageStyleService.host(of: URL(string: r.url))))
+    let h = PageStyleService.host(of: URL(string: r.url))
+    apply(p, config.userContentController, rule(for: h), host: h)
   }
 
-  /// Makes the page's attached lists exactly the rule's (the ones compiled so far).
-  func apply(_ p: Page, _ c: WKUserContentController, _ rule: Rule) {
+  /// Makes the page's attached lists and scripts exactly the rule's (the ones ready so far).
+  /// Scripts reach the next document: a change never touches the one already loaded.
+  func apply(_ p: Page, _ c: WKUserContentController, _ rule: Rule, host: String) {
     let want = Set(rule.lists)
     for (n, l) in p.lists where !want.contains(n) || lists[n] !== l {
       c.remove(l)
@@ -292,12 +447,27 @@ public final class SitePolicyService: HostService {
       c.add(l)
       p.lists[n] = l
     }
+    var wantScripts: [String: WKUserScript] = [:]
+    for n in rule.scripts {
+      if let s = scripts[n], Self.matches(host, s.hosts) { wantScripts[n] = s.user }
+    }
+    guard wantScripts.count != p.scripts.count || wantScripts.contains(where: { p.scripts[$0.key] !== $0.value }) else { return }
+    if !p.scripts.isEmpty {
+      // WKUserContentController removes only all user scripts at once: keep everyone else's.
+      let mine = Set(p.scripts.values.map(ObjectIdentifier.init))
+      let others = c.userScripts.filter { !mine.contains(ObjectIdentifier($0)) }
+      c.removeAllUserScripts()
+      others.forEach(c.addUserScript)
+    }
+    for n in wantScripts.keys.sorted() { c.addUserScript(wantScripts[n]!) }
+    p.scripts = wantScripts
   }
 
   func applyAll() {
     for r in webviews.records.values {
       guard let w = r.webView else { continue }
-      apply(page(r.id), w.configuration.userContentController, rule(for: PageStyleService.host(of: w.url ?? URL(string: r.url))))
+      let h = PageStyleService.host(of: w.url ?? URL(string: r.url))
+      apply(page(r.id), w.configuration.userContentController, rule(for: h), host: h)
     }
   }
 
@@ -348,8 +518,9 @@ public final class SitePolicyService: HostService {
       default: break
       }
     }
-    let rule = rule(for: PageStyleService.host(of: url))
-    apply(p, w.configuration.userContentController, rule)
+    let target = PageStyleService.host(of: url)
+    let rule = rule(for: target)
+    apply(p, w.configuration.userContentController, rule, host: target)
     Self.setPolicy(prefs, "_setAutoplayPolicy:", ["allow": 1, "sound": 2, "none": 3][rule.autoplay ?? ""] ?? 0)
     // Pop-ups: `allow` lets every one through; `block` is Safari's "Block and Notify": WebKit's own
     // policy (0) hands each window.open to `createWebViewWith`, which opens it after a click and
@@ -473,6 +644,7 @@ public final class SitePolicyService: HostService {
     return [
       "host": .string(h), "url": .string(u?.absoluteString ?? ""), "lists": .array(rule.lists.map { .string($0) }),
       "active": .array(p.lists.keys.sorted().map { .string($0) }),
+      "scripts": .array(p.scripts.keys.sorted().map { .string($0) }),
       "blocked": .int(Int64(total)), "blockedByList": byList,
       "blockedCounts": .bool(NSClassFromString("_WKContentRuleListAction") != nil),
       "rewrites": .array(p.rewrites), "upgraded": .bool(p.upgraded),

@@ -35,6 +35,9 @@ final class ShieldsCore {
   var lookalikeAllowed: [String] = []
   var requested: [String] = []  // lists asked of sitepolicy
   var ready: [String] = []
+  var scriptletsRequested = false
+  var scriptletsReady = false
+  var scriptletsVersion = ""
   var support: Value = .null
 
   var panelOpen = false
@@ -81,6 +84,7 @@ final class ShieldsCore {
     env.call("keys", "bind", ["chord": "cmd+opt+s", "event": "shields.key.panel", "title": "Shields for This Site…", "menu": "View"])
     env.call("keys", "bind", ["chord": "cmd+opt+b", "event": "shields.key.blocker", "title": "Block Trackers on This Site", "menu": "View"])
     apply()
+    scheduleRefresh()
     extensionsChanged(env.call("webext", "list"))
     registerCommands()
     refreshPills()
@@ -92,6 +96,7 @@ final class ShieldsCore {
     env.call("sitepolicy", "guard", ["service": ""])
     env.call("sitepolicy", "https", ["enabled": false])
     env.call("sitepolicy", "rules", ["default": ["lists": []], "hosts": [:]])
+    env.call("schedule", "cancel", ["id": "shields.refresh"])
     env.call("keys", "unbind", ["chord": "cmd+opt+s"])
     env.call("keys", "unbind", ["chord": "cmd+opt+b"])
     refreshPills(clear: true)
@@ -170,6 +175,7 @@ final class ShieldsCore {
   func loadLists() {
     var needed = listNames(blocker: on("blocker"), cookies: on("cookies"))
     for (h, _) in sites { for n in listNames(blocker: blocker(h), cookies: cookies(h)) where !needed.contains(n) { needed.append(n) } }
+    if needed.contains(ShieldsLists.ads.name) { loadScriptlets() }
     for l in ShieldsLists.all where needed.contains(l.name) && !requested.contains(l.name) {
       requested.append(l.name)
       let r = env.call("sitepolicy", "load", ["name": .string(l.name), "plugin": "shields", "file": .string(l.file), "version": .string(ShieldsLists.version)])
@@ -177,8 +183,50 @@ final class ShieldsCore {
     }
   }
 
+  /// The scriptlets (engine + data) for sites content rules can't clean (YouTube). Asked once
+  /// whenever some rule blocks, and again when newer data arrives.
+  func loadScriptlets(force: Bool = false) {
+    guard force || !scriptletsRequested else { return }
+    scriptletsRequested = true
+    let r = env.call("sitepolicy", "script", ["name": .string(ShieldsLists.scriptlets), "plugin": "shields",
+                                              "file": .string(ShieldsLists.scriptletsCode), "data": .string(ShieldsLists.scriptletsData)])
+    if r.isErr {
+      scriptletsRequested = false
+      env.log("shields: " + r.s("error"))
+    }
+  }
+
+  static let day: Int64 = 24 * 3600 * 1000
+
+  /// Daily refresh of the scriptlet data (YouTube changes often): a minute after launch when the
+  /// last check is a day old, then every day. Only data; the engine ships with den.
+  func scheduleRefresh() {
+    env.on("schedule.fire") { [self] v in if v.s("id") == "shields.refresh" { refreshScriptlets() } }
+    env.on("sitepolicy.fetched") { [self] v in fetched(v) }
+    env.call("schedule", "interval", ["id": "shields.refresh", "ms": .int(Self.day), "wake": true])
+    env.timer(60_000, false) { [self] in refreshScriptlets() }
+  }
+
+  func refreshScriptlets() {
+    guard on("blocker") || sites.values.contains(where: { $0.blocker == true }) else { return }
+    let last = load("scriptletsChecked").int ?? 0
+    guard env.now() - last >= Self.day - 3600 * 1000 else { return }
+    env.call("sitepolicy", "fetch", ["plugin": "shields", "file": .string(ShieldsLists.scriptletsData), "url": .string(ShieldsLists.scriptletsURL)])
+  }
+
+  func fetched(_ v: Value) {
+    guard v.s("plugin") == "shields", v.s("file") == ShieldsLists.scriptletsData else { return }
+    if v.b("ok") { save("scriptletsChecked", .int(env.now())) } else { env.log("shields: scriptlet data refresh failed: " + v.s("error")) }
+    if v.b("changed"), scriptletsRequested { loadScriptlets(force: true) }
+  }
+
   func listLoaded(_ v: Value) {
     let n = v.s("name")
+    if n == ShieldsLists.scriptlets {
+      scriptletsReady = v.b("ok")
+      if v.b("ok") { scriptletsVersion = v.s("version") } else { scriptletsRequested = false; env.log("shields: scriptlets failed: " + v.s("error")) }
+      return
+    }
     guard requested.contains(n) else { return }
     if v.b("ok") {
       if !ready.contains(n) { ready.append(n) }
@@ -188,15 +236,21 @@ final class ShieldsCore {
     }
   }
 
+  /// The page scripts a site gets: the scriptlets wherever the blocker is on (they run only on
+  /// the sites their data lists).
+  func scriptNames(blocker: Bool) -> Value { blocker ? [.string(ShieldsLists.scriptlets)] : [] }
+
   func rules() -> Value {
     var hosts: Value = .object([])
     for h in sites.keys.sorted() {
       guard let s = sites[h] else { continue }
       var r: Value = ["lists": .array(listNames(blocker: blocker(h), cookies: cookies(h)).map { .string($0) }), "autoplay": .string(s.autoplay ?? autoplay)]
+      r.put("scripts", scriptNames(blocker: blocker(h)))
       r.put("popups", .string(s.popups ?? "block"))
       hosts.put(h, r)
     }
-    return ["default": ["lists": .array(listNames(blocker: on("blocker"), cookies: on("cookies")).map { .string($0) }), "autoplay": .string(autoplay), "popups": "block"],
+    return ["default": ["lists": .array(listNames(blocker: on("blocker"), cookies: on("cookies")).map { .string($0) }),
+                        "scripts": scriptNames(blocker: on("blocker")), "autoplay": .string(autoplay), "popups": "block"],
             "hosts": hosts]
   }
 
@@ -301,7 +355,8 @@ final class ShieldsCore {
       let h = URLs.host(a.s("host"))
       var v: Value = ["blocker": .bool(blocker(h)), "cookies": .bool(cookies(h)), "autoplay": .string(site(h).autoplay ?? autoplay),
                       "popups": .string(site(h).popups ?? "block"), "httpAllowed": .bool(httpAllowed.contains(h)),
-                      "lists": .array(ready.map { .string($0) }), "ubo": .bool(uboInstalled)]
+                      "lists": .array(ready.map { .string($0) }), "ubo": .bool(uboInstalled),
+                      "scriptlets": .bool(scriptletsReady), "scriptletsVersion": .string(scriptletsVersion)]
       for (k, _) in Self.globals { v.put("global." + k, .bool(on(k))) }
       return v
     case "state":
@@ -710,6 +765,7 @@ final class ShieldsCore {
     let httpItems: [Value] = httpAllowed.map { ["id": .string($0), "title": .string(IDN.display($0)), "buttons": [["id": "remove", "title": "Remove"]]] }
     var lists = ""
     for (i, l) in ShieldsLists.all.enumerated() { lists += (i > 0 ? "\n" : "") + l.source + ". " + l.licence }
+    lists += "\n" + ShieldsLists.scriptletsSource + (scriptletsVersion.isEmpty ? "" : " (" + scriptletsVersion + ")")
     var controls: [Value] = [
       ["key": "blocker", "type": "toggle", "title": "Block trackers and ads", "default": true,
        "subtitle": "EasyList and EasyPrivacy, built into WebKit. Turn it off for one site with the shield in the address pill (⌥⌘S) or ⌥⌘B."],
