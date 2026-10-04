@@ -225,6 +225,48 @@ struct PopupTests {
     #expect(await Wait.js(w, "document.title") as? String == "Opener")
   }
 
+  /// A clicked link to a site an app claims asks first; Open hands it to the app (stubbed), Stay
+  /// loads it in den, "Always" stops asking; a script's navigation is never taken.
+  @Test func universalLinksAskBeforeOpeningTheirApp() async throws {
+    let mock = try Self.fixture()
+    defer { mock.stop() }
+    let (claims, open, decisions) = (UniversalLinks.claims, UniversalLinks.open, UniversalLinks.decisions)
+    defer { UniversalLinks.claims = claims; UniversalLinks.open = open; UniversalLinks.decisions = decisions }
+    var handed: [String] = []
+    UniversalLinks.claims = ["*.example.test": "Other", "localhost": "Music"]
+    UniversalLinks.decisions = [:]
+    UniversalLinks.open = { u, done in handed.append(u.absoluteString); done(true) }
+    #expect(UniversalLinks.app(for: "a.example.test") == "Other" && UniversalLinks.app(for: "example.test") == nil)
+    let rt = ServiceTests.runtime()
+    let (_, w) = try await Self.opener(rt, mock)
+    let prompts = try #require(rt.webviews.prompts)
+    let link = "http://localhost:\(mock.port)/signin".replacingOccurrences(of: "http:", with: "https:")
+    func click() async { _ = await Wait.js(w, "var a = document.createElement('a'); a.href = '\(link)'; document.body.appendChild(a); a.click(); 1") }
+    // A script's navigation (no click): never asked, never handed over.
+    #expect(UniversalLinks.app(for: "localhost") == "Music")
+    // Click → asked; Open → the app, the page stays.
+    await click()
+    try await Self.until { prompts.current != nil }
+    #expect(prompts.current?.tree.str("title") == "Open in “Music”?")
+    prompts.press("open")
+    try await Self.until { handed == [link] }
+    #expect(w.url?.path == "/opener")
+    // Click → Stay in den with "Always": den loads it itself (the plain-http fixture can't answer
+    // https, which doesn't matter: the navigation was let through), and the next click isn't asked.
+    await click()
+    try await Self.until { prompts.current != nil }
+    prompts.press("stay", fields: [WebPrompts.checkedKey: "1"])
+    #expect(UniversalLinks.decisions["localhost"] == false)
+    let rec = try #require(rt.webviews.records.values.first { $0.webView === w })
+    // Set by Stay, consumed when den's own load of the link passes the policy check.
+    try await Self.until { rec.passUniversal == nil }
+    #expect(handed.count == 1)
+    // Remembered: the next click isn't asked and isn't handed to the app.
+    await click()
+    try await Task.sleep(for: .seconds(1))
+    #expect(prompts.current == nil && handed.count == 1)
+  }
+
   @Test func popupFramesFollowTheRequestedSizeOnScreen() {
     let parent = NSRect(x: 100, y: 100, width: 1200, height: 800), screen = NSRect(x: 0, y: 0, width: 1470, height: 920)
     let bar = Tokens.miniBarHeight

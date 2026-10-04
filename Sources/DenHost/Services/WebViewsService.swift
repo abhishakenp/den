@@ -88,6 +88,8 @@ public final class WebRecord {
   public internal(set) var popupWindow: String?
   /// Pop-ups this page tried to open without a click, since its last navigation.
   public internal(set) var blockedPopups: [BlockedPopup] = []
+  /// A universal link the user chose to open in den (UniversalLinks.swift): let through once.
+  var passUniversal: URL?
 
   public var isSuspended: Bool { webView == nil && (interactionState != nil || snapshotPath != nil) }
   /// A private window's page (`private` or `private:<window>` profile): nothing about it is
@@ -369,6 +371,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     // Every window.open reaches `createWebViewWith`, which decides like Safari: a click opens it,
     // anything else is blocked with a notice (WebKit's own check would block it silently).
     config.preferences.javaScriptCanOpenWindowsAutomatically = true
+    if !TestMode.active { UniversalLinks.scanSoon() }
     config.preferences.inactiveSchedulingPolicy = .suspend
     if !autoplayAllowed { config.mediaTypesRequiringUserActionForPlayback = .all }
     config.applicationNameForUserAgent = Self.applicationNameForUserAgent
@@ -897,6 +900,11 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if ExternalLinks.isExternal(target) {
       decisionHandler(.cancel)
       openExternal(target, from: webView, userInitiated: Self.isUserInitiated(action), mainFrame: mainFrame)
+      return
+    }
+    // An https link a native app claims: asked first (UniversalLinks.swift), never taken silently.
+    if universalLink(r, webView, action, target: target, mainFrame: mainFrame) {
+      decisionHandler(.cancel)
       return
     }
     let rules = r.rules.isEmpty ? defaultRules : r.rules
