@@ -293,6 +293,17 @@ struct ExtensionCompatTests {
       await chrome.scripting.executeScript({target: {tabId: t.id}, func: () => {
         document.documentElement.dataset.denMsgs = '';
         chrome.runtime.onMessage.addListener((m) => { document.documentElement.dataset.denMsgs += (m.denPing || m.messageType || m.handler || '?') + ','; return false; });
+        // What Vimium does when the hint is chosen: its click, and any error on the way.
+        const d = document.documentElement.dataset;
+        d.denSim = 'none'; d.denErr = '';
+        addEventListener('error', (e) => { d.denErr += (e.message || '?') + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno + ';'; });
+        addEventListener('unhandledrejection', (e) => { d.denErr += 'rejection ' + String(e.reason && (e.reason.stack || e.reason)).slice(0, 200) + ';'; });
+        try {
+          const orig = DomUtils.simulateClick.bind(DomUtils);
+          DomUtils.simulateClick = (el, mods) => { d.denSim = (el && el.tagName) + ' ' + JSON.stringify(mods || {}); try { return orig(el, mods); } catch (e) { d.denErr += 'simulateClick ' + e + ';'; throw e; } };
+          const exit = HintCoordinator.exit.bind(HintCoordinator);
+          HintCoordinator.exit = (r) => { d.denExit = JSON.stringify(r) + ' onExit=' + HintCoordinator.onExit.length; try { return exit(r); } catch (e) { d.denErr += 'exit ' + e + ' ' + String(e.stack).slice(0, 200) + ';'; throw e; } };
+        } catch (e) { d.denErr += 'wrap ' + e + ';'; }
       }});
       try { await chrome.tabs.sendMessage(t.id, {denPing: 'noFrameId'}); } catch (e) {}
       try { await chrome.tabs.sendMessage(t.id, {denPing: 'frame0'}, {frameId: 0}); } catch (e) {}
@@ -305,7 +316,7 @@ struct ExtensionCompatTests {
     let hintA = await Wait.js(w, "document.querySelector('.vimiumHintMarker')?.textContent || ''") as? String ?? ""
     for ch in hintA.lowercased() { press(w, String(ch), Self.hintKeys[ch] ?? 0) }
     ok["f follows a link"] = await wait(10) { w.url?.query != nil }
-    notes.append("f \(hintA) -> \(w.url?.absoluteString ?? "?") markers=\(await markers()) msgs=\(await Wait.js(w, "document.documentElement.dataset.denMsgs") ?? "?") clicks=\(await Wait.js(w, "JSON.stringify(window.__clicks)") ?? "?")")
+    notes.append("f \(hintA) -> \(w.url?.absoluteString ?? "?") markers=\(await markers()) msgs=\(await Wait.js(w, "document.documentElement.dataset.denMsgs") ?? "?") sim=\(await Wait.js(w, "JSON.stringify([document.documentElement.dataset.denSim, document.documentElement.dataset.denExit, document.documentElement.dataset.denErr])") ?? "?") clicks=\(await Wait.js(w, "JSON.stringify(window.__clicks)") ?? "?")")
 
     await fresh()
     let tabsBefore = h.ids("today").count

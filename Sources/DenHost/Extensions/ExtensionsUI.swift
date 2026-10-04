@@ -59,7 +59,7 @@ final class ExtensionsUI {
   func refresh() {
     guard let svc else { return }
     items = svc.menuItems()
-    storeOffer = svc.selectedStoreOffer()
+    refreshStoreOffer()
     NotificationCenter.default.post(name: Self.changedNotification, object: self)
     if menuOpen { menuView?.update(items, palette: palette); layout() }
   }
