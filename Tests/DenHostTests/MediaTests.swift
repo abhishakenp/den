@@ -224,6 +224,9 @@ struct MediaTests {
     #expect(await wait { !web.isLoading && web.url != nil })
     var lines: [String] = []
     rt.media.log = { lines.append($0) }
+    // The test window is never really on screen (Invisible): say it's in sight, behind the other app.
+    rt.media.windowVisibleForTests = true
+    defer { rt.media.windowVisibleForTests = nil }
     _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.muted = true; await v.play(); return true")
     #expect(await wait { rt.media.eligibility(id).why == "video muted" })
     rt.media.appActiveChanged(false)

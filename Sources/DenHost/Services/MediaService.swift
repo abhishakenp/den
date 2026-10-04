@@ -60,6 +60,10 @@ public final class MediaService: HostService {
   /// Auto PiPs den started because den stopped being the active app: they stay while another
   /// app is in front (den's window may still show behind it) and end when den is active again.
   private var appAway: Set<String> = []
+  /// Each page's latest request to enter (its timers check they're still the latest).
+  private var attempts: [String: Int] = [:]
+  /// Tests: what `windowVisible` says (their windows are never really on screen).
+  var windowVisibleForTests: Bool?
   /// One line per automatic PiP decision (main.swift: den.log; the `pip` scenario: stdout).
   public var log: ((String) -> Void)?
   func note(_ line: String) { log?(line) }
@@ -160,7 +164,8 @@ public final class MediaService: HostService {
   /// another shown pane's (a split).
   func awayTarget() -> String? {
     let order = (content.focused.map { [$0] } ?? []) + content.panes.filter { $0 != content.focused }
-    return order.first { eligibleVideo($0) != nil } ?? order.first
+    // None qualifies: the one with a video, so the log says why it didn't go.
+    return order.first { eligibleVideo($0) != nil } ?? order.first { eligibility($0).why != "no video" } ?? order.first
   }
 
   func hasVideo(_ id: String) -> Bool {
@@ -185,16 +190,21 @@ public final class MediaService: HostService {
     if active.contains(id) || entering.contains(id) { return true }
     entering.insert(id)
     if isAuto { auto.insert(id) }
-    // WebKit's main-content toggle, when the page's API didn't do it.
-    let fallback: @MainActor (String) -> Void = { [weak self, weak w] why in
-      guard let self, let w, self.entering.contains(id) else { return }
+    // This request's number: a timer left from an earlier one must not act on this one.
+    let gen = (attempts[id] ?? 0) + 1
+    attempts[id] = gen
+    let current: @MainActor () -> Bool = { [weak self] in self?.entering.contains(id) == true && self?.attempts[id] == gen }
+    // WebKit's main-content toggle, when the page's API didn't do it. `pageAsked`: the page's
+    // request was taken (WebKit may still get there; no toggle isn't a failure).
+    let fallback: @MainActor (String, Bool) -> Void = { [weak self, weak w] why, pageAsked in
+      guard let self, let w, current() else { return }
       if NativePiP.isActive(w) {
         self.note("pip enter \(id): toggle skipped (\(why)), WebKit already in")
         return
       }
       let ok = NativePiP.toggle(w)
       self.note("pip enter \(id): toggle (\(why)) -> \(ok ? "asked" : "unavailable")")
-      if !ok { self.failed(id) }
+      if !ok, !pageAsked { self.failed(id) }
     }
     let state = "\(isAuto ? "auto" : "byHand") \(windowState) inWindow=\(w.window != nil)"
     if r.videoFrame != nil || r.frames["main"] != nil {
@@ -204,26 +214,27 @@ public final class MediaService: HostService {
         switch res {
         case let .success(ok):
           self.note("pip enter \(id): js(\(frame.map { $0.isMainFrame ? "main" : "subframe" } ?? "main")) -> \((ok as? Bool).map { "\($0)" } ?? "\(ok)") \(state)")
-          guard (ok as? Bool) == true else { return fallback("js false") }
-          // The page's request taken, WebKit not there yet: its own toggle after a while.
+          guard (ok as? Bool) == true else { return fallback("js false", false) }
+          // The page's request taken (the promise settles once WebKit is in, or close to it),
+          // WebKit not there yet: its own toggle after a while.
           DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
             MainActor.assumeIsolated {
-              guard self.entering.contains(id), let w, !NativePiP.isActive(w) else { return }
-              fallback("no WebKit call 2.5 s after js")
+              guard current(), !self.active.contains(id), let w, !NativePiP.isActive(w) else { return }
+              fallback("no WebKit call 2.5 s after js", true)
             }
           }
         case let .failure(e):
           self.note("pip enter \(id): js error \(e.localizedDescription) \(state)")
-          fallback("js error")
+          fallback("js error", false)
         }
       }
     } else {
-      fallback("no frame reported")
+      fallback("no frame reported", false)
     }
     // WebKit says when it's in; a request it silently dropped mustn't block the next one.
     DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
       MainActor.assumeIsolated {
-        guard let self, !self.active.contains(id), self.entering.contains(id) else { return }
+        guard let self, !self.active.contains(id), current() else { return }
         self.note("pip enter \(id): no WebKit call in 4 s, given up")
         self.failed(id)
       }
@@ -344,7 +355,7 @@ public final class MediaService: HostService {
     }
     // A Space switch (a desktop or a full-screen app's): occlusion should say so too.
     observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
-      MainActor.assumeIsolated { self?.windowStateChanged("activeSpace") }
+      MainActor.assumeIsolated { self?.spaceChanged() }
     })
     for (n, obj) in names {
       let raw = n.rawValue
@@ -422,6 +433,7 @@ public final class MediaService: HostService {
   /// den's window can be seen: not hidden, minimized, ordered out, covered, or on a Space that
   /// isn't shown. (Another app in front with den's window still showing: `appActiveChanged`.)
   public var windowVisible: Bool {
+    if let v = windowVisibleForTests { return v }
     let w = wc.window
     return !NSApp.isHidden && w.isVisible && !w.isMiniaturized && w.occlusionState.contains(.visible) && w.isOnActiveSpace
   }
@@ -436,15 +448,31 @@ public final class MediaService: HostService {
       schedule(after: debounce - (now - s.since))
       return
     }
+    // A page whose video is full screen is in a window of its own (`fullScreenChanged`): den's
+    // window on another Space then is no reason to go to PiP or back.
+    let panes = content.panes.filter { fullScreenWindow($0) == nil }
     if visible {
       // Back in sight. A PiP from switching apps stays while the other app is in front.
-      let back = content.panes.filter { auto.contains($0) && (NSApp.isActive || !appAway.contains($0)) }
+      let back = panes.filter { auto.contains($0) && (NSApp.isActive || !appAway.contains($0)) }
       if !back.isEmpty { note("pip window back: exit \(back.joined(separator: ","))") }
       for id in back { exit(id) }
       return
     }
-    guard let id = awayTarget() else { return }
+    guard let id = awayTarget(), panes.contains(id) else { return }
     autoEnter(id, "windowAway")
+  }
+
+  /// The window of `id`'s web view when it isn't one of den's (WebKit's full-screen window).
+  func fullScreenWindow(_ id: String) -> NSWindow? {
+    guard let win = webviews.record(id)?.webView?.window, windows.containing(win) == nil else { return nil }
+    return win
+  }
+
+  /// A Space switch: full-screen video windows checked too (their occlusion may not change).
+  func spaceChanged() {
+    if Presentation.invisible { return }
+    for id in webviews.records.keys.sorted() { if let win = fullScreenWindow(id) { fullScreenChanged(id, win) } }
+    windowStateChanged("activeSpace")
   }
 
   /// A page's full-screen window became visible or not (its Space switched to or away from).
