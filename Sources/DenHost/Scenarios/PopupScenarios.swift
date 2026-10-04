@@ -29,6 +29,12 @@ public enum PopupScenarios {
     return cond()
   }
 
+  /// A JS string literal.
+  static func quoted(_ s: String) -> String {
+    let a = (try? String(data: JSONSerialization.data(withJSONObject: [s]), encoding: .utf8)) ?? "[\"\"]"
+    return String(a.dropFirst().dropLast())
+  }
+
   static func js(_ w: WKWebView, _ s: String) async -> Any? {
     try? await w.evaluateJavaScript(s)
   }
@@ -48,10 +54,18 @@ public enum PopupScenarios {
       print("scenario.popupClick page never loaded"); exit(1)
     }
     try? await Task.sleep(for: .seconds(Double(env["DEN_CLICK_DELAY"] ?? "") ?? 4))
-    if let sel = env["DEN_CLICK"], let q = try? String(data: JSONSerialization.data(withJSONObject: [sel]), encoding: .utf8) {
+    // DEN_CLICK_TEXT: the smallest visible button / link / role=button whose text contains it.
+    let byText = env["DEN_CLICK_TEXT"].map { t -> String in
+      let needle = quoted(t.lowercased())
+      return "[...document.querySelectorAll('button,a,[role=button],input[type=submit],input[type=button]')]"
+        + ".filter(e => (e.innerText || e.value || e.getAttribute('aria-label') || '').toLowerCase().includes(\(needle)) && e.getBoundingClientRect().width > 0)"
+        + ".sort((a, b) => (a.innerText || '').length - (b.innerText || '').length)[0]"
+    }
+    if let sel = env["DEN_CLICK"] ?? env["DEN_CLICK_TEXT"], let q = try? String(data: JSONSerialization.data(withJSONObject: [sel]), encoding: .utf8) {
+      let element = byText ?? "document.querySelector(\(q)[0])"
       let at = (env["DEN_CLICK_AT"] ?? "0.5,0.5").split(separator: ",").compactMap { Double($0) }
       let fx = at.first ?? 0.5, fy = at.count > 1 ? at[1] : 0.5
-      let found = await js(w, "(() => { const e = document.querySelector(\(q)[0]); if (!e) return null; e.scrollIntoView({block: 'center'}); const r = e.getBoundingClientRect(); return [r.x + r.width * \(fx), r.y + r.height * \(fy), e.outerHTML.slice(0, 160)] })()") as? [Any]
+      let found = await js(w, "(() => { const e = \(element); if (!e) return null; e.scrollIntoView({block: 'center'}); const r = e.getBoundingClientRect(); return [r.x + r.width * \(fx), r.y + r.height * \(fy), e.outerHTML.slice(0, 160)] })()") as? [Any]
       guard let found, let x = (found[0] as? NSNumber)?.doubleValue, let y = (found[1] as? NSNumber)?.doubleValue else {
         print("scenario.popupClick no element \(sel)"); exit(1)
       }
