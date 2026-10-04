@@ -11,6 +11,7 @@ import WebKit
 ///
 /// - `readerButton`: a Wikipedia article loads; the URL pill shows the Reader button.
 /// - `reader` / `readAloud`: the reader over that article; read aloud (muted) highlights the sentence.
+/// - `voicePicker`: the reader with its voice picker open (the Mac's voices, English first).
 /// - `translate` / `translateJa`: a French / Japanese Wikipedia page translated on device.
 /// - `captureRegion`: the capture picker over example.com. `captureFull`: MDN's full page saved
 ///   to a temporary folder (the toast shows).
@@ -21,7 +22,7 @@ import WebKit
 /// - `copyToast`: ⇧⌘C on example.com; the toast names what was copied (it copies the link).
 @MainActor
 public enum PageToolsScenarios {
-  public static let names = ["readerButton", "reader", "readAloud", "translate", "translateJa", "captureRegion", "captureFull", "zap", "unstick", "highlightLink", "qrCode", "copyToast"]
+  public static let names = ["readerButton", "reader", "readAloud", "voicePicker", "translate", "translateJa", "captureRegion", "captureFull", "zap", "unstick", "highlightLink", "qrCode", "copyToast"]
   static let article = "https://en.wikipedia.org/wiki/Arc_(web_browser)"
   static let sticky = "https://developer.mozilla.org/en-US/docs/Web/CSS/position"
 
@@ -47,6 +48,11 @@ public enum PageToolsScenarios {
             say(name, "readerOpen=\(open ?? "nil") pill=\(pill(rt)) speech=\(rt.call("speech", "state"))")
           }
         }
+      }
+    case "voicePicker":
+      open(rt, article) { _ in
+        run("pagetools.voice")
+        after(rt, 3) { say(name, "voices=\(rt.call("speech", "voices").list("voices").count)") }
       }
     case "translate", "translateJa":
       let url = name == "translate" ? "https://fr.wikipedia.org/wiki/Baguette_(pain)" : "https://ja.wikipedia.org/wiki/%E3%83%91%E3%83%B3"

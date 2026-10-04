@@ -305,6 +305,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ Per-site zoom, remembered
 - ✅ Copy URL (⇧⌘C) and Copy URL as Markdown (⌥⇧⌘C)
 - ✅ Reader mode, remembered per site, with read-aloud (⌃⌘R)
+- ✅ Read-aloud voice picker (2026-10-05): every installed macOS voice, search, preview, remembered per language, "Get more voices…"
 - ✅ On-device page translation (Apple Translation framework)
 - ✅ Capture: region, element, visible or full page, then copy or save (⇧⌘2)
 - ✅ Zap an element or remove sticky headers, remembered per site
