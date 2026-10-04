@@ -143,7 +143,122 @@ public enum MediaScenarios {
     return all == 0 ? nil : Double(dark) / Double(all)
   }
 
+  /// Runs a command, waits for it (at most `timeout` s), returns its output.
+  @discardableResult
+  static func sh(_ path: String, _ args: [String], timeout: Double = 15) async -> String {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: path)
+    p.arguments = args
+    let pipe = Pipe()
+    p.standardOutput = pipe
+    p.standardError = pipe
+    guard (try? p.run()) != nil else { return "(\(path) didn't run)" }
+    _ = await until(timeout) { !p.isRunning }
+    if p.isRunning { p.terminate() }
+    return String(data: pipe.fileHandleForReading.availableData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  }
+
+  /// Ends the app the scenario switched to (CI's runner only), by process name.
+  static func quitApp(_ name: String) async { await sh("/usr/bin/pkill", ["-x", name]) }
+
+  /// The frontmost app's name.
+  static var front: String { NSWorkspace.shared.frontmostApplication?.localizedName ?? "none" }
+
+  /// den in front again, the way you would come back (LaunchServices reopening it, like a Dock
+  /// click), else NSApp.activate.
+  static func activateDen(_ rt: DenRuntime) async -> Bool {
+    if NSApp.isActive { return true }
+    await sh("/usr/bin/open", [Bundle.main.bundlePath])
+    if await until(4, { NSApp.isActive }) { return true }
+    NSApp.activate(ignoringOtherApps: true)
+    rt.window.window.makeKeyAndOrderFront(nil)
+    return await until(4) { NSApp.isActive }
+  }
+
+  /// How much of den's window other apps' windows in front of it cover (CGWindowList), 0-1.
+  static func covered(_ rt: DenRuntime) -> Double {
+    let num = rt.window.window.windowNumber
+    let list = CGWindowListCopyWindowInfo([.optionOnScreenAboveWindow], CGWindowID(num)) as? [[String: Any]] ?? []
+    guard let mine = (CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(num)) as? [[String: Any]])?.first,
+          let mb = mine[kCGWindowBounds as String] as? [String: CGFloat] else { return -1 }
+    let den = CGRect(x: mb["X"] ?? 0, y: mb["Y"] ?? 0, width: mb["Width"] ?? 0, height: mb["Height"] ?? 0)
+    // A coarse grid: the share of den's points under another app's window.
+    var hit = 0, all = 0
+    let rects = list.filter { ($0[kCGWindowOwnerPID as String] as? Int32) != getpid() && ($0[kCGWindowLayer as String] as? Int) == 0 }
+      .compactMap { $0[kCGWindowBounds as String] as? [String: CGFloat] }
+      .map { CGRect(x: $0["X"] ?? 0, y: $0["Y"] ?? 0, width: $0["Width"] ?? 0, height: $0["Height"] ?? 0) }
+    for x in stride(from: den.minX + 5, to: den.maxX, by: max(den.width / 20, 1)) {
+      for y in stride(from: den.minY + 5, to: den.maxY, by: max(den.height / 20, 1)) {
+        all += 1
+        if rects.contains(where: { $0.contains(CGPoint(x: x, y: y)) }) { hit += 1 }
+      }
+    }
+    return all == 0 ? -1 : Double(hit) / Double(all)
+  }
+
+  /// 4b of `pip`: another app in front (Terminal over part of den; `DEN_PIP_COVER`, a built
+  /// PipCover.app (scripts/ci/pip-cover.swift): one covering all of den, one in full screen).
+  static func appSwitches(_ rt: DenRuntime, _ id: String, check: (String, Bool, String) -> Void, inPip: () -> Bool, out: () -> Bool,
+                          advancing: () async -> (Bool, String)) async {
+    let env = ProcessInfo.processInfo.environment
+    struct Case { let name: String; let go: [String]; let app: String }
+    var cases = [Case(name: "appSwitch.terminal", go: ["-a", "Terminal"], app: "Terminal")]
+    if let cover = env["DEN_PIP_COVER"] {
+      cases.append(Case(name: "appSwitch.covered", go: ["-n", cover, "--args", "full"], app: "PipCover"))
+      cases.append(Case(name: "spaceSwitch.fullScreenApp", go: ["-n", cover, "--args", "fullscreen"], app: "PipCover"))
+    } else {
+      log("scenario.pip appSwitch.covered skipped: no DEN_PIP_COVER")
+    }
+    for c in cases {
+      guard await activateDen(rt), await until(3, { rt.media.windowVisible && out() }) else {
+        log("scenario.pip \(c.name) skipped: den isn't in front (front=\(front) active=\(NSApp.isActive) visible=\(rt.media.windowVisible))")
+        continue
+      }
+      await sleep(0.5)
+      let spacesBefore = Spaces.current()
+      let t0 = Date()
+      await sh("/usr/bin/open", c.go)
+      let left = await until(8) { !NSApp.isActive }
+      let entered = await until(8) { inPip() }
+      if c.name.hasPrefix("spaceSwitch") { _ = await until(5) { Spaces.current() != spacesBefore } }
+      await sleep(0.4)
+      let state = "front=\(front) denActive=\(NSApp.isActive) covered=\(String(format: "%.0f%%", covered(rt) * 100)) windowVisible=\(rt.media.windowVisible) space=\(spacesBefore)->\(Spaces.current()) spaces=\(Spaces.list())"
+      check("\(c.name).enters", left && entered, String(format: "after=%.0fms ", Date().timeIntervalSince(t0) * 1000) + state + " " + (pipWindow()?.text ?? "no PiP window"))
+      if c.name.hasPrefix("spaceSwitch") {
+        // Only a real Space switch counts; without one (no full-screen Space on this display) say so.
+        if Spaces.current() == spacesBefore { log("scenario.pip \(c.name) note: the display didn't switch Space (\(Spaces.list()))") }
+        else { check("\(c.name).spaceChanged", !rt.window.window.isOnActiveSpace, "denOnActiveSpace=\(rt.window.window.isOnActiveSpace)") }
+      }
+      if entered {
+        let (live, d) = await advancing()
+        check("\(c.name).live", live, d)
+        frameCheck(c.name, check: check)
+        // Den's window still partly showing behind the other app: PiP stays (no flicker back).
+        await sleep(1)
+        check("\(c.name).stays", inPip(), "")
+      }
+      // Back to den, the way you would: it comes forward, the video leaves PiP and plays on inline.
+      let back = await activateDen(rt)
+      let gone = await until(8) { out() && NativePiP.systemWindows().isEmpty }
+      check("\(c.name).back", back && gone, "denActive=\(NSApp.isActive) visible=\(rt.media.windowVisible) space=\(Spaces.current())")
+      await sleep(0.5)
+      let p = await js(rt, id, "return window.__denMedia.probe()", frame: rt.webviews.record(id)?.videoFrame?.frame)
+      check("\(c.name).playing", !p.flag("paused") && !p.flag("inPip"), "")
+      await quitApp(c.app)
+      await sleep(1.5)
+    }
+  }
+
+  static func frameCheck(_ what: String, check: (String, Bool, String) -> Void) {
+    guard let f = pipBlackFraction(what) else { log("scenario.pip \(what).frame skipped: no screen capture"); return }
+    check("\(what).frame", f < 0.2, String(format: "black=%.0f%%", f * 100))
+  }
+
   static func run(_ name: String, _ rt: DenRuntime) async {
+    // Every automatic PiP decision, as den.log has it on a Mac (`media.log`).
+    let prev = rt.media.log
+    rt.media.log = { prev?($0); print("media.log \($0)") }
+    log("scenario.pip start active=\(NSApp.isActive) front=\(front) spaces=\(Spaces.list()) current=\(Spaces.current())")
     let mock = MockServices()
     try? mock.start()
     guard let video = fixture() else { log("scenario.pip fixture missing"); exit(1) }
@@ -168,7 +283,9 @@ public enum MediaScenarios {
       let a = await probe(tab)
       await sleep(1)
       let b = await probe(tab)
-      return (!b.flag("paused") && b.num("t") > a.num("t") + 0.5, "t=\(String(format: "%.1f", a.num("t")))->\(String(format: "%.1f", b.num("t")))")
+      // The test video loops: from its last second and a half back to its start moves too.
+      let looped = a.num("dur") > 0 && a.num("t") > a.num("dur") - 1.5 && b.num("t") < 1.5
+      return (!b.flag("paused") && (b.num("t") > a.num("t") + 0.5 || looped), "t=\(String(format: "%.1f", a.num("t")))->\(String(format: "%.1f", b.num("t")))")
     }
     func frameCheck(_ what: String) {
       guard let f = pipBlackFraction(what) else { log("scenario.pip \(what).frame skipped: no screen capture"); return }
@@ -253,8 +370,13 @@ public enum MediaScenarios {
     }
     let w = rt.window.window
     await away("miniaturize", { w.miniaturize(nil) }, { w.deminiaturize(nil) })
-    await away("hide", { NSApp.hide(nil) }, { NSApp.unhide(nil) })
+    // Coming back from ⌘H is a click in the Dock or ⌘-Tab: den unhidden and active.
+    await away("hide", { NSApp.hide(nil) }, { NSApp.unhide(nil); NSApp.activate(ignoringOtherApps: true) })
     await away("orderOut", { w.orderOut(nil) }, { w.orderFront(nil) })
+
+    // 4b. Switching to another app, as you would: Terminal over part of den (den's window still
+    // showing), an app covering all of it, and a full-screen app (the display switches Space).
+    await appSwitches(rt, id, check: check, inPip: { inPip() }, out: { out() }, advancing: { await advancing() })
 
     // 5. The PiP window's return button: back to the tab (selected), video inline and playing.
     rt.call("tabs", "select", ["id": .string(other)])
@@ -350,6 +472,60 @@ public enum MediaScenarios {
       }
       _ = rt.call("media", "exit")
       _ = await until(5) { out() }
+    }
+
+    // 9b. Real pages (`DEN_PIP_YOUTUBE`, a YouTube watch page with Shields and its YouTube
+    // scriptlets on as they ship; `DEN_PIP_MSE`, a Media Source Extensions player whose video
+    // size arrives after it starts playing): a tab switch and an app switch. A player that
+    // never gets a source on this machine (YouTube's bot check on a datacenter IP) is said so,
+    // not counted.
+    for (label, key) in [("youtube", "DEN_PIP_YOUTUBE"), ("mse", "DEN_PIP_MSE")] {
+      guard let url = env[key] else { continue }
+      let y = rt.call("tabs", "open", ["url": .string(url)])["id"].string ?? ""
+      _ = await until(30) { rt.webviews.record(y)?.webView?.isLoading == false }
+      await sleep(5)
+      let videoFrame = { rt.webviews.record(y)?.frames.values.first { $0.media.video != nil }?.frame }
+      let played = await js(rt, y, "const v = document.querySelector('video'); if (!v) return 'no video element'; v.muted = false; v.volume = 1; try { await Promise.race([v.play(), new Promise(r => setTimeout(r, 4000))]); } catch (e) { return String(e); } return v.paused ? 'paused' : 'playing'")
+      let ok = await until(20) { rt.media.eligibleVideo(y) != nil }
+      let now = await js(rt, y, "const v = document.querySelector('video'); const e = document.querySelector('.ytp-error, .yt-playability-error-supported-renderers, #error-screen'); return (v ? JSON.stringify({t: v.currentTime, vw: v.videoWidth, vh: v.videoHeight, rs: v.readyState, paused: v.paused, w: v.clientWidth, h: v.clientHeight, src: String(v.currentSrc).slice(0, 50)}) : 'no video') + ' | ' + document.title + (e ? ' | error: ' + e.innerText.replace(/\\s+/g, ' ').slice(0, 160) : '')", frame: videoFrame())
+      let detail = "play=\(played) why=\(rt.media.eligibility(y).why) now=\(now) shields=\(rt.call("sitepolicy", "get", ["id": .string(y)])["scripts"])"
+      // No source (the bot check), or the page replaced under the check (CI run 37225366775:
+      // Shields swapped fresh lists into open pages meanwhile, and the probe got no answer).
+      let noSource = now.string?.contains("\"rs\":0") == true && now.string?.contains("\"src\":\"\"") == true
+      if !ok, noSource || now == .null {
+        log("scenario.pip \(label) skipped: \(noSource ? "the player got no source on this machine" : "the page didn't answer") (\(detail))")
+      } else {
+        check("\(label).eligible", ok, detail)
+      }
+      if ok {
+        rt.call("tabs", "select", ["id": .string(other)])
+        check("\(label).tabSwitch.enters", await until(8) { inPip(y) }, pipWindow()?.text ?? "no PiP window")
+        let (l1, d1) = await advancing(y)
+        check("\(label).tabSwitch.live", l1, d1)
+        frameCheck(label)
+        rt.call("tabs", "select", ["id": .string(y)])
+        check("\(label).tabSwitch.back", await until(8) { out(y) })
+        await sleep(1)
+        if await activateDen(rt), await until(3, { rt.media.windowVisible && out(y) }) {
+          await sh("/usr/bin/open", ["-a", "Terminal"])
+          check("\(label).appSwitch.enters", await until(8) { !NSApp.isActive && inPip(y) }, "front=\(front) covered=\(String(format: "%.0f%%", covered(rt) * 100)) \(pipWindow()?.text ?? "no PiP window")")
+          let (l2, d2) = await advancing(y)
+          check("\(label).appSwitch.live", l2, d2)
+          let back = await activateDen(rt)
+          let gone = await until(8) { out(y) }
+          check("\(label).appSwitch.back", back && gone)
+          await quitApp("Terminal")
+        } else {
+          log("scenario.pip \(label).appSwitch skipped: den isn't in front (front=\(front))")
+        }
+      }
+      _ = await js(rt, y, "document.querySelectorAll('video').forEach(v => v.pause()); return true", frame: videoFrame())
+      _ = rt.call("media", "exit")
+      _ = await until(5) { out(y) }
+      // Gone, so its player (which may play on) can't go to PiP in the steps after.
+      rt.call("tabs", "close", ["id": .string(y)])
+      rt.call("tabs", "select", ["id": .string(other)])
+      await sleep(0.5)
     }
 
     // 10. The setting turns it off.
