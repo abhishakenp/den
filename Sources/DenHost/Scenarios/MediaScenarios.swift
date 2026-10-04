@@ -338,8 +338,12 @@ public enum MediaScenarios {
         frameCheck("fullscreen")
         Spaces.switchTo(fullSpace)
         check("fullscreen.back.exits", await until(8) { out() }, "current=\(Spaces.current())")
+      } else if full {
+        // WebKit's full-screen window shares the desktop's Space here (no Space of its own to leave).
+        log("scenario.pip fullscreen.spaceSwitch skipped: no full-screen Space (spaces \(spaces))")
       }
       if full {
+
         _ = await js(rt, id, "await document.exitFullscreen().catch(() => {}); return true")
         _ = await until(8) { rt.windows.containing(web?.window) != nil }
         await sleep(1)
