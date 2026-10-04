@@ -266,6 +266,15 @@ cmd_check() {
   if [[ $remote == $deferred && -n $deferredAt ]] && (( $(date +%s) - deferredAt < ${DEN_UPDATER_RETRY_S:-1200} )); then
     return 0
   fi
+  # A failed commit gets another try once CI on it is green (a flaky CI run, re-run green, must
+  # not pin den to an old commit until main moves). At most every 20 minutes, like a deferral.
+  local retriedAt=$(state_get failedRetriedAt)
+  if [[ $remote == $failed && $remote != $deployed ]] && (( $(date +%s) - ${retriedAt:-0} >= ${DEN_UPDATER_RETRY_S:-1200} )) \
+    && [[ $(ci_state $remote) == success ]]; then
+    log "CI now green on $(short $remote): retrying it"
+    state_write failedRetriedAt=$(date +%s)
+    failed=
+  fi
   if [[ $remote == $deployed || $remote == $failed ]]; then
     # Nothing new: den isn't woken unless someone asked.
     (( requested )) && state_write lastCheck=$(now_iso) lastResult="Up to date at $(short ${deployed:-$remote})"
