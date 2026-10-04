@@ -31,6 +31,14 @@ public struct PageMedia: Equatable {
   }
 }
 
+/// A pop-up a page tried to open without a click (Safari's "Block and Notify").
+public struct BlockedPopup: Equatable {
+  public let url: String
+  /// The size it asked for, when it asked for a pop-up window (`window.open` features).
+  public let size: CGSize?
+  public let popup: Bool
+}
+
 /// One tab's web content. The WKWebView exists only while materialized (shown at least once and
 /// not discarded); otherwise the record keeps url + interactionState, and its snapshot on disk.
 @MainActor
@@ -71,6 +79,13 @@ public final class WebRecord {
   public var backgroundColor: CGColor?
 
   init(id: String, profile: String, url: String) { (self.id, self.profile, self.url) = (id, profile, url) }
+
+  /// The page that opened this one with `window.open` / `target=_blank` (its `window.opener`).
+  public internal(set) var opener: String?
+  /// Shown in a pop-up window (`window.open` with window features) rather than a tab.
+  public internal(set) var popupWindow: String?
+  /// Pop-ups this page tried to open without a click, since its last navigation.
+  public internal(set) var blockedPopups: [BlockedPopup] = []
 
   public var isSuspended: Bool { webView == nil && (interactionState != nil || snapshotPath != nil) }
   /// A private window's page (`private` or `private:<window>` profile): nothing about it is
@@ -141,7 +156,9 @@ public final class WebRecord {
 ///   eval {id, plugin, script, request?, timeoutMs?} -> {request}; later webviews.evalResult {request, webview, ok, value | error}
 ///                                                 reads a live page; needs `allowScript(plugin, host)` (session:<host>)
 ///   get {id}                                   -> {id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted,
-///                                                 media: {playing, pip, dirty, video?}, suspended, live, snapshot}
+///                                                 media: {playing, pip, dirty, video?}, suspended, live, snapshot,
+///                                                 opener, popupWindow, blockedPopups: [url]}
+///   openBlocked {id}                           -> opens the pop-ups the page tried without a click: {opened}
 ///   list                                       -> [id]
 ///   setLinkPolicy {id | "*", rules: [{when: crossSite|sameSite|any, hosts?: [suffix], modifiers?: [cmd,...], event}]}
 ///   watchLinks {modifier: shift|none|off, yieldTo?: [css selector]}  (all web views; LinkHover.swift)
@@ -152,7 +169,8 @@ public final class WebRecord {
 ///
 /// Events: webviews.title {id,title}  webviews.url {id,url}  webviews.favicon {id,url}
 ///   webviews.progress {id,progress,loading}  webviews.state {id,canGoBack,canGoForward}
-///   webviews.audio {id,playing}  webviews.newWindow {id,url}  webviews.crashed {id}
+///   webviews.audio {id,playing}  webviews.newWindow {id,url,background?,webview?}  webviews.crashed {id}
+///   webviews.popup {id,opener,url}  webviews.popupBlocked {id,url,count}  webviews.closeRequested {id,opener}  (Popups.swift)
 ///   webviews.suspended {id}  webviews.snapshot {id,path,ok}  webviews.muted {id,muted}  webviews.media {id, playing, pip, dirty}
 ///   webviews.nowPlaying {id, now: {title, artist, album, art, paused, dur, video, acts} | null, muted}
 ///   + any event named by a link rule: {id,url,source}
@@ -160,11 +178,18 @@ public final class WebRecord {
 public final class WebViewsService: NSObject, HostService, WKNavigationDelegate, WKUIDelegate {
   public let name = "webviews"
   let host: ServiceHost
-  public private(set) var records: [String: WebRecord] = [:]
-  private var order: [String] = []
+  public internal(set) var records: [String: WebRecord] = [:]
+  var order: [String] = []
   private var defaultRules: [LinkRule] = []
   private var stores: [String: WKWebsiteDataStore] = [:]
   private var nextId = 1
+  /// Pop-up web views (`popup-<n>`, `tab-o<n>`; Popups.swift).
+  var nextPopup = 1
+  /// Shows a pop-up's web view in a pop-up window (the `window` service): record id and the size
+  /// the page asked for. False when there is no window to show it in.
+  public var showPopupWindow: ((String, CGSize?) -> Bool)?
+  /// Closes the pop-up window showing a record (its page called `window.close()`).
+  public var closePopupWindow: ((String) -> Void)?
   private lazy var scriptHandler = ScriptMessageProxy { [weak self] msg in self?.didReceive(msg) }
   /// The `extensions` service: attaches its controller to new configurations, supplies extension
   /// pages' configurations, and watches store pages. nil (or nothing installed) costs nothing.
@@ -257,6 +282,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     case "eval": return evaluate(r, args)
     case "inject": return scripting.inject(r, args)
     case "get": return state(r)
+    case "openBlocked": return openBlocked(r)
     case "setLinkPolicy": r.rules = args.list("rules").compactMap(LinkRule.init)
     default: return .error("webviews: unknown method '\(method)'")
     }
@@ -316,7 +342,30 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       config.websiteDataStore = store(for: r.profile)
       extensionHooks?.prepare(config)
     }
+    let w = makeView(r, config)
+    let start = { [weak w] in
+      guard let w else { return }
+      if let state = r.interactionState {
+        w.interactionState = state
+        r.interactionState = nil
+        // Some states (e.g. loadHTMLString pages) don't restore; fall back to the last URL.
+        if w.backForwardList.currentItem == nil, let url = URL(string: r.url), r.url != "about:blank" { w.open(url) }
+      } else if let url = URL(string: r.url), r.url != "about:blank" {
+        w.open(url)
+      }
+    }
+    // With extensions, the first load waits (briefly) for them, so blockers apply to it too.
+    if let ext = extensionHooks { ext.whenReady(start) } else { start() }
+    return w
+  }
+
+  /// den's settings, scripts and hooks on `config`, then the web view itself (delegates,
+  /// observers, created hooks), stored as `r`'s view. Loads nothing.
+  func makeView(_ r: WebRecord, _ config: WKWebViewConfiguration) -> DenWebView {
     config.preferences.isElementFullscreenEnabled = true
+    // Every window.open reaches `createWebViewWith`, which decides like Safari: a click opens it,
+    // anything else is blocked with a notice (WebKit's own check would block it silently).
+    config.preferences.javaScriptCanOpenWindowsAutomatically = true
     config.preferences.inactiveSchedulingPolicy = .suspend
     if !autoplayAllowed { config.mediaTypesRequiringUserActionForPlayback = .all }
     config.applicationNameForUserAgent = Self.applicationNameForUserAgent
@@ -358,19 +407,6 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if links.enabled { links.install(w, handler: scriptHandler) }
     if r.muted { Self.applyMuted(w, true) }
     for h in createdHooks { h(r, w) }
-    let start = { [weak w] in
-      guard let w else { return }
-      if let state = r.interactionState {
-        w.interactionState = state
-        r.interactionState = nil
-        // Some states (e.g. loadHTMLString pages) don't restore; fall back to the last URL.
-        if w.backForwardList.currentItem == nil, let url = URL(string: r.url), r.url != "about:blank" { w.open(url) }
-      } else if let url = URL(string: r.url), r.url != "about:blank" {
-        w.open(url)
-      }
-    }
-    // With extensions, the first load waits (briefly) for them, so blockers apply to it too.
-    if let ext = extensionHooks { ext.whenReady(start) } else { start() }
     return w
   }
 
@@ -426,6 +462,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       "audio": .bool(r.audio), "muted": .bool(r.muted), "suspended": .bool(r.isSuspended), "live": .bool(r.webView != nil),
       "profile": .string(r.profile), "snapshot": r.snapshotPath.map { .string($0) } ?? .null, "media": mediaValue(r.media),
       "zoom": .double(Double(r.webView?.pageZoom ?? 1)),
+      "opener": r.opener.map { .string($0) } ?? .null, "popupWindow": r.popupWindow.map { .string($0) } ?? .null,
+      "blockedPopups": .array(r.blockedPopups.map { .string($0.url) }),
     ]
   }
 
@@ -815,6 +853,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   public func releaseStore(_ profile: String) {
     guard Self.isPrivate(profile) else { return }
     stores[profile] = nil
+    // Its pop-up windows go with it (they share the store).
+    for r in records.values where r.profile == profile && r.popupWindow != nil { closePopupWindow?(r.id) }
   }
 
   /// Stable UUID per profile name (SHA-256 based, version/variant bits set).
@@ -847,6 +887,12 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   func decide(_ webView: WKWebView, _ action: WKNavigationAction, _ preferences: WKWebpagePreferences, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
     guard let r = recordFor(webView), let target = action.request.url else { return decisionHandler(.allow) }
     let mainFrame = action.targetFrame?.isMainFrame ?? true
+    // mailto:, tel:, zoommtg:… open in their app (ExternalLinks.swift), never as an error page.
+    if ExternalLinks.isExternal(target) {
+      decisionHandler(.cancel)
+      openExternal(target, from: webView, userInitiated: Self.isUserInitiated(action), mainFrame: mainFrame)
+      return
+    }
     let rules = r.rules.isEmpty ? defaultRules : r.rules
     var mods = Set<Chord.Mod>()
     let f = action.modifierFlags
@@ -915,6 +961,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if let sp = sitePolicy, let r = recordFor(webView) { sp.committed(r, webView) }
     // A new page may show dialogs again (loop protection counts per page load).
     prompts?.pageChanged(webView)
+    // Its blocked pop-ups were the old page's.
+    if let r = recordFor(webView) { clearBlockedPopups(r) }
     // A new document: its script reports afresh.
     guard let r = recordFor(webView), !r.frames.isEmpty else { return }
     r.frames = [:]
@@ -1013,30 +1061,6 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if let c = r.backgroundColor { return c }
     guard let host = URL(string: r.url)?.host?.lowercased() else { return nil }
     return hostBackgrounds[host]
-  }
-
-  public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-    guard let r = recordFor(webView), let u = action.request.url else { return nil }
-    // Like Safari: a window a click opens always opens; one a page opens by itself only on a site
-    // whose pop-ups are allowed (WebKit on macOS would let every one through).
-    guard Self.isUserInitiated(action) || popupsAllowed(on: webView.url) else { return nil }
-    host.emit("webviews.newWindow", ["id": .string(r.id), "url": .string(u.absoluteString)])
-    return nil
-  }
-
-  /// `-[WKNavigationAction _isUserInitiated]` (SPI): the page is handling a click or key press.
-  /// Without it, only a link activation counts.
-  nonisolated static func isUserInitiated(_ action: WKNavigationAction) -> Bool {
-    let sel = NSSelectorFromString("_isUserInitiated")
-    guard action.responds(to: sel), let imp = action.method(for: sel) else { return action.navigationType == .linkActivated }
-    typealias Getter = @convention(c) (AnyObject, Selector) -> Bool
-    return unsafeBitCast(imp, to: Getter.self)(action, sel)
-  }
-
-  /// Pop-ups without a click are allowed on this page's site (`sitepolicy` rule `popups: allow`).
-  func popupsAllowed(on url: URL?) -> Bool {
-    guard let sp = sitePolicy, let h = url?.host, !h.isEmpty else { return false }
-    return sp.rule(for: h).popups == "allow"
   }
 
   // MARK: Page prompts and error pages (WebPrompts.swift, WebErrorPage.swift)

@@ -20,7 +20,11 @@ final class MiniWindowController: NSObject, NSWindowDelegate {
   var onEvent: (String, Value) -> Void = { _, _ in }
   var onClose: (() -> Void)?
 
-  init(id: String, webview: String, web: WKWebView?, theme: Theme, dark: Bool, space: String, frame: NSRect) {
+  /// A page's pop-up window rather than Little Arc (no "Open in", not floating).
+  let popup: Bool
+
+  init(id: String, webview: String, web: WKWebView?, theme: Theme, dark: Bool, space: String, frame: NSRect, popup: Bool = false) {
+    self.popup = popup
     self.id = id
     self.webview = webview
     panel = DenNSPanel(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
@@ -29,12 +33,20 @@ final class MiniWindowController: NSObject, NSWindowDelegate {
     if Presentation.invisible { panel.setFrame(frame, display: false) }
     panel.titlebarAppearsTransparent = true
     panel.titleVisibility = .hidden
-    panel.isFloatingPanel = true  // spec §8: AXSystemDialog-style floating panel
-    panel.level = .floating
+    if popup {
+      // A pop-up is an ordinary window of the app (Safari's are): it doesn't float over other apps.
+      panel.isFloatingPanel = false
+      panel.level = .normal
+      panel.collectionBehavior = [.fullScreenAuxiliary]
+      panel.minSize = NSSize(width: 100, height: 100 + Tokens.miniBarHeight)
+    } else {
+      panel.isFloatingPanel = true  // spec §8: AXSystemDialog-style floating panel
+      panel.level = .floating
+      panel.collectionBehavior = [.fullScreenAuxiliary, .canJoinAllSpaces, .ignoresCycle]
+      panel.minSize = Tokens.miniMinSize
+    }
     panel.hidesOnDeactivate = false
     panel.isReleasedWhenClosed = false
-    panel.collectionBehavior = [.fullScreenAuxiliary, .canJoinAllSpaces, .ignoresCycle]
-    panel.minSize = Tokens.miniMinSize
     TestMode.hide(panel)
     panel.delegate = self
     panel.contentView = root
@@ -42,6 +54,7 @@ final class MiniWindowController: NSObject, NSWindowDelegate {
     [background, content, bar].forEach { root.addSubview($0) }
     panel.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     bar.space = space
+    bar.open.isHidden = popup
     bar.onAction = { [weak self] a in
       guard let self else { return }
       self.onEvent("window.miniAction", ["id": .string(self.id), "webview": .string(self.webview), "action": .string(a)])
@@ -146,7 +159,8 @@ final class MiniBarView: FlippedView {
     let bw = open.preferredWidth
     open.frame = NSRect(x: bounds.width - Tokens.miniOpenButtonRightInset - bw, y: Tokens.miniFieldTop, width: bw, height: Tokens.miniFieldHeight)
     let fx = Tokens.miniFieldX
-    field.frame = NSRect(x: fx, y: Tokens.miniFieldTop, width: max(0, open.frame.minX - 8 - fx), height: Tokens.miniFieldHeight)
+    let right = open.isHidden ? bounds.width - Tokens.miniOpenButtonRightInset : open.frame.minX - 8  // a pop-up has no "Open in"
+    field.frame = NSRect(x: fx, y: Tokens.miniFieldTop, width: max(0, right - fx), height: Tokens.miniFieldHeight)
     let fh = field.bounds.height
     siteIcon.frame = NSRect(x: 8, y: (fh - 16) / 2, width: 16, height: 16)  // spec §8: site icon 16x16 at (91, 15)
     copy.frame = NSRect(x: field.bounds.width - 30, y: (fh - 22) / 2, width: 22, height: 22)
@@ -252,6 +266,55 @@ final class MiniWindows {
     windows[id] = m
     Presentation.show(m.panel)
     return ["id": .string(id)]
+  }
+
+  /// A page's pop-up window (`window.open` with features, Popups.swift): the bar shows the page's
+  /// domain (as Safari's pop-ups show their address) and its copy button, without "Open in". An
+  /// ordinary window (not floating), centred over the browser window that opened it, sized as the
+  /// page asked (at least 100x100, at most the screen). Closing it closes the page.
+  func openPopup(_ wid: String, size: CGSize?) -> Bool {
+    guard let webviews, let rec = webviews.record(wid) else { return false }
+    let id = "mini\(next)"
+    next += 1
+    let opener = rec.opener.flatMap { webviews.record($0)?.webView?.window } ?? browserWindows.active.window
+    let frame = Self.popupFrame(over: opener.frame, screen: Presentation.visibleFrame(near: opener), size: size)
+    let web = webviews.materialize(wid)
+    let m = MiniWindowController(id: id, webview: wid, web: web, theme: wc.currentTheme, dark: wc.isDark, space: "", frame: frame, popup: true)
+    m.bar.set(url: rec.url, favicon: rec.favicon)
+    m.onEvent = { [weak host, weak self] e, v in
+      guard e == "window.miniAction" else { host?.emit(e, v); return }
+      // The bar's copy button; there is no "Open in" on a pop-up.
+      guard v.str("action") == "copy", let u = self?.webviews?.record(wid)?.url else { return }
+      NSPasteboard.general.clearContents()
+      NSPasteboard.general.setString(u, forType: .string)
+    }
+    m.onClose = { [weak self] in
+      self?.windows[id] = nil
+      self?.webviews?.popupWindowClosed(wid)
+    }
+    windows[id] = m
+    rec.popupWindow = id
+    Presentation.show(m.panel)
+    return true
+  }
+
+  func closePopup(webview: String) {
+    for m in windows.values where m.webview == webview { m.panel.close() }
+  }
+
+  /// Centred over the opener's window: the content `size` plus the bar (500x600 when the page gave
+  /// none), kept on the screen.
+  static func popupFrame(over parent: NSRect, screen: NSRect, size: CGSize?) -> NSRect {
+    let bar = Tokens.miniBarHeight
+    var w = size?.width ?? 0, h = size?.height ?? 0
+    if w <= 0 { w = 500 }
+    if h <= 0 { h = 600 }
+    w = min(max(w, 100), screen.width)
+    h = min(max(h, 100) + bar, screen.height)
+    var x = parent.midX - w / 2, y = parent.midY - h / 2
+    x = min(max(x, screen.minX), screen.maxX - w)
+    y = min(max(y, screen.minY), screen.maxY - h)
+    return NSRect(x: x, y: y, width: w, height: h)
   }
 
   func update(_ args: Value) -> Value {

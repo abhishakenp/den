@@ -80,7 +80,7 @@ struct SitePolicyTests {
     #expect(try await until { (try? await w.evaluateJavaScript("window.auto || ''")) as? String == "blocked" })
     #expect(opened().isEmpty)
     // A click (`evaluateJavaScript` runs as a user gesture): it opens.
-    _ = try? await w.evaluateJavaScript("window.open('https://pop.test/signin', 'signin', 'width=500,height=600'); 1")
+    _ = try? await w.evaluateJavaScript("window.open('https://pop.test/signin', 'signin'); 1")
     #expect(try await until { opened().contains { $0.str("url") == "https://pop.test/signin" } })
     #expect(opened().count == 1)
   }

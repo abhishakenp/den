@@ -67,6 +67,9 @@ public final class WindowService: HostService {
     mini.host = host
     host.on("webviews.url") { [weak self] v in self?.mini.noteURL(v) }
     host.on("webviews.favicon") { [weak self] v in self?.mini.noteURL(v) }
+    // Pop-ups that ask for a window (Popups.swift) open in a Little Arc-style window of their own.
+    webviews.showPopupWindow = { [weak self] id, size in self?.mini.openPopup(id, size: size) ?? false }
+    webviews.closePopupWindow = { [weak self] id in self?.mini.closePopup(webview: id) }
   }
 
   public func handle(method: String, args: Value) -> Value {

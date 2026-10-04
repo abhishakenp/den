@@ -147,6 +147,8 @@ final class TabsCore {
   /// Tab -> the tab it was ⌘-clicked from, so later links from a group land next to their
   /// opener (Chrome-style, dia-ui-spec §6). Runtime only.
   var opener: [String: String] = [:]
+  /// Pop-up tab -> the page that opened it with window.open / target=_blank (TabsPopups.swift).
+  var popupOpener: [String: String] = [:]
   /// Extra tabs picked with ⌘-click / ⇧-click in the sidebar (⌃⌘N makes a folder of them).
   var multi: [String] = []
   /// Groups waiting for an on-device name (the header shimmers), and ones revealing it now.
@@ -2093,7 +2095,15 @@ final class TabsCore {
     env.on("media.backToTab") { [self] v in if tabs[v.s("webview")] != nil { select(v.s("webview")) } }
     // target=_blank and window.open (foreground); ⌘-click / middle-click / "Open Link in New Tab"
     // come with `background: true` (⌘⇧-click: false).
+    startPopups()
     env.on("webviews.newWindow") { [self] v in
+      // `webview`: a pop-up the host already made for the page (window.open / target=_blank from
+      // a click; Popups.swift). It keeps `window.opener`, so it opens as a selected tab right
+      // after its opener, and closes back to it.
+      if let adopt = v.sOpt("webview") {
+        openPopupTab(adopt, url: v.s("url"), opener: v.s("id"))
+        return
+      }
       // From a private tab: another private tab in the same window.
       if let w = privateWindow(of: v.s("id")) {
         _ = openPrivate(v.s("url"), in: w, background: v.b("background"))
@@ -2341,6 +2351,7 @@ final class TabsCore {
   }
 
   func action(_ id: String, _ action: String, _ value: Value) {
+    if id == Self.popupButton { allowPopups(value.s("webview")); return }
     if privateAction(id, action, value) { return }
     if liveFolders.action(id, action, value) { return }
     if id == Self.iconPickerId { iconPickerAction(action, value); return }

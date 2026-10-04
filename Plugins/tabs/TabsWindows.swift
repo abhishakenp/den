@@ -282,7 +282,7 @@ extension TabsCore {
 
   /// A private tab: its own ephemeral data store per window (`private:<window>`), never in the
   /// state, the archive, the MRU or the undo stack.
-  func openPrivate(_ url: String, in w: String, background: Bool, adopt: String? = nil) -> String {
+  func openPrivate(_ url: String, in w: String, background: Bool, adopt: String? = nil, after: String? = nil) -> String {
     var id = adopt ?? ""
     if adopt == nil {
       for _ in 0..<1000 {
@@ -292,7 +292,9 @@ extension TabsCore {
       }
     }
     ptabs[id] = Tab(id: id, title: URLs.title(url), url: url, lastActive: env.now())
-    privates[w]?.tabs.insert(id, at: 0)
+    // At the top, or right after `after` (a pop-up's opener).
+    let at = after.flatMap { a in privates[w]?.tabs.firstIndex(of: a).map { $0 + 1 } } ?? 0
+    privates[w]?.tabs.insert(id, at: at)
     if background, privates[w]?.selected != nil { renderPrivate(w) } else { selectPrivate(id) }
     return id
   }

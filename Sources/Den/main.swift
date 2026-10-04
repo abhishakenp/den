@@ -439,6 +439,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       #if Scenarios
       DiscardScenarios.apply(s, runtime: rt)
       #endif
+    case "popupClick":
+      #if Scenarios
+      PopupScenarios.apply(s, url: arg("--url"), runtime: rt)
+      #endif
     case "newWindow":
       // ⌘N: a second window on the same space, its command bar asking what to open.
       snapActive = true
