@@ -81,6 +81,11 @@ enum MenuActions {
   /// Save Page As… (⇧⌘S): the page as a Web Archive, through a save sheet on den's window.
   static func savePage(_ rt: DenRuntime, _ id: String?) {
     guard let id, let web = rt.webviews.record(id)?.webView else { NSSound.beep(); return }
+    savePage(web)
+  }
+
+  /// Save Page As… for one page (the menu bar's, or the page's context menu).
+  static func savePage(_ web: WKWebView) {
     let panel = NSSavePanel()
     panel.allowedContentTypes = [UTType.webArchive]
     let title = (web.title ?? "").trimmingCharacters(in: .whitespaces)

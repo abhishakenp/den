@@ -252,11 +252,12 @@ fi
 fi  # ONLY=new
 # Native menus are separate windows AppKit puts on a display: open one and capture it through its
 # own window id. These are the only shots with a window on screen, so they run only with MENUS=1.
-menu() { # name appearance [scenario] — the space menu needs the plugins' first-run seed, so a fresh store
+menu() { # name appearance [scenario] [delay] — the space menu needs the plugins' first-run seed, so a fresh store
   [[ -n ${MENUS:-} ]] || return 0
   resolve "$1" "$2" || return 0
-  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario "${3:-contextMenu}" --exit-after 8 &
-  local pid=$!; sleep 3.5
+  local delay=${4:-3.5}
+  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario "${3:-contextMenu}" --exit-after $(( ${delay%.*} + 5 )) &
+  local pid=$!; sleep $delay
   local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; for w in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where w[kCGWindowOwnerPID as String] as? Int32 == p && w[kCGWindowLayer as String] as? Int == 101 { print(w[kCGWindowNumber as String]!) }' $pid | head -1)
   if [[ -n $id ]]; then screencapture -o -x -l$id "$out/$_n.png" || print -u2 "warning: screencapture failed for $_n"; else print -u2 "warning: no window to capture for $_n"; fi
   kill -9 $pid 2>/dev/null || true; wait $pid 2>/dev/null || true
@@ -264,6 +265,25 @@ menu() { # name appearance [scenario] — the space menu needs the plugins' firs
 if [[ -z ${ONLY:-} ]]; then menu context-menu light; menu context-menu-dark dark; fi
 menu space-menu light spaceMenu
 menu space-menu-dark dark spaceMenu
+# The page's context menu (DevToolsScenarios: a local page, a real right-click) for a link, an
+# image, selected text and the page itself.
+for sc in Link Image Text Page; do
+  menu page-menu-${(L)sc} light pageMenu$sc 7
+  menu page-menu-${(L)sc}-dark dark pageMenu$sc 7
+done
+# The Web Inspector docked in the page's card (⌥⌘I): den's window, by its window id (the inspector
+# is WebKit's own web view, which --snapshot can't draw). Needs a window on screen too.
+inspector() { # name appearance
+  [[ -n ${MENUS:-} ]] || return 0
+  resolve "$1" "$2" || return 0
+  build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario inspectorDocked --exit-after 20 &
+  local pid=$!; sleep 12
+  local id=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; var best = (0.0, ""); for x in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where x[kCGWindowOwnerPID as String] as? Int32 == p && x[kCGWindowLayer as String] as? Int == 0 { let b = x[kCGWindowBounds as String] as! [String: Any]; let a = (b["Width"] as! Double) * (b["Height"] as! Double); if a > best.0 { best = (a, "\(x[kCGWindowNumber as String]!)") } }; print(best.1)' $pid | head -1)
+  if [[ -n $id ]]; then screencapture -o -x -l$id "$out/$_n.png" || print -u2 "warning: screencapture failed for $_n"; else print -u2 "warning: no window to capture for $_n"; fi
+  kill -9 $pid 2>/dev/null || true; wait $pid 2>/dev/null || true
+}
+inspector web-inspector light
+inspector web-inspector-dark dark
 # Spaces: the icon picker, inline rename, and the footer's live drag-reorder (mid-drag).
 for sc in IconPicker Rename Reorder; do
   n=$(echo $sc | sed -E 's/([a-z])([A-Z])/\1-\2/g' | tr A-Z a-z)

@@ -200,6 +200,8 @@ jobs:
       - name: Render snapshot scenarios (scripts/snapshots.sh)
         env:
           SNAPSHOT_APPEARANCE: ${{ inputs.snapshot_appearance == 'all' && '' || 'dark' }}
+          # The runner has a GUI session: native menus and the docked Web Inspector render too.
+          MENUS: "1"
         run: |
           touch "$RUNNER_TEMP/snapshots.start"
           # Straight to the log (no pipe: a den left running by a --stay capture would hold it open).

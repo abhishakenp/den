@@ -287,32 +287,46 @@ struct PageActionTests {
       }
       return m
     }
-    let m = menu(["OpenLinkInNewWindow", "DownloadLinkedFile", "CopyLink", "OpenImageInNewWindow", "DownloadImage", "CopyImage", "SearchWeb"])
-    let hit = DenWebView.ContextHit(link: "https://a.test/l", image: "https://a.test/i.png", selection: "  a rather long selected phrase here  ")
-    DenWebView.customize(m, hit: hit, peek: true, engine: "Kagi", target: nil)
-    #expect(m.items.map(\.title) == ["Open Link in New Tab", "Open Link in Peek", "Save Link As…", "CopyLink", "Open Image in New Tab", "Save Image As…",
-                                     "CopyImage", "Search Kagi for “a rather long selected phrase…”"])
+    let m = menu(["OpenLink", "OpenLinkInNewWindow", "DownloadLinkedFile", "CopyLink", "OpenImageInNewWindow", "DownloadImage", "CopyImage", "SearchWeb"])
+    let hit = DenWebView.ContextHit(link: "https://a.test/l", linkText: " Some\n  link ", image: "https://a.test/i.png", selection: "  a rather long selected phrase here  ")
+    DenWebView.customize(m, hit: hit, env: .init(peek: true, split: true, engine: "Kagi"), target: nil)
+    DenWebView.finish(m)
+    #expect(m.items.map { $0.isSeparatorItem ? "-" : $0.title } == [
+      "Open Link in New Tab", "Open Link in New Window", "Open Link in Private Window", "Open Link in Peek", "Open Link in Split View", "-",
+      "Download Linked File", "Save Link As…", "-", "CopyLink", "Copy Link as Markdown", "Open Image in New Tab", "-", "Save Image As…",
+      "CopyImage", "Copy Image Address", "Search Image with Google Lens", "Search Kagi for “a rather long selected phrase…”",
+    ])
     #expect(m.items[0].representedObject as? String == "https://a.test/l")
-    #expect(m.items[5].representedObject as? String == "https://a.test/i.png")
-    #expect(m.items[7].representedObject as? String == "a rather long selected phrase here")
-    // No Peek plugin: no Peek item; nothing hit: WebKit's own items, retitled.
+    #expect(m.items.first { $0.title == "Copy Link as Markdown" }?.representedObject as? String == "[Some link](https://a.test/l)")
+    #expect(m.items.first { $0.title == "Save Image As…" }?.representedObject as? String == "https://a.test/i.png")
+    #expect(m.items.last?.representedObject as? String == "a rather long selected phrase here")
+    #expect(DenWebView.markdownLink(.init(link: "https://a.test/(x)", linkText: "a [b]")) == "[a \\[b\\]](https://a.test/%28x%29)")
+    // No Peek or split listener: no such items; nothing hit: WebKit's own items, retitled.
     let m2 = menu(["OpenLinkInNewWindow", "DownloadLinkedFile", "OpenImageInNewWindow"])
-    DenWebView.customize(m2, hit: .init(), peek: false, engine: "Google", target: nil)
+    DenWebView.customize(m2, hit: .init(), env: .init(), target: nil)
     #expect(m2.items.map(\.title) == ["Open Link in New Tab", "Open Image in New Tab"])
     // Page and text items show their menu bar chord (docs/guide/_in-app-tips.md §2), remaps included.
     NSApp.mainMenu = NSMenu()
     MainMenu.install()
     if let back = MainMenu.item("history.back") { MainMenu.setKey(back, "cmd+[") }  // what the tabs plugin's keys.bind does
     let m3 = menu(["GoBack", "Reload", "Copy", "InspectElement", "CopyLink"])
-    DenWebView.customize(m3, hit: .init(), peek: false, engine: "Google", target: nil)
+    DenWebView.customize(m3, hit: .init(), env: .init(), target: nil)
     #expect(m3.items[0].keyEquivalent == "[" && m3.items[0].keyEquivalentModifierMask == .command)
     #expect(m3.items[1].keyEquivalent == "")  // Reload isn't bound in this test: no hint
-    #expect(m3.items[2].keyEquivalent == "c" && m3.items[2].keyEquivalentModifierMask == .command)
-    #expect(m3.items[3].keyEquivalent == "c" && m3.items[3].keyEquivalentModifierMask == [.command, .option])
-    #expect(m3.items[4].keyEquivalent == "")
+    // The page's own items follow Reload: Save Page As… ⇧⌘S, Print… ⌘P, View Page Source ⌥⌘U.
+    let save = try #require(m3.items.first { $0.title == "Save Page As…" })
+    #expect(save.keyEquivalent == "s" && save.keyEquivalentModifierMask == [.command, .shift])
+    #expect(m3.items.first { $0.title == "View Page Source" }?.keyEquivalentModifierMask == [.command, .option])
+    let copyItem = try #require(m3.items.first { $0.title == "Copy" }), inspect = try #require(m3.items.first { $0.title == "InspectElement" })
+    #expect(copyItem.keyEquivalent == "c" && copyItem.keyEquivalentModifierMask == .command)
+    #expect(inspect.keyEquivalent == "c" && inspect.keyEquivalentModifierMask == [.command, .option])
+    #expect(m3.items.first { $0.title == "CopyLink" }?.keyEquivalent == "")
+    // finish: Inspect Element goes last, after a separator.
+    DenWebView.finish(m3)
+    #expect(m3.items.last === inspect && m3.items[m3.items.count - 2].isSeparatorItem)
     if let copy = MainMenu.item("edit.copy") { MainMenu.setKey(copy, "cmd+shift+x") }
     let m4 = menu(["Copy"])
-    DenWebView.customize(m4, hit: .init(), peek: false, engine: "Google", target: nil)
+    DenWebView.customize(m4, hit: .init(), env: .init(), target: nil)
     #expect(m4.items[0].keyEquivalent == "x" && m4.items[0].keyEquivalentModifierMask == [.command, .shift])
     if let copy = MainMenu.item("edit.copy") { MainMenu.setKey(copy, "cmd+c") }
     // The page reports what was right-clicked (the DOM contextmenu event).
