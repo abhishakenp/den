@@ -170,6 +170,15 @@ struct ExtensionCompatTests {
       .map(f => f.className + ':' + getComputedStyle(f).display))
     """
 
+  /// The hint on the first link. (A window without focus, like these tests' off-screen one, also
+  /// gets a hint for focusing the page itself, which Vimium labels first.)
+  static let linkHint = """
+    (() => { const r = document.getElementById('l1').getBoundingClientRect();
+      const ms = [...document.querySelectorAll('.vimiumHintMarker')].map(m => ({t: m.textContent, b: m.getBoundingClientRect()}));
+      ms.sort((a, b) => Math.hypot(a.b.left - r.left, a.b.top - r.top) - Math.hypot(b.b.left - r.left, b.b.top - r.top));
+      return ms.length ? ms[0].t : ''; })()
+    """
+
   /// Key codes of Vimium's hint characters (US layout).
   static let hintKeys: [Character: UInt16] = ["a": 0, "s": 1, "d": 2, "f": 3, "g": 5, "h": 4, "j": 38, "k": 40, "l": 37]
 
@@ -318,7 +327,7 @@ struct ExtensionCompatTests {
     notes.append("delivery=\(String(describing: delivery)) got=\(await Wait.js(w, "document.documentElement.dataset.denMsgs") ?? "?")")
     press(w, "f", 3)
     _ = await wait(10) { await markers() > 0 }
-    let hintA = await Wait.js(w, "document.querySelector('.vimiumHintMarker')?.textContent || ''") as? String ?? ""
+    let hintA = await Wait.js(w, Self.linkHint) as? String ?? ""
     for ch in hintA.lowercased() { press(w, String(ch), Self.hintKeys[ch] ?? 0) }
     ok["f follows a link"] = await wait(10) { w.url?.query != nil }
     notes.append("f \(hintA) -> \(w.url?.absoluteString ?? "?") markers=\(await markers()) msgs=\(await Wait.js(w, "document.documentElement.dataset.denMsgs") ?? "?") sim=\(await Wait.js(w, "JSON.stringify([document.documentElement.dataset.denSim, document.documentElement.dataset.denExit, document.documentElement.dataset.denErr])") ?? "?") clicks=\(await Wait.js(w, "JSON.stringify(window.__clicks)") ?? "?")")
@@ -327,7 +336,7 @@ struct ExtensionCompatTests {
     let tabsBefore = h.ids("today").count
     press(w, "F", 3, shift: true)
     ok["F link hints"] = await wait(10) { await markers() > 0 }
-    let first = await Wait.js(w, "document.querySelector('.vimiumHintMarker')?.textContent || ''") as? String ?? ""
+    let first = await Wait.js(w, Self.linkHint) as? String ?? ""
     for ch in first.lowercased() { press(w, String(ch), Self.hintKeys[ch] ?? 0) }
     ok["F opens a new tab"] = await wait(10) { h.ids("today").count > tabsBefore }
     notes.append("F clicks=\(await Wait.js(w, "JSON.stringify(window.__clicks)") ?? "?") markers=\(await markers())")

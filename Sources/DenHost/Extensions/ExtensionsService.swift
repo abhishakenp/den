@@ -219,6 +219,18 @@ public final class ExtensionsService: NSObject, HostService {
   }
 
   // thin-host: feature-specific, migrate to plugin
+  /// A page's right-click menu: each loaded extension's items for that tab (`contextMenus`),
+  /// after den's own, behind a separator. Nothing while no extension is loaded.
+  func contextMenu(_ w: WKWebView, _ menu: NSMenu) {
+    guard !contexts.isEmpty, let id = webviews.id(of: w) else { return }
+    let t = tab(id)
+    let items = contexts.keys.sorted().compactMap { contexts[$0] }.flatMap { $0.menuItems(for: t) }
+    guard !items.isEmpty else { return }
+    menu.addItem(.separator())
+    items.forEach(menu.addItem)
+  }
+
+  // thin-host: feature-specific, migrate to plugin
   // MARK: Keyboard shortcuts (`commands`)
 
   /// The "Extensions" menu in the menu bar: every loaded extension's keyboard shortcuts (its

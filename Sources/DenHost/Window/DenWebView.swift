@@ -34,6 +34,8 @@ final class DenWebView: WKWebView {
     Self.customize(menu, hit: context, peek: service?.host.hasListeners("peek.link") == true, engine: service?.pageActions?.searchEngineName ?? "Google", target: self)
     // Plugins' items (`webviews.setMenu`, e.g. "Copy Link to Highlight").
     service?.contextMenu?(self, menu)
+    // Extensions' items (`contextMenus` / `menus`).
+    service?.extensionHooks?.contextMenu(self, menu)
   }
 
   /// WebKit's page and text items -> the menu bar item that does the same (docs/shortcuts.md ids).

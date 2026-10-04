@@ -19,7 +19,7 @@ struct ExtensionsTests {
     let files: [String: String] = [
       "manifest.json": """
         {"manifest_version": 3, "name": "Den Test", "version": "1.0", "description": "A test extension",
-         "permissions": ["storage", "declarativeNetRequest", "tabs", "userScripts"],
+         "permissions": ["storage", "declarativeNetRequest", "tabs", "userScripts", "contextMenus"],
          "host_permissions": ["http://127.0.0.1/*"],
          "action": {"default_popup": "popup.html", "default_title": "Den Test"},
          "background": {"service_worker": "bg.js"},
@@ -31,7 +31,7 @@ struct ExtensionsTests {
         """,
       "rules.json": #"[{"id": 1, "priority": 1, "action": {"type": "block"}, "condition": {"urlFilter": "blocked.js", "resourceTypes": ["script"]}}]"#,
       "cs.js": "document.documentElement.dataset.denExt = '1';",
-      "bg.js": "chrome.action.setBadgeText({text: '7'}); chrome.commands.onCommand.addListener((c) => chrome.action.setBadgeText({text: c === 'hello' ? 'H' : '?'}));",
+      "bg.js": "chrome.action.setBadgeText({text: '7'}); chrome.commands.onCommand.addListener((c) => chrome.action.setBadgeText({text: c === 'hello' ? 'H' : '?'})); chrome.contextMenus.removeAll(() => chrome.contextMenus.create({id: 'look', title: 'Look Up in Den Test', contexts: ['all']}));",
       "popup.html": "<!doctype html><title>Den Test Popup</title><body style='margin:0;width:220px;height:140px;font:13px -apple-system'>Popup</body>",
       "options.html": "<!doctype html><title>Den Test Options</title><body>Options</body>",
     ]
@@ -158,6 +158,18 @@ struct ExtensionsTests {
     // has run: this checks den's badge plumbing, not WebKit's worker timing.
     do { try await ctx.loadBackgroundContent() } catch { print("loadBackgroundContent:", error) }
     #expect(await wait { h.rt.extensions.menuItems().first?.badge == "7" })
+
+    // Its right-click item is in the page's context menu, after den's own.
+    let pageMenu = NSMenu()
+    var lookUp: NSMenuItem?
+    _ = await wait(15) {
+      pageMenu.removeAllItems()
+      h.rt.extensions.contextMenu(w, pageMenu)
+      lookUp = pageMenu.items.first { $0.title == "Look Up in Den Test" }
+      return lookUp != nil
+    }
+    print("ext context menu items=\(pageMenu.items.map(\.title))")
+    #expect(lookUp != nil)
 
     // Its keyboard shortcut is in the menu bar's Extensions menu, with its key; choosing it
     // runs the command in the extension.
