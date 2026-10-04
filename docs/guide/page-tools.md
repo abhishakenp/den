@@ -78,6 +78,12 @@ When a page is an article, a Reader button appears in the URL pill. Click it (or
 
 **Listen** reads the article aloud with your Mac's voice for its language, and highlights the sentence being read. Click again to pause; the speed button goes from 0.8× to 2×.
 
+The button next to it shows the voice and lets you pick another (press V in the reader, or "Choose Read-Aloud Voice…" in the command bar). It lists every voice installed on your Mac, with the page's language first and each voice marked Default, Enhanced or Premium. Type to search by name, language or region; ↑↓ move, Return chooses, ⌥Return or ▶ plays a short sample, Esc closes.
+
+den remembers the voice you pick for its language: pick a French voice once and French pages use it. A voice from another language is used for that page only, unless you tick **Use for all French pages**. **System Voice** goes back to your Mac's voice for that language. **Get more voices…** opens System Settings > Accessibility > Read & Speak, where you can download Enhanced and Premium voices. Siri's voices aren't available to other apps, so they aren't in the list. Settings > Reading lists the voices you've kept per language.
+
+<p align="center"><img src="../screenshots/pagetools-voice-picker-dark.png" alt="The voice picker" width="620"></p>
+
 ## Translate
 
 When a page is in another language, a Translate button appears in the URL pill. Click it and the page is translated on your Mac, with Apple's translation models: nothing is sent anywhere. The text you're looking at changes first, then the rest of the page. Click the button again for the original. If a language isn't downloaded yet, macOS asks first.

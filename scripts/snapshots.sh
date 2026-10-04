@@ -221,7 +221,7 @@ soft page dark-mode-site https://example.com dark 6
 # Page tools (PageToolsScenarios, network: Wikipedia, MDN). Translation needs macOS's on-device
 # language models; where they aren't installed the page stays untranslated.
 if [[ -f build/den.app/Contents/PlugIns/pagetools.dylib ]]; then
-  for p in reader:reader:12 translate:translated:40 zap:zap:10 highlightLink:highlight-link:14; do
+  for p in reader:reader:12 voicePicker:voice-picker:12 translate:translated:40 zap:zap:10 highlightLink:highlight-link:14; do
     sc=${p%%:*} rest=${p#*:}
     soft shot pagetools-${rest%:*} $sc light ${rest##*:}
     soft shot pagetools-${rest%:*}-dark $sc dark ${rest##*:}

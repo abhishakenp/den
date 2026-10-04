@@ -51,6 +51,9 @@ final class PageToolsCore {
   var zaps: [String: [String]] = [:]  // host -> hidden CSS selectors
   var captureDest = "copy"  // copy | save
   var captureFolder = ""  // "" = Downloads
+  var voiceLast: VoiceRef?  // read-aloud voice picked last (ReaderVoices.swift)
+  var voiceLangs: [String: VoiceRef] = [:]  // base language -> its voice
+  var voiceLangNames: [String: String] = [:]  // base language -> its name ("French")
 
   // Runtime
   var probes: [String: Probe] = [:]  // webview -> last probe
@@ -58,6 +61,7 @@ final class PageToolsCore {
   var readerOpen: Set<String> = []
   var translated: [String: String] = [:]  // webview -> source language name
   var translation: Translation?
+  var pageVoice: [String: VoiceRef] = [:]  // webview -> a voice picked for that page only
   var speaking: String?  // webview being read aloud
   var speechState = "stopped"
   var hosts: [String: String] = [:]  // webview -> host of its current page
@@ -129,6 +133,7 @@ final class PageToolsCore {
       let list = v.array?.compactMap { $0.string } ?? []
       if !list.isEmpty { zaps[k] = list }
     }
+    loadVoices()
   }
 
   /// Capture settings are read when a capture is taken (nothing to load before).
@@ -169,6 +174,8 @@ final class PageToolsCore {
          "default": .string(font)],
         ["key": "size", "type": "number", "title": "Reader text size", "min": 14, "max": 30, "step": 2, "unit": "px", "default": .int(size)],
         ["key": "rate", "type": "choice", "title": "Read-aloud speed", "options": .array(rates), "default": .double(rate)],
+        ["key": "voices", "type": "list", "title": "Read-aloud voices", "items": .array(voiceSettingsItems()),
+         "empty": "Your Mac’s voice for each language. Pick another from the voice button next to Listen."],
         ["key": "readerSites", "type": "list", "title": "Always open in Reader", "items": .array(sites),
          "empty": "No sites yet. Use “Always” in the reader’s toolbar."],
         ["key": "captureDest", "type": "choice", "title": "Captures (⇧⌘2)", "subtitle": "Region, element, visible area or full page.",
@@ -186,6 +193,10 @@ final class PageToolsCore {
     env.on("settings.action") { [self] v in
       guard v.s("id") == Self.ns else { return }
       switch (v.s("key"), v.s("button")) {
+      case ("voices", "forget"):
+        voiceLangs[v.s("item")] = nil
+        if let l = voiceLast, Self.baseLang(l.lang) == v.s("item") { voiceLast = nil }
+        saveVoices()
       case ("readerSites", "remove"):
         readerSites.removeAll { $0 == v.s("item") }
         save("readerSites", .array(readerSites.map { .string($0) }))
@@ -313,6 +324,7 @@ final class PageToolsCore {
     ("pagetools.reader", "Toggle Reader", "sf:doc.plaintext", ["reader", "read", "article", "safari"], "⌃⌘R"),
     ("pagetools.readerAlways", "Always Use Reader on This Site", "sf:doc.plaintext.fill", ["reader", "site", "always", "auto"], ""),
     ("pagetools.readAloud", "Read Aloud", "sf:speaker.wave.2", ["speak", "listen", "tts", "voice", "reader"], ""),
+    ("pagetools.voice", "Choose Read-Aloud Voice…", "sf:person.wave.2", ["voice", "speech", "listen", "tts", "reader", "siri"], ""),
     ("pagetools.translate", "Translate Page", "sf:translate", ["translate", "language", "translation"], ""),
     ("pagetools.showOriginal", "Show Original Page", "sf:arrow.uturn.backward", ["translate", "original", "untranslate"], ""),
     ("pagetools.capture.region", "Capture Region", "sf:camera.viewfinder", ["capture", "screenshot", "region", "area"], "⇧⌘2"),
@@ -360,6 +372,11 @@ final class PageToolsCore {
         pendingSpeak = w
         openReader(w)
       } else { toggleSpeech(w) }
+    case "pagetools.voice":
+      if !readerOpen.contains(w) {
+        pendingVoices = w
+        openReader(w)
+      } else { openVoices(w) }
     case "pagetools.translate": translate(w)
     case "pagetools.showOriginal": showOriginal(w)
     case "pagetools.capture.region": capture(w, "region")
@@ -384,6 +401,7 @@ final class PageToolsCore {
   }
 
   var pendingSpeak: String?
+  var pendingVoices: String?
 
   // MARK: - Pages
 
@@ -403,6 +421,7 @@ final class PageToolsCore {
       readerOpen.remove(w)
       translated[w] = nil
       probes[w] = nil
+      pageVoice[w] = nil
       if speaking == w { env.call("speech", "stop") }
       if translation?.webview == w { translation = nil }
       capturing.remove(w)
@@ -421,6 +440,7 @@ final class PageToolsCore {
 
   func forget(_ w: String) {
     probes[w] = nil
+    pageVoice[w] = nil
     readerOpen.remove(w)
     translated[w] = nil
     pages[w] = nil
@@ -519,6 +539,7 @@ final class PageToolsCore {
       case "always": toggleAlways(w)
       case "speak": toggleSpeech(w)
       case "rate": cycleRate(w)
+      case "voices", "pickVoice", "previewVoice", "systemVoice", "pinVoice", "moreVoices", "personalVoice": voiceMessage(w, action, m["value"])
       default: break
       }
     case "capture":
@@ -537,7 +558,7 @@ final class PageToolsCore {
 
   func openReader(_ w: String) {
     let args: Value = ["o": ["vars": env.call("ui", "tokens"), "font": .string(font), "size": .int(size),
-                             "state": ["always": .bool(readerSites.contains(hosts[w] ?? "")), "rate": .double(rate)]]]
+                             "state": ["always": .bool(readerSites.contains(hosts[w] ?? "")), "rate": .double(rate), "voice": .string(voiceLabel(w))]]]
     inject(w, "reader", files: ["vendor/Readability.js", "reader.js"], global: "__denReader", script: "return window.__denReader.open(o)", args: args)
   }
 
@@ -545,6 +566,7 @@ final class PageToolsCore {
     let r = v["value"]
     guard v["ok"] == true, r["ok"] == true else {
       pendingSpeak = nil
+      pendingVoices = nil
       toast("This page can't be shown in Reader", icon: "sf:doc.plaintext")
       return
     }
@@ -553,6 +575,10 @@ final class PageToolsCore {
     if pendingSpeak == w {
       pendingSpeak = nil
       toggleSpeech(w)
+    }
+    if pendingVoices == w {
+      pendingVoices = nil
+      openVoices(w)
     }
   }
 
@@ -596,7 +622,9 @@ final class PageToolsCore {
     speaking = w
     speechState = "playing"
     let lang = probes[w]?.lang ?? ""
-    env.call("speech", "speak", ["utterances": .array(list), "lang": .string(lang), "rate": .double(rate), "request": .string("pagetools:" + w)])
+    var a: Value = ["utterances": .array(list), "lang": .string(lang), "rate": .double(rate), "request": .string("pagetools:" + w)]
+    voiceArgs(w, into: &a)
+    env.call("speech", "speak", a)
   }
 
   func cycleRate(_ w: String) {

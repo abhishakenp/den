@@ -3,14 +3,17 @@ import CordisValue
 
 /// `speech` service: text to speech with the system voices (`AVSpeechSynthesizer`), on device.
 /// One queue at a time. The synthesizer is created on the first `speak` and released when the
-/// queue ends or stops, so an unused den pays nothing.
+/// queue ends or stops, so an unused den pays nothing. Listing voices (SpeechVoices.swift)
+/// happens only when asked.
 ///
 /// | Method | Args | Returns |
 /// |---|---|---|
-/// | `speak` | `utterances: [string]`, `lang?` (BCP 47, picks the system voice), `rate?` (1 = normal), `volume?` (0–1), `from?` (index), `request?` | `{request}`. Replaces the current queue |
+/// | `speak` | `utterances: [string]`, `voice?` (a voice id), `lang?` (BCP 47, picks the system voice when there's no `voice`), `rate?` (1 = normal), `volume?` (0–1), `from?` (index), `request?` | `{request}`. Replaces the current queue |
 /// | `pause`, `resume`, `stop` | – | ok |
 /// | `setRate` | `rate` | ok. Restarts at the current utterance |
-/// | `state` | – | `{request, state, index, count, rate}` |
+/// | `setVoice` | `voice?`, `lang?` | ok. Restarts at the current utterance in that voice |
+/// | `state` | – | `{request, state, index, count, rate, voice}` |
+/// | `voices`, `voice`, `preview`, `personalVoice`, `openSettings` | | see SpeechVoices.swift |
 ///
 /// Events: `speech.progress {request, index, count}` as each utterance starts, and
 /// `speech.state {request, state: playing|paused|stopped|done, index, count, rate}`.
@@ -18,23 +21,30 @@ import CordisValue
 public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDelegate {
   public let name = "speech"
   let host: ServiceHost
-  private var synth: AVSpeechSynthesizer?
-  private var texts: [String] = []
-  private var keys: [ObjectIdentifier: Int] = [:]
-  private var request = ""
-  private var lang = ""
-  private var volume: Float = 1
-  private var nextRequest = 1
-  private(set) var index = 0
-  private(set) var rate: Double = 1
-  private(set) var state = "stopped"
+  var synth: AVSpeechSynthesizer?
+  var texts: [String] = []
+  var keys: [ObjectIdentifier: Int] = [:]
+  var request = ""
+  var lang = ""
+  /// The queue's voice (an `AVSpeechSynthesisVoice` identifier). Empty: the system voice for `lang`.
+  var voiceId = ""
+  var volume: Float = 1
+  var nextRequest = 1
+  var index = 0
+  var rate: Double = 1
+  var state = "stopped"
   /// Scenarios mute speech (read-aloud snapshots shouldn't talk).
   public var volumeOverride: Float?
   /// No audio device at all: utterances are synthesized to buffers (`write`) and dropped, with
   /// the same progress and state events. On under tests, so a test run never plays sound or
   /// holds an audio session open in coreaudiod.
   public var silent = TestMode.active
-  private var silentQueue: [AVSpeechUtterance] = []
+  var silentQueue: [AVSpeechUtterance] = []
+
+  // Preview (SpeechVoices.swift)
+  var previewSynth: AVSpeechSynthesizer?
+  /// Times `openSettings` ran (tests don't open System Settings).
+  public internal(set) var settingsOpened = 0
 
   public init(host: ServiceHost) { self.host = host }
 
@@ -48,6 +58,7 @@ public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDele
       request = args.str("request")
       if request.isEmpty { request = "speech-\(nextRequest)"; nextRequest += 1 }
       lang = args.str("lang")
+      voiceId = args.str("voice")
       if let r = args["rate"].double { rate = min(2.5, max(0.5, r)) }
       volume = Float(min(1, max(0, args.num("volume", 1))))
       start(at: min(max(0, Int(args.num("from", 0))), texts.count - 1))
@@ -63,19 +74,35 @@ public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDele
     case "stop": stop(emit: true)
     case "setRate":
       rate = min(2.5, max(0.5, args.num("rate", 1)))
-      guard synth != nil, !texts.isEmpty else { return .ok }
-      let paused = state == "paused"
-      synth?.delegate = nil
-      synth?.stopSpeaking(at: .immediate)
-      synth = nil
-      silentQueue = []
-      start(at: index)
-      if paused { _ = handle(method: "pause", args: .null) }
+      restart()
+    case "setVoice":
+      if !args["lang"].isNull { lang = args.str("lang") }
+      guard voiceId != args.str("voice") else { return .ok }
+      voiceId = args.str("voice")
+      restart()
     case "state":
-      return ["request": .string(request), "state": .string(state), "index": .int(Int64(index)), "count": .int(Int64(texts.count)), "rate": .double(rate)]
+      return ["request": .string(request), "state": .string(state), "index": .int(Int64(index)), "count": .int(Int64(texts.count)), "rate": .double(rate),
+              "voice": .string(voiceId)]
+    case "voices": return voices()
+    case "voice": return voice(args)
+    case "preview": return preview(args)
+    case "personalVoice": return personalVoice(args)
+    case "openSettings": return openSettings()
     default: return .error("speech: unknown method '\(method)'")
     }
     return .ok
+  }
+
+  /// Stops and starts again at the current utterance (a new rate or voice for the system synthesizer).
+  private func restart() {
+    guard synth != nil, !texts.isEmpty else { return }
+    let paused = state == "paused"
+    synth?.delegate = nil
+    synth?.stopSpeaking(at: .immediate)
+    synth = nil
+    silentQueue = []
+    start(at: index)
+    if paused { _ = handle(method: "pause", args: .null) }
   }
 
   private func start(at first: Int) {
@@ -84,7 +111,7 @@ public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDele
     s.delegate = silent ? nil : self
     synth = s
     keys = [:]
-    let voice = lang.isEmpty ? nil : AVSpeechSynthesisVoice(language: lang)
+    let voice = Self.systemVoice(id: voiceId, lang: lang)
     let r = Float(Double(AVSpeechUtteranceDefaultSpeechRate) * rate)
     for i in first..<texts.count {
       let u = AVSpeechUtterance(string: texts[i])
@@ -118,8 +145,9 @@ public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDele
     }
   }
 
-  private func stop(emit: Bool) {
+  func stop(emit: Bool) {
     silentQueue = []
+    stopPreview()
     guard let synth else { return }
     synth.delegate = nil
     synth.stopSpeaking(at: .immediate)
@@ -128,11 +156,12 @@ public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDele
     if emit { publish("stopped") } else { state = "stopped" }
   }
 
-  private func publish(_ s: String) {
+  func publish(_ s: String) {
     state = s
     host.emit("speech.state", ["request": .string(request), "state": .string(s), "index": .int(Int64(index)), "count": .int(Int64(texts.count)), "rate": .double(rate)])
   }
 
+  /// An utterance started: the reader highlights it.
   private func started(_ key: ObjectIdentifier) {
     guard let i = keys[key] else { return }
     index = i
@@ -154,6 +183,13 @@ public final class SpeechService: NSObject, HostService, AVSpeechSynthesizerDele
 
   public nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
     let key = ObjectIdentifier(utterance)
-    Task { @MainActor in self.finished(key) }
+    let s = ObjectIdentifier(synthesizer)
+    Task { @MainActor in
+      if let p = self.previewSynth, ObjectIdentifier(p) == s {
+        self.previewSynth = nil
+        return
+      }
+      self.finished(key)
+    }
   }
 }

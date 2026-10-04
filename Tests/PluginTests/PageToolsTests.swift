@@ -69,6 +69,17 @@ struct PageToolsTests {
       await Wait.until("a condition", seconds: Double(timeout) / 20, every: .milliseconds(50), line: line) { await cond() }
     }
 
+    /// `window.__denReader.<call>` in the plugin's own world (where the reader lives); its value.
+    func reader(_ id: String, _ call: String, _ args: Value = [:]) async -> Value {
+      let request = "test-\(UUID().uuidString)"
+      var got: Value?
+      rt.plugins.on("webviews.injectResult") { v in if v.s("request") == request { got = v } }
+      _ = rt.call("webviews", "inject", ["id": .string(id), "plugin": "pagetools", "request": .string(request),
+                                         "script": .string("return window.__denReader ? window.__denReader." + call + " : null"), "args": args])
+      _ = await until { got != nil }
+      return got?["value"] ?? .null
+    }
+
     func pillButtons() -> [String] {
       let header = h.tree("sidebar.header", 0)
       let pill = header.a("children").first { $0.s("type") == "urlPill" } ?? .null
@@ -160,6 +171,70 @@ struct PageToolsTests {
     r.core.closeReader(id)
     #expect(await r.until { r.rt.call("speech", "state")["state"] == "stopped" })
     #expect(r.core.speaking == nil)
+  }
+
+  /// The voice picker: macOS's voices, the page's language first, search and keys; the choice is
+  /// kept per language and used when reading.
+  @Test func voicePickerListsSearchesAndRemembers() async throws {
+    let r = Rig()
+    let voices = r.rt.call("speech", "voices").a("voices")
+    let en = try #require(voices.first { PageToolsCore.baseLang($0.s("language")) == "en" })
+    let id = try await r.tab(Self.article)
+    #expect(await r.until { r.core.probes[id] != nil })
+    func shown() async -> [String]? { (await r.reader(id, "voicesShown()")).array?.compactMap { $0.string } }
+    r.core.run("pagetools.voice")  // opens the reader, then the picker
+    var list: [String] = []
+    #expect(await r.until {
+      list = await shown() ?? []
+      return !list.isEmpty
+    })
+    // Not picked yet: System Voice is checked; English (the page's language) comes first.
+    #expect(list.first == "> ✓ system", "\(list.prefix(3))")
+    #expect(list.dropFirst().first?.hasPrefix("# ") == true)
+    #expect(list.filter { !$0.hasPrefix("#") }.count == voices.count + 1)
+    // Search by name, then choose with Return.
+    _ = await r.reader(id, "voicesType(q)", ["q": .string(en.s("name"))])
+    list = await shown() ?? []
+    #expect(list.contains { $0.hasSuffix(en.s("id") + "|system") }, "\(list)")
+    _ = await r.reader(id, "voicesType('zzqxqz')")
+    #expect(await shown() == [])
+    _ = await r.reader(id, "voicesType(q)", ["q": .string(en.s("name"))])
+    let first = (await shown() ?? []).first { !$0.hasPrefix("#") } ?? ""
+    _ = await r.reader(id, "voicesKey('Enter')")
+    #expect(await r.until { r.core.voiceLangs["en"] != nil })
+    let picked = try #require(r.core.voiceLangs["en"])
+    #expect(first.hasSuffix(picked.id + "|system"), "\(first)")
+    #expect(r.h.storage("pagetools", "voice")["langs"]["en"]["id"] == .string(picked.id))
+    #expect(await shown() == nil)  // closed
+    // Reading uses it.
+    r.core.run("pagetools.readAloud")
+    #expect(await r.until { r.rt.call("speech", "state")["voice"] == .string(picked.id) })
+    // Preview and Get more voices.
+    r.core.message(id, ["tool": "reader", "action": "previewVoice", "value": ["id": .string(en.s("id")), "lang": "en", "name": .string(en.s("name"))]])
+    #expect(r.rt.speech.previewing)
+    r.core.message(id, ["tool": "reader", "action": "moreVoices"])
+    #expect(r.rt.speech.settingsOpened == 1)
+    r.core.closeReader(id)
+    // A voice from another language on a French page is for that page only, unless pinned.
+    let fr = try await r.tab(Self.french, url: "https://journal.test/chat")
+    #expect(await r.until { r.core.probes[fr] != nil })
+    guard r.core.pageLang(fr) == "fr" else { return }
+    r.core.message(fr, ["tool": "reader", "action": "pickVoice", "value": picked.value])
+    #expect(r.core.chosenVoice(fr) == picked && r.core.voiceLangs["fr"] == nil)
+    r.core.message(fr, ["tool": "reader", "action": "pinVoice", "value": ["on": true, "langName": "French"]])
+    #expect(r.core.voiceLangs["fr"] == picked && r.core.voiceLangNames["fr"] == "French")
+    r.core.message(fr, ["tool": "reader", "action": "systemVoice"])
+    #expect(r.core.voiceLangs["fr"] == nil && r.core.chosenVoice(fr) == nil)
+    #expect(r.core.voiceLangs["en"] == picked)  // English keeps its voice
+  }
+
+  @Test func voiceRanking() {
+    let v: [Value] = [["name": "Zed", "quality": "default"], ["name": "Bells", "quality": "default", "novelty": true],
+                      ["name": "Ava", "quality": "premium"], ["name": "Me", "quality": "default", "personal": true], ["name": "Bob", "quality": "enhanced"]]
+    #expect(PageToolsCore.rank(v).map { $0.s("name") } == ["Me", "Ava", "Bob", "Zed", "Bells"])
+    #expect(PageToolsCore.baseLang("fr-CA") == "fr" && PageToolsCore.baseLang("EN_us") == "en")
+    #expect(PageToolsCore.sample("fr-FR", name: "Thomas").hasPrefix("Bonjour"))
+    #expect(PageToolsCore.sample("xx", name: "Zoe") == "Hello, I'm Zoe.")
   }
 
   @Test func translatesAFrenchPageAndRestoresIt() async throws {

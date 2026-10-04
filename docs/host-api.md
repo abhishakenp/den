@@ -643,10 +643,16 @@ Text to speech with the system voices (`AVSpeechSynthesizer`), on device. One qu
 
 | Method | Args | Returns |
 |---|---|---|
-| `speak` | `utterances: [string]`, `lang?` (BCP 47; picks the system voice), `rate?` (1 = normal, 0.5–2.5), `volume?` (0–1), `from?` (index), `request?` | `{request}`. Replaces the current queue |
+| `speak` | `utterances: [string]`, `voice?` (a voice `id`), `lang?` (BCP 47; picks the system voice when there's no `voice`), `rate?` (1 = normal, 0.5–2.5), `volume?` (0–1), `from?` (index), `request?` | `{request}`. Replaces the current queue |
 | `pause`, `resume`, `stop` | – | ok |
 | `setRate` | `rate` | ok. Restarts at the current utterance |
-| `state` | – | `{request, state, index, count, rate}` |
+| `setVoice` | `voice` (`""`: the system voice for `lang`), `lang?` | ok. Restarts at the current utterance |
+| `state` | – | `{request, state, index, count, rate, voice}` |
+| `voices` | – | `{voices: [{id, name, language, quality: default\|enhanced\|premium, gender?, provider: "system", novelty?, personal?}], personalVoice}`. Every installed voice (`AVSpeechSynthesisVoice.speechVoices()`), read on each call and never kept |
+| `voice` | `voice?`, `lang?` | the voice that would speak (no `voice`: the system's voice for `lang`), or `{}` |
+| `preview` | `text`, `voice?`, `lang?`, `volume?` | ok. Speaks `text` once beside the queue; a new preview replaces the last |
+| `personalVoice` | `request?` | `{status: notDetermined\|denied\|unsupported\|authorized}`. With `request` (only after a click) macOS asks once; emits `speech.personalVoice {status}`. Personal voices are listed only once authorized |
+| `openSettings` | – | ok. Opens `x-apple.systempreferences:com.apple.Accessibility-Settings.extension?SpokenContent` (Accessibility > Read & Speak on macOS 26.5) |
 
 Events: `speech.progress {request, index, count}` as each utterance starts (a reader highlights that sentence), `speech.state {request, state: playing|paused|stopped|done, index, count, rate}`.
 
