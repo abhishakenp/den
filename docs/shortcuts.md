@@ -2,7 +2,7 @@
 
 den's shortcuts next to Safari's, Chrome's and Arc's. Arc's come from its live menus and nib (spec §9, `docs/research/arc.md` §15). Where Arc and Safari disagree, Arc wins, and the standard key is kept as a second shortcut when it's free.
 
-Every shortcut is an item in den's menu bar (den, File, Edit, View, History, Spaces, Tabs, Window, Help), so it shows its key and goes through AppKit's normal key-equivalent path. A second key for the same action is a hidden alternate of that item. `ShortcutTests.everyShortcutDispatchesThroughTheMainMenu` sends the chords below through the real main menu as keyboard events and checks the command each reaches (not yet covered: Esc for Close Peek, ⌘Z Reopen Peek, ⌥⌘H, Reader ⌃⌘R, Capture ⇧⌘2).
+Every shortcut is an item in den's menu bar (den, File, Edit, View, History, Spaces, Tabs, Develop, Window, Help), so it shows its key and goes through AppKit's normal key-equivalent path. A second key for the same action is a hidden alternate of that item. `ShortcutTests.everyShortcutDispatchesThroughTheMainMenu` sends the chords below through the real main menu as keyboard events and checks the command each reaches (not yet covered: Esc for Close Peek, ⌘Z Reopen Peek, ⌥⌘H, Reader ⌃⌘R, Capture ⇧⌘2).
 
 **Remapping.** In `~/.den/config.toml`, `[shortcuts]` maps a chord to a menu item id (the last column), or to a command bar command id:
 
@@ -72,10 +72,11 @@ Chords are `cmd`, `shift`, `opt`, `ctrl` plus a key (`a`, `]`, `left`, `tab`, `f
 | Use selection for find | ⌘E | ⌘E | – | ⌘E | `edit.find.selection` |
 | Print | ⌘P | ⌘P | ⌘P | ⌘P | `file.print` |
 | Save page | ⌘S | ⌘S | ⇧⌘S (⌘S is the sidebar) | ⇧⌘S (Web Archive) | `file.savePage` |
-| View source | ⌥⌘U | ⌥⌘U | ⌥⌘U | ⌥⌘U | `view.viewSource` |
-| Web Inspector | ⌥⌘I | ⌥⌘I | ⌥⌘I | ⌥⌘I | `view.inspector` |
-| Inspect element | ⇧⌘C | ⇧⌘C | ⌥⌘C | ⌥⌘C | `view.inspectElement` |
-| JavaScript console | ⌥⌘C | ⌥⌘J | ⌥⌘J | ⌥⌘J | `view.console` |
+| View source | ⌥⌘U | ⌥⌘U | ⌥⌘U | ⌥⌘U (Develop ▸ Show Page Source) | `view.viewSource` |
+| Web Inspector (docked; again to close) | ⌥⌘I | ⌥⌘I | ⌥⌘I | ⌥⌘I (Develop ▸ Show Web Inspector) | `view.inspector` |
+| Inspect element (element picker) | ⇧⌘C | ⇧⌘C | ⌥⌘C | ⌥⌘C (Develop ▸ Inspect Element) | `view.inspectElement` |
+| JavaScript console | ⌥⌘C | ⌥⌘J | ⌥⌘J | ⌥⌘J (Develop ▸ Show JavaScript Console) | `view.console` |
+| Empty caches | ⌥⌘E | – | – | ⌥⌘E (Develop ▸ Empty Caches) | `develop.emptyCaches` |
 | Full screen | ⌃⌘F | ⌃⌘F | ⌃⌘F | ⌃⌘F | `view.fullScreen` |
 | Reader | ⇧⌘R | – | – | ⌃⌘R (View ▸ Reader) | `pagetools.reader` (command) |
 | Capture (region; the bar switches to element, visible area, full page) | – | – | ⇧⌘2 | ⇧⌘2 (View ▸ Capture…) | `pagetools.capture.region` (command) |

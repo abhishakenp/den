@@ -262,9 +262,12 @@ final class WindowContent {
         if let w = webviews.materialize(id), w.superview !== card.clip {
           // The page is on screen in another window: it moves here, and that window says so.
           if let other = svc.owner(of: w), other !== self { other.lost(id) }
-          card.clip.subviews.forEach { $0.removeFromSuperview() }
+          // A docked Web Inspector comes back with its page (WebKit left it in the old card).
+          let inspector = DevTools.dockedView(w)
+          card.clip.subviews.forEach { if $0 !== inspector { $0.removeFromSuperview() } }
           elsewhere[id] = nil
           card.clip.addSubview(w)
+          if let inspector, inspector.superview !== card.clip { card.clip.addSubview(inspector) }
           if !wasLive { cover(id, in: card) }
         }
         webviews.showCrashPageIfNeeded(id)

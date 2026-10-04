@@ -37,6 +37,7 @@ struct ShortcutTests {
     ("cmd+f", .host("page.find")), ("cmd+g", .host("page.findNext")), ("cmd+shift+g", .host("page.findPrevious")), ("cmd+e", .host("page.findSelection")),
     ("cmd+p", .host("page.print")), ("cmd+shift+s", .host("page.save")),
     ("cmd+opt+u", .host("page.viewSource")), ("cmd+opt+i", .host("page.inspector")), ("cmd+opt+c", .host("page.inspectElement")), ("cmd+opt+j", .host("page.console")),
+    ("cmd+opt+e", .host("develop.emptyCaches")),
     ("cmd+ctrl+f", .sel("toggleFullScreen:")),
     // Sidebar, split view, briefing
     ("cmd+s", .event("tabs.key.sidebar")), ("ctrl+shift+=", .event("peek.key.addSplit")), ("ctrl+shift+-", .event("peek.key.closePane")),
@@ -147,7 +148,7 @@ struct ShortcutTests {
     NSApp.mainMenu = NSMenu()
     MainMenu.install()
     let menu = try #require(NSApp.mainMenu)
-    #expect(menu.items.map(\.title) == ["den", "File", "Edit", "View", "History", "Spaces", "Tabs", "Window", "Help"])
+    #expect(menu.items.map(\.title) == ["den", "File", "Edit", "View", "History", "Spaces", "Tabs", "Develop", "Window", "Help"])
     #expect(MainMenu.item("app.settings")?.keyEquivalent == "," && MainMenu.item("app.settings")?.isHidden == false)
     // Plugin slots are hidden until their plugin binds them.
     #expect(MainMenu.item("tabs.next")?.isHidden == true)

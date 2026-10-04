@@ -129,8 +129,100 @@ struct PageActionTests {
     #expect(w.isInspectable)
     // WebKit's inspector entry point exists on this macOS (opening it is not exercised in tests).
     #expect(w.responds(to: NSSelectorFromString("_inspector")))
+    // Inspect Element in the context menu needs WebKit's developer extras, on every page.
+    #expect((w.configuration.preferences.value(forKey: "developerExtrasEnabled") as? NSNumber)?.boolValue == true)
     #expect(rt.call("webviews", "get")["id"].string == id)
     #expect(rt.call("webviews", "print", ["id": "nope"]).isError)
+  }
+
+  /// ⌥⌘I opens the Web Inspector docked in the page's card (WebKit splits the card: the page
+  /// above, the inspector below) and closes it again; ⌥⌘C turns on its element picker, ⌥⌘J
+  /// shows the console; a docked inspector comes back with its page after a tab switch.
+  @Test func webInspectorDocksTogglesAndPicksElements() async throws {
+    let (rt, id, w) = try await Self.page("<h1 id=x>inspect me</h1>")
+    rt.window.window.orderFrontRegardless()
+    defer { rt.window.window.orderOut(nil) }
+    NSApp.mainMenu = NSMenu()
+    MainMenu.install()
+    MenuActions.install(rt)
+    let card = try #require(rt.content.card(id))
+    // Through the menu bar item, as ⌥⌘I does (and its title follows the state).
+    let item = try #require(MainMenu.item("view.inspector"))
+    #expect(item.keyEquivalent == "i" && item.keyEquivalentModifierMask == [.command, .option] && item.menu?.title == "Develop")
+    MainMenu.perform("view.inspector")
+    try await Self.until(30) { DevTools.isOpen(w) && DevTools.dockedView(w) != nil }
+    let docked = try #require(DevTools.dockedView(w))
+    #expect(docked.superview === card.clip)
+    try await Self.until(10) { w.frame.height < card.clip.bounds.height - 50 && docked.frame.height > 50 }
+    #expect(MainMenu.itemState?("page.inspector")?.title == "Close Web Inspector")
+    // ⌥⌘C: the element picker.
+    MainMenu.perform("view.inspectElement")
+    try await Self.until(10) { DevTools.isSelectingElement(w) }
+    MainMenu.perform("view.inspectElement")
+    try await Self.until(10) { !DevTools.isSelectingElement(w) }
+    // ⌥⌘J: the console (the inspector stays open).
+    #expect(rt.call("webviews", "inspect", ["action": "console"])["open"] == true)
+    // A tab switch and back: the docked inspector returns with the page.
+    let other = rt.call("webviews", "create", ["url": "about:blank"])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(other)]])
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    let card2 = try #require(rt.content.card(id))
+    #expect(w.superview === card2.clip)
+    #expect(DevTools.dockedView(w)?.superview === card2.clip)
+    card2.needsLayout = true
+    card2.layoutSubtreeIfNeeded()
+    try await Self.until(10) { w.frame.height < card2.clip.bounds.height - 50 }
+    // ⌥⌘I again closes it; the page takes the whole card back.
+    MainMenu.perform("view.inspector")
+    try await Self.until(30) { !DevTools.isOpen(w) }
+    try await Self.until(10) { DevTools.dockedView(w) == nil && !card2.clip.subviews.contains(where: DevTools.isInspectorView) }
+    card2.needsLayout = true
+    card2.layoutSubtreeIfNeeded()
+    #expect(w.frame == card2.clip.bounds)
+    #expect(MainMenu.itemState?("page.inspector")?.title == "Show Web Inspector")
+    #expect(rt.call("webviews", "inspect", ["action": "nope"]).isError)
+  }
+
+  /// Develop ▸ User Agent (per page, reloads), Empty Caches and Disable Caches.
+  @Test func developMenuUserAgentAndCaches() async throws {
+    let (rt, id, w) = try await Self.page("<p>ua</p>")
+    NSApp.mainMenu = NSMenu()
+    MainMenu.install()
+    MenuActions.install(rt)
+    #expect(rt.call("webviews", "userAgent", ["id": .string(id)])["preset"] == "default")
+    let ua = rt.call("webviews", "userAgent", ["id": .string(id), "ua": "safari-iphone"])
+    #expect(ua["preset"] == "safari-iphone" && w.customUserAgent == WebViewsService.mobileUserAgent)
+    try await Self.until { !w.isLoading }
+    let seen = await Wait.js(w, "navigator.userAgent") as? String
+    #expect(seen?.contains("iPhone") == true)
+    // The submenu is built when it opens, with the page's choice checked.
+    let sub = try #require(MainMenu.item("develop.userAgent")?.submenu)
+    MainMenu.target.menuNeedsUpdate(sub)
+    #expect(sub.items.first?.title == "Default (Automatically Chosen)")
+    let iphone = try #require(sub.items.first { $0.title == "Safari — iPhone" })
+    #expect(iphone.state == .on)
+    let chrome = try #require(sub.items.first { $0.title == "Google Chrome — macOS" })
+    DevelopMenu.shared.pickAgent(chrome)
+    #expect(w.customUserAgent?.contains("Chrome/") == true)
+    #expect(rt.call("webviews", "userAgent", ["id": .string(id), "ua": "default"])["ua"].isNull)
+    #expect(w.customUserAgent == nil || w.customUserAgent == "")
+    // Extensions: none loaded.
+    let ext = try #require(MainMenu.item("develop.extensions")?.submenu)
+    MainMenu.target.menuNeedsUpdate(ext)
+    #expect(ext.items.map(\.title) == ["No Extensions Loaded"])
+    // Caches: empty (an event when done), disable (a page still loads, after the caches empty).
+    var emptied = false
+    rt.host.on("webviews.cachesEmptied") { _ in emptied = true }
+    MainMenu.perform("develop.emptyCaches")
+    try await Self.until { emptied }
+    #expect(MainMenu.item("develop.emptyCaches")?.keyEquivalent == "e")
+    MainMenu.perform("develop.disableCaches")
+    #expect(rt.webviews.cachesDisabled && MainMenu.itemState?("develop.disableCaches")?.on == true)
+    let next = URL(string: "data:text/html,after")!
+    w.load(URLRequest(url: next))
+    try await Self.until { w.url == next && !w.isLoading }
+    MainMenu.perform("develop.disableCaches")
+    #expect(!rt.webviews.cachesDisabled)
   }
 
   @Test func linkClickConventions() {

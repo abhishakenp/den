@@ -93,7 +93,7 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
 - 🟡 Picture-in-picture and media controls (see Media)
   - ✅ picture in picture: WebKit's own (the system PiP window Safari uses); automatic when you leave a playing video's tab or den, ⌥⌘P by hand
   - ✅ tab mute from the sidebar speaker (WebKit page mute)
-- ✅ Web Inspector, inspect element, console, view source
+- ✅ Web Inspector (docked, ⌥⌘I toggles), Inspect Element in every context menu, element picker, console, view source; Develop menu (user agent, empty / disable caches, extension background pages)
 - ✅ Default browser handling: Settings, menu bar, command bar banner, "Try for a week"
 - ✅ Error pages (offline, host not found, timeout, can't connect, not private) with Try Again
 - ✅ Google sign-in: Safari's user agent

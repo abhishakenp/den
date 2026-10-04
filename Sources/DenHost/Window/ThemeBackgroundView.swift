@@ -162,7 +162,9 @@ public final class CardView: NSView {
     clip.frame = bounds
     layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
     // thin-host: feature-specific, migrate to plugin (floating views over a page should be a generic overlay layer)
-    for v in clip.subviews where !(v is VaultSuggestionView) { v.frame = clip.bounds }
+    // A docked Web Inspector is WebKit's to place: it splits the card with the page whenever the
+    // page's frame changes (DevTools).
+    for v in clip.subviews where !(v is VaultSuggestionView) && !DevTools.isInspectorView(v) { v.frame = clip.bounds }
     let o = Tokens.splitFocusRingOutset
     ring.frame = bounds.insetBy(dx: -o, dy: -o)
     let cs = controls.size

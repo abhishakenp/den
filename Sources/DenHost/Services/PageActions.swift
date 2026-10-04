@@ -5,8 +5,8 @@ import WebKit
 // thin-host: feature-specific, migrate to plugin: per-site zoom policy, the context-menu items and
 // their wording ("Search <engine> for …"), and the link-modifier policy belong to plugins; the
 // host keeps zoom/find/print/inspect as generic web view operations.
-/// Page actions behind the `webviews` service's `zoom`, `find`, `print`, `inspect` and `viewSource`
-/// methods (the View / Edit menu items and their shortcuts). Every method's `id` defaults to the
+/// Page actions behind the `webviews` service's `zoom`, `find`, `print`, `inspect`, `viewSource`,
+/// `userAgent` and `caches` methods (the View / Edit menu items and their shortcuts). Every method's `id` defaults to the
 /// page in front: the peek if one is open, else the focused pane.
 ///
 /// Nothing here exists until first used: the find bar is built on the first ⌘F, the per-site zoom
@@ -32,7 +32,7 @@ public final class PageActions {
     self.storage = storage
   }
 
-  static let methods: Set<String> = ["zoom", "find", "print", "inspect", "viewSource"]
+  static let methods: Set<String> = ["zoom", "find", "print", "inspect", "viewSource", "userAgent", "caches"]
 
   /// The page in front: the peek, else the focused pane, else the first pane.
   public var frontId: String? { content.peekId ?? content.focused ?? content.panes.first }
@@ -47,8 +47,10 @@ public final class PageActions {
       op.view?.frame = w.bounds
       op.runModal(for: win, delegate: nil, didRun: nil, contextInfo: nil)
       return .ok
-    case "inspect": return inspect(r, console: args.flag("console"))
+    case "inspect": return inspect(r, args)
     case "viewSource": return viewSource(r)
+    case "userAgent": return userAgent(r, args)
+    case "caches": return caches(args)
     default: return .error("webviews: unknown method '\(method)'")
     }
   }
@@ -254,21 +256,56 @@ public final class PageActions {
 
   // MARK: Web Inspector, view source
 
-  /// Opens the Web Inspector for a page. WebKit has no public API to *open* it (only
-  /// `isInspectable`, which lets Safari's Develop menu attach), so this uses WKWebView's private
-  /// `_inspector` (`show`, `showConsole`), guarded by `responds(to:)`: if a WebKit update removes
-  /// it, the call returns an error instead of crashing.
-  func inspect(_ r: WebRecord, console: Bool) -> Value {
+  /// The Web Inspector for a page (`DevTools`: WebKit's private `_inspector`, checked first, so a
+  /// WebKit without it returns an error instead of crashing). `action`: `show` (default),
+  /// `toggle` (⌥⌘I), `close`, `console` (⌥⌘J) or `element` (⌥⌘C, the element picker); the
+  /// `console: true` / `element: true` flags still work. Returns `{open}`.
+  func inspect(_ r: WebRecord, _ args: Value) -> Value {
     guard let w = r.webView else { return .error("webviews: '\(r.id)' is not loaded") }
-    w.isInspectable = true
-    let getter = NSSelectorFromString("_inspector")
-    guard w.responds(to: getter), let inspector = w.perform(getter)?.takeUnretainedValue() as? NSObject else {
-      return .error("webviews: this WebKit has no Web Inspector entry point; use Safari > Develop")
+    let action = args.flag("console") ? "console" : args.flag("element") ? "element" : args.str("action", "show")
+    let ok: Bool
+    switch action {
+    case "show": ok = DevTools.show(w)
+    case "console": ok = DevTools.show(w, console: true)
+    case "element": ok = DevTools.selectElement(w)
+    case "toggle": ok = DevTools.toggle(w) != nil
+    case "close": ok = DevTools.close(w)
+    default: return .error("webviews: inspect action must be show, toggle, close, console or element")
     }
-    let sel = NSSelectorFromString(console ? "showConsole" : "show")
-    guard inspector.responds(to: sel) else { return .error("webviews: the Web Inspector can't be opened here") }
-    inspector.perform(sel)
-    return .ok
+    guard ok else { return .error("webviews: this WebKit has no Web Inspector entry point; use Safari > Develop") }
+    return ["open": .bool(DevTools.isOpen(w))]
+  }
+
+  /// Develop ▸ User Agent: `ua` is a preset id (`DevTools.agents`, or `mobile`), a full string,
+  /// or `default` / "" for den's own; the page reloads with it. Without `ua`: reads it.
+  /// Returns `{ua, preset}` (`preset`: an id, `default` or `other`).
+  func userAgent(_ r: WebRecord, _ args: Value) -> Value {
+    if let p = args["ua"].string {
+      r.userAgent = DevTools.userAgent(for: p)
+      if let w = r.webView {
+        w.customUserAgent = r.userAgent
+        if w.url != nil { w.reload() }
+      }
+    }
+    let preset = r.userAgent.map { ua in DevTools.agents.first { $0.ua == ua }?.id ?? "other" } ?? "default"
+    return ["ua": r.userAgent.map { .string($0) } ?? .null, "preset": .string(preset)]
+  }
+
+  /// Develop ▸ Empty Caches / Disable Caches. `action`: `empty` (the memory, disk and fetch caches
+  /// of every profile in use; emits `webviews.cachesEmptied`), `disable` / `enable` (while
+  /// disabled, each page load first empties its profile's caches), or none to read. Returns
+  /// `{disabled}` (plus `pending` for `empty`).
+  func caches(_ args: Value) -> Value {
+    switch args.str("action") {
+    case "empty":
+      DevTools.emptyCaches(webviews.liveStores) { [weak self] in self?.host.emit("webviews.cachesEmptied") }
+      return ["pending": true, "disabled": .bool(webviews.cachesDisabled)]
+    case "disable": webviews.cachesDisabled = true
+    case "enable": webviews.cachesDisabled = false
+    case "": break
+    default: return .error("webviews: caches action must be empty, disable or enable")
+    }
+    return ["disabled": .bool(webviews.cachesDisabled)]
   }
 
   /// View Source: the page's current DOM (`document.documentElement.outerHTML`), escaped into a
