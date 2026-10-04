@@ -11,14 +11,17 @@ import WebKit
 @MainActor
 public enum Leaks {
   private static var installed = false
-  private static var runtimes: [DenRuntime] = []
+  /// Runtimes by the test (watchdog token) that created them. Suites run side by side in one
+  /// process, so a test that ends must tear down only its own: tearing down every runtime closed
+  /// other suites' live web views mid-test (their pages vanished, their waits timed out).
+  private static var runtimes: [(owner: Int?, rt: DenRuntime)] = []
   private static let log = ProcessInfo.processInfo.environment["DEN_TEST_WEBKIT_LOG"]
 
   static func install() {
     guard !installed else { return }
     installed = true
     DenRuntime.onCreate = { rt in
-      runtimes.append(rt)
+      runtimes.append((Wait.token, rt))
       rt.webviews.createdHooks.append { _, w in mute(w) }
     }
   }
@@ -29,12 +32,14 @@ public enum Leaks {
     w.setValue(NSNumber(value: 1), forKey: "pageMuted")
   }
 
-  /// Tears down every runtime created since the last call; logs their WebKit pids for `test`.
-  static func tearDown(test: String) {
-    let list = runtimes
-    runtimes = []
+  /// Tears down the runtimes test `token` created (and any created outside a test); logs their
+  /// WebKit pids for `test`.
+  static func tearDown(test: String, token: Int?) {
+    let mine = { (e: (owner: Int?, rt: DenRuntime)) in e.owner == nil || e.owner == token }
+    let list = runtimes.filter(mine)
+    runtimes.removeAll(where: mine)
     var pids: [pid_t] = []
-    for rt in list { pids += rt.tearDown() }
+    for e in list { pids += e.rt.tearDown() }
     guard let log, !pids.isEmpty else { return }
     let lines = Set(pids).map { "\($0)\t\(test)\n" }.joined()
     if let h = FileHandle(forWritingAtPath: log) ?? { FileManager.default.createFile(atPath: log, contents: nil); return FileHandle(forWritingAtPath: log) }() {

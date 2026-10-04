@@ -47,7 +47,7 @@ public struct Watchdog: TestTrait, SuiteTrait, TestScoping {
         }
         } catch { failure = error }
         // Whatever the outcome: nothing the test started outlives it.
-        await MainActor.run { Leaks.tearDown(test: name) }
+        await MainActor.run { Leaks.tearDown(test: name, token: token) }
         if let failure { throw failure }
       }
     }
