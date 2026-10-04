@@ -35,7 +35,12 @@ the `macos-26` arm64 runner (a 3-core M1 VM with a logged-in GUI session):
 - With `--snapshots` (dispatch input `snapshots`): `scripts/snapshots.sh` on a second runner with
   `SNAPSHOT_APPEARANCE=dark`, so every scenario renders as `<name>-dark.png`; `--light` renders
   the script's own light and dark set. The PNGs are the `snapshots` artifact, ready to commit.
-- Dispatch input `lldb`: runs the test bundle under lldb (`scripts/ci/lldb-tests.sh`) and prints
+- Dispatch input `pip`: a scenario build runs `--scenario pip` in a visible den on a second runner
+  (WebKit's native picture in picture through every trigger, the PiP window's buttons, and a
+  full-screen video whose Space is switched away from); log and PiP-window captures are the
+  `pip-scenario` artifact. `gh workflow run ci.yml --ref ci/<name> -f pip=true`.
+- Dispatch input `lldb`: runs the test bundle under lldb
+ (`scripts/ci/lldb-tests.sh`) and prints
   every thread's native backtrace if the process crashes. Runners keep no crash reports.
 
 ### Runner limits

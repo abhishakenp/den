@@ -17,7 +17,9 @@ import WebKit
 ///   ordered out and back; the PiP window's return button (the call it makes into WebKit) goes back
 ///   to the tab, its close button pauses; Picture in Picture (⌥⌘P) by hand, which a tab switch
 ///   doesn't undo; a video in a cross-origin iframe; the setting. `DEN_PIP_FULLSCREEN=1` adds a
-///   full-screen video whose window stops being visible (it takes over the display for a moment).
+///   full-screen video whose Space is switched away from and back (a real Space switch through the
+///   WindowServer: for CI's runner, `ci.yml` dispatch input `pip`, never a desktop someone uses).
+
 /// - `pipAway`: plays the video, switches tabs, stays (memory and CPU with the video in PiP).
 /// - `pipInline`: the same video playing in its tab (the baseline).
 /// - `pipURL`: `DEN_PIP_URL` (default a YouTube video): plays it, scrolls `DEN_PIP_SCROLL` pt (default
@@ -311,8 +313,8 @@ public enum MediaScenarios {
     check("iframe.exits", await until(5) { out(emb) })
     _ = await js(rt, emb, "return true")
 
-    // 9. A full-screen video whose window stops being visible (its Space switched away from):
-    // here a window covers it, which is the same occlusion change.
+    // 9. A full-screen video whose Space is switched away from (a real Space switch through the
+    // WindowServer: `DEN_PIP_FULLSCREEN=1`, for CI's runner, never on a desktop someone uses).
     if env["DEN_PIP_FULLSCREEN"] == "1" {
       rt.call("tabs", "select", ["id": .string(id)])
       _ = await js(rt, id, "const v = document.querySelector('video'); await v.play(); await v.requestFullscreen(); return true")
@@ -320,17 +322,16 @@ public enum MediaScenarios {
       let full = await until(8) { web?.window != nil && rt.windows.containing(web?.window) == nil }
       check("fullscreen.entered", full, web?.window.map { NSStringFromClass(type(of: $0)) } ?? "no window")
       await sleep(2)
-      if full, let fw = web?.window {
-        let cover = NSPanel(contentRect: fw.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        cover.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        cover.level = .screenSaver
-        cover.backgroundColor = .black
-        cover.orderFrontRegardless()
-        check("fullscreen.away.enters", await until(5) { inPip() }, "occlusion=\(fw.occlusionState.contains(.visible))")
+      let spaces = Spaces.list()
+      log("scenario.pip spaces \(spaces) current=\(Spaces.current())")
+      if full, let fw = web?.window, let desk = spaces.first(where: { $0.type == 0 }), let fullSpace = spaces.first(where: { $0.type == 4 }) {
+        Spaces.switchTo(desk)
+        check("fullscreen.away.enters", await until(8) { inPip() }, "occluded=\(!fw.occlusionState.contains(.visible)) current=\(Spaces.current()) \(pipWindow()?.text ?? "")")
         let (l, d) = await advancing()
         check("fullscreen.away.live", l, d)
-        cover.orderOut(nil)
-        check("fullscreen.back.exits", await until(5) { out() })
+        frameCheck("fullscreen")
+        Spaces.switchTo(fullSpace)
+        check("fullscreen.back.exits", await until(8) { out() }, "current=\(Spaces.current())")
         _ = await js(rt, id, "await document.exitFullscreen().catch(() => {}); return true")
         _ = await until(5) { rt.windows.containing(web?.window) != nil }
       }
@@ -350,4 +351,37 @@ public enum MediaScenarios {
     exit(allOK ? 0 : 1)
   }
 }
+
+/// Mission Control's Spaces, through the WindowServer's private API (what Space-switching tools
+/// use). Scenario-only: it changes which Space the display shows.
+@MainActor
+enum Spaces {
+  struct Space: CustomStringConvertible {
+    let id: UInt64, type: Int, display: String
+    var description: String { "\(id):\(type)" }
+  }
+  @_silgen_name("CGSMainConnectionID") static func mainConnection() -> Int32
+  @_silgen_name("CGSCopyManagedDisplaySpaces") static func copySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
+  @_silgen_name("CGSManagedDisplaySetCurrentSpace") static func setCurrent(_ cid: Int32, _ display: CFString, _ space: UInt64)
+
+  static func displays() -> [[String: Any]] { copySpaces(mainConnection())?.takeRetainedValue() as? [[String: Any]] ?? [] }
+
+  /// Every Space: `type` 0 a desktop, 4 a full-screen app's.
+  static func list() -> [Space] {
+    displays().flatMap { d -> [Space] in
+      let display = d["Display Identifier"] as? String ?? "Main"
+      return (d["Spaces"] as? [[String: Any]] ?? []).compactMap { s in
+        guard let id = (s["ManagedSpaceID"] as? NSNumber)?.uint64Value else { return nil }
+        return Space(id: id, type: (s["type"] as? NSNumber)?.intValue ?? -1, display: display)
+      }
+    }
+  }
+
+  static func current() -> String {
+    displays().compactMap { ($0["Current Space"] as? [String: Any])?["ManagedSpaceID"].map { "\($0)" } }.joined(separator: ",")
+  }
+
+  static func switchTo(_ s: Space) { setCurrent(mainConnection(), s.display as CFString, s.id) }
+}
+
 #endif

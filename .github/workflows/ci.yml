@@ -22,6 +22,10 @@ on:
         description: Run the test bundle under lldb and print all native backtraces on a crash
         type: boolean
         default: false
+      pip:
+        description: Also run the picture-in-picture scenario in a visible den (system PiP window, full-screen video and a real Space switch)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -134,8 +138,51 @@ jobs:
           path: den-*.zip
           retention-days: 14
 
+  pip:
+    name: Picture in picture scenario (macOS 26, arm64)
+    if: github.event_name == 'workflow_dispatch' && inputs.pip
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Xcode 26, swift.org toolchain, caches
+        uses: ./.github/actions/setup
+
+      - name: Bundle den.app (with the Scenarios trait)
+        run: DEN_SCENARIOS=1 scripts/bundle.sh
+
+      # MediaScenarios `pip`: WebKit's native PiP through every trigger, the PiP window's buttons,
+      # and (DEN_PIP_FULLSCREEN) a full-screen video whose Space is switched away from. A visible
+      # den on the runner's own display; one line per check, exit 0 only when all pass.
+      - name: Run --scenario pip
+        env:
+          DEN_PIP_FULLSCREEN: "1"
+        run: |
+          mkdir -p build/ci-logs
+          store=$(mktemp -d)
+          set +e
+          perl -e 'alarm 300; exec @ARGV' build/den.app/Contents/MacOS/den --no-den-home --storage "$store" --scenario pip > build/ci-logs/pip-scenario.log 2>&1
+          rc=$?
+          set -e
+          grep -E "scenario\." build/ci-logs/pip-scenario.log | tee -a "$GITHUB_STEP_SUMMARY"
+          cp "${TMPDIR:-/tmp}"/den-pip-*.png build/ci-logs/ 2>/dev/null || true
+          exit $rc
+
+      - name: Upload PiP logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-scenario
+          path: build/ci-logs
+          if-no-files-found: ignore
+          retention-days: 14
+
   snapshots:
     name: UI snapshots (macOS 26, arm64)
+
     if: github.event_name == 'workflow_dispatch' && inputs.snapshots
     runs-on: macos-26
     timeout-minutes: 60
