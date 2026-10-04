@@ -308,7 +308,10 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if let w = r.webView { return w }
     // Extension pages (options, popups opened as tabs) run in their extension's configuration.
     let extensionPage = extensionHooks?.configuration(for: r.url)
-    let config = extensionPage ?? WKWebViewConfiguration()
+    // WebKit hands every page of an extension the same configuration: each tab gets its own copy
+    // and content controller, or the second page re-adds den's handlers and WebKit throws.
+    let config = (extensionPage?.copy() as? WKWebViewConfiguration) ?? WKWebViewConfiguration()
+    if extensionPage != nil { config.userContentController = WKUserContentController() }
     if extensionPage == nil {
       config.websiteDataStore = store(for: r.profile)
       extensionHooks?.prepare(config)
