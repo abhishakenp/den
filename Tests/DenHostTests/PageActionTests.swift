@@ -277,7 +277,7 @@ struct PageActionTests {
     #expect(w.url?.absoluteString == "https://www.zoom.test/")  // the page itself stayed
   }
 
-  @Test func contextMenuSpeaksTabsAndSavesAs() {
+  @Test func contextMenuSpeaksTabsAndSavesAs() throws {
     func menu(_ ids: [String]) -> NSMenu {
       let m = NSMenu()
       for i in ids {
