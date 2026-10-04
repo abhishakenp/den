@@ -78,9 +78,21 @@ struct MediaTests {
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     #expect(await wait(10) { !rt.media.active.contains(id) && rt.media.auto.isEmpty })
     #expect(web.superview === rt.content.card(id)?.clip)
-    #expect(await Wait.asyncJS(web, "return !document.pictureInPictureElement && !document.querySelector('video').paused") as? Bool == true)
+    // WebKit's exit animation may finish after its delegate call.
+    #expect(await Wait.until("inline and playing") { await Wait.asyncJS(web, "return !document.pictureInPictureElement && !document.querySelector('video').paused") as? Bool == true })
+    let state = await Wait.asyncJS(web, "const v = document.querySelector('video'); return JSON.stringify({pip: !!document.pictureInPictureElement, paused: v.paused, mode: v.webkitPresentationMode})")
+    print("media-test: back inline \(state ?? "nil")")
+
+
+    // Away and straight back, before WebKit is in: it ends up out of PiP, inline.
+    _ = rt.call("content", "show", ["panes": [.string(other)]])
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    try await Task.sleep(for: .seconds(3))
+    #expect(rt.media.active.isEmpty && rt.media.auto.isEmpty)
+    #expect(await Wait.asyncJS(web, "return !document.pictureInPictureElement") as? Bool == true)
 
     // Paused: nothing to put in PiP.
+
     _ = await Wait.asyncJS(web, "document.querySelector('video').pause(); return true")
     #expect(await wait { rt.media.eligibleVideo(id) == nil })
     _ = rt.call("content", "show", ["panes": [.string(other)]])
@@ -189,6 +201,41 @@ struct MediaTests {
     mock.stop()
   }
 
+  /// Safari's case: a video in full screen (WebKit's own full-screen window, a Space of its own)
+  /// goes to picture in picture when you switch to another Space, and comes back when you return.
+  /// Switching Spaces drives the WindowServer, so this runs on CI's runner only (`CI=true`), never
+  /// on a desktop someone is using.
+  @Test func fullScreenVideoSpaceSwitchedAway() async throws {
+    guard ProcessInfo.processInfo.environment["CI"] == "true" else { return }
+    let rt = ServiceTests.runtime()
+    rt.window.window.orderFront(nil)
+    defer { rt.window.window.orderOut(nil) }
+    let mock = try Self.served()
+    let id = rt.call("webviews", "create", ["id": "f", "url": .string(mock.base + "/v.html")])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    let web = try #require(rt.webviews.record(id)?.webView)
+    #expect(await wait { !web.isLoading && web.url != nil })
+    _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.muted = false; await v.play(); await v.requestFullscreen(); return true")
+    #expect(await wait(10) { web.window != nil && rt.windows.containing(web.window) == nil }, "WebKit's full-screen window")
+    try await Task.sleep(for: .seconds(2))
+    let spaces = SpacesForTests.list()
+    print("media-test: spaces \(spaces) current \(SpacesForTests.current() ?? "-") window \(web.window.map { NSStringFromClass(type(of: $0)) } ?? "-")")
+    guard let desk = spaces.first(where: { $0.type == 0 }), let full = spaces.first(where: { $0.type == 4 }) else {
+      Issue.record("no desktop and full-screen Space to switch between: \(spaces)")
+      return
+    }
+    SpacesForTests.switchTo(desk)
+    #expect(await wait(10) { rt.media.active.contains(id) }, "PiP on switching away (occlusion \(web.window?.occlusionState.contains(.visible) == true ? "visible" : "hidden"))")
+    #expect(await wait(5) { !NativePiP.systemWindows().isEmpty })
+    let t0 = await Wait.asyncJS(web, "return document.querySelector('video').currentTime") as? Double ?? 0
+    #expect(await Wait.until("plays on in PiP") { (await Wait.asyncJS(web, "return document.querySelector('video').currentTime") as? Double ?? 0) > t0 + 1 })
+    SpacesForTests.switchTo(full)
+    #expect(await wait(10) { rt.media.active.isEmpty }, "back in the full-screen Space: out of PiP")
+    _ = await Wait.asyncJS(web, "await document.exitFullscreen().catch(() => {}); return true")
+    _ = await wait(10) { rt.windows.containing(web.window) != nil }
+    mock.stop()
+  }
+
   /// A discarded page's WKWebView is released at once (nothing in den keeps it), which is what
   /// lets WebKit end its WebContent process. The process exit itself is WebKit's timing (seconds,
   /// longer on a busy Mac): measured in the real app with `scripts/measure-memory.sh`.
@@ -261,6 +308,7 @@ struct MediaTests {
   }
 
   /// The custom mini player is gone for good: no player panel class in den, no isolation CSS in
+
   /// the page script, and the old setting reads as the new one.
   @Test func noCustomPlayerLeft() {
     #expect(NSClassFromString("DenHost.MiniPlayerPanel") == nil && NSClassFromString("MiniPlayerPanel") == nil)
@@ -269,3 +317,33 @@ struct MediaTests {
   }
 }
 
+/// Mission Control's Spaces, through the WindowServer's private API (what Space-switching tools
+/// use). Test-only, CI-only: it changes which Space the display shows.
+enum SpacesForTests {
+  struct Space: CustomStringConvertible {
+    let id: UInt64, type: Int, display: String
+    var description: String { "\(id):\(type)" }
+  }
+  @_silgen_name("CGSMainConnectionID") static func mainConnection() -> Int32
+  @_silgen_name("CGSCopyManagedDisplaySpaces") static func copySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
+  @_silgen_name("CGSManagedDisplaySetCurrentSpace") static func setCurrent(_ cid: Int32, _ display: CFString, _ space: UInt64)
+
+  /// Every Space: `type` 0 a desktop, 4 a full-screen app's.
+  static func list() -> [Space] {
+    guard let arr = copySpaces(mainConnection())?.takeRetainedValue() as? [[String: Any]] else { return [] }
+    return arr.flatMap { d -> [Space] in
+      let display = d["Display Identifier"] as? String ?? "Main"
+      return (d["Spaces"] as? [[String: Any]] ?? []).compactMap { s in
+        guard let id = (s["ManagedSpaceID"] as? NSNumber)?.uint64Value else { return nil }
+        return Space(id: id, type: (s["type"] as? NSNumber)?.intValue ?? -1, display: display)
+      }
+    }
+  }
+
+  static func current() -> String? {
+    guard let arr = copySpaces(mainConnection())?.takeRetainedValue() as? [[String: Any]] else { return nil }
+    return arr.compactMap { ($0["Current Space"] as? [String: Any])?["ManagedSpaceID"].map { "\($0)" } }.joined(separator: ",")
+  }
+
+  static func switchTo(_ s: Space) { setCurrent(mainConnection(), s.display as CFString, s.id) }
+}

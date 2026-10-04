@@ -257,6 +257,7 @@ public enum MediaScenarios {
     // 5. The PiP window's return button: back to the tab (selected), video inline and playing.
     rt.call("tabs", "select", ["id": .string(other)])
     _ = await until(5) { inPip() }
+    await sleep(1)  // the PiP window's opening animation
     var backToTab = false
     let obs = rt.host.on("media.backToTab") { _ in backToTab = true }
     check("returnButton.pressed", pressPipButton("pipShouldClose:"))
@@ -268,14 +269,18 @@ public enum MediaScenarios {
     // 6. Its close button: pauses, stays on the other tab.
     rt.call("tabs", "select", ["id": .string(other)])
     _ = await until(5) { inPip() }
+    await sleep(1)
     backToTab = false
     let obs2 = rt.host.on("media.backToTab") { _ in backToTab = true }
-    check("closeButton.pressed", pressPipButton("pipActionStop:"))
-    check("closeButton.pauses", await until(5) { rt.webviews.record(id)?.videoFrame == nil })
+    check("closeButton.pressed", pressPipCloseButton())
+    await sleep(1)
+    let closed = await js(rt, id, "return document.querySelector('video').paused")
+    check("closeButton.pauses", closed == true, "paused=\(closed)")
+
+    check("closeButton.closes", await until(5) { out() && NativePiP.systemWindows().isEmpty })
     check("closeButton.staysAway", !backToTab && rt.call("tabs", "selected")["id"].string == other)
     rt.host.off(obs2)
-    _ = rt.call("media", "exit")
-    _ = await until(5) { out() }
+
 
     // 7. Picture in Picture by hand (⌥⌘P, the media plugin's key): a tab switch doesn't end it.
     rt.call("tabs", "select", ["id": .string(id)])
@@ -308,25 +313,29 @@ public enum MediaScenarios {
 
     // 9. A full-screen video whose window stops being visible (its Space switched away from):
     // here a window covers it, which is the same occlusion change.
-    if env["DEN_PIP_FULLSCREEN"] == "1", let web = rt.webviews.record(emb)?.webView {
-      if let frame = rt.webviews.record(emb)?.frames.first(where: { !$0.value.frame.isMainFrame })?.value.frame {
-        _ = await js(rt, emb, "await document.querySelector('video').requestFullscreen(); return true", frame: frame)
-      }
-      let full = await until(8) { web.window != nil && rt.windows.containing(web.window) == nil }
-      check("fullscreen.entered", full)
+    if env["DEN_PIP_FULLSCREEN"] == "1" {
+      rt.call("tabs", "select", ["id": .string(id)])
+      _ = await js(rt, id, "const v = document.querySelector('video'); await v.play(); await v.requestFullscreen(); return true")
+      let web = rt.webviews.record(id)?.webView
+      let full = await until(8) { web?.window != nil && rt.windows.containing(web?.window) == nil }
+      check("fullscreen.entered", full, web?.window.map { NSStringFromClass(type(of: $0)) } ?? "no window")
       await sleep(2)
-      if full, let fw = web.window {
+      if full, let fw = web?.window {
         let cover = NSPanel(contentRect: fw.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         cover.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         cover.level = .screenSaver
         cover.backgroundColor = .black
         cover.orderFrontRegardless()
-        check("fullscreen.away.enters", await until(5) { inPip(emb) })
+        check("fullscreen.away.enters", await until(5) { inPip() }, "occlusion=\(fw.occlusionState.contains(.visible))")
+        let (l, d) = await advancing()
+        check("fullscreen.away.live", l, d)
         cover.orderOut(nil)
-        check("fullscreen.back.exits", await until(5) { out(emb) })
-        _ = await js(rt, emb, "await document.exitFullscreen().catch(() => {}); return true")
+        check("fullscreen.back.exits", await until(5) { out() })
+        _ = await js(rt, id, "await document.exitFullscreen().catch(() => {}); return true")
+        _ = await until(5) { rt.windows.containing(web?.window) != nil }
       }
     }
+
 
     // 10. The setting turns it off.
     rt.call("media", "settings", ["autoPip": false])

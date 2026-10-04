@@ -45,6 +45,8 @@ public final class MediaService: HostService {
   private var entering: Set<String> = []
   /// den is taking these out of PiP (not the PiP window's buttons).
   private var exiting: Set<String> = []
+  /// Asked to enter, then to leave before WebKit was in (a quick switch away and back).
+  private var cancelled: Set<String> = []
   /// Pages whose full-screen video window was out of sight (its Space switched away).
   private var fullScreenAway: Set<String> = []
   private var observers: [NSObjectProtocol] = []
@@ -154,27 +156,36 @@ public final class MediaService: HostService {
   }
 
   func failed(_ id: String) {
+    cancelled.remove(id)
     guard entering.remove(id) != nil else { return }
     auto.remove(id)
   }
 
   /// Takes the page's video out of PiP, back into the page.
   func exit(_ id: String) {
-    entering.remove(id)
+    if entering.remove(id) != nil, !active.contains(id) { cancelled.insert(id) }
     guard active.contains(id), let r = webviews.record(id), let w = r.webView else {
       auto.remove(id)
       return
     }
     exiting.insert(id)
+    leave(id, w, tries: 8)
+  }
+
+  /// One try at leaving: the page's API in the frame that reported PiP (WebKit may report PiP
+  /// before the page's own event has), else WebKit's toggle; again a little later while WebKit
+  /// still says it's in.
+  private func leave(_ id: String, _ w: WKWebView, tries: Int) {
+    guard active.contains(id), tries > 0, let r = webviews.record(id), r.webView === w else { return }
     let frame = r.frames.values.first { $0.media.pip }?.frame
-    webviews.runPageScript(id, "return await window.__denMedia.exitPip()", frame: frame) { [weak self, weak w] _ in
+    webviews.runPageScript(id, "return await window.__denMedia.exitPip()", frame: frame) { [weak self, weak w] res in
       guard let self, let w, self.active.contains(id) else { return }
-      // The page's API found no PiP element (a frame den hasn't heard from): WebKit's toggle.
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { MainActor.assumeIsolated {
-        if self.active.contains(id), NativePiP.isActive(w) { NativePiP.toggle(w) }
-      } }
+      if case let .success(ok) = res, (ok as? Bool) == true { return }
+      if NativePiP.isActive(w) { NativePiP.toggle(w); return }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { MainActor.assumeIsolated { self.leave(id, w, tries: tries - 1) } }
     }
   }
+
 
   // MARK: WebKit's callbacks
 
@@ -182,7 +193,15 @@ public final class MediaService: HostService {
     if on {
       entering.remove(id)
       guard active.insert(id).inserted else { return }
+      // You were back before WebKit got there: straight out again.
+      if cancelled.remove(id) != nil {
+        host.emit("media.pip", ["webview": .string(id), "open": true, "auto": true])
+        exit(id)
+        return
+      }
     } else {
+      cancelled.remove(id)
+
       entering.remove(id)
       exiting.remove(id)
       auto.remove(id)
