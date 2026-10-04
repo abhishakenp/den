@@ -7,17 +7,17 @@ import WebKit
 @testable import DenHost
 @testable import PluginCores
 
-struct CompatJSOutcome: @unchecked Sendable {
-  let value: Any?
-  let error: Error?
-}
-
 /// Popular store extensions through den's real install path (store download, CRX/XPI unpack,
 /// manifest checks, permission prompt, `WKWebExtension` load), then what they do on a real page.
 /// Needs the network (Chrome Web Store, addons.mozilla.org): CI has it.
 @MainActor
 @Suite(.serialized, .watchdog(seconds: 360))
 struct ExtensionCompatTests {
+  struct CompatJSOutcome: @unchecked Sendable {
+    let value: Any?
+    let error: Error?
+  }
+
   static let vimium = "dbepggeogbaibhgnhhndojpepiihcmeb"
 
   func wait(_ seconds: Double = 45, file: StaticString = #fileID, line: UInt = #line, _ cond: () async -> Bool) async -> Bool {
@@ -64,8 +64,40 @@ struct ExtensionCompatTests {
       _ = await wait(25) { bg != "pending" }
       print("compat background load=\(bg)")
       print("compat ctx errors after background=\(ctx.errors.map(\.localizedDescription))")
+      if bg != "ok" {
+        // Why: the background's scripts run in an extension page, where the error is visible.
+        _ = await probe(h, id, page: Self.probePage(h, id), Self.backgroundProbe)
+      }
     }
   }
+
+  /// A blank page of the extension's own (written into den's copy), for probes.
+  static func probePage(_ h: Harness, _ id: String) -> String {
+    guard let e = h.rt.extensions.registry.item(id) else { return "x.html" }
+    let dir = URL(fileURLWithPath: h.rt.extensions.registry.path(e))
+    try? "<!doctype html><title>probe</title>".write(to: dir.appendingPathComponent("__den/probe.html"), atomically: true, encoding: .utf8)
+    return "__den/probe.html"
+  }
+
+  /// Loads the manifest's background scripts into the page one by one and reports what throws.
+  static let backgroundProbe = """
+    const m = chrome.runtime.getManifest(), bg = m.background || {};
+    const files = bg.service_worker ? [bg.service_worker] : (bg.scripts || []);
+    const errors = [];
+    addEventListener('error', (e) => errors.push((e.filename || '').split('/').pop() + ':' + e.lineno + ':' + e.colno + ' ' + e.message));
+    addEventListener('unhandledrejection', (e) => errors.push('rejection ' + String(e.reason && (e.reason.stack || e.reason)).slice(0, 300)));
+    for (const f of files) {
+      await new Promise((r) => {
+        const s = document.createElement('script');
+        if (bg.type === 'module') s.type = 'module';
+        s.src = '/' + f.replace(/^[/]/, '');
+        s.onload = s.onerror = () => setTimeout(r, 300);
+        document.head.appendChild(s);
+      });
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+    return JSON.stringify({files, type: bg.type || 'classic', errors: errors.slice(0, 8)});
+    """
 
   /// Runs `script` (async function body) in one of the extension's own pages, where `chrome.*` is.
   func probe(_ h: Harness, _ id: String, page: String, _ script: String) async -> Any? {
@@ -365,6 +397,57 @@ struct ExtensionCompatTests {
     #expect(ok["content script"] == true && ok["f link hints"] == true && ok["j scroll down"] == true)
   }
 
+  /// Installs each, then reports: installed, loaded, background, popup (opens and renders).
+  func survey(_ h: Harness, _ list: [(String, String, String)]) async {
+    for (source, id, label) in list {
+      print("compat === \(label)")
+      guard let ext = await install(h, source: source, id: id) else { print("compat summary \(label): install=false"); continue }
+      await report(h, ext)
+      let d = h.rt.call("webext", "get", ["id": .string(ext)])
+      var popup = "none"
+      if d["hasPopup"] == true {
+        h.rt.call("webext", "action", ["id": .string(ext)])
+        if await wait(30, { h.rt.extensions.ui.popupFor == ext }) {
+          try? await Task.sleep(for: .seconds(3))
+          var text: Any? = nil
+          if let w = h.rt.extensions.ui.popupWebForTesting {
+            text = await Wait.js(w, "document.title + ' | ' + (document.body ? document.body.innerText.replace(/[\\s]+/g, ' ').slice(0, 120) : '')")
+          }
+          popup = "shown \(h.rt.extensions.ui.popupSizeForTesting) \(String(describing: text))"
+        } else {
+          popup = "not shown"
+        }
+        h.rt.call("webext", "closePopup")
+      }
+      let bgFailed = h.rt.extensions.contexts[ext]?.errors.contains { $0.localizedDescription.contains("background content failed") } ?? true
+      print("compat summary \(label): install=true loaded=\(d["loaded"]) background=\(d["background"]) backgroundFailed=\(bgFailed) popup=\(popup) unsupported=\(d["unsupported"]) errors=\(d["errors"])")
+    }
+  }
+
+  @Test func passwordManagers() async throws {
+    let h = Harness()
+    h.startTabs()
+    h.record(["webext.installed", "webext.failed"])
+    await survey(h, [("chrome", "nngceckbapebfimnlniiiahkandclblb", "Bitwarden"), ("chrome", "aeblfdkhhhdcdjpifhhbdiojplfjncoa", "1Password")])
+  }
+
+  @Test func youTubeAndWriting() async throws {
+    let h = Harness()
+    h.startTabs()
+    h.record(["webext.installed", "webext.failed"])
+    await survey(h, [("chrome", "mnjggcdmjocbbbhaepdhchncahnbgone", "SponsorBlock"), ("chrome", "gebbhagfogifgggkldgodflihgfeippi", "Return YouTube Dislike"),
+                     ("chrome", "kbfnbcaeplbcioakkpcpgfkobkghlhen", "Grammarly"), ("chrome", "oldceeleldhonbafppcapldpdifcinji", "LanguageTool"),
+                     ("chrome", "ldgfbffkinooeloadekpmfoklnobpien", "Raindrop.io")])
+  }
+
+  @Test func blockers() async throws {
+    let h = Harness()
+    h.startTabs()
+    h.record(["webext.installed", "webext.failed"])
+    await survey(h, [("chrome", "ddkjiahejlhfcafbddmgiahcphecmpfh", "uBlock Origin Lite"), ("chrome", "cjpalhdlnbpafiamejdnhcphjbkeiagm", "uBlock Origin (Chrome Web Store)"),
+                     ("firefox", "ublock-origin", "uBlock Origin (Firefox Add-ons)")])
+  }
+
   @Test func otherPopularExtensions() async throws {
     let mock = MockServices()
     try mock.start()
@@ -373,12 +456,7 @@ struct ExtensionCompatTests {
     let h = Harness()
     h.startTabs()
     h.record(["webext.installed", "webext.failed", "webviews.newWindow"])
-    for (source, id, label) in [("chrome", "nngceckbapebfimnlniiiahkandclblb", "Bitwarden"), ("chrome", "bcjindcccaagfpapjjmafapmmgkkhgoa", "JSON Formatter"),
-                                ("chrome", "eimadpbcbfnmbkopoojfekhnkhdbieeh", "Dark Reader (Chrome)")] {
-      print("compat === \(label)")
-      guard let ext = await install(h, source: source, id: id) else { continue }
-      await report(h, ext)
-    }
+    await survey(h, [("chrome", "bcjindcccaagfpapjjmafapmmgkkhgoa", "JSON Formatter"), ("chrome", "eimadpbcbfnmbkopoojfekhnkhdbieeh", "Dark Reader (Chrome)")])
     let tab = h.tabs("open", ["url": .string(mock.base + "/data.json")]).s("id")
     h.tabs("select", ["id": .string(tab)])
     _ = await wait { h.rt.webviews.record(tab)?.loading == false }
