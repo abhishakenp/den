@@ -86,9 +86,9 @@ final class PageToolsCore {
   /// The page context menu's items (`webviews.setMenu`): Copy Link to Highlight on selected
   /// text; Translate Page and Zap Elements on the page itself (after View Page Source).
   static let menuItems: [Value] = [
-    ["id": "pagetools.highlight", "title": "Copy Link to Highlight", "when": "selection"],
-    ["id": "pagetools.translate", "title": "Translate Page", "when": "page"],
-    ["id": "pagetools.zap", "title": "Zap Elements…", "when": "page"],
+    ["id": "pagetools.highlight", "title": "Copy Link to Highlight", "when": "selection", "icon": "sf:link"],
+    ["id": "pagetools.translate", "title": "Translate Page", "when": "page", "icon": "sf:translate"],
+    ["id": "pagetools.zap", "title": "Zap Elements…", "when": "page", "icon": "sf:bolt"],
   ]
 
   func startNow() {

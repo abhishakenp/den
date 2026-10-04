@@ -74,19 +74,13 @@ struct ContextMenuTests {
   /// A real right-click at `point` (page points from the top left). Returns the finished menu's
   /// items; `pick` (a title) is chosen once the menu is up.
   static func rightClick(_ w: DenWebView, at point: NSPoint, pick: String? = nil, line: UInt = #line) async throws -> [NSMenuItem] {
-    var items: [NSMenuItem]?
-    DenWebView.menuOpened = { _, m in
-      items = m.items
-      nonisolated(unsafe) let menu = m
-      let t = Timer(timeInterval: 0.15, repeats: false) { _ in
-        MainActor.assumeIsolated {
-          menu.cancelTrackingWithoutAnimation()
-          if let pick, let i = menu.items.firstIndex(where: { $0.title == pick }) { menu.performActionForItem(at: i) }
-        }
-      }
-      RunLoop.main.add(t, forMode: .common)
+    let driver = MenuDriver(pick: pick)
+    DenWebView.menuOpened = { _, m in driver.attach(m) }
+    defer {
+      DenWebView.menuOpened = nil
+      driver.detach()
     }
-    defer { DenWebView.menuOpened = nil }
+    var items: [NSMenuItem]? { driver.items }
     let win = try #require(w.window)
     let wp = w.convert(point, to: nil)
     let target = try #require(w.hitTest(w.superview!.convert(wp, from: nil)))
@@ -99,9 +93,50 @@ struct ContextMenuTests {
       _ = await Wait.until("the context menu", seconds: 10, line: line) { items != nil }
     }
     let got = try #require(items, "no context menu at \(point)")
-    // Let the picked item's action run (it is performed when the menu's timer fires).
-    try await Task.sleep(for: .milliseconds(400))
+    // The picked item runs once AppKit tracks the menu (then the menu closes); a menu AppKit
+    // never tracked is never cancelled (that would stop the test process's run loop), and its
+    // pick is sent directly.
+    _ = await Wait.until("the menu tracked and closed", seconds: 3) { driver.done }
+    if !driver.done, let pick, let it = got.first(where: { $0.title == pick }), let a = it.action {
+      NSApp.sendAction(a, to: it.target, from: it)
+    }
+    try await Task.sleep(for: .milliseconds(300))
     return got
+  }
+
+  /// Reads a context menu and, once AppKit is tracking it, closes it (choosing `pick` first, as a
+  /// click would). Cancels only a menu that is being tracked.
+  final class MenuDriver: NSObject {
+    let pick: String?
+    var items: [NSMenuItem]?
+    var menu: NSMenu?
+    var tracking = false
+    var done = false
+
+    init(pick: String?) { self.pick = pick }
+
+    func attach(_ m: NSMenu) {
+      menu = m
+      items = m.items
+      NotificationCenter.default.addObserver(self, selector: #selector(began(_:)), name: NSMenu.didBeginTrackingNotification, object: m)
+      NotificationCenter.default.addObserver(self, selector: #selector(ended(_:)), name: NSMenu.didEndTrackingNotification, object: m)
+    }
+
+    func detach() { NotificationCenter.default.removeObserver(self) }
+
+    @objc func began(_ n: Notification) {
+      tracking = true
+      perform(#selector(fire), with: nil, afterDelay: 0.15, inModes: [.common])
+    }
+
+    @objc func ended(_ n: Notification) { tracking = false }
+
+    @objc func fire() {
+      guard tracking, let m = menu else { return }
+      m.cancelTrackingWithoutAnimation()
+      if let pick, let i = m.items.firstIndex(where: { $0.title == pick }) { m.performActionForItem(at: i) }
+      done = true
+    }
   }
 
   static func titles(_ items: [NSMenuItem]) -> [String] { items.filter { !$0.isSeparatorItem && !$0.isHidden }.map(\.title) }

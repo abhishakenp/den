@@ -156,6 +156,8 @@ final class PageScripting {
         let mi = NSMenuItem(title: item.str("title"), action: #selector(PluginMenuTarget.picked(_:)), keyEquivalent: "")
         mi.target = PluginMenuTarget.shared
         mi.representedObject = [item.str("id"), id, plugin]
+        let icon = item.str("icon")
+        if icon.hasPrefix("sf:") { mi.image = NSImage(systemSymbolName: String(icon.dropFirst(3)), accessibilityDescription: nil) }
         if when == "page" {
           menu.insertItem(mi, at: min(pageAt, menu.items.count))
           pageAt += 1

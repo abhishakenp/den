@@ -78,7 +78,7 @@ Events: `window.sidebarResized {width, by: drag|reset|set}` (a drag when it ends
 | `snapshot` (capture) | `id`, and any of `rect?: {x, y, width, height}` (CSS px of the document, scroll included), `full?`, `clipboard?`, `folder?` + `name?` | `{pending}`, then `webviews.snapshot {id, ok, path?, clipboard, width, height, bytes, error?}` (pixels). See [Capture](#capture) |
 | `eval` | `id`, `plugin`, `script` (a function body that `return`s JSON data, ≤ 4 KB), `request?`, `timeoutMs?` (5000) | `{request}`, then `webviews.evalResult {request, webview, ok, value \| error}`. Only for a live page (it never loads or wakes one), in an isolated content world, and only when `plugin` has `session:<the page's host>` |
 | `inject` | `id`, `plugin`, `files?: [name]` (from the plugin's resource folder), `global?`, `script?` (function body, ≤ 64 KB), `args?` (named arguments of `script`), `request?` | `{request}`, then `webviews.injectResult {request, webview, plugin, ok, value \| error}`. See [Plugins in pages](#plugins-in-pages) |
-| `setMenu` | `plugin`, `items: [{id, title, when?: selection\|page\|any}]` (`[]` removes) | ok. Picking one emits `webviews.menu {id, webview, plugin}` |
+| `setMenu` | `plugin`, `items: [{id, title, when?: selection\|page\|any, icon?: "sf:<symbol>"}]` (`[]` removes) | ok. Picking one emits `webviews.menu {id, webview, plugin}` |
 | `setContentRules` | `plugin`, `rules: [WebKit content rule]` (`[]` removes) | `{pending}`, then `webviews.contentRules {plugin, ok, count, error?}` |
 | `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted, media: {playing, audible, pip, dirty, video?}, suspended, live, profile, snapshot, zoom}` |
 | `list` | – | `[id]` |

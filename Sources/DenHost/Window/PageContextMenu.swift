@@ -94,6 +94,8 @@ extension DenWebView {
       m.target = target
       m.representedObject = value
       if let key { _ = Shortcuts.apply(key, to: m) }
+      // macOS 26 menus show symbols: den's items carry one too, so the column lines up.
+      if let s = symbol(for: title) { m.image = NSImage(systemSymbolName: s, accessibilityDescription: nil) }
       return m
     }
     let media = hit.mediaKind == "audio" ? "Audio" : "Video"
@@ -221,6 +223,20 @@ extension DenWebView {
     }
     if let l = menu.items.last, l.isSeparatorItem { menu.removeItem(l) }
   }
+
+  /// The SF Symbol for a den item (by title; the first matching prefix).
+  static let symbols: [(String, String)] = [
+    ("Open Link in New Tab", "plus.square.on.square"), ("Open Link in New Window", "macwindow.badge.plus"),
+    ("Open Link in Private Window", "hand.raised"), ("Open Link in Peek", "eye"), ("Open Link in Split View", "rectangle.split.2x1"),
+    ("Download Linked File", "arrow.down.circle"), ("Save ", "square.and.arrow.down"), ("Copy Link as Markdown", "doc.plaintext"),
+    ("Open Image in New Tab", "photo.badge.plus"), ("Open Video in New Tab", "play.rectangle"), ("Open Audio in New Tab", "play.rectangle"),
+    ("Copy Image Address", "link"), ("Copy Video Address", "link"), ("Copy Audio Address", "link"),
+    ("Search ", "magnifyingglass"), ("Paste and Match Style", "doc.on.clipboard"), ("Enter Picture in Picture", "pip.enter"),
+    ("Exit Picture in Picture", "pip.exit"), ("Picture in Picture", "pip.enter"), ("Print", "printer"),
+    ("View Page Source", "chevron.left.forwardslash.chevron.right"),
+  ]
+
+  static func symbol(for title: String) -> String? { symbols.first { title.hasPrefix($0.0) }?.1 }
 
   /// `[text](url)`: the link's text (else its address), with brackets escaped.
   static func markdownLink(_ hit: ContextHit) -> String {
