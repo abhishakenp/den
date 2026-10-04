@@ -158,6 +158,9 @@ public enum MediaScenarios {
     return String(data: pipe.fileHandleForReading.availableData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
+  /// Ends the app the scenario switched to (CI's runner only), by process name.
+  static func quitApp(_ name: String) async { await sh("/usr/bin/pkill", ["-x", name]) }
+
   /// The frontmost app's name.
   static var front: String { NSWorkspace.shared.frontmostApplication?.localizedName ?? "none" }
 
@@ -198,11 +201,11 @@ public enum MediaScenarios {
   static func appSwitches(_ rt: DenRuntime, _ id: String, check: (String, Bool, String) -> Void, inPip: () -> Bool, out: () -> Bool,
                           advancing: () async -> (Bool, String)) async {
     let env = ProcessInfo.processInfo.environment
-    struct Case { let name: String; let go: [String]; let quit: [String] }
-    var cases = [Case(name: "appSwitch.terminal", go: ["-a", "Terminal"], quit: ["-x", "Terminal"])]
+    struct Case { let name: String; let go: [String]; let app: String }
+    var cases = [Case(name: "appSwitch.terminal", go: ["-a", "Terminal"], app: "Terminal")]
     if let cover = env["DEN_PIP_COVER"] {
-      cases.append(Case(name: "appSwitch.covered", go: ["-n", cover, "--args", "full"], quit: ["-x", "PipCover"]))
-      cases.append(Case(name: "spaceSwitch.fullScreenApp", go: ["-n", cover, "--args", "fullscreen"], quit: ["-x", "PipCover"]))
+      cases.append(Case(name: "appSwitch.covered", go: ["-n", cover, "--args", "full"], app: "PipCover"))
+      cases.append(Case(name: "spaceSwitch.fullScreenApp", go: ["-n", cover, "--args", "fullscreen"], app: "PipCover"))
     } else {
       log("scenario.pip appSwitch.covered skipped: no DEN_PIP_COVER")
     }
@@ -241,7 +244,7 @@ public enum MediaScenarios {
       await sleep(0.5)
       let p = await js(rt, id, "return window.__denMedia.probe()", frame: rt.webviews.record(id)?.videoFrame?.frame)
       check("\(c.name).playing", !p.flag("paused") && !p.flag("inPip"), "")
-      await sh("/usr/bin/pkill", c.quit)
+      await quitApp(c.app)
       await sleep(1.5)
     }
   }
@@ -469,43 +472,52 @@ public enum MediaScenarios {
       _ = await until(5) { out() }
     }
 
-    // 9b. A real YouTube watch page (`DEN_PIP_YOUTUBE`, its URL), Shields and its YouTube
-    // scriptlets on as they ship: a tab switch and an app switch.
-    if let yt = env["DEN_PIP_YOUTUBE"] {
-      let y = rt.call("tabs", "open", ["url": .string(yt)])["id"].string ?? ""
+    // 9b. Real pages (`DEN_PIP_YOUTUBE`, a YouTube watch page with Shields and its YouTube
+    // scriptlets on as they ship; `DEN_PIP_MSE`, a Media Source Extensions player whose video
+    // size arrives after it starts playing): a tab switch and an app switch. A player that
+    // never gets a source on this machine (YouTube's bot check on a datacenter IP) is said so,
+    // not counted.
+    for (label, key) in [("youtube", "DEN_PIP_YOUTUBE"), ("mse", "DEN_PIP_MSE")] {
+      guard let url = env[key] else { continue }
+      let y = rt.call("tabs", "open", ["url": .string(url)])["id"].string ?? ""
       _ = await until(30) { rt.webviews.record(y)?.webView?.isLoading == false }
       await sleep(5)
-      log("scenario.pip youtube loaded \(await js(rt, y, "return document.title + ' | ' + location.href + ' | videos=' + document.querySelectorAll('video').length"))")
+      let videoFrame = { rt.webviews.record(y)?.frames.values.first { $0.media.video != nil }?.frame }
       let played = await js(rt, y, "const v = document.querySelector('video'); if (!v) return 'no video element'; v.muted = false; v.volume = 1; try { await Promise.race([v.play(), new Promise(r => setTimeout(r, 4000))]); } catch (e) { return String(e); } return v.paused ? 'paused' : 'playing'")
       let ok = await until(20) { rt.media.eligibleVideo(y) != nil }
-      let page = await js(rt, y, "return document.title + ' | ' + location.href")
-      let now = await js(rt, y, "const v = document.querySelector('video'); return v ? JSON.stringify({t: v.currentTime, vw: v.videoWidth, vh: v.videoHeight, rs: v.readyState, paused: v.paused, muted: v.muted, vol: v.volume, w: v.clientWidth, h: v.clientHeight, src: String(v.currentSrc).slice(0, 60)}) : 'none'")
-      check("youtube.eligible", ok, "play=\(played) why=\(rt.media.eligibility(y).why) reported=\(rt.webviews.record(y)?.videoFrame?.media.video ?? .null) now=\(now) page=\(page) shields=\(rt.call("sitepolicy", "get", ["id": .string(y)])["scripts"])")
+      let now = await js(rt, y, "const v = document.querySelector('video'); const e = document.querySelector('.ytp-error, .yt-playability-error-supported-renderers, #error-screen'); return (v ? JSON.stringify({t: v.currentTime, vw: v.videoWidth, vh: v.videoHeight, rs: v.readyState, paused: v.paused, w: v.clientWidth, h: v.clientHeight, src: String(v.currentSrc).slice(0, 50)}) : 'no video') + ' | ' + document.title + (e ? ' | error: ' + e.innerText.replace(/\\s+/g, ' ').slice(0, 160) : '')", frame: videoFrame())
+      let detail = "play=\(played) why=\(rt.media.eligibility(y).why) now=\(now) shields=\(rt.call("sitepolicy", "get", ["id": .string(y)])["scripts"])"
+      if !ok, now.string?.contains("\"rs\":0") == true, now.string?.contains("\"src\":\"\"") == true {
+        log("scenario.pip \(label) skipped: the player got no source on this machine (\(detail))")
+      } else {
+        check("\(label).eligible", ok, detail)
+      }
       if ok {
         rt.call("tabs", "select", ["id": .string(other)])
-        check("youtube.tabSwitch.enters", await until(8) { inPip(y) }, pipWindow()?.text ?? "no PiP window")
+        check("\(label).tabSwitch.enters", await until(8) { inPip(y) }, pipWindow()?.text ?? "no PiP window")
         let (l1, d1) = await advancing(y)
-        check("youtube.tabSwitch.live", l1, d1)
-        frameCheck("youtube")
+        check("\(label).tabSwitch.live", l1, d1)
+        frameCheck(label)
         rt.call("tabs", "select", ["id": .string(y)])
-        check("youtube.tabSwitch.back", await until(8) { out(y) })
+        check("\(label).tabSwitch.back", await until(8) { out(y) })
         await sleep(1)
         if await activateDen(rt), await until(3, { rt.media.windowVisible && out(y) }) {
           await sh("/usr/bin/open", ["-a", "Terminal"])
-          check("youtube.appSwitch.enters", await until(8) { !NSApp.isActive && inPip(y) }, "front=\(front) covered=\(String(format: "%.0f%%", covered(rt) * 100)) \(pipWindow()?.text ?? "no PiP window")")
+          check("\(label).appSwitch.enters", await until(8) { !NSApp.isActive && inPip(y) }, "front=\(front) covered=\(String(format: "%.0f%%", covered(rt) * 100)) \(pipWindow()?.text ?? "no PiP window")")
           let (l2, d2) = await advancing(y)
-          check("youtube.appSwitch.live", l2, d2)
+          check("\(label).appSwitch.live", l2, d2)
           let back = await activateDen(rt)
           let gone = await until(8) { out(y) }
-          check("youtube.appSwitch.back", back && gone)
-          await sh("/usr/bin/pkill", ["-x", "Terminal"])
+          check("\(label).appSwitch.back", back && gone)
+          await quitApp("Terminal")
         } else {
-          log("scenario.pip youtube.appSwitch skipped: den isn't in front (front=\(front))")
+          log("scenario.pip \(label).appSwitch skipped: den isn't in front (front=\(front))")
         }
       }
-      _ = await js(rt, y, "document.querySelector('video')?.pause(); return true")
+      _ = await js(rt, y, "document.querySelectorAll('video').forEach(v => v.pause()); return true", frame: videoFrame())
       _ = rt.call("media", "exit")
       _ = await until(5) { out(y) }
+      rt.call("tabs", "select", ["id": .string(other)])
     }
 
     // 10. The setting turns it off.

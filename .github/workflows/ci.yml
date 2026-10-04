@@ -173,6 +173,7 @@ jobs:
         env:
           DEN_PIP_FULLSCREEN: "1"
           DEN_PIP_YOUTUBE: https://www.youtube.com/watch?v=aqz-KE-bpKQ
+          DEN_PIP_MSE: https://reference.dashif.org/dash.js/latest/samples/getting-started/auto-load-single-video.html
         run: |
           mkdir -p build/ci-logs
           store=$(mktemp -d)
