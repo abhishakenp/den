@@ -261,9 +261,11 @@ cmd_check() {
     (( requested )) && state_write lastCheck=$(now_iso) lastResult="Couldn't reach GitHub"
     log "ls-remote failed"; return 0
   fi
-  # A commit deferred under load is retried at most every 20 minutes (a full test run each time).
+  # A commit deferred under load is retried at most every 20 minutes (a full test run each time),
+  # unless CI on it has turned green since: then it deploys now (no local tests to run).
   local deferred=$(state_get deferred) deferredAt=$(state_get deferredAt)
-  if [[ $remote == $deferred && -n $deferredAt ]] && (( $(date +%s) - deferredAt < ${DEN_UPDATER_RETRY_S:-1200} )); then
+  if [[ $remote == $deferred && -n $deferredAt ]] && (( $(date +%s) - deferredAt < ${DEN_UPDATER_RETRY_S:-1200} )) \
+    && [[ $(ci_state $remote) != success ]]; then
     return 0
   fi
   # A failed commit gets another try once CI on it is green (a flaky CI run, re-run green, must
