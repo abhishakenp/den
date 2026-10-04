@@ -76,7 +76,7 @@ Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatT
 | Vimium (Chrome Web Store) | Works | Link hints (`f` follows a link, `F` opens it in a new tab, `Esc`), scrolling (`j`, `d`, `G`, `gg`), the Vomnibar (`o`), find (`/`), next tab (`K`). Not in den: bookmarks (the Vomnibar finds none), history from before you installed it |
 | Vimium (Firefox Add-ons) | Works | Same as above; its toolbar icon shows an error, because that build lacks the icons Vimium asks for outside Firefox. Prefer the Chrome Web Store build |
 | ColorPick Eyedropper | Partial | The popup opens; its background doesn't start, so picking colors doesn't work |
-| Bitwarden | Not yet | Installs and its popup opens, but its background doesn't start. den tells you so when you add it |
+| Bitwarden | Partial | Installs, starts and its popup opens. Signing in and filling aren't checked yet; unlocking with the desktop app (native messaging) isn't available |
 
 An extension's keyboard shortcuts work: they're listed, with their keys, in the **Extensions** menu in the menu bar. Its right-click items show at the end of a page's right-click menu.
 
