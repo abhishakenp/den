@@ -485,7 +485,15 @@ public final class MediaService: HostService {
       }
       return
     }
-    if fullScreenAway.insert(id).inserted { note("pip fullScreen away \(id) activeSpace=\(win.isOnActiveSpace)") }
-    autoEnter(id, "fullScreenAway")
+    // Settled first: going full screen moves the window to a new Space, and on the way it is
+    // briefly on none that's shown (CI run 37221053469: an enter, then an exit, as it went).
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self, weak win] in
+      MainActor.assumeIsolated {
+        guard let self, let win, self.fullScreenWindow(id) === win,
+              !(win.isVisible && win.occlusionState.contains(.visible) && win.isOnActiveSpace) else { return }
+        if self.fullScreenAway.insert(id).inserted { self.note("pip fullScreen away \(id) activeSpace=\(win.isOnActiveSpace) occlusionVisible=\(win.occlusionState.contains(.visible))") }
+        self.autoEnter(id, "fullScreenAway")
+      }
+    }
   }
 }

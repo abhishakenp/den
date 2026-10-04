@@ -475,7 +475,8 @@ public enum MediaScenarios {
       let y = rt.call("tabs", "open", ["url": .string(yt)])["id"].string ?? ""
       _ = await until(30) { rt.webviews.record(y)?.webView?.isLoading == false }
       await sleep(5)
-      let played = await js(rt, y, "const v = document.querySelector('video'); if (!v) return 'no video element'; v.muted = false; v.volume = 1; try { await v.play(); } catch (e) { return String(e); } return v.paused ? 'paused' : 'playing'")
+      log("scenario.pip youtube loaded \(await js(rt, y, "return document.title + ' | ' + location.href + ' | videos=' + document.querySelectorAll('video').length"))")
+      let played = await js(rt, y, "const v = document.querySelector('video'); if (!v) return 'no video element'; v.muted = false; v.volume = 1; try { await Promise.race([v.play(), new Promise(r => setTimeout(r, 4000))]); } catch (e) { return String(e); } return v.paused ? 'paused' : 'playing'")
       let ok = await until(20) { rt.media.eligibleVideo(y) != nil }
       let page = await js(rt, y, "return document.title + ' | ' + location.href")
       check("youtube.eligible", ok, "play=\(played) why=\(rt.media.eligibility(y).why) page=\(page) shields=\(rt.call("sitepolicy", "get", ["id": .string(y)]))")

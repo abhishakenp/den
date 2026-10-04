@@ -178,7 +178,7 @@ jobs:
           store=$(mktemp -d)
           export DEN_PIP_COVER="$PWD/build/PipCover.app"
           set +e
-          perl -e 'alarm 480; exec @ARGV' build/den.app/Contents/MacOS/den --no-den-home --storage "$store" --scenario pip > build/ci-logs/pip-scenario.log 2>&1
+          perl -e 'alarm 600; exec @ARGV' build/den.app/Contents/MacOS/den --no-den-home --storage "$store" --scenario pip > build/ci-logs/pip-scenario.log 2>&1
           rc=$?
           set -e
           grep -E "scenario\.|media\.log" build/ci-logs/pip-scenario.log | tee -a "$GITHUB_STEP_SUMMARY"
