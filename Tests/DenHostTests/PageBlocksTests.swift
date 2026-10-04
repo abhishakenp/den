@@ -214,7 +214,9 @@ struct PageBlocksTests {
     #expect((wv?.value(forKey: "_windowOcclusionDetectionEnabled") as? Bool) == false)
     let web = rt.call("webviews", "create", ["id": "m"])["id"]
     let mini = rt.call("window", "openMini", ["webview": web])
-    let panel = NSApp.windows.first { $0 is NSPanel && $0.isVisible }
+    // den's own panel (PIP.framework keeps an in-process PIPPanel of its own after a PiP test).
+    let panel = NSApp.windows.first { $0 is DenNSPanel && $0.isVisible }
+
     #expect(!mini.isError && panel?.alphaValue == 0 && panel?.level == .normal)
     _ = rt.call("window", "closeMini", ["id": mini["id"]])
     rt.window.window.orderOut(nil)
