@@ -152,6 +152,7 @@ public final class ExtensionsService: NSObject, HostService {
       if args.flag("open", true) { ui.showMenu() } else { ui.close() }
       return .ok
     case "closePopup": ui.close(); return .ok
+    case "inspect": return inspectBackground(args.str("id"))
     case "openOptions":
       guard let ctx = contexts[args.str("id")], let u = ctx.optionsPageURL else { return .error("webext: no options page") }
       return openTab(u, active: true, pinned: false).1.map { .error($0.localizedDescription) } ?? .ok
@@ -216,6 +217,26 @@ public final class ExtensionsService: NSObject, HostService {
     host.emit("webext.changed", ["extensions": .array(registry.items.map(describe))])
     refreshUI()
     syncCommands()
+  }
+
+  /// Develop ▸ Web Extension Background Content: the loaded extensions, by name, and whether a
+  /// background page is running (WebKit's private `_backgroundWebView`; a service worker
+  /// background has none, Safari's Develop menu reaches those through `isInspectable`).
+  func inspectables() -> [(id: String, name: String, live: Bool)] {
+    registry.items.compactMap { e in contexts[e.id].map { (id: e.id, name: e.name, live: Self.backgroundWebView($0) != nil) } }
+  }
+
+  static func backgroundWebView(_ ctx: WKWebExtensionContext) -> WKWebView? {
+    let sel = NSSelectorFromString("_backgroundWebView")
+    guard ctx.responds(to: sel) else { return nil }
+    return ctx.perform(sel)?.takeUnretainedValue() as? WKWebView
+  }
+
+  /// `inspect {id}`: the Web Inspector for an extension's background page, in its own window.
+  func inspectBackground(_ id: String) -> Value {
+    guard let ctx = contexts[id] else { return .error("webext: '\(id)' is not loaded") }
+    guard let w = Self.backgroundWebView(ctx) else { return .error("webext: '\(id)' has no background page to inspect") }
+    return DevTools.show(w) ? .ok : .error("webext: this WebKit has no Web Inspector entry point")
   }
 
   // thin-host: feature-specific, migrate to plugin
@@ -377,6 +398,8 @@ public final class ExtensionsService: NSObject, HostService {
     // found no browser and stopped.
     let base: WKWebViewConfiguration = cfg.webViewConfiguration ?? WKWebViewConfiguration()
     base.applicationNameForUserAgent = WebViewsService.applicationNameForUserAgent
+    // Inspect Element in popups, options and background pages (contexts are `isInspectable`).
+    DevTools.enableDeveloperExtras(base.preferences)
     cfg.webViewConfiguration = base
     let c = WKWebExtensionController(configuration: cfg)
     c.delegate = delegateObject
@@ -954,6 +977,7 @@ public final class ExtensionsService: NSObject, HostService {
 
   func presentPopup(_ action: WKWebExtension.Action, context: WKWebExtensionContext) -> Error? {
     guard let web = action.popupWebView else { return Self.failure("no popup") }
+    web.isInspectable = true
     ui.showPopup(web, action: action, id: context.uniqueIdentifier)
     return nil
   }

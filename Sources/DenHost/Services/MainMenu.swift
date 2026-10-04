@@ -1,8 +1,8 @@
 import AppKit
 import CordisValue
 
-/// den's menu bar: den, File, Edit, View, History, Spaces, Tabs, Window, Help (Arc's structure,
-/// spec §9 and its menu data; den's wording). Every shortcut den has lives here, so it's
+/// den's menu bar: den, File, Edit, View, History, Spaces, Tabs, Develop, Window, Help (Arc's
+/// structure, spec §9 and its menu data, plus Safari's Develop menu; den's wording). Every shortcut den has lives here, so it's
 /// discoverable and goes through AppKit's normal key-equivalent path (docs/shortcuts.md).
 ///
 /// Items are one of:
@@ -33,6 +33,13 @@ public enum MainMenu {
   /// Runs a command bar command; set by `DenRuntime`. Returns false when it can't run.
   public static var runCommand: ((String) -> Void)?
   public static var commandAvailable: ((String) -> Bool)?
+  /// Fills a submenu built on demand (Develop ▸ User Agent, …) each time it opens: the item id
+  /// and its (emptied) menu.
+  public static var fillSubmenu: ((String, NSMenu) -> Void)?
+  /// A host item's live title and checkmark (Show/Close Web Inspector, Disable Caches); nil keeps
+  /// the item as it is.
+  public static var itemState: ((String) -> (title: String?, on: Bool)?)?
+  static let dynamicSubmenus: Set<String> = ["develop.userAgent", "develop.extensions"]
   static let target = MenuTarget()
 
   /// The menus, in order. Titles are den's own; Arc's structure and keys (spec §9).
@@ -97,12 +104,6 @@ public enum MainMenu {
       Entry("view.addSplit", "Add Split View", "", .event("peek.key.addSplit")),
       Entry("view.closePane", "Close Split Pane", "", .event("peek.key.closePane")),
       Entry("view.focusPane", "Focus Split Pane", "", .event("peek.key.focusPane")), .sep,
-      Entry("view.developer", "Developer", "", .submenu([
-        Entry("view.viewSource", "View Source", "cmd+opt+u", .host("page.viewSource")),
-        Entry("view.inspector", "Web Inspector", "cmd+opt+i", .host("page.inspector")),
-        Entry("view.inspectElement", "Inspect Element", "cmd+opt+c", .host("page.inspectElement")),
-        Entry("view.console", "JavaScript Console", "cmd+opt+j", .host("page.console")),
-      ])), .sep,
       Entry("view.fullScreen", "Enter Full Screen", "cmd+ctrl+f", .sel(#selector(NSWindow.toggleFullScreen(_:)))),
       Entry("view.closePeek", "Close Peek", "", .event("peek.key.close")),
     ]),
@@ -135,6 +136,18 @@ public enum MainMenu {
       Entry("tabs.clear", "Clear Today Tabs", "", .event("tabs.key.clear")),
       Entry("tabs.tidy", "Tidy Tabs", "", .event("tabs.key.tidy")),
       Entry("tabs.undo", "Undo Sidebar Action", "", .event("tabs.key.undo")),
+    ]),
+    // Safari's Develop menu, for the page in front (ids keep the `view.` prefix they had under
+    // View ▸ Developer, so remaps in config.toml still apply).
+    ("Develop", [
+      Entry("view.inspector", "Show Web Inspector", "cmd+opt+i", .host("page.inspector")),
+      Entry("view.console", "Show JavaScript Console", "cmd+opt+j", .host("page.console")),
+      Entry("view.viewSource", "Show Page Source", "cmd+opt+u", .host("page.viewSource")),
+      Entry("view.inspectElement", "Inspect Element", "cmd+opt+c", .host("page.inspectElement")), .sep,
+      Entry("develop.userAgent", "User Agent", "", .submenu([])), .sep,
+      Entry("develop.emptyCaches", "Empty Caches", "cmd+opt+e", .host("develop.emptyCaches")),
+      Entry("develop.disableCaches", "Disable Caches", "", .host("develop.disableCaches")), .sep,
+      Entry("develop.extensions", "Web Extension Background Content", "", .submenu([])),
     ]),
     ("Window", [
       Entry("window.minimize", "Minimize", "cmd+m", .sel(#selector(NSWindow.performMiniaturize(_:)))),
@@ -307,14 +320,26 @@ final class MenuTarget: NSObject, NSMenuDelegate, NSMenuItemValidation {
   func validateMenuItem(_ mi: NSMenuItem) -> Bool {
     guard let id = mi.identifier?.rawValue, let e = MainMenu.entryById[id] else { return true }
     switch e.kind {
-    case let .host(a): return MainMenu.canPerform?(a) ?? true
+    case let .host(a):
+      if let s = MainMenu.itemState?(a) {
+        if let t = s.title, mi.title != t { mi.title = t }
+        mi.state = s.on ? .on : .off
+      }
+      return MainMenu.canPerform?(a) ?? true
     case let .command(c): return MainMenu.commandAvailable?(c) ?? false
     default: return true
     }
   }
 
   /// Command items show only while their command exists (checked when the menu opens).
+  /// Submenus built on demand are filled here.
   func menuNeedsUpdate(_ menu: NSMenu) {
+    if let fill = MainMenu.fillSubmenu, let parent = menu.supermenu?.items.first(where: { $0.submenu === menu }),
+       let id = parent.identifier?.rawValue, MainMenu.dynamicSubmenus.contains(id) {
+      menu.removeAllItems()
+      fill(id, menu)
+      return
+    }
     for mi in menu.items {
       guard let id = mi.identifier?.rawValue, let e = MainMenu.entryById[id], case let .command(c) = e.kind else { continue }
       mi.isHidden = !(MainMenu.commandAvailable?(c) ?? false)

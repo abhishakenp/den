@@ -201,6 +201,10 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   weak var extensionHooks: ExtensionsService?
   /// zoom / find / print / inspect / viewSource (PageActions.swift); set by `DenRuntime`.
   public internal(set) var pageActions: PageActions?
+  /// Develop ▸ Disable Caches: each main-frame load first empties its profile's caches (`caches`).
+  public internal(set) var cachesDisabled = false
+  /// The data stores of every profile in use (Develop ▸ Empty Caches).
+  var liveStores: [WKWebsiteDataStore] { Array(stores.values) }
   /// A page's video entered or left picture in picture (WebKit's delegate call; the `media` service).
   public var onPip: ((String, Bool) -> Void)?
   /// The picture-in-picture window's return button was clicked for this page (the `media` service).
@@ -250,6 +254,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       return .ok
     }
     if method == "setMenu" { return scripting.setMenu(args) }
+    // Not about one page: works with no page open.
+    if method == "caches" { return pageActions?.caches(args) ?? .error("webviews: no page actions") }
     if method == "setContentRules" { return scripting.setContentRules(args) }
     if method == "setAutoplay" {
       autoplayAllowed = args.flag("allowed", true)
@@ -381,6 +387,9 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if config.preferences.responds(to: NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")) {
       config.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
     }
+    // The Web Inspector and the context menu's Inspect Element, on every page (private and
+    // pop-up pages included); `isInspectable` below lets Safari's Develop menu find it too.
+    DevTools.enableDeveloperExtras(config.preferences)
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.media, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: PageScripts.world))
     config.userContentController.add(scriptHandler, contentWorld: PageScripts.world, name: PageScripts.handler)
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.sessionHook, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
@@ -934,6 +943,11 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if mainFrame, let sp = sitePolicy, case let .cancel(then) = sp.decide(r, webView, action, preferences) {
       decisionHandler(.cancel)
       DispatchQueue.main.async { then() }
+      return
+    }
+    // Develop ▸ Disable Caches: the page loads after its profile's caches are emptied.
+    if mainFrame, cachesDisabled {
+      DevTools.emptyCaches([webView.configuration.websiteDataStore]) { decisionHandler(.allow) }
       return
     }
     decisionHandler(.allow)

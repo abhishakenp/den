@@ -22,6 +22,17 @@ enum MenuActions {
     MainMenu.commandAvailable = { [weak rt] id in
       (rt?.call("commands", "list").array ?? []).contains { $0.str("id") == id }
     }
+    MainMenu.itemState = { [weak rt] a in
+      guard let rt else { return nil }
+      switch a {
+      case "page.inspector":
+        let open = focusedWebView(rt).flatMap { rt.webviews.record($0)?.webView }.map(DevTools.isOpen) ?? false
+        return (open ? "Close Web Inspector" : "Show Web Inspector", false)
+      case "develop.disableCaches": return (nil, rt.webviews.cachesDisabled)
+      default: return nil
+      }
+    }
+    MainMenu.fillSubmenu = { [weak rt] id, menu in if let rt { DevelopMenu.fill(id, menu, rt) } }
   }
 
   /// The web view whose page the menu acts on: the focused pane of what's shown.
@@ -52,9 +63,11 @@ enum MenuActions {
     case "page.print": rt.call("webviews", "print", ["id": id])
     case "page.reloadFromOrigin": rt.call("webviews", "reload", ["id": id, "fromOrigin": true])
     case "page.viewSource": rt.call("webviews", "viewSource", ["id": id])
-    case "page.inspector": rt.call("webviews", "inspect", ["id": id])
-    case "page.inspectElement": rt.call("webviews", "inspect", ["id": id, "element": true])
-    case "page.console": rt.call("webviews", "inspect", ["id": id, "console": true])
+    case "page.inspector": rt.call("webviews", "inspect", ["id": id, "action": "toggle"])
+    case "page.inspectElement": rt.call("webviews", "inspect", ["id": id, "action": "element"])
+    case "page.console": rt.call("webviews", "inspect", ["id": id, "action": "console"])
+    case "develop.emptyCaches": rt.call("webviews", "caches", ["action": "empty"])
+    case "develop.disableCaches": rt.call("webviews", "caches", ["action": rt.webviews.cachesDisabled ? "enable" : "disable"])
     case "page.save": savePage(rt, id.string)
     case "help.site": open(repo)
     case "help.shortcuts": open(repo + "/blob/main/docs/shortcuts.md")
@@ -79,5 +92,60 @@ enum MenuActions {
       }
     }
     if let w = web.window ?? NSApp.keyWindow { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
+  }
+}
+
+/// Develop ▸ User Agent and ▸ Web Extension Background Content, built each time they open.
+@MainActor
+final class DevelopMenu: NSObject {
+  static let shared = DevelopMenu()
+  weak var rt: DenRuntime?
+
+  static func fill(_ id: String, _ menu: NSMenu, _ rt: DenRuntime) {
+    shared.rt = rt
+    switch id {
+    case "develop.userAgent":
+      let page = MenuActions.focusedWebView(rt)
+      let current = page.map { rt.call("webviews", "userAgent", ["id": .string($0)]).str("preset") } ?? "default"
+      func add(_ title: String, _ preset: String) {
+        let mi = NSMenuItem(title: title, action: page == nil ? nil : #selector(DevelopMenu.pickAgent(_:)), keyEquivalent: "")
+        mi.target = shared
+        mi.representedObject = preset
+        mi.state = current == preset ? .on : .off
+        menu.addItem(mi)
+      }
+      add("Default (Automatically Chosen)", "default")
+      menu.addItem(.separator())
+      for a in DevTools.agents { add(a.title, a.id) }
+      if current == "other" {
+        menu.addItem(.separator())
+        add("Other", "other")
+      }
+    case "develop.extensions":
+      let list = rt.extensions.inspectables()
+      if list.isEmpty {
+        let mi = NSMenuItem(title: "No Extensions Loaded", action: nil, keyEquivalent: "")
+        mi.isEnabled = false
+        menu.addItem(mi)
+      }
+      for e in list {
+        let mi = NSMenuItem(title: e.name, action: e.live ? #selector(DevelopMenu.inspectExtension(_:)) : nil, keyEquivalent: "")
+        mi.target = shared
+        mi.representedObject = e.id
+        if !e.live { mi.toolTip = "No background page running (a service worker background is inspectable from Safari's Develop menu)" }
+        menu.addItem(mi)
+      }
+    default: break
+    }
+  }
+
+  @objc func pickAgent(_ sender: NSMenuItem) {
+    guard let rt, let preset = sender.representedObject as? String, preset != "other", let page = MenuActions.focusedWebView(rt) else { return }
+    rt.call("webviews", "userAgent", ["id": .string(page), "ua": .string(preset)])
+  }
+
+  @objc func inspectExtension(_ sender: NSMenuItem) {
+    guard let rt, let id = sender.representedObject as? String else { return }
+    rt.call("webext", "inspect", ["id": .string(id)])
   }
 }
