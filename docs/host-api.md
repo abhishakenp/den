@@ -25,7 +25,7 @@ The code lives in `Sources/DenHost/Services/`. `DenRuntime` registers every serv
 | `toggleSidebar` | `animated?` | ok |
 | `setTitle` | `title`, `window?` | ok |
 | `get` | – | `{width, hidden, page, fullScreen, dark, id, private, count}` (the active window; `count` = browser windows) |
-| `new` | `private?`, `id?` (a normal window's old id: its saved frame comes back; a taken id gets the next free one), `page?`, `focus?` (true), `restored?`, `sidebarHidden?` | `{id}`. A browser window on the same spaces (⌘N), or a private one (⇧⌘N). Emits `window.opened`, then (with `focus`) `window.activated` |
+| `new` | `private?`, `id?` (a normal window's old id: its saved frame comes back; a taken id gets the next free one), `page?`, `focus?` (true), `restored?`, `sidebarHidden?`, `url?` (the page it opens with: "Open Link in New Window") | `{id}`. A browser window on the same spaces (⌘N), or a private one (⇧⌘N). Emits `window.opened` (with `url`), then (with `focus`) `window.activated` |
 | `list` | – | `[{id, private, page, panes, focus, key, visible, frame}]`, first window first |
 | `focus` | `id` | ok. Brings that window forward and makes it active |
 | `close` | `id?` (the active one) | ok. See "Closing" below |
@@ -78,7 +78,7 @@ Events: `window.sidebarResized {width, by: drag|reset|set}` (a drag when it ends
 | `snapshot` (capture) | `id`, and any of `rect?: {x, y, width, height}` (CSS px of the document, scroll included), `full?`, `clipboard?`, `folder?` + `name?` | `{pending}`, then `webviews.snapshot {id, ok, path?, clipboard, width, height, bytes, error?}` (pixels). See [Capture](#capture) |
 | `eval` | `id`, `plugin`, `script` (a function body that `return`s JSON data, ≤ 4 KB), `request?`, `timeoutMs?` (5000) | `{request}`, then `webviews.evalResult {request, webview, ok, value \| error}`. Only for a live page (it never loads or wakes one), in an isolated content world, and only when `plugin` has `session:<the page's host>` |
 | `inject` | `id`, `plugin`, `files?: [name]` (from the plugin's resource folder), `global?`, `script?` (function body, ≤ 64 KB), `args?` (named arguments of `script`), `request?` | `{request}`, then `webviews.injectResult {request, webview, plugin, ok, value \| error}`. See [Plugins in pages](#plugins-in-pages) |
-| `setMenu` | `plugin`, `items: [{id, title, when?: selection\|any}]` (`[]` removes) | ok. Picking one emits `webviews.menu {id, webview, plugin}` |
+| `setMenu` | `plugin`, `items: [{id, title, when?: selection\|page\|any}]` (`[]` removes) | ok. Picking one emits `webviews.menu {id, webview, plugin}` |
 | `setContentRules` | `plugin`, `rules: [WebKit content rule]` (`[]` removes) | `{pending}`, then `webviews.contentRules {plugin, ok, count, error?}` |
 | `get` | `id` | `{id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted, media: {playing, audible, pip, dirty, video?}, suspended, live, profile, snapshot, zoom}` |
 | `list` | – | `[id]` |
@@ -140,7 +140,15 @@ The link policy is declarative because `WKNavigationDelegate` decisions are sync
 - **View Source.** WKWebView has no `view-source:`. `viewSource` reads `document.documentElement.outerHTML` (the current DOM, not the bytes the server sent), escapes it into a monospaced `data:` page titled "Source of <url>" (capped at 2 MB), and opens it with `webviews.newWindow`.
 
 **Den's web view** (`DenWebView`):
-- **Context menu:** WebKit's items reworded for tabs: "Open Link in New Tab" (background), "Open Link in Peek" (when something listens to `peek.link`), "Save Link As…" and "Save Image As…" (a download into a save panel sheet, with the page's own session), "Open Image in New Tab", and for selected text "Search <engine> for “…”" with the command bar's default engine (`commands.engines`, Google without it). The right-clicked link, image and selection come from a `contextmenu` listener in the page (`denContext` message), which arrives before WebKit asks for the menu.
+- **Context menu** (`PageContextMenu.swift`): WebKit's own menu (`willOpenMenu`), its items kept by `WKMenuItemIdentifier…` (Look Up, Translate, Share, Speech, Writing Tools, spelling, Substitutions, Services, media controls) and den's added next to them; items with a menu bar twin show its chord, remaps included. Per context, in order:
+  - Link: Open Link in New Tab (background), Open Link in New Window and in Private Window (`window.new {url, private?}`: the tabs plugin opens the link there instead of the command bar), Open Link in Peek (when something listens to `peek.link`), Open Link in Split View (`peek.splitLink`), Download Linked File (into Downloads), Save Link As… (a save panel sheet; both with the page's own session), Copy Link, Copy Link as Markdown (`[text](url)`), Share. WebKit's "Open Link" (what a click does) is dropped.
+  - Image: Open Image in New Tab, Save Image As…, Copy Image, Copy Image Address, Copy Subject, Look Up, Search Image with Google Lens (http(s) images), Share.
+  - Selected text: Look Up, Translate, Search <engine> for “…” (the command bar's default engine, `commands.engines`; Google without it), Copy, plugins' `selection` items (Copy Link to Highlight; WebKit's own "Copy Link with Highlight" is dropped while den's is there), Share, Writing Tools, Speech.
+  - Text field: Cut ⌘X, Copy, Paste, Paste and Match Style ⌥⇧⌘V, Spelling and Grammar, Substitutions, Transformations, Font, Speech, writing direction.
+  - Video / audio: Play, Mute, Show/Hide Controls, Loop, Enter Full Screen, Picture in Picture (den's item in place of WebKit's: `media.toggle {webview}`, WebKit's native PiP, ⌥⌘P shown), Viewer, Open Video in New Tab, Save Video As…, Copy Video Address (an http(s) source).
+  - The page: Back, Forward, Reload, Save Page As… ⇧⌘S, Print… ⌘P, View Page Source ⌥⌘U, then plugins' `page` items (Translate Page, Zap Elements…).
+  - Then extensions' items (`contextMenus`), and **Inspect Element** (⌥⌘C shown) always last.
+  The right-clicked link (and its text), image, media source and selection come from a `contextmenu` listener in every frame (`denContext` message), which arrives before WebKit asks for the menu. `ContextMenuTests` right-clicks each context for real and runs the den items.
 - **Mouse buttons 4/5** go back and forward. Two-finger swipes navigate back/forward (`allowsBackForwardNavigationGestures`), and pinch and smart zoom work (`allowsMagnification`).
 - **Dropped files** from Finder open as new tabs instead of replacing the page. File URLs load with read access to their folder.
 
@@ -153,7 +161,7 @@ Generic blocks for plugins that work inside web pages (`PageScripting.swift`). T
 - **`inject`** runs the plugin's own code in a live page (never loads or wakes one), in the plugin's own isolated content world `den.plugin.<id>`: the page's scripts can't see it, and plugins can't see each other's. `files` are read from the plugin's resource folder (`Plugins/<id>/resources/`, bundled as `Contents/Resources/plugin-resources/<id>/`) the first time they're used, then cached; `..` and absolute names are refused. With `global`, the files are skipped when `window[global]` already exists in that world (a library loaded once per page). Then `script` runs as an async function body with `args` as named arguments; its return value (JSON data) comes back in `webviews.injectResult`. A thrown error comes back as `error` with the exception's message.
 - **Permission** `pages:<domain>` (or `pages:*`) in the plugin's `permissions.json`; a `session:<domain>` grant also covers its site. Anything else is refused.
 - **Messages.** Code in the plugin's world calls `webkit.messageHandlers.den.postMessage(value)`; den emits `webviews.message {webview, plugin, value}`. A web view gets this handler on the first `inject` into it, and loses it when it is discarded.
-- **Context menu.** `setMenu` items appear in every page's context menu; `when: selection` items only in the menu for selected text (right after Copy).
+- **Context menu.** `setMenu` items appear in every page's context menu; `when: selection` items only in the menu for selected text (right after Copy); `when: page` items only in the menu for the page itself (after View Page Source).
 - **Content rules.** `setContentRules` compiles the plugin's [WebKit content rules](https://developer.apple.com/documentation/safariservices/creating-a-content-blocker) (`block`, `css-display-none`, …) into one list per plugin, added to every live and future web view. WebKit applies them at document start, with no script.
 - **Cost.** Nothing runs until a plugin calls one of these: no scripts, handlers or rule lists at launch.
 

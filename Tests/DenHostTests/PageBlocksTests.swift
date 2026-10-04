@@ -133,6 +133,21 @@ struct PageBlocksTests {
     let item = textMenu.items[2]
     _ = (item.target as? NSObject)?.perform(item.action, with: item)
     #expect(picked == ["id": "demo.quote", "webview": "p", "plugin": "demo"])
+    // `when: page`: only in the page's own menu (Back / Reload, nothing hit), after View Page Source.
+    _ = rt.call("webviews", "setMenu", ["plugin": "demo", "items": [["id": "demo.quote", "title": "Quote", "when": "selection"], ["id": "demo.zap", "title": "Zap", "when": "page"]]])
+    let pageMenu = NSMenu()
+    let reload = NSMenuItem(title: "Reload", action: nil, keyEquivalent: "")
+    reload.identifier = NSUserInterfaceItemIdentifier("WKMenuItemIdentifierReload")
+    pageMenu.addItem(reload)
+    DenWebView.customize(pageMenu, hit: .init(), env: .init(), target: w as? DenWebView)
+    rt.webviews.scripting.extend(pageMenu, for: w)
+    #expect(pageMenu.items.filter { !$0.isSeparatorItem }.map(\.title) == ["Reload", "Save Page As…", "Print…", "View Page Source", "Zap"])
+    let textMenu2 = NSMenu()
+    let copy2 = NSMenuItem(title: "Copy", action: nil, keyEquivalent: "")
+    copy2.identifier = NSUserInterfaceItemIdentifier("WKMenuItemIdentifierCopy")
+    textMenu2.addItem(copy2)
+    rt.webviews.scripting.extend(textMenu2, for: w)
+    #expect(textMenu2.items.map(\.title) == ["Copy", "Quote"])
   }
 
   @Test func snapshotOfARectTheFullPageAndAFolder() async throws {

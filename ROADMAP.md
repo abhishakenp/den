@@ -155,7 +155,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ⏳ "new doc / notion / linear…" creation commands in the command bar
 - ⏳ Command bar names the real search engine, and suggests site-search keywords with a toast
 - ✅ Peek / link preview (⇧/⌥-click any link, links from pinned tabs; Open as Tab, Open in Split View; ⌘Z reopen)
-- ⏳ "Open Link in Peek" in the link context menu
+- ✅ "Open Link in Peek" and "Open Link in Split View" in the link context menu
 - ✅ Split view, including drag-to-split, 2–4 panes, side by side, top and bottom, grid
 - ✅ Little Arc-style quick window (opt-in for links from other apps; ⌘O into the space)
 - ✅ Compact mode / hide sidebar, chrome-less content area
@@ -190,7 +190,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ Shortcuts shown on every surface where the action appears, remaps included (read from the menu bar item: `keyFor` / `shortcutFor`)
   - ✅ menu bar, command bar rows (menu glyph order ⌃⌥⇧⌘; Copy URL as Markdown ⌥⇧⌘C)
   - ✅ hover-card button tooltips (and the shortcuts act on the hovered tab while its card is open, a remapped chord too)
-  - ✅ tab, folder and space context menus (with ⌥ alternates); page context menu (Back, Forward, Reload, Cut, Copy, Paste, Inspect Element)
+  - ✅ tab, folder and space context menus (with ⌥ alternates); page context menu (Back, Forward, Reload, Save Page As…, Print…, View Page Source, Cut, Copy, Paste, Paste and Match Style, PiP, Inspect Element)
   - ✅ icon-button tooltips: sidebar toggle, Back, Forward, Reload/Stop, Copy Link, Library, New Space, space icons (⌃1…⌃9), split pane ×, Peek, find bar; Settings rows and toasts in glyphs
 - ✅ No row tooltips: tab rows, tiles, split rows and list rows show hover cards instead
 - ✅ User guide ([docs/guide](docs/guide/)), with Tips & hidden gems

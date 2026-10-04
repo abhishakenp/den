@@ -129,7 +129,9 @@ final class PageScripting {
 
   // MARK: context menu
 
-  /// `items: [{id, title, when?: selection|any}]` (null or [] removes the plugin's items).
+  /// `items: [{id, title, when?: selection|page|any}]` (null or [] removes the plugin's items).
+  /// `page`: only in the menu for the page itself (no link, image, media or selection), after
+  /// View Page Source.
   func setMenu(_ args: Value) -> Value {
     let plugin = args.str("plugin")
     guard !plugin.isEmpty else { return .error("webviews: setMenu needs 'plugin'") }
@@ -143,14 +145,26 @@ final class PageScripting {
     // WebKit's menu for selected text has a Copy item; link and image menus don't.
     let copy = menu.items.firstIndex { $0.identifier?.rawValue == "WKMenuItemIdentifierCopy" }
     var at = copy.map { $0 + 1 } ?? menu.items.count
+    let isPage = DenWebView.isPageMenu(menu, hit: (w as? DenWebView)?.context ?? .init())
+    // Page items: after View Page Source (the page menu's last den item), else at the end.
+    var pageAt = (menu.items.firstIndex { $0.action == #selector(DenWebView.viewPageSource(_:)) }).map { $0 + 1 } ?? menu.items.count
     for (plugin, items) in menus.sorted(by: { $0.key < $1.key }) {
       for item in items {
-        if item.str("when") == "selection", copy == nil { continue }
+        let when = item.str("when")
+        if when == "selection", copy == nil { continue }
+        if when == "page", !isPage { continue }
         let mi = NSMenuItem(title: item.str("title"), action: #selector(PluginMenuTarget.picked(_:)), keyEquivalent: "")
         mi.target = PluginMenuTarget.shared
         mi.representedObject = [item.str("id"), id, plugin]
-        menu.insertItem(mi, at: min(at, menu.items.count))
-        at += 1
+        if when == "page" {
+          menu.insertItem(mi, at: min(pageAt, menu.items.count))
+          pageAt += 1
+          if at >= pageAt - 1 { at += 1 }
+        } else {
+          menu.insertItem(mi, at: min(at, menu.items.count))
+          if pageAt >= at { pageAt += 1 }
+          at += 1
+        }
       }
     }
     PluginMenuTarget.shared.emit = { [weak self] item, webview, plugin in

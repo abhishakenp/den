@@ -1174,7 +1174,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
     if msg.name == "denContext" {
       guard let w = msg.webView as? DenWebView, let b = msg.body as? [String: Any] else { return }
-      w.context = .init(link: b["link"] as? String ?? "", image: b["image"] as? String ?? "", selection: b["selection"] as? String ?? "")
+      w.context = DenWebView.ContextHit(b)
       return
     }
     guard let w = msg.webView, let r = recordFor(w), r.webView === w else { return }

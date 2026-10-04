@@ -128,10 +128,15 @@ extension TabsCore {
   /// starts empty with the command bar too.
   func windowOpened(_ v: Value) {
     let id = v.s("id")
+    // `url` ("Open Link in New Window" / "… in Private Window"): the window opens with that page
+    // as a new tab, instead of asking with the command bar.
+    let url = v.sOpt("url")
     if v.b("private") {
       privates[id] = PrivateWindow()
-      renderPrivate(id)
-      if v.b("focus") { commandBarFor = id }
+      if let u = url { _ = openPrivate(u, in: id, background: false) } else {
+        renderPrivate(id)
+        if v.b("focus") { commandBarFor = id }
+      }
       return
     }
     if let r = reopening {
@@ -139,6 +144,11 @@ extension TabsCore {
       let tab = r.sOpt("tab").flatMap { tabs[$0] != nil ? $0 : nil }
       places[id] = Place(space: sid, tab: tab)
       show(tab, inWindow: id)
+    } else if let u = url {
+      let sid = space(atPage: v)
+      let t = open(u, space: sid, kind: "today", background: true, index: nil)
+      places[id] = Place(space: sid, tab: t)
+      show(t, inWindow: id)
     } else {
       places[id] = Place(space: space(atPage: v), tab: nil)
       show(nil, inWindow: id)

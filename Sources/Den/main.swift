@@ -448,6 +448,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       #if Scenarios
       PopupScenarios.apply(s, url: arg("--url"), runtime: rt)
       #endif
+    case "pageMenuLink", "pageMenuImage", "pageMenuText", "pageMenuPage", "inspectorDocked":
+      #if Scenarios
+      DevToolsScenarios.apply(s, runtime: rt)
+      #endif
     case "newWindow":
       // ⌘N: a second window on the same space, its command bar asking what to open.
       snapActive = true

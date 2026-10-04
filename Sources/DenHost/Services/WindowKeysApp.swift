@@ -50,8 +50,12 @@ public final class WindowService: HostService {
     }
     if args["sidebarHidden"].bool == true { w.setSidebarHidden(true, animated: false) }
     let focus = args.flag("focus", true)
-    // Plugins hear about the window before it becomes active, so they know what it is.
-    windows.emit("window.opened", describe(w).with("restored", .bool(args.flag("restored"))).with("focus", .bool(focus)))
+    // Plugins hear about the window before it becomes active, so they know what it is. `url`
+    // ("Open Link in New Window"): the page the window opens with (the tabs plugin opens it
+    // instead of the command bar).
+    var opened = describe(w).with("restored", .bool(args.flag("restored"))).with("focus", .bool(focus))
+    if let u = args["url"].string, !u.isEmpty { opened = opened.with("url", .string(u)) }
+    windows.emit("window.opened", opened)
     if focus {
       windows.activate(w)
       if !TestMode.active { Presentation.show(w.window) }

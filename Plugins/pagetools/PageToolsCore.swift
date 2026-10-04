@@ -83,12 +83,20 @@ final class PageToolsCore {
 
   static let startDelayMs: UInt64 = 1500
 
+  /// The page context menu's items (`webviews.setMenu`): Copy Link to Highlight on selected
+  /// text; Translate Page and Zap Elements on the page itself (after View Page Source).
+  static let menuItems: [Value] = [
+    ["id": "pagetools.highlight", "title": "Copy Link to Highlight", "when": "selection"],
+    ["id": "pagetools.translate", "title": "Translate Page", "when": "page"],
+    ["id": "pagetools.zap", "title": "Zap Elements…", "when": "page"],
+  ]
+
   func startNow() {
     guard !started else { return }
     started = true
     load()
     bindKeys()
-    env.call("webviews", "setMenu", ["plugin": .string(Self.id), "items": [["id": "pagetools.highlight", "title": "Copy Link to Highlight", "when": "selection"]]])
+    env.call("webviews", "setMenu", ["plugin": .string(Self.id), "items": .array(Self.menuItems)])
     if !zaps.isEmpty { syncZapRules() }
     subscribe()
     registerCommands()
@@ -246,7 +254,14 @@ final class PageToolsCore {
       if v.s("plugin") == Self.id { message(v.s("webview"), v["value"]) }
     }
     env.on("webviews.menu") { [self] v in
-      if v.s("plugin") == Self.id, v.s("id") == "pagetools.highlight" { highlight(v.s("webview")) }
+      guard v.s("plugin") == Self.id else { return }
+      let w = v.s("webview")
+      switch v.s("id") {
+      case "pagetools.highlight": highlight(w)
+      case "pagetools.translate": if translated[w] != nil { showOriginal(w) } else { translate(w) }
+      case "pagetools.zap": zap(w)
+      default: break
+      }
     }
     env.on("webviews.snapshot") { [self] v in
       if capturing.contains(v.s("id")), !v["bytes"].isNull || v["ok"] == false { captured(v) }
