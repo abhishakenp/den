@@ -63,13 +63,22 @@ Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatT
 
 | Extension | Works? | What we checked |
 |---|---|---|
-| uBlock Origin Lite | Works | Blocks ad and tracker scripts on a test page |
-| Dark Reader | Works | Firefox build darkens a page; Chrome build installs and starts |
+| uBlock Origin Lite | Works | Blocks ad and tracker scripts on a test page; on a YouTube watch page no ad request is made (one was before). Its filters, page scripts and "optimal" filtering mode all load |
+| uBlock Origin (full) | Not on WebKit | Installs from Firefox Add-ons and its popup opens, but it can't block: it needs to stop web requests, which Safari's engine doesn't allow. den says so on its store page and offers uBlock Origin Lite. The Chrome Web Store no longer offers it |
+| Dark Reader | Works | Firefox build darkens a page; Chrome build starts and its popup opens |
 | JSON Formatter | Works | Formats a JSON page |
-| Vimium (Chrome Web Store) | Partial | Works: link hints (`f`, `F`, `Esc`), scrolling (`j`, `d`, `G`, `gg`), the Vomnibar (`o`), find (`/`), next tab (`K`). Not in den: bookmarks (the Vomnibar finds none), history before you installed it |
+| 1Password | Partial | Installs, starts, popup opens. Unlocking through the desktop app isn't checked |
+| SponsorBlock | Works | Starts; popup opens ("No YouTube video found" off YouTube) |
+| Return YouTube Dislike | Works | Starts; popup opens |
+| Grammarly | Partial | Starts; popup opens. Signing in (`identity`) isn't available |
+| LanguageTool | Works | Starts; popup opens |
+| Raindrop.io | Works | Starts; popup opens |
+| Vimium (Chrome Web Store) | Partial | Works: link hints show (`f`, `F`, `Esc`), scrolling (`j`, `d`, `G`, `gg`), the Vomnibar (`o`), find (`/`), next tab (`K`). Not yet: following a hint's link. Not in den: bookmarks (the Vomnibar finds none), history from before you installed it |
 | Vimium (Firefox Add-ons) | Partial | Same as above; its toolbar icon shows an error, because that build lacks the icons Vimium asks for outside Firefox. Prefer the Chrome Web Store build |
 | ColorPick Eyedropper | Partial | The popup opens; its background doesn't start, so picking colors doesn't work |
-| Bitwarden | Not yet | Installs, but its background doesn't start (it needs `offscreen`, `sidePanel`, `idle` and more). den tells you so when you add it |
+| Bitwarden | Not yet | Installs and its popup opens, but its background doesn't start. den tells you so when you add it |
+
+An extension's keyboard shortcuts work: they're listed, with their keys, in the **Extensions** menu in the menu bar.
 
 den fills some gaps itself, in its own copy of each extension, so an extension that touches a missing API keeps running instead of stopping silently: events WebKit leaves out (such as `webNavigation.onHistoryStateUpdated`, which stopped Vimium), an empty `bookmarks`, a `history` of pages visited since the extension was added, `sessions` for tabs closed since then, and `search`. Folders in `~/.den/extensions` are left exactly as they are.
 
@@ -80,7 +89,6 @@ WebKit's extension support is good but not Chrome's. These don't exist on WebKit
 
 And these aren't wired into den yet:
 
-- an extension's own keyboard shortcuts (`commands`)
 - an extension's items in right-click menus
 
 Extensions that talk to a desktop app through native messaging (for example a password manager's desktop integration) need a bridge den doesn't have yet. See [Coming soon](coming-soon.md).
