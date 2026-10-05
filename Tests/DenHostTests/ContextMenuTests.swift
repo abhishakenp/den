@@ -176,6 +176,11 @@ struct ContextMenuTests {
     // Copy Link as Markdown: the link's text and address.
     _ = try await Self.rightClick(p.w, at: Self.link, "link", pick: "Copy Link as Markdown")
     #expect(DenWebView.pasteboard.string(forType: .string) == "[A link text](\(target))")
+    // Copy Link is den's: the address, as text and URL, with the link's text as its name.
+    _ = try await Self.rightClick(p.w, at: Self.link, "link", pick: "Copy Link")
+    #expect(DenWebView.pasteboard.string(forType: .string) == target)
+    #expect(DenWebView.pasteboard.string(forType: .URL) == target)
+    #expect(DenWebView.pasteboard.string(forType: NSPasteboard.PasteboardType("public.url-name")) == "A link text")
     // New window / private window: the window service opens one with the link.
     _ = try await Self.rightClick(p.w, at: Self.link, "link", pick: "Open Link in New Window")
     try await PageActionTests.until(10) { opened().contains { $0["url"].string == target && $0["private"] != true } }
@@ -186,6 +191,32 @@ struct ContextMenuTests {
     try await PageActionTests.until(10) { peek().last?["url"].string == target }
     _ = try await Self.rightClick(p.w, at: Self.link, "link", pick: "Open Link in Split View")
     try await PageActionTests.until(10) { split().last?["url"].string == target && split().last?["id"].string == p.id }
+  }
+
+  /// Copy Link and Copy Link as Markdown copy the link as `shields.clean` returns it (its rules
+  /// are tested in ShieldsTests; `ShieldsTests.copyLinkUsesShields` checks the runtime's wiring
+  /// to the real plugin). Here a stand-in shields drops the two tracking parameters.
+  @Test func copyLinkStripsTrackingParameters() async throws {
+    let p = try await Self.page()
+    defer { Self.close(p) }
+    var asked: [String] = []
+    var off = false
+    p.rt.plugins.provide("shields") { m, a in
+      guard m == "clean", !off else { return .error("off") }
+      asked.append(a.str("url"))
+      return ["url": .string(a.str("url").replacingOccurrences(of: "&utm_source=x&fbclid=y", with: ""))]
+    }
+    _ = await Wait.js(p.w, "document.querySelector('a').setAttribute('href','/a?id=1&utm_source=x&fbclid=y');1")
+    _ = try await Self.rightClick(p.w, at: Self.link, "link", pick: "Copy Link")
+    #expect(asked == [p.base + "/a?id=1&utm_source=x&fbclid=y"])
+    #expect(DenWebView.pasteboard.string(forType: .string) == p.base + "/a?id=1")
+    #expect(DenWebView.pasteboard.string(forType: .URL) == p.base + "/a?id=1")
+    _ = try await Self.rightClick(p.w, at: Self.link, "link", pick: "Copy Link as Markdown")
+    #expect(DenWebView.pasteboard.string(forType: .string) == "[A link text](\(p.base)/a?id=1)")
+    // Without shields (or when it answers an error) the link is copied as the page wrote it.
+    off = true
+    _ = try await Self.rightClick(p.w, at: Self.link, "link", pick: "Copy Link")
+    #expect(DenWebView.pasteboard.string(forType: .string) == p.base + "/a?id=1&utm_source=x&fbclid=y")
   }
 
   @Test func imageMenu() async throws {

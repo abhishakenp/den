@@ -382,6 +382,7 @@ Injects `sitepolicy`, `webviews`, `ui`, `storage`; calls `settings`, `commands`,
 | Method | Args | Returns |
 |---|---|---|
 | `navigate` | `{id, url, source, link}` | the `sitepolicy` guard's answer (below) |
+| `clean` | `url` | `{url, removed: [name]}`: the link as the guard would rewrite it (bounce skipped, tracking parameters off; same settings and per-site blocker), `removed` empty when nothing changed. The page context menu's Copy Link and Copy Link as Markdown copy this (`webviews.cleanLink`) |
 | `open` / `close` | `id?` (a web view; default the focused one) | ok. The panel |
 | `site` | `host`, `blocker?`, `cookies?`, `autoplay?: allow\|sound\|none`, `popups?: allow\|block` | ok |
 | `get` | `host` | `{blocker, cookies, autoplay, popups, httpAllowed, lists, ubo, global.*}` |

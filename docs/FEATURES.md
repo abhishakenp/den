@@ -95,7 +95,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | "new doc / notion / linear…" creation commands | ? | ✅ | ? | ⏳ | |
 | [Remappable shortcuts](guide/shortcuts.md) | ✅ | ✅ | ✅ | ✅ | `[shortcuts]` in `config.toml`; one key registry, checked by `ShortcutTests` against [shortcuts.md](shortcuts.md) |
 | Shortcuts shown wherever an action appears | ? | ✅ | ? | 🟡 | ✅ menu bar, command bar rows. ⏳ context menus, button tooltips, Settings rows |
-| [Copy URL (Cmd-Shift-C)](guide/page-tools.md) | ✅ | ? | ? | 🟡 | ✅ copies the URL. ⏳ tracking parameters stripped |
+| [Copy URL (Cmd-Shift-C)](guide/page-tools.md) | ✅ | ? | ? | 🟡 | ✅ copies the URL. ✅ tracking parameters stripped (shields cleans every navigation; the page menu's Copy Link cleans links) |
 | [Copy URL as Markdown](guide/page-tools.md) | ✅ | ? | ✅ | ✅ | ⌥⇧⌘C |
 | Paste clipboard as new tab (Paste and Go) | ✅ | ✅ | ? | ⏳ | |
 | Long-press back/forward for history | ✅ | ? | ✅ | — | |

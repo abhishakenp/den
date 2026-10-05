@@ -91,6 +91,18 @@ struct ShieldsTests {
     return false
   }
 
+  /// The page menu's Copy Link (`webviews.cleanLink`, set by DenRuntime) goes through the real
+  /// plugin's `clean`, so it follows Settings > Shields > Remove tracking parameters.
+  @Test func copyLinkUsesShields() throws {
+    let h = Harness()
+    let clean = try #require(h.rt.webviews.cleanLink)
+    let dirty = "https://example.com/a?id=1&utm_source=x&fbclid=y"
+    #expect(clean(dirty) == dirty)  // no shields loaded: copied as it is
+    _ = start(h)
+    #expect(clean(dirty) == "https://example.com/a?id=1")
+    #expect(clean("https://example.com/a?id=1") == "https://example.com/a?id=1")
+  }
+
   @Test func pushesRulesAndGuardsNavigations() {
     let h = Harness()
     let core = start(h)
@@ -109,12 +121,19 @@ struct ShieldsTests {
     #expect(l["action"] == "interstitial")
     #expect(l["page"]["title"] == "Did you mean apple.com?")
     #expect(h.rt.call("shields", "navigate", ["url": "https://example.com/"]).isNull)
+    // Copy Link (the page menu): the same cleaning as a navigation, and a clean link unchanged.
+    let c = h.rt.call("shields", "clean", ["url": "https://example.com/a?id=1&utm_source=x&fbclid=y#top"])
+    #expect(c["url"] == "https://example.com/a?id=1#top")
+    #expect(c["removed"] == ["utm_source", "fbclid"])
+    #expect(h.rt.call("shields", "clean", ["url": "https://click.linksynergy.com/deeplink?murl=https%3A%2F%2Fshop.example%2F%3Fgclid%3D1"])["url"] == "https://shop.example/")
+    #expect(h.rt.call("shields", "clean", ["url": "https://example.com/a?id=1"]) == ["url": "https://example.com/a?id=1", "removed": []])
 
     // Per site: blocker off drops the ad and tracker lists there and stops link cleaning.
     #expect(h.rt.call("shields", "site", ["host": "news.example", "blocker": false]).isError == false)
     #expect(h.rt.sitePolicy.rule(for: "www.news.example").lists == ["shields.cookies"])
     #expect(h.rt.sitePolicy.rule(for: "www.news.example").scripts.isEmpty)
     #expect(h.rt.call("shields", "navigate", ["url": "https://news.example/a?utm_campaign=x"]).isNull)
+    #expect(h.rt.call("shields", "clean", ["url": "https://news.example/a?utm_campaign=x"])["url"] == "https://news.example/a?utm_campaign=x")
     #expect(h.storage("shields", "sites")["news.example"]["blocker"] == false)
     // Back to the global choice: no exception left.
     h.rt.call("shields", "site", ["host": "news.example", "blocker": true])

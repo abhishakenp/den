@@ -293,11 +293,14 @@ struct PageActionTests {
     DenWebView.finish(m)
     #expect(m.items.map { $0.isSeparatorItem ? "-" : $0.title } == [
       "Open Link in New Tab", "Open Link in New Window", "Open Link in Private Window", "Open Link in Peek", "Open Link in Split View", "-",
-      "Download Linked File", "Save Link As…", "-", "CopyLink", "Copy Link as Markdown", "Open Image in New Tab", "-", "Save Image As…",
+      "Download Linked File", "Save Link As…", "-", "Copy Link", "Copy Link as Markdown", "Open Image in New Tab", "-", "Save Image As…",
       "CopyImage", "Copy Image Address", "Search Image with Google Lens", "Search Kagi for “a rather long selected phrase…”",
     ])
     #expect(m.items[0].representedObject as? String == "https://a.test/l")
-    #expect(m.items.first { $0.title == "Copy Link as Markdown" }?.representedObject as? String == "[Some link](https://a.test/l)")
+    // den's Copy Link replaces WebKit's (it copies the cleaned link); both carry the link and its text.
+    let copyLink = try #require(m.items.first { $0.title == "Copy Link" })
+    #expect(DenWebView.id(copyLink) == nil && copyLink.representedObject as? [String] == ["https://a.test/l", " Some\n  link "])
+    #expect(m.items.first { $0.title == "Copy Link as Markdown" }?.representedObject as? [String] == ["https://a.test/l", " Some\n  link "])
     #expect(m.items.first { $0.title == "Save Image As…" }?.representedObject as? String == "https://a.test/i.png")
     #expect(m.items.last?.representedObject as? String == "a rather long selected phrase here")
     #expect(DenWebView.markdownLink(.init(link: "https://a.test/(x)", linkText: "a [b]")) == "[a \\[b\\]](https://a.test/%28x%29)")

@@ -118,6 +118,7 @@ public final class DenRuntime {
       return (e.str("name", "Google"), u)
     }
     webviews.pageActions = pa
+    webviews.cleanLink = { [weak plugins] url in plugins?.call("shields", "clean", ["url": .string(url)])["url"].string ?? url }
     sitePolicy.prompts = webviews.prompts
     sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
     sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }

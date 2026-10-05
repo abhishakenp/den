@@ -790,6 +790,10 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   /// Adds items to a web page's context menu (plugins' `setMenu`).
   public var contextMenu: ((WKWebView, NSMenu) -> Void)?
+  /// A link as the context menu copies it (Copy Link, Copy Link as Markdown): `DenRuntime` asks
+  /// the `shields` plugin (`shields.clean`: tracking parameters off, bounce skipped). Unset, or
+  /// without shields, the link is copied as it is.
+  public var cleanLink: ((String) -> String)?
 
   public func id(of w: WKWebView) -> String? { recordFor(w)?.id }
 

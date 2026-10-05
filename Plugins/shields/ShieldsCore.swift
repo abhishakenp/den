@@ -371,6 +371,23 @@ final class ShieldsCore {
     return .null
   }
 
+  /// A link as den copies it (the page menu's Copy Link): the address `navigate` would rewrite it
+  /// to (bounce skipped, tracking parameters removed, same settings), never an error.
+  func clean(_ url: String) -> Value {
+    var u = url
+    var removed: [Value] = []
+    if on("bounce"), let dest = CleanLinks.unwrap(u), blocker(URLs.host(dest)) {
+      u = dest
+      removed.append("bounce")
+    }
+    if on("params"), blocker(URLs.host(u)) {
+      let r = CleanLinks.strip(u)
+      u = r.url
+      for k in r.removed { removed.append(.string(k)) }
+    }
+    return ["url": .string(u), "removed": .array(removed)]
+  }
+
   /// "аpple.com" as it would render (for the warning; the pill keeps Punycode).
   static func unicode(_ host: String) -> String {
     guard let ls = IDN.unicodeLabels(host) else { return host }
@@ -429,6 +446,7 @@ final class ShieldsCore {
   func handle(_ method: String, _ a: Value) -> Value {
     switch method {
     case "navigate": return navigate(a)
+    case "clean": return clean(a.s("url"))
     case "pill": return pill(a.s("url"))
     case "open":
       openPanel(a.sOpt("id"))

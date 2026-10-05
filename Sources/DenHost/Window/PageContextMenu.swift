@@ -135,7 +135,14 @@ extension DenWebView {
                  item("Save Link As…", #selector(saveAs(_:)), hit.link), .separator()])
       case "CopyLink":
         guard !hit.link.isEmpty else { i += 1; continue }
-        after([item("Copy Link as Markdown", #selector(copyText(_:)), markdownLink(hit))])
+        // den's own Copy Link: the link without tracking parameters (`cleanLink`), like the URL
+        // pill's copy; WebKit's would copy the address as the page wrote it.
+        let copy = item("Copy Link", #selector(copyLink(_:)))
+        copy.representedObject = [hit.link, hit.linkText]
+        copy.image = it.image ?? NSImage(systemSymbolName: "link", accessibilityDescription: nil)
+        let md = item("Copy Link as Markdown", #selector(copyMarkdownLink(_:)))
+        md.representedObject = [hit.link, hit.linkText]
+        replace([copy, md])
       // Image
       case "OpenImageInNewWindow":
         guard !hit.image.isEmpty else { it.title = "Open Image in New Tab"; i += 1; continue }
@@ -289,6 +296,27 @@ extension DenWebView {
     Self.pasteboard.setString(s, forType: .string)
     // A URL (an image's or video's address) also goes on as one.
     if !s.hasPrefix("["), let u = URL(string: s), u.scheme != nil { Self.pasteboard.setString(u.absoluteString, forType: .URL) }
+  }
+  /// The link (cleaned) and its text, from a Copy Link item.
+  private func link(_ sender: NSMenuItem) -> (url: String, text: String)? {
+    guard let p = sender.representedObject as? [String], p.count == 2, !p[0].isEmpty else { return nil }
+    return (service?.cleanLink?(p[0]) ?? p[0], p[1])
+  }
+  /// Copy Link: the address as text and as a URL, plus its text as the URL's name (what Safari's
+  /// puts there, so Notes and Mail paste a titled link).
+  @objc func copyLink(_ sender: NSMenuItem) {
+    guard let l = link(sender) else { return }
+    let pb = Self.pasteboard
+    pb.clearContents()
+    pb.setString(l.url, forType: .string)
+    pb.setString(URL(string: l.url)?.absoluteString ?? l.url, forType: .URL)
+    let name = l.text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+    if !name.isEmpty { pb.setString(name, forType: NSPasteboard.PasteboardType("public.url-name")) }
+  }
+  @objc func copyMarkdownLink(_ sender: NSMenuItem) {
+    guard let l = link(sender) else { return }
+    Self.pasteboard.clearContents()
+    Self.pasteboard.setString(Self.markdownLink(ContextHit(link: l.url, linkText: l.text)), forType: .string)
   }
   /// Save … As…: through the downloads list, with a save panel for the destination.
   @objc func saveAs(_ sender: NSMenuItem) { if let s = value(sender) { download(s, ask: true) } }
