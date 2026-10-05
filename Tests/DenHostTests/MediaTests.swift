@@ -28,6 +28,31 @@ struct MediaTests {
     await Wait.until("a condition", seconds: s, line: line) { cond() }
   }
 
+  /// Before a PiP test: the previous test's system PiP window has finished closing (PiP is
+  /// system-wide, so a lingering one would be the window this test's buttons and checks find).
+  func noPipLeft(line: UInt = #line) async {
+    #expect(await Wait.until("no PiP window left from an earlier test", seconds: 15, line: line) { NativePiP.systemWindows().isEmpty })
+  }
+
+  /// After a PiP test: out of PiP, and the system window gone, so the next test starts clean.
+  func closePip(_ rt: DenRuntime, line: UInt = #line) async {
+    if !rt.media.active.isEmpty { _ = rt.call("media", "exit") }
+    _ = await Wait.until("PiP closed at the end of the test", seconds: 15, line: line) { rt.media.active.isEmpty && NativePiP.systemWindows().isEmpty }
+  }
+
+  /// The PiP window is up with its buttons wired to WebKit and done opening: it appears a moment
+  /// after WebKit's delegate says the video entered, then animates; its frame unchanged across
+  /// two looks 150 ms apart means the animation is over.
+  func pipButtonsReady(_ selector: String, line: UInt = #line) async -> Bool {
+    var last = ""
+    return await Wait.until("the PiP window's \(selector) button, opened", seconds: 15, every: .milliseconds(150), line: line) {
+      guard MediaScenarios.pipButtonsReady(selector), let w = NativePiP.systemWindows().first else { return false }
+      let frame = "\(w[kCGWindowBounds as String] ?? "")"
+      defer { last = frame }
+      return frame == last
+    }
+  }
+
   @Test func rangeRequestsAnswer206() throws {
     let mock = MockServices()
     let r = mock.file("video/mp4", Data(0..<100), range: "bytes=10-19")
@@ -44,6 +69,7 @@ struct MediaTests {
     let rt = ServiceTests.runtime()
     rt.window.window.orderFront(nil)
     defer { rt.window.window.orderOut(nil) }
+    await noPipLeft()
     let mock = try Self.served()
     let id = rt.call("webviews", "create", ["id": "v", "url": .string(mock.base + "/v.html")])["id"].string!
     let other = rt.call("webviews", "create", ["id": "o"])["id"].string!
@@ -107,6 +133,7 @@ struct MediaTests {
     try await Task.sleep(for: .seconds(1))
     #expect(rt.media.active.isEmpty)
     _ = rt.call("media", "settings", ["autoPip": true])
+    await closePip(rt)
     mock.stop()
   }
 
@@ -118,6 +145,7 @@ struct MediaTests {
     let rt = ServiceTests.runtime()
     rt.window.window.orderFront(nil)
     defer { rt.window.window.orderOut(nil) }
+    await noPipLeft()
     let mock = try Self.served()
     let id = rt.call("webviews", "create", ["id": "b", "url": .string(mock.base + "/v.html")])["id"].string!
     let other = rt.call("webviews", "create", ["id": "c"])["id"].string!
@@ -128,6 +156,9 @@ struct MediaTests {
     _ = await Wait.asyncJS(web, play)
     #expect(await wait { rt.media.eligibleVideo(id) != nil })
     var back: [Value] = []
+    var lines: [String] = []
+    rt.media.log = { lines.append($0) }
+    defer { rt.media.log = nil }
     // What the tabs plugin does: select the tab, so its web view is back in the window, where
     // WebKit puts the video back.
     _ = rt.host.on("media.backToTab") { v in
@@ -139,7 +170,7 @@ struct MediaTests {
     // Return button.
     _ = rt.call("content", "show", ["panes": [.string(other)]])
     #expect(await wait(10) { rt.media.active.contains(id) })
-    try await Task.sleep(for: .seconds(1))  // the PiP window's opening animation
+    #expect(await pipButtonsReady("pipShouldClose:"))
     #expect(MediaScenarios.pressPipButton("pipShouldClose:"))
     #expect(await wait(10) { !rt.media.active.contains(id) })
     #expect(back == [["webview": .string(id)]])
@@ -149,7 +180,7 @@ struct MediaTests {
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     _ = rt.call("content", "show", ["panes": [.string(other)]])
     #expect(await wait(10) { rt.media.active.contains(id) })
-    try await Task.sleep(for: .seconds(1))
+    #expect(await pipButtonsReady("pipActionStop:"))
     #expect(MediaScenarios.pressPipCloseButton())
     #expect(await Wait.until("the close button pauses") { await Wait.asyncJS(web, "return document.querySelector('video').paused") as? Bool == true })
     #expect(await wait(10) { rt.media.active.isEmpty })
@@ -170,11 +201,12 @@ struct MediaTests {
     _ = rt.call("content", "show", ["panes": [.string(other)]])
     _ = rt.call("content", "show", ["panes": [.string(id)]])
     try await Task.sleep(for: .seconds(1))
-    #expect(rt.media.active.contains(id), "a PiP you started stays when you come back: \(pipEvents)")
+    #expect(rt.media.active.contains(id), "a PiP you started stays when you come back: \(pipEvents) \(lines)")
 
     #expect(rt.call("media", "toggle") == ["webview": .string(id), "pip": false])
     #expect(await wait(10) { rt.media.active.isEmpty })
     #expect(rt.call("media", "toggle", ["webview": "nope"])["error"].string != nil)
+    await closePip(rt)
     mock.stop()
   }
 
@@ -185,6 +217,7 @@ struct MediaTests {
     let rt = ServiceTests.runtime()
     rt.window.window.orderFront(nil)
     defer { rt.window.window.orderOut(nil) }
+    await noPipLeft()
     let mock = try Self.served()
     mock.files["/tall.html"] = ("text/html", Data("<title>T</title><video src='/v.mp4' style='width:640px' loop></video><div style='height:4000px'></div>".utf8))
     let id = rt.call("webviews", "create", ["id": "s", "url": .string(mock.base + "/tall.html")])["id"].string!
@@ -204,6 +237,7 @@ struct MediaTests {
       _ = rt.call("content", "show", ["panes": [.string(id)]])
       #expect(await wait(10) { rt.media.active.isEmpty })
     }
+    await closePip(rt)
     mock.stop()
   }
 
@@ -216,6 +250,7 @@ struct MediaTests {
     let rt = ServiceTests.runtime()
     rt.window.window.orderFront(nil)
     defer { rt.window.window.orderOut(nil) }
+    await noPipLeft()
     let mock = try Self.served()
     let id = rt.call("webviews", "create", ["id": "a", "url": .string(mock.base + "/v.html")])["id"].string!
     let other = rt.call("webviews", "create", ["id": "b"])["id"].string!
@@ -238,7 +273,10 @@ struct MediaTests {
     rt.media.appActiveChanged(false)
     #expect(await wait(10) { rt.media.active.contains(id) }, "\(lines)")
     #expect(rt.media.auto.contains(id))
-    #expect(lines.contains { $0.hasPrefix("pip appSwitch \(id): enter") } && lines.contains { $0.hasPrefix("pip enter \(id): js(main) -> true") }, "\(lines)")
+    #expect(lines.contains { $0.hasPrefix("pip appSwitch \(id): enter") }, "\(lines)")
+    // The page's requestPictureInPicture() promise can resolve after WebKit's delegate reports the
+    // video in PiP (CI run 37286259254): its log line is awaited, not expected to be there already.
+    #expect(await wait(10) { lines.contains { $0.hasPrefix("pip enter \(id): js(main) -> true") } }, "\(lines)")
     #expect(lines.contains("pip webkit \(id): in (auto)") || lines.contains("pip webkit \(id): in (auto) systemWindow"), "\(lines)")
     // The window is in sight (another app in front of part of it): it stays in PiP.
     rt.media.evaluateWindow()
@@ -250,6 +288,7 @@ struct MediaTests {
     #expect(await Wait.until("inline and playing") { await Wait.asyncJS(web, "return !document.pictureInPictureElement && !document.querySelector('video').paused") as? Bool == true })
     print("media-test: appSwitch log\n" + lines.joined(separator: "\n"))
     rt.media.log = nil
+    await closePip(rt)
     mock.stop()
   }
 
@@ -259,6 +298,7 @@ struct MediaTests {
     let rt = ServiceTests.runtime()
     rt.window.window.orderFront(nil)
     defer { rt.window.window.orderOut(nil) }
+    await noPipLeft()
     let mock = try Self.served()
     let id = rt.call("webviews", "create", ["id": "f", "url": .string(mock.base + "/v.html")])["id"].string!
     _ = rt.call("content", "show", ["panes": [.string(id)]])
@@ -277,6 +317,7 @@ struct MediaTests {
     #expect(lines.contains { $0.hasPrefix("pip appSwitch \(id): skip, small") } && lines.contains { $0.hasPrefix("pip appSwitch \(id): enter after a fresh report") }, "\(lines)")
     _ = rt.call("media", "exit")
     #expect(await wait(10) { rt.media.active.isEmpty })
+    await closePip(rt)
     mock.stop()
   }
 
