@@ -105,32 +105,28 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
     override func mouseExited(with event: NSEvent) { HoverTracker.refresh(window); needsLayout = true }
     override var mouseDownCanMoveWindow: Bool { false }
 
-    /// A row with a `file` drags out as that file (Finder, Mail, a page's upload field).
+    /// A row with a `file` drags out as that file (Finder, Mail, a page's upload field), like
+    /// Safari's downloads list (FileDrag.swift).
+    var onDragMoved: ((NSPoint) -> Void)?
+    var onDragEnded: ((NSPoint, NSDragOperation) -> Void)?
     override func mouseDown(with event: NSEvent) {
-      guard !file.isEmpty, FileManager.default.fileExists(atPath: file), let window else { return }
-      let start = event.locationInWindow
-      while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp], until: .distantFuture, inMode: .eventTracking, dequeue: true) {
-        if e.type == .leftMouseUp {
-          if e.clickCount == 1, bounds.contains(convert(e.locationInWindow, from: nil)) { onRestore?() }
-          return
-        }
-        if hypot(e.locationInWindow.x - start.x, e.locationInWindow.y - start.y) > 4 { return beginFileDrag(e) }
-      }
+      guard FileDrag.draggable(file) != nil else { return }
+      FileDrag.track(self, event, drag: beginFileDrag) { onRestore?() }
     }
     override func mouseUp(with event: NSEvent) {
       if event.clickCount == 1, bounds.contains(convert(event.locationInWindow, from: nil)) { onRestore?() }
     }
 
     func beginFileDrag(_ e: NSEvent) {
-      let url = URL(fileURLWithPath: file)
-      let item = NSDraggingItem(pasteboardWriter: url as NSURL)
-      let img = NSWorkspace.shared.icon(forFile: file)
-      let p = convert(e.locationInWindow, from: nil)
-      item.setDraggingFrame(NSRect(x: p.x - 16, y: p.y - 16, width: 32, height: 32), contents: img)
+      guard let item = FileDrag.item(file, at: convert(e.locationInWindow, from: nil)) else { return }
       beginDraggingSession(with: [item], event: e, source: self)
     }
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-      context == .outsideApplication ? [.copy, .link, .generic] : .copy
+      FileDrag.operations(context)
+    }
+    func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) { onDragMoved?(screenPoint) }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+      onDragEnded?(screenPoint, operation)
     }
   }
 
@@ -213,6 +209,35 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
 
   var libId: String { node.str("id", "library") }
   func send(_ action: String, _ value: Value = .null) { emit(libId, action, value) }
+
+  // MARK: Dragging a file onto den's own page
+
+  /// The dim behind the sheet (UIService), hidden with the sheet while a file is dragged to the page.
+  weak var backdrop: NSView?
+  /// True while a row's file is being dragged over den's window outside the sheet: the sheet and
+  /// its dim step aside so the page underneath (a Gmail compose, a GitHub comment, an upload
+  /// field) takes the drop. A drag to Finder or another app leaves the sheet where it is.
+  private(set) var steppedAside = false
+
+  /// A dragged row's file is at `screenPoint`.
+  func fileDragMoved(_ screenPoint: NSPoint) {
+    guard !steppedAside, let w = window, let content = w.contentView, let sup = superview else { return }
+    let p = w.convertPoint(fromScreen: screenPoint)  // window coordinates
+    guard content.frame.contains(p), !frame.contains(sup.convert(p, from: nil)) else { return }
+    steppedAside = true
+    isHidden = true
+    backdrop?.isHidden = true
+  }
+
+  /// The drag ended. Dropped on den's page with the sheet aside: the sheet closes (`dismiss`), as
+  /// the file went where it was meant to; otherwise it comes back.
+  func fileDragEnded(_ screenPoint: NSPoint, _ operation: NSDragOperation) {
+    guard steppedAside else { return }
+    steppedAside = false
+    isHidden = false
+    backdrop?.isHidden = false
+    if !operation.isEmpty, let w = window, w.frame.contains(screenPoint) { send("dismiss") }
+  }
 
   func update(_ v: Value, palette p: Palette) {
     let old = node
@@ -321,6 +346,8 @@ final class LibraryView: PanelView, NSTextFieldDelegate {
       let iid = r.itemId
       r.onRestore = { [weak self] in self?.send("restore", ["item": .string(iid)]) }
       r.onButton = { [weak self] b in self?.send("button", ["item": .string(iid), "button": .string(b)]) }
+      r.onDragMoved = { [weak self] p in self?.fileDragMoved(p) }
+      r.onDragEnded = { [weak self] p, op in self?.fileDragEnded(p, op) }
       rows.append(r)
       if r.superview !== doc { doc.addSubview(r) }
       r.identifier = NSUserInterfaceItemIdentifier(sec)

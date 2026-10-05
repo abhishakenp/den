@@ -25,7 +25,7 @@ Events:
 - `spaces.editTheme {id}` fires from the space title's "…" button or its "Edit Theme…" menu item. The `theme` plugin opens its picker.
 - `spaces.library` fires when the footer's Library button is clicked.
 
-**Download indicator.** While something downloads, a download arrow (`spaces.downloads`) sits next to the Library button with a progress ring in the accent (all running downloads together, redrawn in 2% steps); when a download finished and you haven't looked at Downloads yet, a dot instead. Otherwise it isn't there. Its tooltip is "Downloads (⌥⌘L)"; a click calls `downloads.open`. It follows the host's `downloads.changed` event only: nothing is read at launch.
+**Download indicator.** While something downloads, a download arrow (`spaces.downloads`) sits next to the Library button with a progress ring in the accent (all running downloads together, redrawn in 2% steps); when a download finished and you haven't looked at Downloads yet, a dot instead. Otherwise it isn't there. Its tooltip is "Downloads (⌥⌘L)"; a click calls `downloads.open`. Dragging it carries the newest finished download that is still on disk (`dragFile`; read with `downloads.list` only when a download starts, finishes or is looked at, never per progress step) to Finder, another app or a page's upload field. It follows the host's `downloads.changed` event only: nothing is read at launch.
 
 `switch` also takes `animated` (default true). `update` merges a partial `theme` into the space's theme.
 

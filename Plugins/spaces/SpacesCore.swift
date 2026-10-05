@@ -60,6 +60,8 @@ final class SpacesCore {
   var dlActive: Int64 = 0
   var dlUnseen: Int64 = 0
   var dlPercent: Int64 = -1
+  /// The newest finished download's file: dragging the indicator carries it out (`dragFile`).
+  var dlFile = ""
 
   init(env: PluginEnv) { self.env = env }
 
@@ -298,8 +300,19 @@ final class SpacesCore {
     let percent: Int64 = p < 0 ? -1 : Int64(p * 50) * 2  // 2% steps: at most 50 redraws per download
     let next = (v.i("active"), v.i("unseen"), percent)
     guard next != (dlActive, dlUnseen, dlPercent) else { return }
+    let fileChanged = next.0 != dlActive || next.1 != dlUnseen
     (dlActive, dlUnseen, dlPercent) = next
+    // Only when a download starts, finishes or is looked at (not on every progress step).
+    if fileChanged { dlFile = dlActive > 0 || dlUnseen > 0 ? newestDownloadedFile() : "" }
     renderFooter()
+  }
+
+  /// The newest download that finished and is still on disk ("" when none).
+  func newestDownloadedFile() -> String {
+    for d in env.call("downloads", "list").a("items") where d.s("state") == "done" && d.b("exists") && !d.s("path").isEmpty {
+      return d.s("path")
+    }
+    return ""
   }
 
   /// A download arrow next to the Library button while something downloads (a progress ring) or
@@ -308,6 +321,7 @@ final class SpacesCore {
     guard dlActive > 0 || dlUnseen > 0 else { return nil }
     var b: Value = ["type": "button", "id": "spaces.downloads", "icon": "sf:arrow.down", "tooltip": "Downloads", "shortcutFor": "history.downloads", "shortcut": "cmd+opt+l", "size": 32]
     if dlActive > 0 { b.put("progress", .double(dlPercent < 0 ? -1 : Double(dlPercent) / 100)) } else { b.put("dot", true) }
+    if !dlFile.isEmpty { b.put("dragFile", .string(dlFile)) }
     return b
   }
 

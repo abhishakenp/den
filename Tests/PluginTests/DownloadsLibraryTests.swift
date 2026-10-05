@@ -18,6 +18,91 @@ struct DownloadsLibraryTests {
     (h.rt.ui.sidebarView.footer.root?.node["children"].array ?? []).first { $0.s("id") == "spaces.downloads" }
   }
 
+  func views<T: NSView>(_ v: NSView, _ t: T.Type) -> [T] { ((v as? T).map { [$0] } ?? []) + v.subviews.flatMap { views($0, t) } }
+
+  /// A finished download drags out as its file (Safari's downloads list): from its Library row and
+  /// from the sidebar's download button. A test process can't run a system drag, so this checks
+  /// what a drag would carry (the pasteboard writer every drag uses), what may drag, and the sheet
+  /// stepping aside so den's own page takes the drop.
+  @Test func finishedDownloadsDragOutAsFiles() throws {
+    let h = Harness()
+    h.startTabs()
+    let now = Double(h.clock)
+    let dir = h.root.appendingPathComponent("dl", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let pdf = dir.appendingPathComponent("report 2026.pdf")  // a space in the name
+    FileManager.default.createFile(atPath: pdf.path, contents: Data(repeating: 7, count: 512))
+    let gone = dir.appendingPathComponent("gone.zip").path
+
+    // What a drag writes: the file URL (public.file-url, which Finder, Mail and WebKit's file
+    // inputs and drop zones read). Nothing for a file that isn't there.
+    let pb = NSPasteboard(name: NSPasteboard.Name("den.test.filedrag.\(UUID())"))
+    defer { pb.releaseGlobally() }
+    #expect(FileDrag.write(pdf.path, to: pb))
+    #expect(pb.types?.contains(.fileURL) == true)
+    let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
+    #expect(urls?.map(\.path) == [pdf.path])
+    // den's own drop targets take it: a dropped file opens as a tab (sidebar), and DenWebView reads it.
+    #expect(SidebarContainerView.droppedURLs(pb) == [pdf.absoluteString])
+    #expect(DenWebView.fileURLs(pb)?.map(\.path) == [pdf.path])
+    #expect(!FileDrag.write(gone, to: pb) && FileDrag.draggable("") == nil && FileDrag.draggable("relative.txt") == nil)
+    #expect(FileDrag.item(pdf.path, at: .zero) != nil && FileDrag.item(gone, at: .zero) == nil)
+    #expect(FileDrag.operations(.outsideApplication).contains(.copy) && FileDrag.operations(.withinApplication) == .copy)
+
+    // The sidebar's download button carries the newest finished download while it shows.
+    var done = Item(id: "d2", url: "https://a.test/report.pdf", name: "report 2026.pdf", path: pdf.path, state: "done", received: 512, total: 512,
+                    started: now - 1000, finished: now - 1000)
+    done.unseen = true
+    let running = Item(id: "d3", url: "https://a.test/big.dmg", name: "big.dmg", path: dir.appendingPathComponent("big.dmg").path, state: "downloading",
+                       received: 10, total: 100, started: now)
+    h.rt.downloads.seed([done])
+    #expect(footerButton(h)?["dragFile"] == .string(pdf.path))
+    let button = try #require(views(h.rt.ui.sidebarView.footer, ButtonNode.self).first { $0.nodeId == "spaces.downloads" })
+    #expect(button.button.onDragOut != nil)
+    // Only a running download: nothing to drag, the button is a plain button.
+    h.rt.downloads.seed([running])
+    #expect(footerButton(h)?["dragFile"].isNull == true)
+    #expect(views(h.rt.ui.sidebarView.footer, ButtonNode.self).first { $0.nodeId == "spaces.downloads" }?.button.onDragOut == nil)
+    // A finished download that was deleted doesn't drag either.
+    var deleted = done
+    deleted.path = gone
+    h.rt.downloads.seed([deleted])
+    #expect(footerButton(h)?["dragFile"].isNull == true)
+
+    // Library ▸ Downloads: the finished row drags, the unfinished one doesn't.
+    h.rt.downloads.seed([running, done])
+    h.key("cmd+opt+l")
+    let lib = h.rt.ui.library
+    #expect(lib.rows.map(\.itemId) == ["d3", "d2"])
+    #expect(FileDrag.draggable(lib.rows[1].file)?.path == pdf.path && lib.rows[0].file.isEmpty)
+
+    // Dragging the row over den's page (outside the sheet) steps the sheet and its dim aside, so
+    // a page's drop zone underneath takes the file; inside the sheet nothing changes.
+    let w = try #require(lib.window)
+    let backdrop = try #require(lib.backdrop)
+    let inSheet = w.convertPoint(toScreen: lib.superview!.convert(NSPoint(x: lib.frame.midX, y: lib.frame.midY), to: nil))
+    lib.fileDragMoved(inSheet)
+    #expect(!lib.isHidden && !lib.steppedAside)
+    let content = h.rt.window.contentArea
+    let onPage = w.convertPoint(toScreen: content.convert(NSPoint(x: content.bounds.maxX - 10, y: content.bounds.midY), to: nil))
+    lib.fileDragMoved(onPage)
+    #expect(lib.isHidden && backdrop.isHidden && lib.steppedAside)
+    // Dropped somewhere else (another app): the sheet comes back.
+    lib.fileDragEnded(NSPoint(x: w.frame.maxX + 500, y: w.frame.midY), .copy)
+    #expect(!lib.isHidden && !backdrop.isHidden && h.rt.call("ui", "get")["overlays"] == ["overlay.library"])
+    // Dropped on den's page: the file went where it was meant to, so the sheet closes.
+    lib.fileDragMoved(onPage)
+    lib.fileDragEnded(onPage, .copy)
+    #expect(h.rt.call("ui", "get")["overlays"] == [])
+    // It opens again whole.
+    h.key("cmd+opt+l")
+    #expect(!lib.isHidden && !backdrop.isHidden && h.rt.call("ui", "get")["overlays"] == ["overlay.library"])
+    // Cancelled drag (no operation) over the page: the sheet just comes back.
+    lib.fileDragMoved(onPage)
+    lib.fileDragEnded(onPage, [])
+    #expect(!lib.isHidden && h.rt.call("ui", "get")["overlays"] == ["overlay.library"])
+  }
+
   @Test func sizesAndTimeLeftReadLikeFinder() {
     #expect(TabsCore.bytes(812) == "812 bytes" && TabsCore.bytes(1) == "1 byte")
     #expect(TabsCore.bytes(4_210) == "4.2 KB" && TabsCore.bytes(42_000_000) == "42 MB" && TabsCore.bytes(1_320_000_000) == "1.3 GB")

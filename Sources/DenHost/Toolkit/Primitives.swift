@@ -550,7 +550,12 @@ public final class IconButton: NSView, Themable, Hoverable {
   /// Acts on the click that also focuses its window (in a panel that never activates den).
   var firstMouse = false
   public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { firstMouse }
-  public override func mouseDown(with event: NSEvent) {}
+  /// Set: a press that moves past 4 pt starts a drag (`ButtonNode`'s `dragFile`) instead of a click.
+  var onDragOut: ((NSEvent) -> Void)?
+  public override func mouseDown(with event: NSEvent) {
+    guard let drag = onDragOut else { return }
+    FileDrag.track(self, event, drag: drag) { if enabled { action() } }
+  }
   public override func mouseUp(with event: NSEvent) {
     if enabled && bounds.contains(convert(event.locationInWindow, from: nil)) { action() }
   }

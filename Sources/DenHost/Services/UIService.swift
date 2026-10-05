@@ -110,6 +110,7 @@ public final class UIService: HostService {
     libraryBackdrop.wantsLayer = true
     libraryBackdrop.layer?.backgroundColor = NSColor(white: 0, alpha: Tokens.libraryBackdropAlpha).cgColor
     libraryBackdrop.onClick = { [weak self] in self?.library.send("dismiss") }
+    library.backdrop = libraryBackdrop
     windows.each { [unowned self] wc in self.setUpSidebar(wc, emitter: emitter) }
     windows.onRemove.append { [weak self] wc in
       self?.sidebars[wc.id] = nil
@@ -467,6 +468,8 @@ public final class UIService: HostService {
     library.update(tree, palette: renderer.palette)
     if !libraryOpen {
       libraryOpen = true
+      library.isHidden = false  // closed while stepped aside for a file drag (Library.swift)
+      libraryBackdrop.isHidden = false
       // Below dialogs, so "Clear Archive" can confirm on top of the sheet.
       if dialogOpen {
         wc.overlays.addSubview(libraryBackdrop, positioned: .below, relativeTo: dialogBackdrop)

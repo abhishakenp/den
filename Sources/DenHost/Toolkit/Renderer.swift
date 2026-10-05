@@ -279,7 +279,9 @@ final class TextNode: NodeView {
 /// -> ui.action {id, action: "click"}. `progress` draws a ring around the icon in the accent (the
 /// sidebar's download indicator), `dot` a small accent dot at its top right (something new).
 /// The tooltip shows the shortcut: `shortcutFor` (a menu bar item id or event, remap-aware), else `shortcut`.
-final class ButtonNode: NodeView {
+/// `dragFile` (a path): dragging the button carries that file out, like a Library ▸ Downloads row
+/// (the sidebar's download button: the newest finished download); a click is still a click.
+final class ButtonNode: NodeView, NSDraggingSource {
   lazy var button = IconButton(symbol: "sf:circle", size: 28) { [weak self] in self?.emit(self?.node.str("action", "click") ?? "click") }
   let label = makeLabel(size: 12, weight: .medium)
   let ring = RingView()
@@ -301,7 +303,19 @@ final class ButtonNode: NodeView {
     ring.progress = v["progress"].double
     ring.dot = v.flag("dot")
     ring.isHidden = ring.progress == nil && !ring.dot
+    button.onDragOut = v.str("dragFile").isEmpty ? nil : { [weak self] e in self?.beginFileDrag(e) }
     needsLayout = true
+  }
+
+  /// Starts dragging `dragFile` when it is there (a moved or deleted file doesn't drag).
+  @discardableResult
+  func beginFileDrag(_ e: NSEvent) -> Bool {
+    guard let item = FileDrag.item(node.str("dragFile"), at: convert(e.locationInWindow, from: nil)) else { return false }
+    beginDraggingSession(with: [item], event: e, source: self)
+    return true
+  }
+  func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+    FileDrag.operations(context)
   }
   var size: CGFloat { CGFloat(node.num("size", 28)) }
   override func apply(_ p: Palette) {
