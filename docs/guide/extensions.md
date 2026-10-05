@@ -82,12 +82,28 @@ Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatT
 
 **Right-click items.** An extension's items show in a page's right-click menu, for what you clicked (a link, an image, selected text, a text field, a frame or the page), like Raindrop.io's "Save link in Raindrop.io". Right-click an extension's button in the URL pill (or in the puzzle menu) for its own items, its options, Pin / Unpin and Manage Extensions.
 
-den fills some gaps itself, in its own copy of each extension, so an extension that touches a missing API keeps running instead of stopping silently: events WebKit leaves out (such as `webNavigation.onHistoryStateUpdated`, which stopped Vimium), an empty `bookmarks`, a `history` of pages visited since the extension was added, `sessions` for tabs closed since then, and `search`. Folders in `~/.den/extensions` are left exactly as they are.
+## APIs den provides
+
+Safari's engine has no bookmarks, history, downloads, side panel or sign-in API for extensions. den answers them itself, in its own copy of each extension, with what den already has:
+
+| API | What the extension sees |
+|---|---|
+| `bookmarks` | Your Favorites (as the bookmarks bar) and each space's pinned tabs and folders, including bookmarks you imported. Adding a bookmark pins a tab (it doesn't load until you open it); removing one sends it to the Library's archive |
+| `history` | Pages you visit while an extension that reads history is installed, plus your Library's archive and your open tabs. An extension that clears history clears the archive too. Private windows are never recorded, and den deletes the record when the last such extension is removed |
+| `sessions` | Recently closed tabs: the Library's archive. Restoring reopens the tab |
+| `downloads` | den's downloads, the same list as Library ▸ Downloads: start, pause, resume, cancel, open, show in Finder, remove, search, and their events |
+| `sidePanel` (Chrome), `sidebarAction` (Firefox) | The extension's panel opens in den's web panel column, with its icon in the panel switcher. If it asks, its button in the URL pill opens the panel |
+| `identity` | Signing in through the extension's own sign-in page (`launchWebAuthFlow`) opens a small den window that uses your cookies, so a site you're signed in to can approve right away |
+| `search` | Searches with den's default search engine |
+
+Not available: Chrome's own Google account sign-in (`identity.getAuthToken`), and choosing a download's file name as it starts (`downloads.onDeterminingFilename`).
+
+den also fills smaller gaps so an extension that touches a missing API keeps running instead of stopping silently: events WebKit leaves out (such as `webNavigation.onHistoryStateUpdated`, which stopped Vimium), `idle` and `offscreen`. Folders in `~/.den/extensions` are left exactly as they are, so these APIs aren't added to them.
 
 WebKit's extension support is good but not Chrome's. These don't exist on WebKit:
 
 - **blocking `webRequest`**: so full **uBlock Origin can't work**. Use **uBlock Origin Lite**, which does.
-- `identity`, `downloads`, side panels, offscreen documents; den's real `history` and `bookmarks`.
+- offscreen documents, `userScripts`.
 
 ### Password managers and other desktop apps
 

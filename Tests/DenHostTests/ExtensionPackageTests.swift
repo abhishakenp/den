@@ -202,6 +202,63 @@ struct ExtensionPackageTests {
     #expect(errors.isEmpty, "\(errors)")
   }
 
+  /// den's own APIs ride on native messaging: a copy that asks for one gets `nativeMessaging`
+  /// (marked as den's), and the shim carries the redirect base for identity.
+  @Test func shimAddsNativeMessagingForDenAPIs() throws {
+    let d = Self.tempDir()
+    defer { try? FileManager.default.removeItem(at: d) }
+    try #"{"manifest_version": 3, "name": "B", "version": "1", "permissions": ["bookmarks", "storage"]}"#.write(to: d.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
+    let redirect = ExtensionIdentity.redirectBase(id: "x", geckoId: "vimium-c@gdh1995.cn")
+    #expect(redirect == "https://5a0f404a277ec080c810032429698680139b7a1f.extensions.allizom.org/")
+    #expect(try ExtensionShim.apply(to: d, redirect: redirect))
+    #expect(try Self.manifest(d)["permissions"] as? [String] == ["bookmarks", "storage", "nativeMessaging"])
+    #expect(ExtensionShim.addedNativeMessaging(d))
+    #expect(try String(contentsOf: d.appendingPathComponent("__den/shim.js"), encoding: .utf8).contains("\"redirect\":\"https:\\/\\/5a0f404a277ec080c810032429698680139b7a1f.extensions.allizom.org\\/\""))
+    #expect(try !ExtensionShim.apply(to: d, redirect: redirect))
+    // Its own nativeMessaging isn't den's; an extension without den's APIs gets nothing.
+    let o = Self.tempDir()
+    defer { try? FileManager.default.removeItem(at: o) }
+    try #"{"manifest_version": 3, "name": "O", "version": "1", "permissions": ["downloads", "nativeMessaging"]}"#.write(to: o.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
+    try ExtensionShim.apply(to: o)
+    #expect(!ExtensionShim.addedNativeMessaging(o))
+    let n = Self.tempDir()
+    defer { try? FileManager.default.removeItem(at: n) }
+    try #"{"manifest_version": 3, "name": "N", "version": "1", "permissions": ["storage"]}"#.write(to: n.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
+    try ExtensionShim.apply(to: n)
+    #expect(try Self.manifest(n)["permissions"] as? [String] == ["storage"])
+    #expect(ExtensionIdentity.matches(URL(string: "https://abc.chromiumapp.org/cb?code=1")!, id: "abc", geckoId: nil))
+    #expect(!ExtensionIdentity.matches(URL(string: "https://abd.chromiumapp.org/cb")!, id: "abc", geckoId: nil))
+    #expect(!ExtensionIdentity.matches(URL(string: "http://abc.chromiumapp.org/cb")!, id: "abc", geckoId: nil))
+  }
+
+  /// Download names an extension gives (`downloads.download {filename}`) stay under Downloads.
+  @Test func downloadNamesStayInDownloads() {
+    #expect(DownloadsService.relativePath("reports/q3.pdf") == ["reports", "q3.pdf"])
+    #expect(DownloadsService.relativePath("../x.zip") == nil)
+    #expect(DownloadsService.relativePath("/etc/passwd") == nil)
+    #expect(DownloadsService.relativePath("~/x") == nil)
+    #expect(DownloadsService.relativePath("a/./b") == nil)
+    #expect(DownloadsService.relativePath(".hidden/x") == ["hidden", "x"])
+  }
+
+  /// bookmarks events from two snapshots of the tree: one onMoved for a reorder, none for the
+  /// index shift an add causes.
+  @MainActor @Test func bookmarkEventsFromTreeDiffs() {
+    typealias F = ExtensionBookmarks.Flat
+    let a: F = ["t1": ("s", 0, "One", "https://1"), "t2": ("s", 1, "Two", "https://2"), "t3": ("s", 2, "Three", "https://3")]
+    var b = a
+    b["t1"] = ("s", 2, "One", "https://1"); b["t2"] = ("s", 0, "Two", "https://2"); b["t3"] = ("s", 1, "Three", "https://3")
+    let moved = ExtensionBookmarks.diff(a, b) { _ in .null }
+    #expect(moved.map(\.0) == ["bookmarks.onMoved"] && moved[0].1[0] == "t1")
+    var c = a
+    c["t0"] = ("s", 0, "Zero", "https://0"); c["t1"] = ("s", 1, "One", "https://1"); c["t2"] = ("s", 2, "Two", "https://2"); c["t3"] = ("s", 3, "Three", "https://3")
+    #expect(ExtensionBookmarks.diff(a, c) { _ in .null }.map(\.0) == ["bookmarks.onCreated"])
+    var d = a
+    d["t2"] = ("s", 1, "Second", "https://2b")
+    d["t3"] = nil
+    #expect(ExtensionBookmarks.diff(a, d) { _ in .null }.map(\.0) == ["bookmarks.onChanged", "bookmarks.onRemoved"])
+  }
+
   @Test func shimClassicWorkerAndBackgroundScripts() throws {
     let d = Self.tempDir()
     defer { try? FileManager.default.removeItem(at: d) }

@@ -22,7 +22,7 @@ public enum ExtensionShim {
   /// Marks the background context (event subscriptions from it wake it again; it opens link-hint tabs).
   static let backgroundFlag = "__den/background.js"
   /// Bumped when `source` changes, so installed copies get the new one on their next load.
-  static let version = 6
+  static let version = 8
   /// Present when den added `nativeMessaging` to the manifest for its own APIs (ExtensionAPIs):
   /// granted at load, and never shown as something the extension asked for.
   static let addedNative = "__den/native-messaging"
@@ -176,6 +176,36 @@ public enum ExtensionShim {
       };
       const save = (key, value) => { try { local.set({[key]: value}); } catch (e) {} };
 
+      // Chrome's API functions work without their namespace as `this`; WebKit's don't (an unbound
+      // `chrome.i18n.getMessage` returns undefined). Extensions keep them unbound
+      // (`const t = chrome.i18n.getMessage`: Chrono's background stopped at its first message), so
+      // i18n's, runtime's and the action's functions are bound, on the namespace or through a wrapper.
+      // Chrome also takes `tabId: null` for "every tab" in action calls; WebKit rejects it
+      // (Bookmark Sidebar's background stopped at action.setIcon({tabId: null})).
+      const noNullIds = (f) => function (...a) {
+        if (a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) {
+          if (a[0].tabId === null) { a[0] = Object.assign({}, a[0]); delete a[0].tabId; }
+          if (a[0].windowId === null) { a[0] = Object.assign({}, a[0]); delete a[0].windowId; }
+        } else if (a[0] === null) a.shift();
+        return f.apply(this, a);
+      };
+      for (const ns of ['i18n', 'runtime', 'action', 'browserAction', 'pageAction']) {
+        const o = api[ns];
+        if (!o) continue;
+        const bound = {};
+        for (const k in o) {
+          let v;
+          try { v = o[k]; } catch (e) { continue; }
+          if (typeof v !== 'function' || /^[A-Z]/.test(k)) continue;
+          const b = ns === 'i18n' || ns === 'runtime' ? v.bind(o) : noNullIds(v).bind(o);
+          try { Object.defineProperty(o, k, {value: b, configurable: true, writable: true, enumerable: true}); } catch (e) {}
+          if (o[k] !== b) bound[k] = b;
+        }
+        if (!Object.keys(bound).length) continue;
+        const wrapper = new Proxy(o, {get: (t, k) => Object.prototype.hasOwnProperty.call(bound, k) ? bound[k] : Reflect.get(t, k)});
+        for (const r of roots) { try { Object.defineProperty(r, ns, {value: wrapper, configurable: true, enumerable: true, writable: true}); } catch (e) {} }
+      }
+
       // Link hints (Vimium's F, and extensions like it) open a link in a new tab with a synthetic
       // ⌘/Ctrl-click. WebKit does nothing for one, so the content script asks its own background
       // (below) to open the tab. Only right after a key the user pressed, and only for web links.
@@ -299,6 +329,17 @@ public enum ExtensionShim {
       // idle and offscreen: answered so start-up code that touches them carries on.
       if (perms.includes('idle')) {
         define('idle', {queryState: fn(() => 'active'), setDetectionInterval: () => {}, getAutoLockDelay: fn(() => 0), onStateChanged: event()});
+      }
+      // notifications: when WebKit doesn't have it (seen on macOS 26.5), an
+      // extension stops at its first `notifications.onClicked` (Chrono). Answered, never shown.
+      if (perms.includes('notifications')) {
+        let n = 0;
+        define('notifications', {
+          create: fn((id, opts) => (typeof id === 'string' && id) ? id : 'den-' + (++n)), update: fn(() => false), clear: fn(() => false),
+          getAll: fn(() => ({})), getPermissionLevel: fn(() => 'denied'),
+          TemplateType: {BASIC: 'basic', IMAGE: 'image', LIST: 'list', PROGRESS: 'progress'}, PermissionLevel: {GRANTED: 'granted', DENIED: 'denied'},
+          onClosed: event(), onClicked: event(), onButtonClicked: event(), onPermissionLevelChanged: event(), onShowSettings: event(),
+        });
       }
       if (perms.includes('offscreen')) {
         define('offscreen', {

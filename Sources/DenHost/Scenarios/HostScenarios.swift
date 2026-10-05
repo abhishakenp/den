@@ -20,6 +20,10 @@ public enum HostScenarios {
       ExtensionScenarios.apply(name, runtime: rt)
       return rt.window.window
     }
+    if ExtensionAPIScenarios.names.contains(name) {
+      ExtensionAPIScenarios.apply(name, runtime: rt)
+      return rt.window.window
+    }
     if ExtensionMenuScenarios.names.contains(name) {
       ExtensionMenuScenarios.apply(name, runtime: rt)
       return rt.window.window

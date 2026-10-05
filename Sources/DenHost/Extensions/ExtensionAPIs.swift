@@ -256,6 +256,8 @@ final class ExtensionAPIs {
       interest[id] = nil
       sidePanel.options[id] = nil
       store()
+      // The last extension that could read history is gone: so are the visits den kept for it.
+      if !svc.contexts.contains(where: { $0.key != id && Self.manifestPermissions($0.value.webExtension).contains("history") }) { history.forget() }
     }
   }
 

@@ -67,6 +67,13 @@ final class ExtensionHistory {
     try? Data(ValueJSON.string(v).utf8).write(to: file, options: .atomic)
   }
 
+  /// Drops every recorded visit and the file (no extension with `history` is left).
+  func forget() {
+    loaded = true
+    visits = []
+    if let file { try? FileManager.default.removeItem(at: file) }
+  }
+
   /// A page committed `url` (http/https only). Same URL again within 2 s is one visit
   /// (a redirect chain or a reload burst).
   func record(_ url: String, title: String = "", transition: String = "link", at time: Double? = nil) {
@@ -219,7 +226,7 @@ final class ExtensionHistory {
 
   static func session(_ e: Value) -> Value {
     ["lastModified": .int(Int64(e.num("closedAt") / 1000)),
-     "tab": ["sessionId": .string(e.str("id")), "url": .string(e.str("url")), "title": .string(e.str("title")), "favIconUrl": e["favicon"],
+     "tab": ["sessionId": .string(e.str("id")), "url": .string(e.str("url")), "title": .string(e.str("title")), "favIconUrl": e.str("favicon").hasPrefix("http") ? e["favicon"] : .null,
              "index": 0, "windowId": -1, "active": false, "pinned": false, "highlighted": false, "incognito": false, "selected": false]]
   }
 }

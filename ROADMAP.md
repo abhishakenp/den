@@ -218,8 +218,9 @@ Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 - ✅ Chrome and Firefox extensions via Apple's `WKWebExtension` API (Manifest v2 and v3, `chrome.*` and `browser.*`): popups, pinning in the URL pill, the Extensions page, per-site access ([host API](docs/host-api.md#webext))
 - ✅ One-click install from Chrome Web Store / addons.mozilla.org ("Add to den"), with daily update checks. Terms researched (CWS ToS says "for use in connection with Google Chrome"); get counsel before a commercial release
 - ✅ Unpacked extensions from `~/.den/extensions`, and installs from `.crx` / `.xpi` / `.zip`
-- ⏳ Fill in APIs Apple leaves out where feasible: `bookmarks`, `sidePanel`, `downloads`, `history`, `identity`
-- ⏳ Extension keyboard `commands` and context-menu items in den's menus
+- ✅ The APIs Apple leaves out, answered by den over native messaging to itself ([host API](docs/host-api.md#webext), [guide](docs/guide/extensions.md#apis-den-provides)): `bookmarks` (Favorites and pinned tabs and folders, where imported bookmarks land), `history` (den's visits, the archive and open tabs), `sessions` (the archive), `downloads` (den's downloads), `sidePanel` / `sidebarAction` (den's web panels), `identity.launchWebAuthFlow` (a den sign-in window), `search` (den's default engine); a stopped background is started for its events
+  - ⏳ `identity.getAuthToken` (Chrome's own Google account), `downloads.onDeterminingFilename`, `offscreen` documents
+- ✅ Extension keyboard `commands` and context-menu items in den's menus: shortcuts fire wherever focus is (page, text field, sidebar, command bar), den's own keys win, `_execute_action` opens the popup, and the menu bar's Extensions menu lists every command with its key; `contextMenus` items show once per context in a page's right-click menu with Chrome's click info, `action` items on the extension's button, `tab` items on a tab's menu ([guide](docs/guide/extensions.md))
 - 🟡 Native messaging bridge (password managers) ([notes](docs/research/password-managers.md))
   - ✅ `runtime.connectNative` / `sendNativeMessage` to desktop apps' hosts through Chrome's and Firefox's manifests and protocol (`NativeMessagingTests` with a real extension and host)
   - ✅ Bitwarden's popup renders (it's told it runs in Chrome; with Safari's user agent it hung on a spinner)
@@ -328,9 +329,9 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 ## Energy
 
-- 🟡 Zero-resource inactive tabs: aggressive discard, snapshot on disk, instant restore; never discard audio/video/PiP tabs
+- ✅ Zero-resource inactive tabs: aggressive discard, snapshot on disk, instant restore; never discard audio/video/PiP tabs
   - ✅ idle tabs discarded after 5 min of den-frontmost time (configurable), tabs playing audio and on-screen tabs never discarded
-  - 🟡 near-zero per-tab cost: 85 → 17.5 KB per discarded tab on the CI runner (virtualized sidebar rows, menus built on right-click; [baseline](docs/perf/baseline.md#energy-lane-2026-09-28)), against an 8 KB budget
+  - ✅ near-zero per-tab cost, within the 8 KB budget: per discarded tab on the CI runner 85 → 17.5 KB (virtualized sidebar rows, menus built on right-click; [baseline](docs/perf/baseline.md#energy-lane-2026-09-28)), then 28.5 → 0.0 KB by footprint and 18.8 → 6.8 KB of live heap (rows make hover-only views on first use, shared palettes and pill-button lists, the storage cache keeps values encoded; [baseline](docs/perf/baseline.md#discarded-tabs-2026-10-05))
 - ✅ Protect recently used tabs from discard (the last 5); idle time counts only while den is frontmost
 - ✅ Battery saver: on battery or in Low Power Mode, idle tabs unload after 1 minute, background video pauses, new pages don't autoplay (Settings ▸ Tabs, on by default)
 - ✅ Never discard tabs with unsaved input, camera/mic in use, or on an "always keep active" list ("Keep Site Active" in the tab menu)
@@ -349,7 +350,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - 🟡 Memory and energy budgets
   - ✅ den-wide budgets in [`docs/perf/budgets.json`](docs/perf/budgets.json) (launch, idle memory, one page, idle CPU and wakeups, per-discarded-tab), checked by `scripts/perf.sh`
   - ⏳ per-feature budgets; energy (needs `powermetrics`)
-  - ⏳ enforce the budgets on every change; meet the aspirational ones (idle CPU, 8 KB per discarded tab)
+  - ⏳ enforce the budgets on every change; meet the aspirational idle CPU one (8 KB per discarded tab is met)
   - ✅ perf lab on the CI runner: repeated memory medians per scenario, heap/vmmap of the live app, A/B across refs ([docs/dev.md](docs/dev.md#perf-lab-memory-ab-and-bisection))
 - 🟡 Benchmarks against Safari, Arc, Dia, Zen (measured, published). WebKit alone isn't proof of efficiency: the one careful independent test found Chrome used less battery than Safari
   - ✅ launch, memory and idle CPU against Arc and Dia ([baseline](docs/perf/baseline.md)), measured on a loaded machine

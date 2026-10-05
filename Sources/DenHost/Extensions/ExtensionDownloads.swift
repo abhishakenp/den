@@ -182,7 +182,7 @@ final class ExtensionDownloads {
       guard let o = old[n] else { out.append(("downloads.onCreated", [d])); continue }
       var delta: Value = ["id": .int(n)]
       for k in ["state", "paused", "error", "filename", "exists", "endTime", "totalBytes", "fileSize", "canResume", "url", "finalUrl", "mime", "danger"] where o[k] != d[k] {
-        delta = delta.with(k, ["previous": o[k], "current": d[k]])
+        delta = delta.with(k, o[k].isNull ? ["current": d[k]] : d[k].isNull ? ["previous": o[k]] : ["previous": o[k], "current": d[k]])
       }
       if (delta.object?.count ?? 0) > 1 { out.append(("downloads.onChanged", [delta])) }
     }
