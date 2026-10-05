@@ -144,6 +144,16 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
     completionHandler(svc.presentPopup(action, context: context))
   }
 
+  /// `runtime.sendNativeMessage`: a desktop app's native host (NativeMessaging.swift).
+  func webExtensionController(_ controller: WKWebExtensionController, sendMessage message: Any, toApplicationWithIdentifier applicationIdentifier: String?, for extensionContext: WKWebExtensionContext, replyHandler: @escaping (Any?, (any Error)?) -> Void) {
+    svc.native.sendMessage(message, to: applicationIdentifier, caller: svc.nativeCaller(extensionContext), reply: replyHandler)
+  }
+
+  /// `runtime.connectNative`: a port to a desktop app's native host for as long as it's open.
+  func webExtensionController(_ controller: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort, for extensionContext: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
+    completionHandler(svc.native.connect(port, caller: svc.nativeCaller(extensionContext)))
+  }
+
   func webExtensionController(_ controller: WKWebExtensionController, didUpdate action: WKWebExtension.Action, forExtensionContext context: WKWebExtensionContext) {
     svc.actionChanged(context)
   }
