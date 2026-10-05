@@ -68,7 +68,7 @@ struct TidyTests {
     var results: [Value] = []
     h.rt.plugins.on("ai.result") { results.append($0) }
     let items: [Value] = [["id": "a", "text": "one"], ["id": "b", "text": "two"], ["id": "c", "text": "three"], ["id": "d", "text": "four"]]
-    #expect(h.rt.call("ai", "group", ["id": "g", "items": .array(items), "maxGroups": 4]) == ["id": "g"])
+    #expect(h.rt.call("ai", "group", ["id": "g", "items": .array(items), "maxGroups": 4, "instructions": "group"]) == ["id": "g"])
     #expect(await until { results.count == 1 })
     #expect(results[0]["groups"] == [["name": "A", "items": ["a", "b"]], ["name": "B", "items": ["c"]]])
     #expect(ai.prompts.first == "1. one\n2. two\n3. three\n4. four")

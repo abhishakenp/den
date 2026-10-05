@@ -188,7 +188,8 @@ extension TabsCore {
       return ["id": .string(id), "text": .string(t.displayTitle + " — " + Self.tidyAddress(t.url))]
     }
     let r = env.call("ai", "group", ["id": .string(Self.tidyRequestPrefix + sid), "items": .array(items),
-                                     "instructions": .string(Self.tidyInstructions), "maxGroups": .int(Int64(Self.tidyMaxGroups))])
+                                     "instructions": .string(Self.tidyInstructions + " Make at most " + String(Self.tidyMaxGroups) + " groups."),
+                                     "maxGroups": .int(Int64(Self.tidyMaxGroups))])
     guard !r.isErr else {
       if !auto { tidyToast("Couldn't tidy your tabs this time.", icon: "sf:exclamationmark.triangle") }
       return
@@ -370,7 +371,7 @@ extension TabsCore {
     let items = autoGroupItems(sid, pending: fresh)
     guard items.count >= 2 else { return }
     let r = env.call("ai", "group", ["id": .string(Self.autoGroupRequestPrefix + sid), "items": .array(items),
-                                     "instructions": .string(Self.autoGroupInstructions), "maxGroups": .int(Int64(Self.autoGroupMaxGroups))])
+                                     "instructions": .string(Self.autoGroupInstructions + " Make at most " + String(Self.autoGroupMaxGroups) + " groups."), "maxGroups": .int(Int64(Self.autoGroupMaxGroups))])
     if !r.isErr { autoGroupAsked[sid] = fresh }
   }
 

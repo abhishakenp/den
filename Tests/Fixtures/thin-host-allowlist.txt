@@ -10,6 +10,8 @@ call	Sources/Den/main.swift	commands
 call	Sources/Den/main.swift	peek
 call	Sources/Den/main.swift	peek
 call	Sources/Den/main.swift	peek
+call	Sources/Den/main.swift	peek
+call	Sources/Den/main.swift	peek
 call	Sources/Den/main.swift	shields
 call	Sources/Den/main.swift	spaces
 call	Sources/Den/main.swift	spaces
@@ -38,6 +40,7 @@ call	Sources/Den/main.swift	tabs
 call	Sources/Den/main.swift	tabs
 call	Sources/Den/main.swift	tabs
 call	Sources/DenHost/DenRuntime.swift	commands
+call	Sources/DenHost/DenRuntime.swift	shields
 call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
 call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
 call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
@@ -46,6 +49,16 @@ call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
 call	Sources/DenHost/Extensions/ExtensionsService.swift	tabs
 call	Sources/DenHost/Extensions/ExtensionsService.swift	tabs
 call	Sources/DenHost/Extensions/ExtensionsService.swift	tabs
+call	Sources/DenHost/Intents/DenIntents.swift	commands
+call	Sources/DenHost/Intents/DenIntents.swift	spaces
+call	Sources/DenHost/Intents/DenIntents.swift	spaces
+call	Sources/DenHost/Intents/DenIntents.swift	spaces
+call	Sources/DenHost/Intents/DenIntents.swift	spaces
+call	Sources/DenHost/Intents/DenIntents.swift	tabs
+call	Sources/DenHost/Intents/DenIntents.swift	tabs
+call	Sources/DenHost/Intents/DenIntents.swift	tabs
+call	Sources/DenHost/Intents/DenIntents.swift	tabs
+call	Sources/DenHost/Intents/DenIntents.swift	tabs
 call	Sources/DenHost/Services/MenuActions.swift	commands
 call	Sources/DenHost/Services/MenuActions.swift	commands
 call	Sources/DenHost/Services/MenuActions.swift	tabs
@@ -58,6 +71,19 @@ slot	Sources/DenHost/Services/UIService.swift	overlay.library
 slot	Sources/DenHost/Services/UIService.swift	overlay.library
 slot	Sources/DenHost/Services/UIService.swift	overlay.passwords
 slot	Sources/DenHost/Services/UIService.swift	overlay.peek
+string	Sources/Den/DenShortcuts.swift	Current Page
+string	Sources/Den/DenShortcuts.swift	Find Tabs
+string	Sources/Den/DenShortcuts.swift	Find tabs in \(.applicationName)
+string	Sources/Den/DenShortcuts.swift	Get the current page from \(.applicationName)
+string	Sources/Den/DenShortcuts.swift	New Tab
+string	Sources/Den/DenShortcuts.swift	New tab in \(.applicationName)
+string	Sources/Den/DenShortcuts.swift	Open a new \(.applicationName) tab
+string	Sources/Den/DenShortcuts.swift	Picture in Picture
+string	Sources/Den/DenShortcuts.swift	Search \(.applicationName) tabs
+string	Sources/Den/DenShortcuts.swift	Switch Space
+string	Sources/Den/DenShortcuts.swift	Switch \(.applicationName) space
+string	Sources/Den/DenShortcuts.swift	Switch to \(\.$space) in \(.applicationName)
+string	Sources/Den/DenShortcuts.swift	Toggle picture in picture in \(.applicationName)
 string	Sources/DenHost/Extensions/ExtensionText.swift	Block content on any page
 string	Sources/DenHost/Extensions/ExtensionText.swift	Block content on pages you allow
 string	Sources/DenHost/Extensions/ExtensionText.swift	Change what you copy and paste
@@ -98,13 +124,41 @@ string	Sources/DenHost/Extensions/ExtensionsUI.swift	Manage Extensions
 string	Sources/DenHost/Extensions/ExtensionsUI.swift	No extensions yet
 string	Sources/DenHost/Extensions/ExtensionsUI.swift	Pin to the URL bar
 string	Sources/DenHost/Extensions/ExtensionsUI.swift	Unpin from the URL bar
+string	Sources/DenHost/Extensions/NativeMessaging.swift	Access to the specified native messaging host is forbidden.
+string	Sources/DenHost/Extensions/NativeMessaging.swift	Error when communicating with the native messaging host.
+string	Sources/DenHost/Extensions/NativeMessaging.swift	Failed to start native messaging host.
+string	Sources/DenHost/Extensions/NativeMessaging.swift	Microsoft Edge
+string	Sources/DenHost/Extensions/NativeMessaging.swift	Microsoft Edge
+string	Sources/DenHost/Extensions/NativeMessaging.swift	Native host has exited.
+string	Sources/DenHost/Extensions/NativeMessaging.swift	Specified native messaging host not found.
+string	Sources/DenHost/Intents/DenIntents.swift	Address
+string	Sources/DenHost/Intents/DenIntents.swift	Find Tabs in den
+string	Sources/DenHost/Intents/DenIntents.swift	Finds den's tabs whose title or address contains the text, in every space.
+string	Sources/DenHost/Intents/DenIntents.swift	Get Current Page from den
+string	Sources/DenHost/Intents/DenIntents.swift	New Tab in den
+string	Sources/DenHost/Intents/DenIntents.swift	No page is open in den.
+string	Sources/DenHost/Intents/DenIntents.swift	Open Tab in den
+string	Sources/DenHost/Intents/DenIntents.swift	Open URL in den
+string	Sources/DenHost/Intents/DenIntents.swift	Opens a new tab in a space: the address you give, or the command bar to type one.
+string	Sources/DenHost/Intents/DenIntents.swift	Opens a web address as a new tab, in the space you pick or the current one.
+string	Sources/DenHost/Intents/DenIntents.swift	Puts the video playing in den in picture in picture, or brings it back (⌥⌘P).
+string	Sources/DenHost/Intents/DenIntents.swift	Selects a tab, switching to its space.
+string	Sources/DenHost/Intents/DenIntents.swift	Shows another space in den's window.
+string	Sources/DenHost/Intents/DenIntents.swift	Space
+string	Sources/DenHost/Intents/DenIntents.swift	Space
+string	Sources/DenHost/Intents/DenIntents.swift	Space
+string	Sources/DenHost/Intents/DenIntents.swift	Space
+string	Sources/DenHost/Intents/DenIntents.swift	Switch Space in den
+string	Sources/DenHost/Intents/DenIntents.swift	Tab
+string	Sources/DenHost/Intents/DenIntents.swift	Text
+string	Sources/DenHost/Intents/DenIntents.swift	The page in den's front window: its title and address. Never a private window's.
+string	Sources/DenHost/Intents/DenIntents.swift	Title
+string	Sources/DenHost/Intents/DenIntents.swift	Toggle Picture in Picture in den
 string	Sources/DenHost/Services/AIService.swift	A short, specific name for the group, one to three words in Title Case
 string	Sources/DenHost/Services/AIService.swift	Groups of related items
 string	Sources/DenHost/Services/AIService.swift	One imperative sentence under 110 characters naming the person, the action and where it lives (channel, repo, PR or issue number)
 string	Sources/DenHost/Services/AIService.swift	The numbers of the items in this group
 string	Sources/DenHost/Services/AIService.swift	True only if the user has to do something: reply, review, fix, decide or answer. False for thanks, FYIs and announcements.
-string	Sources/DenHost/Services/AIService.swift	You sort a list of numbered items into a few groups of related items. Give each group a short, specific name. Use each item number at most once. Leave out items that fit no group.
-string	Sources/DenHost/Services/AIService.swift	You summarize a person's work notifications. Keep every notification that asks something of the user: never drop one. For each, say who needs what, and where (channel, repo, PR or issue number). Merge only true duplicates. Group pure FYIs into one short line with a count. Be concrete and neutral. Never invent facts.
 string	Sources/DenHost/Services/ContentService.swift	Open as Tab
 string	Sources/DenHost/Services/ContentService.swift	Open in Split View
 string	Sources/DenHost/Services/ContentService.swift	Open in another window
@@ -349,5 +403,6 @@ string	Sources/DenHost/Window/PageContextMenu.swift	Open \(media) in New Tab
 string	Sources/DenHost/Window/PageContextMenu.swift	Paste and Match Style
 string	Sources/DenHost/Window/PageContextMenu.swift	Picture in Picture
 string	Sources/DenHost/Window/PageContextMenu.swift	View Page Source
+string	Sources/DenHost/Window/SplitDividerView.swift	Resize Split View
 string	Sources/DenHost/Window/ThemeBackgroundView.swift	Close Split Pane
 string	Sources/DenHost/Window/ThemeBackgroundView.swift	Separate Page from Split View

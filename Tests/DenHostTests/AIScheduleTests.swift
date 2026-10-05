@@ -54,7 +54,7 @@ struct AIScheduleTests {
     rt.ai.charsPerToken = 1
     rt.ai.reservedTokens = 0  // budget = 1000 characters
     let lines = (0..<30).map { "notification \($0) " + String(repeating: "z", count: 80) }
-    let text = try! await rt.ai.summarize(lines, instructions: "sum")
+    let text = try! await rt.ai.summarize(lines, instructions: "sum", merge: "Merge these partial summaries into one.")
     // 30 lines of ~96 chars: 3 map calls (10 + 10 + 10 lines), then 1 reduce over 3 partials.
     #expect(fake.calls.count == 4)
     #expect(fake.calls.last!.0.contains("Merge these partial summaries"))
@@ -69,7 +69,7 @@ struct AIScheduleTests {
     rt.ai.charsPerToken = 1
     rt.ai.reservedTokens = 0
     let lines = (0..<8).map { "n\($0) " + String(repeating: "q", count: 90) }
-    _ = try! await rt.ai.summarize(lines, instructions: "sum")
+    _ = try! await rt.ai.summarize(lines, instructions: "sum", merge: "Merge.")
     // 8 lines (~760 chars) overflow at 400: split into halves of 4 (~380 chars) that fit.
     #expect(fake.calls.filter { !$0.0.contains("Merge") }.map { $0.1.split(separator: "\n").count } == [4, 4])
   }
@@ -82,16 +82,22 @@ struct AIScheduleTests {
     rt.plugins.on("ai.result") { results.append($0) }
     #expect(rt.call("ai", "availability") == ["available": true, "contextSize": 1000])
     #expect(rt.call("ai", "todos", ["id": "t", "items": [["id": "a", "text": "Ana needs a review"], ["id": "c", "text": "thanks for the fix"],
-                                                        ["id": "a", "text": "duplicate"], ["id": "b", "text": "Build is red"]], "max": 2]) == ["id": "t"])
-    #expect(rt.call("ai", "brief", ["id": "b", "sources": [["name": "Slack", "items": ["x", "y"]], ["name": "GitHub", "items": []]]]) == ["id": "b"])
+                                                        ["id": "a", "text": "duplicate"], ["id": "b", "text": "Build is red"]], "max": 2,
+                                    "instructions": "todo"]) == ["id": "t"])
+    #expect(rt.call("ai", "brief", ["id": "b", "sources": [["name": "Slack", "items": ["x", "y"]], ["name": "GitHub", "items": []]],
+                                    "instructions": "brief", "sourceInstructions": "From {name}."]) == ["id": "b"])
+    #expect(rt.call("ai", "summarize", ["id": "x", "items": ["x"]]).isError)
+    #expect(rt.call("ai", "brief", ["id": "x", "sources": [], "instructions": "b"]).isError)
     #expect(await until { results.count == 2 })
+    // The prompts are the caller's: the per-source one names its source; nothing is added.
+    #expect(fake.calls.contains { $0.0 == "From Slack." })
     let todos = results.first { $0.str("id") == "t" }!
     #expect(todos["todos"] == [["item": "a", "title": "Do: Ana needs a review"], ["item": "b", "title": "Do: Build is red"]])
     let brief = results.first { $0.str("id") == "b" }!
     #expect(brief.flag("ok") && brief.list("sources").count == 1 && !brief.str("text").isEmpty)
     fake.available = false
     #expect(rt.call("ai", "availability")["reason"] == "modelNotReady")
-    _ = rt.call("ai", "summarize", ["id": "u", "items": ["x"]])
+    _ = rt.call("ai", "summarize", ["id": "u", "items": ["x"], "instructions": "sum"])
     #expect(await until { results.count == 3 })
     #expect(results[2]["error"] == "unavailable" && results[2]["reason"] == "modelNotReady")
   }
@@ -114,9 +120,11 @@ struct AIScheduleTests {
       ["id": "t1", "text": "jon mentioned you in #eng-web: thanks for the review!"],
       ["id": "c1", "text": "CI is failing on your PR abhishakenp/den #209: Briefing: rank feed by kind"],
     ]
-    _ = rt.call("ai", "todos", ["id": "todos", "items": .array(items), "max": 5])
+    _ = rt.call("ai", "todos", ["id": "todos", "items": .array(items), "max": 5, "instructions": .string(BriefingPrompts.todo)])
     _ = rt.call("ai", "brief", ["id": "brief", "sources": [["name": "Slack", "items": .array(items.prefix(3).map { $0["text"] })],
-                                                         ["name": "GitHub", "items": [items[0]["text"], items[3]["text"]]]]])
+                                                         ["name": "GitHub", "items": [items[0]["text"], items[3]["text"]]]],
+                                "instructions": .string(BriefingPrompts.brief), "sourceInstructions": .string(BriefingPrompts.source),
+                                "merge": "Merge these partial summaries into one."])
     #expect(await until(180) { results.count == 2 })
     let todos = results.first { $0.str("id") == "todos" }!
     let brief = results.first { $0.str("id") == "brief" }!
@@ -195,4 +203,13 @@ struct AIScheduleTests {
     let clock = rt.call("schedule", "clock")
     #expect(clock["hour"].int != nil && !clock.str("date").isEmpty && clock.str("time").hasSuffix("M"))
   }
+}
+
+/// The briefing plugin's prompts (Plugins/briefing/BriefingCore.swift), for the real-model test:
+/// the host has none of its own.
+enum BriefingPrompts {
+  static let summary = "You summarize a person's work notifications. Keep every notification that asks something of the user: never drop one. For each, say who needs what, and where (channel, repo, PR or issue number). Merge only true duplicates. Group pure FYIs into one short line with a count. Be concrete and neutral. Never invent facts."
+  static let source = summary + " These are from {name}. Answer in at most 2 sentences."
+  static let brief = "You write a morning briefing from per-source summaries. Cover every item that needs the user, most urgent first, one short sentence per item; then one line counting the FYIs. Mention each item once. Plain text, no lists, no greeting. Never invent facts."
+  static let todo = "You turn one work notification into a todo for the user. Decide whether it needs them to act (reply, review, fix, answer, decide); thanks, FYIs and announcements do not. Write one imperative sentence under 110 characters that names the person, the action and where it lives (channel, repo, PR or issue number), plus any deadline stated. Use only words and facts from the notification; never add details that are not in it."
 }
