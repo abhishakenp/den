@@ -8,6 +8,9 @@ import FoundationModels
 /// partial summaries merged (reduce).
 ///
 ///   availability                           -> {available, reason?, contextSize}
+///   respond {instructions, prompt, id?}    -> {id}; `ai.result {id, ok, text}`
+///                                             (one plain request: the prompt must fit the context;
+///                                             if it doesn't, `ok: false, reason: "contextOverflow"`)
 ///   summarize {items: [string], instructions?, id?}
 ///                                          -> {id}; `ai.result {id, ok, text}`
 ///   brief {sources: [{name, items: [string]}], instructions?, id?}
@@ -23,6 +26,17 @@ import FoundationModels
 ///                                             context budget are left out, `skipped` counts them)
 /// Failures: `ai.result {id, ok: false, error, reason?}`; `error: "unavailable"` when Apple
 /// Intelligence can't run (callers fall back to plain lists). Requests run one at a time.
+///
+/// Model lifetime: den holds no model and no session between requests. Each request makes its own
+/// `LanguageModelSession` and drops it when it answers, and nothing here runs at launch
+/// (availability is read only when a caller asks). The model itself runs in macOS's
+/// `TGOnDeviceInferenceProviderService`, which loads it for the request and lets it go on its own
+/// a few minutes later. Measured on this project's dev Mac (macOS 26.5, `top -l 1 -stats pid,mem`
+/// on the service, `task_info` phys_footprint for the caller): the service's two processes went
+/// from 160 MB + 86 MB to 336 MB + 242 MB during a 13 s summary, 179 MB + 105 MB from 5 s to 120 s
+/// after, and back to 160 MB + 86 MB by 180 s. The calling process gains about 5 MB once
+/// (FoundationModels' client state, on the first request) and stays flat after that
+/// (1.8 → 6.8 → 7.5 → 7.5 → 7.6 MB over four requests). See docs/host-api.md#ai.
 @MainActor
 public final class AIService: HostService {
   public let name = "ai"
@@ -48,7 +62,7 @@ public final class AIService: HostService {
       var v: Value = ["available": .bool(a.available), "contextSize": .int(Int64(generator.contextSize))]
       if let r = a.reason { v = v.with("reason", .string(r)) }
       return v
-    case "summarize", "brief", "todos", "group":
+    case "summarize", "brief", "todos", "group", "respond":
       var id = args.str("id")
       if id.isEmpty { id = "ai-\(nextId)"; nextId += 1 }
       enqueue(id: id, method: method, args: args)
@@ -72,6 +86,9 @@ public final class AIService: HostService {
       } else {
         do {
           switch method {
+          case "respond":
+            let text = try await self.generator.respond(instructions: args.str("instructions"), prompt: args.str("prompt"))
+            result = ["ok": true, "text": .string(text.trimmingCharacters(in: .whitespacesAndNewlines))]
           case "summarize":
             let text = try await self.summarize(args.list("items").compactMap(\.string), instructions: args.str("instructions", Self.summaryInstructions))
             result = ["ok": true, "text": .string(text)]
@@ -84,6 +101,8 @@ public final class AIService: HostService {
             let todos = try await self.todos(args.list("items"), max: Int(args.num("max", 8)), instructions: args.str("instructions", Self.todoInstructions))
             result = ["ok": true, "todos": .array(todos)]
           }
+        } catch AIError.contextOverflow {
+          result = ["ok": false, "error": .string("ai: \(AIError.contextOverflow)"), "reason": "contextOverflow"]
         } catch {
           result = ["ok": false, "error": .string("ai: \(error)")]
         }

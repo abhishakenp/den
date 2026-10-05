@@ -871,12 +871,26 @@ Apple's on-device Foundation Models, for summaries, todos and grouping only. The
 | Method | Args | Result (`ai.result`) |
 |---|---|---|
 | `availability` | – | returns `{available, reason?, contextSize}` directly. `reason`: `deviceNotEligible`, `appleIntelligenceNotEnabled`, `modelNotReady` |
+| `respond` | `instructions`, `prompt`, `id?` | `{id, ok, text, ms}`: one plain request with the caller's own instructions (no chunking: the prompt must fit `contextSize`, about 3 characters per token; otherwise `{ok: false, reason: "contextOverflow"}`, so chunk or use `summarize`). The generic call for plugins that bring their own prompts |
 | `summarize` | `items: [string]`, `instructions?` | `{id, ok, text, ms}` |
 | `brief` | `sources: [{name, items: [string]}]`, `instructions?` | `{id, ok, text, sources: [{name, text}], ms}`: one summary per source, then one combined brief |
 | `todos` | `items: [{id, text}]`, `max?` (8), `instructions?` | `{id, ok, todos: [{item, title}], ms}`: guided generation (`@Generable {actionable, title}`), one request per item so a todo can't be attached to another item; non-actionable items are dropped |
 | `group` | `items: [{id, text}]`, `maxGroups?` (6), `instructions?` | `{id, ok, groups: [{name, items: [id]}], skipped, ms}`: guided generation (`@Generable {groups: [{name, items: [Int]}]}`) over a numbered list (each line cut to 120 characters). Out-of-range numbers, repeats across groups and empty or unnamed groups are dropped here, so groups are disjoint. Items past the context budget are left out and counted in `skipped`. Used by Tidy Tabs; the prompt policy is the caller's |
 
 When the model can't run: `{id, ok: false, error: "unavailable", reason}`; callers fall back to plain lists.
+
+Every call except `availability` returns `{id}` at once (pass your own `id`, or use the generated one) and answers later on the `ai.result` event, which every listener receives: match on `id`, and prefix your ids with your plugin id.
+
+**Model lifetime.** den keeps no model and no session between requests: each request makes its own `LanguageModelSession` and drops it when it answers, and nothing calls the model at launch (`availability` is read only when a plugin asks). The model runs in macOS's `TGOnDeviceInferenceProviderService`, which loads it for the request and lets it go on its own schedule. Measured on the dev Mac (macOS 26.5; `top -l 1 -pid <pid> -stats pid,mem` on the service's two processes, `task_info(TASK_VM_INFO).phys_footprint` for the caller):
+
+| When | Inference service (2 processes) | Calling process |
+|---|---|---|
+| before | 160 MB + 86 MB | 1.8 MB |
+| during a 13 s summary (first, cold) | 336 MB + 242 MB | 5.8–7.9 MB |
+| 5 s to 120 s after | 179 MB + 105 MB | 7.9 MB |
+| 180 s after | 160 MB + 86 MB | 7.9 MB |
+
+The caller's ~5 MB is FoundationModels' client state, paid once on the first request and flat after (1.8 → 6.8 → 7.5 → 7.5 → 7.6 MB over four requests; warm requests took 2.9–3.7 s against 10–13 s cold). Linking FoundationModels at all costs a small binary 0.2 MB and 221 more dyld images at launch; moving `ai` into a lazily loaded module is thin host step 9 ([plan](architecture/thin-host.md#5-separately-loadable-native-modules)).
 
 ### schedule
 
