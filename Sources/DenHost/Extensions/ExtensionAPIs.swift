@@ -146,6 +146,8 @@ final class ExtensionAPIs {
   var interest: [String: Set<String>] = [:]
   var interestLoaded = false
   var queued: [String: [(String, [Value])]] = [:]
+  /// What each wake-up of a sleeping background came to (tests, extensions.log).
+  var wakes: [String] = []
 
   func connect(_ port: WKWebExtension.MessagePort, ctx: WKWebExtensionContext) -> (any Error)? {
     let key = ObjectIdentifier(port)
@@ -198,7 +200,29 @@ final class ExtensionAPIs {
         q.append((event, args))
         if q.count > 200 { q.removeFirst(q.count - 200) }
         queued[id] = q
-        if q.count == 1 { ctx.loadBackgroundContent { _ in } }
+        if q.count == 1 { wake(ctx, for: event) }
+      }
+    }
+  }
+
+  /// Starts a background so it subscribes again. A background WebKit reports started that
+  /// hasn't connected within 3 s is started again (at most 3 times), then its queue is dropped.
+  func wake(_ ctx: WKWebExtensionContext, for event: String, attempt: Int = 1) {
+    let id = ctx.uniqueIdentifier
+    ctx.loadBackgroundContent { [weak self] err in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        let line = "background of \(id) for \(event) (try \(attempt)): " + (err.map { "failed: \($0.localizedDescription)" } ?? "started")
+        self.wakes.append(line)
+        if self.wakes.count > 50 { self.wakes.removeFirst() }
+        self.svc.record(line)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+          MainActor.assumeIsolated {
+            guard let self, self.queued[id]?.isEmpty == false, self.svc.contexts[id] === ctx,
+                  !self.ports.values.contains(where: { $0.ctx == id && $0.background }) else { return }
+            if attempt < 3 { self.wake(ctx, for: event, attempt: attempt + 1) } else { self.queued[id] = nil }
+          }
+        }
       }
     }
   }
@@ -218,6 +242,8 @@ final class ExtensionAPIs {
     if Self.manifestPermissions(ctx.webExtension).contains("history") { startRecording() }
     loadInterest()
     if let i = interest[ctx.uniqueIdentifier] { startSources(i) }
+    // Events waited for an earlier context of this extension (reloaded meanwhile): wake this one.
+    if queued[ctx.uniqueIdentifier]?.isEmpty == false { ctx.loadBackgroundContent { _ in } }
   }
 
   /// The extension was turned off or removed: its panel goes, its ports and queue too.

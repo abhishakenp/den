@@ -33,7 +33,8 @@ struct ExtensionAPIsTests {
         """,
       // The background keeps what its events said, for the page to read back.
       "bg.js": """
-        const log = (k, v) => chrome.storage.local.get({events: []}).then(({events}) => chrome.storage.local.set({events: events.concat([k + ' ' + JSON.stringify(v)])}));
+        let chain = Promise.resolve();
+        const log = (k, v) => chain = chain.then(() => chrome.storage.local.get({events: []})).then(({events}) => chrome.storage.local.set({events: events.concat([k + ' ' + JSON.stringify(v)])}));
         chrome.bookmarks.onCreated.addListener((id, n) => log('bookmarks.onCreated', n.url || n.title));
         chrome.bookmarks.onRemoved.addListener((id, info) => log('bookmarks.onRemoved', info.node.url));
         chrome.history.onVisited.addListener((h) => log('history.onVisited', h.url));
@@ -174,6 +175,42 @@ struct ExtensionAPIsTests {
     #expect(restored["tab"].str("url").hasPrefix(mock.base + "/visited"), "\(restored)")
     #expect(h.ids("today").contains { h.rt.webviews.record($0)?.url.hasPrefix(mock.base + "/visited") == true })
     // An extension without the permission is refused by den, whatever it sends.
+    w.stopLoading()
+  }
+
+  /// After a relaunch the background isn't running (WebKit starts it on demand), yet it listened
+  /// to bookmarks.onCreated last time: den starts it for the event and delivers it once the
+  /// background subscribes again.
+  @Test func sleepingBackgroundIsStartedForItsEvents() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("den-plugin-\(UUID())")
+    var id = ""
+    do {
+      let h = Harness(root: root)
+      NSApp.mainMenu = NSMenu()
+      h.startTabs()
+      id = try await install(h)
+      let w = try await page(h, id)
+      // The background ran once (the install's check) and subscribed: den remembers it.
+      #expect(await wait { h.rt.extensions.apis.interest[id]?.contains("bookmarks.onCreated") == true })
+      w.stopLoading()
+      // Quit, as far as this extension goes: unloaded (after WebKit's rule grace), still enabled.
+      _ = h.rt.call("webext", "setEnabled", ["id": .string(id), "enabled": false])
+      #expect(await wait(30) { h.rt.extensions.retiring[id] == nil })
+      h.rt.extensions.registry.update(id) { $0.enabled = true }
+      h.rt.extensions.registry.save()
+    }
+    // "Relaunch": a new runtime on the same storage loads the extension at its first web view.
+    let h = Harness(root: root)
+    NSApp.mainMenu = NSMenu()
+    h.startTabs()
+    #expect(await wait { h.rt.extensions.contexts[id]?.isLoaded == true && h.rt.extensions.ready })
+    #expect(h.rt.extensions.apis.ports.values.contains { $0.ctx == id && $0.background } == false, "nothing started the background yet")
+    let tab = h.tabs("open", ["url": "https://example.com/pinned-later", "kind": "pinned", "background": true]).str("id")
+    #expect(!tab.isEmpty)
+    let started = await wait { h.rt.extensions.apis.ports.values.contains { $0.ctx == id && $0.background } }
+    #expect(started, "the event started the background: \(h.rt.extensions.apis.wakes) queued=\(h.rt.extensions.apis.queued.mapValues { $0.map(\.0) })")
+    let w = try await page(h, id)
+    #expect(await wait { await events(w).contains("bookmarks.onCreated \"https://example.com/pinned-later\"") })
     w.stopLoading()
   }
 
