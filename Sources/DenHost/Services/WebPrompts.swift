@@ -36,10 +36,22 @@ public final class WebPrompts {
   public private(set) var current: Request?
   private var dialog: DialogView?
   private let backdrop = ModalBackdrop(dim: Tokens.dialogBackdropAlpha)
-  /// "<origin> <camera|microphone>" -> allowed, for this session.
+  /// "<origin> <camera|microphone|location>" -> allowed, for this session.
   public private(set) var mediaDecisions: [String: Bool] = [:]
-  /// Drops one remembered camera/microphone answer (`"<origin> <device>"`), e.g. "forget this site".
-  func forgetMedia(_ key: String) { mediaDecisions[key] = nil }
+  /// Drops one remembered answer (`"<origin> <kind>"`), e.g. "forget this site".
+  func forgetMedia(_ key: String) {
+    mediaDecisions[key] = nil
+    onDecision()
+  }
+  /// Remembers an answer for this session (`"<origin> <kind>"`).
+  func remember(_ key: String, _ allowed: Bool) {
+    mediaDecisions[key] = allowed
+    onDecision()
+  }
+  /// A remembered answer changed (Shields' lists follow it).
+  var onDecision: () -> Void = {}
+  /// "Location Services are off for den" was shown this session.
+  var toldLocationOff = false
   /// JavaScript dialogs per page load, and pages the user stopped from showing more (Dia 1.15):
   /// from the fourth dialog on, the dialog offers "Stop this page from showing dialogs". Both
   /// reset when the page navigates.
@@ -146,7 +158,7 @@ public final class WebPrompts {
     enqueue(Self.mediaTree(host: origin.host, devices: devices), webView,
             answer: { [weak self] b, _ in
               let ok = b == "allow"
-              for d in devices { self?.mediaDecisions[base + " " + d] = ok }
+              for d in devices { self?.remember(base + " " + d, ok) }
               done(ok ? .grant : .deny)
             },
             cancel: { done(.deny) })

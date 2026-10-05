@@ -132,6 +132,9 @@ The rules den follows:
 </p>
 
 - **Camera and microphone:** "Allow \<site\> to use your camera?" with **Don't Allow** / **Allow**. den remembers your answer for that site until you quit.
+- **Location:** "Allow \<site\> to use your location?", remembered until you quit. The first time, macOS also asks whether den may use your location; if den is off in System Settings ▸ Privacy & Security ▸ Location Services, den tells you where to turn it on.
+- **Notifications:** "Allow \<site\> to show notifications?", remembered. They show in Notification Center while the site is open in a tab (den can't receive web push); clicking one takes you to the tab. Private windows never show any.
+- **Review and change them:** the shield in the address pill (⌥⌘S) lists what this site may use, with a reset button; Settings ▸ Shields ▸ **Site permissions** lists every site, each removable.
 - **HTTP sign-in** (the old browser-dialog kind): the username and password go straight to WebKit for the session. den doesn't store them.
 - **Page alerts, confirms and prompts** appear as den dialogs, one at a time, themed to your space.
 - **Every den dialog answers the keyboard**, even when the page behind it grabbed focus: **Esc** is the cancel button (or the only button), **Return** the default one. Focus goes back to where you were typing.

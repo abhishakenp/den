@@ -48,6 +48,8 @@ public final class DenRuntime {
   /// plugin decides what goes there).
   public let spotlight: SpotlightService
   public let handoff: HandoffService
+  /// Websites' notifications, bridged to Notification Center while their tab is open.
+  public let notifications: PageNotifications
   /// Lets `PluginLoader` (built by the app from `plugins` alone) grant sidecar permissions.
   static var permissionsByHost: [ObjectIdentifier: Permissions] = [:]
   static func permissions(for plugins: PluginHost) -> Permissions? { permissionsByHost[ObjectIdentifier(plugins)] }
@@ -108,6 +110,12 @@ public final class DenRuntime {
     // --demo) gets one of its own, so it never touches them.
     spotlight = SpotlightService(host: host, indexName: isDefault ? "den" : "den-" + String(UInt(bitPattern: storageRoot.standardizedFileURL.path.hashValue), radix: 36))
     handoff = HandoffService(host: host)
+    notifications = PageNotifications(host: host, storage: storage)
+    notifications.webviews = webviews
+    webviews.configureHooks.append { [weak notifications] r, c in
+      guard !r.url.hasPrefix("webkit-extension:") else { return }
+      notifications?.configure(r, c)
+    }
     handoff.open = { [weak app] urls in app?.open(urls, source: "handoff") }
     translate.window = { [weak windows] in windows?.active.window }
     Self.permissionsByHost[ObjectIdentifier(plugins)] = permissions
@@ -129,10 +137,13 @@ public final class DenRuntime {
     webviews.pageActions = pa
     webviews.cleanLink = { [weak plugins] url in plugins?.call("shields", "clean", ["url": .string(url)])["url"].string ?? url }
     sitePolicy.prompts = webviews.prompts
+    sitePolicy.notifications = notifications
+    // Shields' permission lists follow every remembered answer.
+    webviews.prompts?.onDecision = { [weak host] in host?.emit("sitepolicy.permissionsChanged") }
     sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
     sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
     sitePolicy.resource = { [permissions] p, f in permissions.resource(p, f) }
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, nowPlaying, speech, translate, spotlight, handoff] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, nowPlaying, speech, translate, spotlight, handoff, notifications] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

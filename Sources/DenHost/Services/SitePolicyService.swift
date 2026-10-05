@@ -31,8 +31,10 @@ public final class SitePolicyService: HostService {
   var call: ((String, String, Value) -> Value)?
   /// Colors for interstitial pages (the space's palette), like error pages.
   var colors: () -> WebErrorPage.Colors? = { nil }
-  /// Media-capture answers (camera, microphone) the host keeps for a site.
+  /// Media-capture and location answers the host keeps for a site (this session).
   weak var prompts: WebPrompts?
+  /// Notification answers (kept across launches).
+  weak var notifications: PageNotifications?
 
   public struct Rule: Equatable {
     public var lists: [String] = []
@@ -234,14 +236,24 @@ public final class SitePolicyService: HostService {
       return .ok
     case "forget": return forget(args)
     case "permissions":
-      let h = PageStyleService.key(args.str("host"))
-      return .array(mediaKeys(h).map { k, allowed in
-        let parts = k.split(separator: " ")
-        return ["origin": .string(String(parts.first ?? "")), "kind": .string(String(parts.last ?? "")), "allowed": .bool(allowed)]
-      })
+      return .array(permissions(PageStyleService.key(args.str("host"))))
+    case "allPermissions":
+      return .array(permissions(nil))
     case "resetPermissions":
       let h = PageStyleService.key(args.str("host"))
       for (k, _) in mediaKeys(h) { prompts?.forgetMedia(k) }
+      notifications?.forget(host: h)
+      return .ok
+    case "setPermission":
+      let origin = args.str("origin"), kind = args.str("kind")
+      guard !origin.isEmpty, ["camera", "microphone", "location", "notifications"].contains(kind) else { return .error("sitepolicy: setPermission needs an origin and a kind") }
+      if kind == "notifications" {
+        notifications?.set(origin, args["allowed"].bool)
+      } else if let b = args["allowed"].bool {
+        prompts?.remember(origin + " " + kind, b)
+      } else {
+        prompts?.forgetMedia(origin + " " + kind)
+      }
       return .ok
     case "unsaved": return unsaved(args)
     case "support":
@@ -912,6 +924,25 @@ public final class SitePolicyService: HostService {
     }
   }
 
+  /// Every remembered answer of a site (`h`), or of every site: camera, microphone and location
+  /// for this session, notifications kept.
+  func permissions(_ h: String?) -> [Value] {
+    let keys = h.map(mediaKeys) ?? (prompts?.mediaDecisions.sorted { $0.key < $1.key }.map { ($0.key, $0.value) } ?? [])
+    var out: [Value] = keys.map { k, allowed in
+      let parts = k.split(separator: " ")
+      return ["origin": .string(String(parts.first ?? "")), "kind": .string(String(parts.last ?? "")), "allowed": .bool(allowed), "kept": false]
+    }
+    if let n = notifications {
+      n.load()
+      for o in n.decisions.keys.sorted() {
+        let oh = PageNotifications.hostOf(o)
+        guard h.map({ oh == $0 || oh.hasSuffix("." + $0) }) ?? true else { continue }
+        out.append(["origin": .string(o), "kind": "notifications", "allowed": .bool(n.decisions[o] ?? false), "kept": true])
+      }
+    }
+    return out
+  }
+
   func mediaKeys(_ h: String) -> [(String, Bool)] {
     guard !h.isEmpty, let prompts else { return [] }
     return prompts.mediaDecisions.filter { k, _ in
@@ -931,6 +962,7 @@ public final class SitePolicyService: HostService {
     let store = webviews.store(for: args.str("profile", "default"))
     let types = WKWebsiteDataStore.allWebsiteDataTypes()
     for (k, _) in mediaKeys(h) { prompts?.forgetMedia(k) }
+    notifications?.forget(host: h)
     store.fetchDataRecords(ofTypes: types) { [weak self] records in
       MainActor.assumeIsolated {
         let match = records.filter { Self.sameSite(h, $0.displayName) }

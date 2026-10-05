@@ -81,7 +81,7 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
   - ✅ a "This page crashed · Reload" view when a page's web process dies (never reloads by itself)
   - ⏳ crash recovery of den itself
 - ⏳ Apple Pay exception: skip den's injected scripts on checkout pages, since any injection disables Apple Pay
-- ⏳ Web push notifications: not supported in `WKWebView`; decide on a workaround or skip
+- ✅ Web notifications: `WKWebView` has no working Notification API and no web push; den bridges the page's `Notification` to Notification Center while the tab is open (asked once per site, remembered; a click goes to the tab). ❌ Push to closed tabs: not possible without Apple's push service for third-party browsers
 - ✅ Downloads: `WKDownload` into ~/Downloads (quarantined, Finder-style names), Library ▸ Downloads (⌥⌘L) with pause/resume (kept across relaunch), cancel, retry, open, reveal and drag out, a sidebar progress ring, auto-archive after 1 day (Settings ▸ Tabs) ([guide](docs/guide/downloads.md))
 - ✅ Find in page (find bar, ⌘F/⌘G/⇧⌘G/⌘E)
 - 🟡 Printing and PDF viewing
@@ -89,7 +89,7 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
   - ⏳ PDF viewing verified
 - 🟡 Permissions
   - ✅ camera and microphone prompts, HTTP sign-in, file panels, JS alert/confirm/prompt
-  - ⏳ location, notifications
+  - ✅ location (asked per site, remembered until quit, then macOS's own prompt once) and notifications (see above)
 - 🟡 Picture-in-picture and media controls (see Media)
   - ✅ picture in picture: WebKit's own (the system PiP window Safari uses); automatic when you leave a playing video's tab or den, ⌥⌘P by hand
   - ✅ tab mute from the sidebar speaker (WebKit page mute)
@@ -300,8 +300,8 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ HTTPS-first, with den's page when a site has no HTTPS
 - ✅ Readable international domain names (spoofable ones stay in Punycode), with lookalike-domain warnings
 - 🟡 Per-site permissions UI
-  - ✅ camera/mic answers remembered per site until quit
-  - ⏳ a UI to review and change them
+  - ✅ camera/mic and location answers remembered per site until quit; notification answers kept
+  - ✅ review and reset in the Shields panel and Settings ▸ Shields ▸ Site permissions (camera, microphone, location, notifications)
 - 🟡 Sandboxed plugins
   - ✅ plugins can reach only the sites they declare (`session:` / `net:`)
   - ⏳ process-level sandboxing

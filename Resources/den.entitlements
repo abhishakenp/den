@@ -8,5 +8,8 @@
        hardened runtime blocks both without these. -->
   <key>com.apple.security.device.camera</key><true/>
   <key>com.apple.security.device.audio-input</key><true/>
+  <!-- Websites may ask for your location (den asks you first, per site); WebKit reads it with
+       Core Location in den's process, which the hardened runtime blocks without this. -->
+  <key>com.apple.security.personal-information.location</key><true/>
 </dict>
 </plist>

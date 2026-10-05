@@ -725,7 +725,9 @@ Per-site web policy for every web view (the `shields` plugin's host half, [plugi
 | `get` | `id` | `{host, url, lists, active, scripts, scripted, blocked, blockedByList, blockedCounts, rewrites: [{kind, from, to}], upgraded, connection: secure\|mixed\|insecure\|local, httpAllowed, autoplay, popups, interstitial}` for the page now in that web view |
 | `interstitial` | `id`, `url`, `page: {kind, icon: lock\|warn\|shield\|…, title, message, detail?, url?, buttons: [{id, title, style: primary\|secondary, key?: return\|escape}]}` | ok. A full-page warning in den's error-page look (the space's palette), loaded for `url` |
 | `forget` | `host`, `profile?` | `{pending}`, then `sitepolicy.forgotten {host, removed}`. Removes every website data record (cookies, storage, caches, service workers…) of the host's registrable domain, and its camera/microphone answers |
-| `permissions` / `resetPermissions` | `host` | `[{origin, kind: camera\|microphone, allowed}]` / ok |
+| `permissions` / `resetPermissions` | `host` | `[{origin, kind: camera\|microphone\|location\|notifications, allowed, kept}]` (`kept`: remembered across launches; the others until quit) / ok |
+| `allPermissions` | – | the same, for every site |
+| `setPermission` | `origin`, `kind`, `allowed` (`null` forgets) | ok. Emits `sitepolicy.permissionsChanged` |
 | `unsaved` | `id`, `request?` | `{request}`, then `sitepolicy.unsaved {request, id, unsaved}`: edited form fields, or text in a focused editor, in the main frame |
 | `support` | – | `{autoplay, popups, blockedCounts}`: which WebKit SPI is present |
 
@@ -831,6 +833,16 @@ Events: `webext.changed {extensions}` (the list), `webext.installing {request, �
 **Chrome identity for Bitwarden** (`ExtensionShim`, v6). Bitwarden picks its Safari or Chrome code path from the user agent; with den's Safari one its popup stayed on a spinner and it spoke a Safari app-extension protocol to no one. Its own pages and background (never web pages or content scripts) see `… Chrome/140.0.0.0 Safari/537.36`, by Chrome Web Store id (`nngceckbapebfimnlniiiahkandclblb`, beta `hccnnhgbibccigepcmlgppchkpfdophk`) or a manifest name starting "Bitwarden".
 
 What WebKit leaves out (no blocking `webRequest`, `identity`, `downloads`, `history`, `bookmarks`, side panels…) stays out: `unsupported` and the dialog say so. Keyboard `commands` and extension context-menu items aren't wired into den's menus yet.
+
+## Location, notifications, Spotlight, Handoff
+
+`SitePermissions.swift`, `Continuity.swift`; background and signing limits in [research/apple-integration.md](research/apple-integration.md).
+
+- **Location.** WebKit's `_webView:requestGeolocationPermissionForOrigin:initiatedByFrame:decisionHandler:` (and the older `…ForFrame:` variant; macOS 26 has no public method) asks "Allow ‹site› to use your location?"; the answer is kept for the site until quit, like the camera's. Then macOS must let den use location (`CLLocationManager`, asked once; den has `com.apple.security.personal-information.location` and `NSLocationUsageDescription`). If den's Location Services are off, the page is denied and den says where to turn them on (once a session). A page asks only while it's visible (WebKit holds the request otherwise).
+- **`notifications`** (`permissions`, `set {origin, allowed}`, `state`). `WKWebView`'s own `Notification` answers "denied" (macOS 26.5), so a page-world script replaces `Notification` (`permission`, `requestPermission`, `new Notification(title, {body, tag})`, `close`, `onshow`/`onclick`/`onclose`/`onerror`) and `navigator.permissions.query({name: "notifications"})`. den asks once per site (kept in storage ns `_notifications`), posts to Notification Center (`UNUserNotificationCenter`; the site as subtitle; shown while den is in front too); a click brings den forward and emits `notifications.clicked {webview}` (the `tabs` plugin selects it) and fires the page's `click`. Only while the tab is open (no service-worker `showNotification`, no push: `WKWebView` has no web push). Private windows: always "denied". Extension pages don't get the script.
+- **`spotlight`** (`index {domain, items, replace}`, `remove`, `search`, `state`; event `spotlight.open {id}`): den's own Core Spotlight index (`CSSearchableIndex(name: "den")`; per storage root in tests). Diffed writes, 7-day expiry, no page content.
+- **`handoff`** (`set {url, title}`, `clear`, `get`): the current `NSUserActivityTypeBrowsingWeb` activity. Pages from other devices (den as default browser; `NSUserActivityTypes` in Info.plist) arrive as `app.openURL {urls, source: "handoff"}`.
+- **App Intents** (`Intents/DenIntents.swift`): Shortcuts/Siri/Spotlight actions calling `tabs`, `spaces`, `media`; metadata extracted by `scripts/lib/appintents.zsh` at bundle time. The system lists them only for a Team ID signature (`Signing.teamIdentifier`).
 
 ## Connections, AI and scheduling
 
