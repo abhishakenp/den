@@ -1,4 +1,5 @@
 import Cordis
+import CordisValue
 import CoreServices
 import CryptoKit
 import Foundation
@@ -50,8 +51,9 @@ public final class LivePlugins {
   public var compiler: SourceCompiler?
   /// Plugin ids not to load (config.toml `[plugins] disabled`).
   public var disabled: () -> Set<String> = { [] }
-  // thin-host: feature-specific, migrate to plugin (user-facing strings for plugin load/build failures)
-  public var toast: (String) -> Void = { _ in }
+  /// A plugin failed to load or build, or source plugins have no toolchain: `plugins.failed`
+  /// {id?, stage: load|build|toolchain, reason, log?}. The updates plugin words it (PluginNotices).
+  public var notify: (Value) -> Void = { _ in }
   public var configChanged: () -> Void = {}
   public var themesChanged: () -> Void = {}
   public var updaterStateChanged: () -> Void = {}
@@ -287,7 +289,7 @@ public final class LivePlugins {
         log.write("reloaded \(info.id) from \(Self.tilde(path)) build \(info.buildHash)")
       case let .failed(reason, _):
         log.write("reload failed \(id): \(reason)")
-        toast("Plugin “\(id)” didn't load: \(reason)")
+        notify(["id": .string(id), "stage": "load", "reason": .string(reason)])
         load(Array(options.dropFirst()), id: id)
       }
     case let .load(path):
@@ -317,7 +319,7 @@ public final class LivePlugins {
         return
       } catch {
         log.write("load failed \(url.path): \(error.description)")
-        toast("Plugin “\(id)” didn't load: \(error.description)")
+        notify(["id": .string(id), "stage": "load", "reason": .string(error.description)])
       }
     }
   }
@@ -337,11 +339,11 @@ public final class LivePlugins {
       return
     }
     guard let compiler else {
-      noteNoToolchain("den can't find cordis-build (its bundled copy is missing)")
+      noteNoToolchain("noCordisBuild", log: "den can't find cordis-build (its bundled copy is missing)")
       return
     }
     guard compiler.toolchain != nil else {
-      noteNoToolchain("Source plugins need a Swift toolchain with Embedded Swift (swift.org, or set CORDIS_TOOLCHAIN)")
+      noteNoToolchain("noEmbeddedSwift", log: "no Swift toolchain with Embedded Swift (swift.org, or set CORDIS_TOOLCHAIN)")
       return
     }
     if building.contains(id) {
@@ -373,7 +375,7 @@ public final class LivePlugins {
           } else {
             let first = Self.firstError(output)
             self.log.write("build failed \(id) in \(ms) ms: \(first)")
-            self.toast("Plugin “\(id)” didn't build: \(first) (~/.den/logs/build-\(id).log)")
+            self.notify(["id": .string(id), "stage": "build", "reason": .string(first), "log": .string("~/.den/logs/build-\(id).log")])
           }
           self.onBuilt(id, ok)
           if self.rebuild.remove(id) != nil { self.build(id) }
@@ -382,11 +384,11 @@ public final class LivePlugins {
     }
   }
 
-  func noteNoToolchain(_ message: String) {
+  func noteNoToolchain(_ reason: String, log message: String) {
     log.write("source plugins: \(message)")
     guard !toldNoToolchain else { return }
     toldNoToolchain = true
-    toast(message)
+    notify(["stage": "toolchain", "reason": .string(reason)])
   }
 
   nonisolated static func firstError(_ output: String) -> String {

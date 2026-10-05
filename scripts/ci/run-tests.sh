@@ -16,7 +16,7 @@ session=$(launchctl managername 2>/dev/null || echo unknown)
 isolate=${CI_ISOLATE_SUITES:-}
 passes=()
 if [[ $session != Aqua ]]; then
-  headless='SuggestServiceTests|DenHomeTests|FaviconFallbackTests|CoreTests|ExtensionPackageTests|IconTests|LogicTests'
+  headless='ThinHostGuardrailTests|DenHomeTests|FaviconFallbackTests|CoreTests|ExtensionPackageTests|IconTests|LogicTests'
   msg="No GUI login session (launchctl managername: $session). Window/WebKit suites SKIPPED: all of PluginTests, and every DenHostTests suite except $headless."
   echo "::warning title=UI tests skipped::$msg"
   [[ -z ${GITHUB_STEP_SUMMARY:-} ]] || print -r -- $'> [!WARNING]\n> '"$msg" >> "$GITHUB_STEP_SUMMARY"

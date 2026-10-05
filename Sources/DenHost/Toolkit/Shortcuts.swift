@@ -27,7 +27,7 @@ public enum Shortcuts {
     if let mi = byId ?? MainMenu.slot(for: ref) ?? MainMenu.commandItem(ref), !mi.keyEquivalent.isEmpty, mi.menu != nil { return mi }
     guard let k = keys else { return nil }
     let live = k.bindings.values.filter { $0.item.menu != nil && !$0.item.keyEquivalent.isEmpty }
-    let hit = live.filter { ($0.event == ref && $0.payload.isNull) || ($0.event == "config.shortcut" && $0.payload.str("id") == ref) }
+    let hit = live.filter { ($0.event == ref && $0.payload.isNull) || $0.payload.str("id") == ref }
     return (hit.first { !$0.item.isHidden } ?? hit.min { $0.chord < $1.chord })?.item
   }
 

@@ -137,7 +137,7 @@ final class CommandBarCore {
   var selected = ""
   var rows: [Row] = []
   var sections: [(String, [Row])] = []
-  // Web suggestions (the host `suggest` service): the latest answer and what's on screen now.
+  // Web suggestions (WebSuggestions): the latest answer and what's on screen now.
   var suggestQuery = ""
   var suggestItems: [String] = []
   var shownSuggestions: [String] = []
@@ -160,8 +160,17 @@ final class CommandBarCore {
   /// Settings > Search > "Search suggestions" (on): typed searches are sent to the search engine's
   /// suggestion service as you type. Off: nothing leaves den until you press Return.
   var suggestionsOn = true
+  /// Web search autocomplete over `net.fetch` (WebSuggestions.swift).
+  let suggest: WebSuggestions
+  /// config.toml [shortcuts] and [search.keywords] (ConfigShortcuts.swift): chords bound for
+  /// commands, and keywords merged into the engines.
+  var configChords: [String] = []
+  var configKeywords: [String] = []
 
-  init(env: PluginEnv) { self.env = env }
+  init(env: PluginEnv) {
+    self.env = env
+    suggest = WebSuggestions(env: env)
+  }
 
   // MARK: - Lifecycle
 
@@ -172,7 +181,9 @@ final class CommandBarCore {
     env.on("commands.key.new") { [self] _ in toggle("new") }
     env.on("commands.key.edit") { [self] _ in toggle("edit") }
     env.on("ui.action") { [self] v in if v.s("id") == Self.barId { action(v.s("action"), v["value"]) } }
-    env.on("suggest.results") { [self] v in suggestionsArrived(v.s("q"), v.a("items").compactMap { $0.string }) }
+    suggest.arrived = { [self] q, items in suggestionsArrived(q, items) }
+    suggest.start()
+    startConfig()
     env.on("app.defaultBrowser") { [self] _ in
       browserChecked = false
       if isOpen { render() }
@@ -240,7 +251,7 @@ final class CommandBarCore {
       _ = handle("engines", ["engines": .array(list.map { $0.value })])
     case "suggestions":
       suggestionsOn = v.bool != false
-      if !suggestionsOn { env.call("suggest", "cancel") }
+      if !suggestionsOn { suggest.cancel() }
     case "banner":
       store("bannerDismissed", .bool(v.bool == false))
       if isOpen { render() }
@@ -448,7 +459,7 @@ final class CommandBarCore {
     shownSuggestions = []
     backStack = []
     dropCaches()
-    env.call("suggest", "cancel")
+    suggest.cancel()
     env.call("ui", "set", ["slot": .string(Self.slot), "tree": .null])
   }
 
@@ -1131,15 +1142,14 @@ final class CommandBarCore {
     suggestionsOn && scope == .main && !q.isEmpty && !Text.contains(q, "://") && !(mode == "edit" && q == editURL) && !Self.pathLike(q)
   }
 
-  /// Asks the host for suggestions. A cached answer comes back at once; otherwise the host
-  /// answers later with a `suggest.results` event. Nothing happens without a `suggest` service.
+  /// Asks for web suggestions (WebSuggestions). A cached answer comes back at once; otherwise it
+  /// arrives later through `suggestionsArrived`. Nothing happens without the `net` service.
   func requestSuggestions() {
     let q = trim(query)
     guard isOpen, suggestible(q) else { return }
-    let r = env.call("suggest", "query", ["q": .string(q)])
-    if let items = r["items"].array, !r.isErr {
-      suggestQuery = r.s("q")
-      suggestItems = items.compactMap { $0.string }
+    if let items = suggest.query(q) {
+      suggestQuery = WebSuggestions.normalize(q)
+      suggestItems = items
     }
   }
 

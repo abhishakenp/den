@@ -91,22 +91,19 @@ struct DenHomeTests {
     #expect(ConfigService.disabledPlugins(home) == ["peek"])
   }
 
-  @Test func configServiceReadsAppliesAndKeepsLastGoodConfig() {
+  /// The service reads and reports; it applies nothing itself (the command bar applies [shortcuts]
+  /// and [search.keywords]: CommandBarTests.configShortcutsAndKeywords).
+  @Test func configServiceReadsReportsAndKeepsLastGoodConfig() {
     let home = tempHome()
     home.ensureLayout()
     let host = ServiceHost()
     var calls: [(String, String, Value)] = []
-    var engines: Value = [["keyword": "g", "name": "Google", "url": "https://google.com/search?q=%s"]]
     let config = ConfigService(host: host, home: home) { s, m, a in
       calls.append((s, m, a))
-      if s == "commands" && m == "engines" {
-        if let list = a["engines"].array { engines = .array(list) }
-        return engines
-      }
       return .ok
     }
-    var changed = 0, themeEvents: [Value] = []
-    host.on("config.changed") { _ in changed += 1 }
+    var changed: [Value] = [], themeEvents: [Value] = []
+    host.on("config.changed") { changed.append($0) }
     host.on("config.themesChanged") { themeEvents.append($0) }
     #expect(config.handle(method: "get", args: .null) == .object([]))  // nothing read before start()
 
@@ -121,11 +118,10 @@ struct DenHomeTests {
     write(#"{"colors": ["red"]}"#, home.themes.appendingPathComponent("bad.json"))
     config.start()
 
-    #expect(changed == 1)
+    #expect(changed.count == 1)
+    #expect(changed.last?["config"]["shortcuts"]["cmd+shift+y"] == "den.toggleSidebar")
     #expect(config.handle(method: "get", args: ["key": "shortcuts"])["cmd+shift+y"] == "den.toggleSidebar")
-    let bind = calls.first { $0.0 == "keys" && $0.1 == "bind" }
-    #expect(bind?.2["chord"] == "cmd+shift+y" && bind?.2["event"] == "config.shortcut" && bind?.2["payload"]["id"] == "den.toggleSidebar")
-    #expect(engines.array?.map { $0.str("keyword") } == ["g", "sf"])
+    #expect(calls.isEmpty)  // the host calls no plugin service
 
     // Themes: sorted by name, clamped, errors reported per file.
     let themes = config.handle(method: "themes", args: .null).array ?? []
@@ -134,23 +130,19 @@ struct DenHomeTests {
     #expect(themeEvents.count == 1)
     #expect(config.errors.contains { $0.hasPrefix("themes/bad.json") })
 
-    // The bound shortcut runs its command.
-    host.emit("config.shortcut", ["chord": "cmd+shift+y", "payload": ["id": "den.toggleSidebar"]])
-    #expect(calls.last?.0 == "commands" && calls.last?.1 == "run" && calls.last?.2["id"] == "den.toggleSidebar")
+    // Plugins report their own problems; a new report from a source replaces its last one.
+    #expect(config.handle(method: "report", args: ["source": "commandbar", "errors": ["config.toml [shortcuts] x"]]) == .ok)
+    #expect(config.errors.contains("config.toml [shortcuts] x"))
+    #expect(config.handle(method: "errors", args: .null).array?.contains("config.toml [shortcuts] x") == true)
+    _ = config.handle(method: "report", args: ["source": "commandbar", "errors": []])
+    #expect(!config.errors.contains("config.toml [shortcuts] x"))
+    #expect(config.handle(method: "report", args: ["errors": []]).isError)
 
     // A broken edit keeps the last good config and reports the error.
     write("[shortcuts\n", home.config)
     config.reloadConfig()
     #expect(config.errors.contains { $0.hasPrefix("config.toml line 1") })
     #expect(config.handle(method: "get", args: ["key": "search.keywords.sf.name"]) == "Swift Forums")
-
-    // Removing the section unbinds the chord and takes the keyword out again.
-    write("", home.config)
-    calls = []
-    config.reloadConfig()
-    #expect(calls.contains { $0.0 == "keys" && $0.1 == "unbind" && $0.2["chord"] == "cmd+shift+y" })
-    #expect(!calls.contains { $0.0 == "keys" && $0.1 == "bind" })
-    #expect(engines.array?.map { $0.str("keyword") } == ["g"])
   }
 
   // MARK: Plugin priority

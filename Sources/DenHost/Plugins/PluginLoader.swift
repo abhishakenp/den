@@ -185,9 +185,4 @@ public final class PluginLoader {
   }
 
   /// Toast text naming the plugins that were turned off because they crashed den.
-  public static func crashToast(_ ids: [String]) -> String? {
-    guard !ids.isEmpty else { return nil }
-    let names = ids.map { "“\($0)”" }.joined(separator: ", ")
-    return ids.count == 1 ? "The \(names) plugin crashed den and was turned off" : "Plugins \(names) crashed den and were turned off"
-  }
 }

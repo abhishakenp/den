@@ -197,7 +197,7 @@ public final class KeysService: NSObject, HostService, NSMenuItemValidation {
     case "remap":
       let chord = args.str("chord").lowercased()
       guard Chord.parse(chord) != nil else { return .error("keys: bad chord '\(chord)'") }
-      guard let mi = MainMenu.item(args.str("item")) else { return .error("keys: no menu item '\(args.str("item"))'") }
+      guard let mi = MainMenu.item(args.str("item")) else { return Value.error("keys: no menu item '\(args.str("item"))'").with("noItem", true) }
       let id = args.str("item")
       remapped[id] = (remapped[id]?.key ?? mi.keyEquivalent, remapped[id]?.mask ?? mi.keyEquivalentModifierMask, chord)
       MainMenu.setKey(mi, chord)
@@ -292,8 +292,10 @@ public final class KeysService: NSObject, HostService, NSMenuItemValidation {
 ///   relaunch {background?}       -> quits cleanly (no quit dialog) and relaunches; `background` doesn't take focus
 ///   setAbout {credits}           -> text shown in the About panel
 ///   showAbout                    -> shows the About panel
+///   log {line}                   -> one line in ~/.den/logs/den.log (nothing without a den home)
 /// Events: app.quitRequested, app.closeRequested, app.openURL {urls: [string]}, app.active {active},
-///   app.power {battery, lowPower} (either changed)
+///   app.power {battery, lowPower} (either changed), app.session {phase: launch|quit, pid}: den.log
+///   has just logged a launch (first window) or quit; plugins add their own state with `log`
 @MainActor
 public final class AppService: HostService {
   public let name = "app"
@@ -308,6 +310,8 @@ public final class AppService: HostService {
   var forceClose = false
   var buffered: [String] = []
   public var launchMs: Double?
+  /// den.log (`log`), set by the app when there is a den home.
+  public var logLine: ((String) -> Void)?
   /// Set by the app (main.swift): quits and relaunches the bundle. `true` = in the background.
   public var relaunchHandler: ((Bool) -> Void)?
   /// Reads and sets the system default browser. Tests swap in a fake so they never touch macOS.
@@ -363,6 +367,10 @@ public final class AppService: HostService {
   public func handle(method: String, args: Value) -> Value {
     switch method {
     case "interceptQuit": interceptQuit = args.flag("enabled", true)
+    case "log":
+      let line = args.str("line")
+      guard !line.isEmpty, !line.contains("\n") else { return .error("app: log needs one line") }
+      logLine?(line)
     case "interceptClose": interceptClose = args.flag("enabled", true)
     case "quit":
       let confirm = args.flag("confirm", true)

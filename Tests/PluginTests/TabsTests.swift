@@ -9,6 +9,29 @@ import Testing
 @MainActor
 @Suite(.serialized, .watchdog)
 struct TabsTests {
+  /// den.log's session line comes from the tabs plugin (`app.session` -> `app.log`), the same
+  /// line the host used to build (thin-host step 2): counts, selection and an FNV-1a signature.
+  @Test func sessionLineAfterLaunchAndQuit() {
+    let h = Harness()
+    let core = h.startTabs()
+    var lines: [String] = []
+    h.rt.app.logLine = { lines.append($0) }
+    h.rt.host.emit("app.session", ["phase": "launch", "pid": 1])
+    #expect(lines.count == 1)
+    let line = lines.first ?? ""
+    #expect(line.hasPrefix("session launch spaces=\(h.spaceIds.count) current=\(h.rt.call("spaces", "current").str("id")) tabs="))
+    #expect(line.contains(" selected=\(h.rt.call("tabs", "selected").str("id", "-")) sig="))
+    // The same session gives the same line; a changed tab changes the signature.
+    h.rt.host.emit("app.session", ["phase": "quit", "pid": 1])
+    #expect(lines.last == "session quit " + line.dropFirst("session launch ".count))
+    _ = h.rt.call("tabs", "open", ["url": "https://example.com/new"])
+    #expect(core.sessionSummary() != String(line.dropFirst("session launch ".count)))
+    #expect(TabsCore.hex(0) == "0" && TabsCore.hex(0xcbf2_9ce4_8422_2325) == String(UInt64(0xcbf2_9ce4_8422_2325), radix: 16))
+    h.rt.host.emit("app.session", ["phase": "other"])
+    #expect(lines.count == 2)
+    #expect(h.rt.call("app", "log", ["line": "a\nb"]).isError)
+  }
+
   @Test func firstRunSeedRendersEverySection() {
     let h = Harness()
     h.startTabs()
