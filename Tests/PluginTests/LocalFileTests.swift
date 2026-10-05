@@ -120,6 +120,19 @@ struct LocalFileTests {
     #expect(h.barRows.map { $0.str("title") }.contains(".hidden"))
     h.action("commandBar", "dismiss")
 
+    // An app (a package) shows in Finder rather than loading in a tab, typed or completed.
+    h.key("cmd+t")
+    h.type("/System/Applications/Calculator.app")
+    #expect(h.barRows.first?.str("subtitle") == "— Show in Finder")
+    h.submit()
+    #expect(revealed.last?.path == "/System/Applications/Calculator.app")
+    h.key("cmd+t")
+    h.type("/System/Applications/Calcul")
+    #expect(h.barRowIds.first == "file:/System/Applications/Calculator.app")
+    let n = revealed.count
+    h.submit()
+    #expect(revealed.count == n + 1 && !todayURLs(h).contains { $0.hasSuffix("Calculator.app/") || $0.hasSuffix("Calculator.app") })
+
     // Home-relative paths complete in the same form.
     h.key("cmd+t")
     h.type("~/")

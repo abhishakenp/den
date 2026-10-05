@@ -100,11 +100,11 @@ enum LocalFiles {
     switch method {
     case "fileInfo":
       guard let f = existing(p) else { return ["exists": false] }
-      return ["exists": true, "folder": .bool(f.folder), "path": .string(f.url.path), "url": .string(f.url.absoluteString), "display": .string(display(f.url))]
+      return ["exists": true, "folder": .bool(f.folder), "package": .bool(isPackage(f.url)), "path": .string(f.url.path), "url": .string(f.url.absoluteString), "display": .string(display(f.url))]
     case "completePath":
       let limit = Int(args.num("limit", 6))
       return ["items": .array(complete(p, limit: limit).map { f in
-        ["path": .string(f.url.path), "url": .string(f.url.absoluteString), "name": .string(f.url.lastPathComponent), "folder": .bool(f.folder),
+        ["path": .string(f.url.path), "url": .string(f.url.absoluteString), "name": .string(f.url.lastPathComponent), "folder": .bool(f.folder), "package": .bool(isPackage(f.url)),
          "display": .string(display(f.url))]
       })]
     case "openPath":

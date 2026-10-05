@@ -35,7 +35,8 @@ extension CommandBarCore {
   /// The first row for an existing path: open the file, or show the folder in Finder.
   func fileRow(_ q: String, _ f: Value) -> Row {
     let path = f.s("path")
-    if f.b("folder") {
+    // A folder, or a package (an .app): WebKit can't show either; Finder can.
+    if f.b("folder") || f.b("package") {
       return Row(id: "go", icon: "file:" + path, title: q, subtitle: "— Show in Finder", act: .folder(path))
     }
     let u = f.s("url")
@@ -53,7 +54,8 @@ extension CommandBarCore {
       // Completion keeps the typed form: `~/…` stays `~/…`.
       let text = (Text.hasPrefix(q, "~") || Text.hasPrefix(q, "'~") || Text.hasPrefix(q, "\"~") ? it.s("display") : path) + (folder ? "/" : "")
       var row = Row(id: "file:" + path, icon: "file:" + path, title: it.s("name") + (folder ? "/" : ""), subtitle: "— " + it.s("display"),
-                    act: folder ? .complete(text) : .url(it.s("url")), key: folder ? "" : "url:" + URLs.normalize(it.s("url")))
+                    act: folder ? .complete(text) : it.b("package") ? .folder(path) : .url(it.s("url")),
+                    key: folder || it.b("package") ? "" : "url:" + URLs.normalize(it.s("url")))
       row.completion = text
       return row
     }
