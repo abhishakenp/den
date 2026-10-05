@@ -125,6 +125,8 @@ final class CommandBarCore {
   let env: PluginEnv
   var engines: [Engine] = CommandBarCore.defaultEngines
   var usage: [String: Usage] = [:]
+  /// Browsing history brought over by the importer (CommandHistory.swift), read on first use.
+  lazy var imported = CommandHistory(env: env)
   var registered: [String: Command] = [:]
   var registeredOrder: [String] = []
 
@@ -402,6 +404,17 @@ final class CommandBarCore {
         syncSettings()
       }
       return .array(engines.map { $0.value })
+    case "importHistory":
+      // {batch, source, items: [{url, title, visits, last}]}: imported browsing history (CommandHistory.swift).
+      let batch = args.s("batch")
+      guard !batch.isEmpty else { return .err("commands: importHistory needs a batch") }
+      let r = imported.merge(args.a("items"), batch: batch, now: env.now())
+      return ["added": .int(Int64(r.added)), "updated": .int(Int64(r.updated)), "total": .int(Int64(imported.items.count))]
+    case "forgetHistory":
+      guard !args.s("batch").isEmpty else { return .err("commands: forgetHistory needs a batch") }
+      return ["removed": .int(Int64(imported.forget(batch: args.s("batch"))))]
+    case "history":
+      return ["count": .int(Int64(imported.count))]
     case "state":
       return ["open": .bool(isOpen), "mode": .string(mode), "scope": .string(scopeName), "query": .string(query), "selected": .string(selected),
               "rows": .array(rows.map { .string($0.id) })]
@@ -1292,6 +1305,18 @@ final class CommandBarCore {
       seen.append(norm)
       out.append(Row(id: "hist:" + norm, icon: URLs.favicon(u.url), title: URLs.pageTitle(u.title, u.url), subtitle: Self.dash(URLs.display(u.url)),
                      act: .url(u.url), key: k, score: m + usageScore(k), strength: m))
+    }
+    // Imported history (another browser's): after the bar's own, deduped by normalized URL.
+    if !q.isEmpty {
+      var skip = Set<String>()
+      for s in seen { skip.insert(s) }
+      for h in imported.search(q, exclude: skip, limit: 3, now: env.now()) {
+        let k = "url:" + h.item.norm
+        seen.append(h.item.norm)
+        out.append(Row(id: "hist:" + h.item.norm, icon: URLs.favicon(h.item.url), title: URLs.pageTitle(h.item.title, h.item.url),
+                       subtitle: Self.dash(URLs.display(h.item.url)), act: .url(h.item.url), key: k,
+                       score: max(h.score, h.match + usageScore(k)), strength: h.match))
+      }
     }
     out += archiveRows(q, limit: 10, exclude: seen)
     return Self.top(out, 3)

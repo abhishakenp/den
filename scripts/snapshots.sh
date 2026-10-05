@@ -72,6 +72,23 @@ if [[ ${ONLY:-} == cards ]]; then
   for f in $out/card-*.png $out/pr-peek-*.png $out/link-card*.png $out/connected-toast*.png; do sips -Z 1280 "$f" --out "$f" >/dev/null; done
   exit 0
 fi
+# The importer (ImportScenarios, a synthetic home): the import card, the "Import from…" dialog, an
+# Arc import with its summary toast, Safari without Full Disk Access, then the end-to-end check
+# (every source, a second import, Undo; prints scenario.import lines, exits 0/1).
+# ONLY=import scripts/snapshots.sh renders just these (CI: scripts/ci-check.sh --only "import-*").
+import_shots() {
+  for p in importCard:import-card importDialog:import-dialog importArc:import-arc importSafariAccess:import-safari-access; do
+    shot ${p##*:} ${p%%:*} light 5
+    shot ${p##*:}-dark ${p%%:*} dark 5
+  done
+  wanted import-e2e || return 0  # not a PNG: CI's --only "import-*" includes it
+  print -u2 "[$(( SECONDS / 60 ))m$(( SECONDS % 60 ))s] den --scenario importE2E"
+  den_bounded 120 build/den.app/Contents/MacOS/den --background --no-den-home --storage "$(mktemp -d)" --scenario importE2E
+}
+if [[ ${ONLY:-} == import ]]; then
+  import_shots
+  exit 0
+fi
 # ONLY=new scripts/snapshots.sh: just the space menu, Settings and theming shots.
 if [[ -z ${ONLY:-} ]]; then
 shot main-light main light
@@ -116,6 +133,7 @@ if [[ -f build/den.app/Contents/PlugIns/tips.dylib ]]; then
     soft shot ${p##*:}-dark ${p%%:*} dark 3
   done
 fi
+if [[ -f build/den.app/Contents/PlugIns/importer.dylib ]]; then soft import_shots; fi
 # Host components (self-contained scenarios, no --demo): see DenHost/Scenarios/HostScenarios.swift.
 host() { # name scenario appearance [delay]
   resolve "$1" "$3" || return 0

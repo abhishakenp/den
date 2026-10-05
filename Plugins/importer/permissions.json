@@ -1,0 +1,12 @@
+{
+  "permissions": [
+    "files:~/Library/Application Support/Arc",
+    "files:~/Library/Safari",
+    "files:~/Library/Application Support/Google/Chrome",
+    "files:~/Library/Application Support/Dia",
+    "files:~/Library/Application Support/BraveSoftware/Brave-Browser",
+    "files:~/Library/Application Support/Microsoft Edge",
+    "files:~/Library/Application Support/Firefox",
+    "files:~/Library/Application Support/zen"
+  ]
+}
