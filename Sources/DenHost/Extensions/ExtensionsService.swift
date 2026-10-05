@@ -65,6 +65,14 @@ public final class ExtensionsService: NSObject, HostService {
     return n
   }
   private(set) var _native: NativeMessaging?
+  /// The APIs WebKit leaves out, answered by den (bookmarks, history, downloads, side panels, sign-in).
+  lazy var apis = ExtensionAPIs(svc: self, root: root)
+
+  /// Whether this extension has `nativeMessaging` only because den added it for its own APIs.
+  func nativeOnlyForDen(_ ctx: WKWebExtensionContext) -> Bool {
+    guard let e = registry.item(ctx.uniqueIdentifier), e.sourceKind != .home else { return false }
+    return ExtensionShim.addedNativeMessaging(URL(fileURLWithPath: registry.path(e)))
+  }
   var selectedTab: String?
   /// One per den window (main first): each window's URL pill shows the extension buttons.
   var uis: [ExtensionsUI]
@@ -190,10 +198,12 @@ public final class ExtensionsService: NSObject, HostService {
     var perms: [Value] = []
     var unsupported: [Value] = []
     if let ext {
-      perms = ExtensionText.describe(permissions: ext.requestedPermissions.map(\.rawValue), patterns: ext.allRequestedMatchPatterns.map(\.string)).map { .string($0) }
-      let manifestPerms = ((ext.manifest["permissions"] as? [Any]) ?? []).compactMap { $0 as? String }.filter { !$0.contains("://") && $0 != "<all_urls>" }
-      let known = Set((ext.requestedPermissions.union(ext.optionalPermissions)).map(\.rawValue))
-      unsupported = manifestPerms.filter { !known.contains($0) }.map { .string($0) }
+      // What it asked for (not the nativeMessaging den added for its own APIs), and what den provides.
+      let added = e.sourceKind != .home && ExtensionShim.addedNativeMessaging(URL(fileURLWithPath: registry.path(e)))
+      var asked = ext.requestedPermissions.map(\.rawValue).filter { !(added && $0 == "nativeMessaging") }
+      asked += Self.manifestPermissions(ext).filter { ExtensionAPIs.provided.contains($0) }
+      perms = ExtensionText.describe(permissions: asked, patterns: ext.allRequestedMatchPatterns.map(\.string)).map { .string($0) }
+      unsupported = unsupportedPermissions(ext).map { .string($0) }
     }
     let action = ctx?.action(for: selectedTabId().map { tab($0) })
     var v: Value = [
@@ -453,7 +463,8 @@ public final class ExtensionsService: NSObject, HostService {
         // WebKit's content script parser takes no file: patterns (MatchPattern does): an entry
         // with one fails to load with "has no specified `matches` entry", and with it every
         // content script of the extension (Vimium on macOS 26.6).
-        try ExtensionShim.apply(to: dir) { !$0.lowercased().hasPrefix("file:") && (try? WKWebExtension.MatchPattern(string: $0)) != nil }
+        try ExtensionShim.apply(to: dir, validPattern: { !$0.lowercased().hasPrefix("file:") && (try? WKWebExtension.MatchPattern(string: $0)) != nil },
+                                redirect: e.sourceKind == .firefox ? Self.geckoId(dir).map { ExtensionIdentity.redirectBase(id: e.id, geckoId: $0) } : nil)
       } catch {
         record("shim \(e.id) \(e.name): \(error)")
       }
@@ -472,6 +483,7 @@ public final class ExtensionsService: NSObject, HostService {
       rulesTouchedAt[e.id] = Date()
       contexts[e.id] = ctx
       loadErrors[e.id] = nil
+      apis.loaded(ctx)
     } catch {
       loadErrors[e.id] = error.localizedDescription
       record("load \(e.id) \(e.name) failed: \(error.localizedDescription)")
@@ -510,6 +522,8 @@ public final class ExtensionsService: NSObject, HostService {
     rulesTouchedAt[e.id] = Date()
     var perms: [WKWebExtension.Permission: Date] = [:]
     for p in e.granted { perms[WKWebExtension.Permission(rawValue: p)] = .distantFuture }
+    // nativeMessaging that den added to its copy reaches den's own APIs only (ExtensionAPIs).
+    if e.sourceKind != .home, ExtensionShim.addedNativeMessaging(URL(fileURLWithPath: registry.path(e))) { perms[.nativeMessaging] = .distantFuture }
     ctx.grantedPermissions = perms
     var patterns: [WKWebExtension.MatchPattern: Date] = [:]
     switch e.siteAccess {
@@ -683,7 +697,8 @@ public final class ExtensionsService: NSObject, HostService {
     if !approved {
       let iconPath = writeIcon(staged, id: "staged-\(id)")
       let ok = await withCheckedContinuation { cont in
-        prompt(title: existing == nil ? "Add “\(name)” to den?" : "Update “\(name)”?", icon: iconPath, lines: ExtensionText.describe(permissions: perms, patterns: patterns),
+        let shown = perms + Self.manifestPermissions(staged).filter { ExtensionAPIs.provided.contains($0) }
+        prompt(title: existing == nil ? "Add “\(name)” to den?" : "Update “\(name)”?", icon: iconPath, lines: ExtensionText.describe(permissions: shown, patterns: patterns),
                unsupported: unsupportedPermissions(staged), note: ExtensionText.storeNotice(storeId ?? "")?.text, confirm: existing == nil ? "Add Extension" : "Update") { cont.resume(returning: $0) }
       }
       try? FileManager.default.removeItem(atPath: iconPath)
@@ -781,10 +796,22 @@ public final class ExtensionsService: NSObject, HostService {
   /// API permissions a loaded extension asks for that neither WebKit nor den provides.
   func unsupportedAPIs(_ id: String) -> [String] { contexts[id].map { unsupportedPermissions($0.webExtension) } ?? [] }
 
+  /// Manifest `permissions` that aren't host patterns.
+  static func manifestPermissions(_ ext: WKWebExtension) -> [String] {
+    ((ext.manifest["permissions"] as? [Any]) ?? []).compactMap { $0 as? String }.filter { !$0.contains("://") && $0 != "<all_urls>" }
+  }
+
   func unsupportedPermissions(_ ext: WKWebExtension) -> [String] {
     let manifestPerms = ((ext.manifest["permissions"] as? [Any]) ?? []).compactMap { $0 as? String }.filter { !$0.contains("://") && $0 != "<all_urls>" }
-    let known = Set(ext.requestedPermissions.union(ext.optionalPermissions).map(\.rawValue))
+    let known = Set(ext.requestedPermissions.union(ext.optionalPermissions).map(\.rawValue)).union(ExtensionAPIs.provided)
     return manifestPerms.filter { !known.contains($0) }
+  }
+
+  /// A Firefox add-on's id (`browser_specific_settings.gecko.id`) from its folder's manifest.
+  nonisolated static func geckoId(_ dir: URL) -> String? {
+    guard let d = try? Data(contentsOf: dir.appendingPathComponent("manifest.json")),
+          let m = try? JSONSerialization.jsonObject(with: d.starts(with: [0xEF, 0xBB, 0xBF]) ? Data(d.dropFirst(3)) : d) as? [String: Any] else { return nil }
+    return (((m["browser_specific_settings"] ?? m["applications"]) as? [String: Any])?["gecko"] as? [String: Any])?["id"] as? String
   }
 
   /// Web views created before the controller existed can't get it: re-create the live ones with
@@ -925,6 +952,7 @@ public final class ExtensionsService: NSObject, HostService {
   func uninstall(_ id: String) -> Value {
     guard let e = registry.item(id) else { return .error("webext: no extension '\(id)'") }
     closePopups(of: id)
+    apis.unloaded(id, removed: true)
     if let ctx = contexts.removeValue(forKey: id), let c = controller {
       retire(ctx, id: id, from: c) {
         c.fetchDataRecord(ofTypes: WKWebExtensionController.allExtensionDataTypes, for: ctx) { rec in
@@ -950,6 +978,7 @@ public final class ExtensionsService: NSObject, HostService {
       Task { await load(registry.item(id) ?? e); changed() }
     } else if let ctx = contexts.removeValue(forKey: id) {
       closePopups(of: id)
+      apis.unloaded(id, removed: false)
       if let c = controller { retire(ctx, id: id, from: c) }
     }
     changed()
@@ -990,6 +1019,11 @@ public final class ExtensionsService: NSObject, HostService {
 
   func performAction(_ id: String, anchor: NSRect?) -> Value {
     guard let ctx = contexts[id] else { return .error("webext: '\(id)' is not loaded") }
+    // sidePanel.setPanelBehavior({openPanelOnActionClick}): the button opens its side panel.
+    if apis.sidePanel.opensOnAction(ctx) {
+      let r = apis.sidePanel.isOpen(ctx) ? apis.sidePanel.close(ctx) : apis.sidePanel.open(ctx, icon: registry.iconPath(id))
+      return r.isError ? r : .ok
+    }
     let t = selectedTabId().map { tab($0) }
     ui.pendingAnchor = anchor
     ui.pendingPopup = id

@@ -144,13 +144,20 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
     completionHandler(svc.presentPopup(action, context: context))
   }
 
-  /// `runtime.sendNativeMessage`: a desktop app's native host (NativeMessaging.swift).
+  /// `runtime.sendNativeMessage`: den's own APIs (ExtensionAPIs) when addressed to den, else a
+  /// desktop app's native host (NativeMessaging.swift). An extension that has `nativeMessaging`
+  /// only because den added it for its APIs reaches no desktop app.
   func webExtensionController(_ controller: WKWebExtensionController, sendMessage message: Any, toApplicationWithIdentifier applicationIdentifier: String?, for extensionContext: WKWebExtensionContext, replyHandler: @escaping (Any?, (any Error)?) -> Void) {
+    if applicationIdentifier == ExtensionAPIs.appId { return svc.apis.message(message, ctx: extensionContext, reply: replyHandler) }
+    if svc.nativeOnlyForDen(extensionContext) { return replyHandler(nil, ExtensionsService.failure("No native app “\(applicationIdentifier ?? "")” is available in den")) }
     svc.native.sendMessage(message, to: applicationIdentifier, caller: svc.nativeCaller(extensionContext), reply: replyHandler)
   }
 
-  /// `runtime.connectNative`: a port to a desktop app's native host for as long as it's open.
+  /// `runtime.connectNative`: den's event port when addressed to den, else a port to a desktop
+  /// app's native host for as long as it's open.
   func webExtensionController(_ controller: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort, for extensionContext: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
+    if port.applicationIdentifier == ExtensionAPIs.appId { return completionHandler(svc.apis.connect(port, ctx: extensionContext)) }
+    if svc.nativeOnlyForDen(extensionContext) { return completionHandler(ExtensionsService.failure("No native app “\(port.applicationIdentifier ?? "")” is available in den")) }
     completionHandler(svc.native.connect(port, caller: svc.nativeCaller(extensionContext)))
   }
 

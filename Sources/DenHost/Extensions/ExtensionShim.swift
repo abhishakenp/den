@@ -1,10 +1,12 @@
 // thin-host: feature-specific, migrate to plugin (whole file)
+import CordisValue
 import Foundation
 
-/// Stand-ins for extension APIs WebKit doesn't have, so an extension that calls them keeps
-/// running instead of stopping at the first `undefined`: `bookmarks` (empty), `history` (pages
-/// visited while the extension runs), `sessions` (tabs closed while it runs), `search` (a Google
-/// search in a tab) and `storage.session.setAccessLevel` (no-op).
+/// The extension APIs WebKit doesn't have. den's real ones (`bookmarks`, `history`, `sessions`,
+/// `search`, `downloads`, `sidePanel`, `sidebarAction`, `identity`) are JavaScript here that calls
+/// den over native messaging (ExtensionAPIs.swift); events WebKit leaves out of a namespace it has
+/// get working stand-ins (below); `idle`, `offscreen` and `storage.session.setAccessLevel` are
+/// answered so start-up code carries on.
 ///
 /// den adds them to its own copy of a store or file install (never to a folder in
 /// ~/.den/extensions): `__den/shim.js` runs first in the background, in every content script and
@@ -17,17 +19,25 @@ public enum ExtensionShim {
   static let workerName = "__den_worker.js"
   /// Where shim v1–4 put the wrapper (chunks then resolved under __den/ and failed to load).
   static let oldWorker = "__den/worker.js"
-  /// Marks the background context, where the shim records visits and closed tabs.
+  /// Marks the background context (event subscriptions from it wake it again; it opens link-hint tabs).
   static let backgroundFlag = "__den/background.js"
   /// Bumped when `source` changes, so installed copies get the new one on their next load.
   static let version = 6
+  /// Present when den added `nativeMessaging` to the manifest for its own APIs (ExtensionAPIs):
+  /// granted at load, and never shown as something the extension asked for.
+  static let addedNative = "__den/native-messaging"
+
+  /// Whether den added `nativeMessaging` to this copy (it isn't the extension's own request).
+  static func addedNativeMessaging(_ root: URL) -> Bool { FileManager.default.fileExists(atPath: root.appendingPathComponent(addedNative).path) }
 
   /// Adds the shim to an unpacked extension. Idempotent; returns whether anything changed.
   /// `validPattern` says whether WebKit takes a match pattern: content script entries lose the
   /// ones it rejects, and an entry left with none is dropped, so one entry WebKit can't read
-  /// doesn't leave the extension with a load error.
+  /// doesn't leave the extension with a load error. `redirect` is `identity.getRedirectURL()`'s
+  /// base when it isn't Chrome's (`https://<runtime.id>.chromiumapp.org/`): a Firefox Add-ons
+  /// install's.
   @discardableResult
-  public static func apply(to root: URL, validPattern: (String) -> Bool = { _ in true }) throws -> Bool {
+  public static func apply(to root: URL, validPattern: (String) -> Bool = { _ in true }, redirect: String? = nil) throws -> Bool {
     let fm = FileManager.default
     let manifestURL = root.appendingPathComponent("manifest.json")
     let data = try Data(contentsOf: manifestURL)
@@ -35,13 +45,26 @@ public enum ExtensionShim {
     guard var m = try JSONSerialization.jsonObject(with: clean) as? [String: Any] else { throw ExtensionPackageError("manifest.json is not valid JSON") }
     let marker = "// den-shim v\(version)"
     let shimURL = root.appendingPathComponent(script)
-    let current = (try? String(contentsOf: shimURL, encoding: .utf8))?.hasPrefix(marker) == true
+    let config = "globalThis.__denConfig = " + ValueJSON.string(["redirect": redirect.map { .string($0) } ?? .null]) + ";\n"
+    let content = marker + "\n" + config + source
+    let current = (try? String(contentsOf: shimURL, encoding: .utf8)) == content
     var changed = false
     if !current {
       try fm.createDirectory(at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
-      try (marker + "\n" + source).write(to: shimURL, atomically: true, encoding: .utf8)
+      try content.write(to: shimURL, atomically: true, encoding: .utf8)
       try "globalThis.__denBackground = true;\n".write(to: root.appendingPathComponent(backgroundFlag), atomically: true, encoding: .utf8)
       changed = true
+    }
+    // den's own APIs answer over native messaging (to den itself, never another app).
+    if ExtensionAPIs.usesBridge(m) {
+      var perms = (m["permissions"] as? [Any]) ?? []
+      if !perms.contains(where: { ($0 as? String) == "nativeMessaging" }) {
+        perms.append("nativeMessaging")
+        m["permissions"] = perms
+        try fm.createDirectory(at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
+        try "den added nativeMessaging for its own APIs\n".write(to: root.appendingPathComponent(addedNative), atomically: true, encoding: .utf8)
+        changed = true
+      }
     }
     var backgroundPage: String?
 
@@ -273,15 +296,9 @@ public enum ExtensionShim {
         }
       } catch (e) {}
 
-      // idle, sidePanel, offscreen: answered so start-up code that touches them carries on.
+      // idle and offscreen: answered so start-up code that touches them carries on.
       if (perms.includes('idle')) {
         define('idle', {queryState: fn(() => 'active'), setDetectionInterval: () => {}, getAutoLockDelay: fn(() => 0), onStateChanged: event()});
-      }
-      if (perms.includes('sidePanel')) {
-        define('sidePanel', {
-          setOptions: fn(() => undefined), getOptions: fn(() => ({enabled: false})), setPanelBehavior: fn(() => undefined),
-          getPanelBehavior: fn(() => ({openPanelOnActionClick: false})), open: fn(() => { throw unavailable('The side panel'); }),
-        });
       }
       if (perms.includes('offscreen')) {
         define('offscreen', {
@@ -290,100 +307,99 @@ public enum ExtensionShim {
         });
       }
 
-      // bookmarks: den keeps none an extension can read.
-      if (perms.includes('bookmarks')) {
-        const tree = () => [{id: '0', title: '', children: [{id: '1', parentId: '0', title: 'Bookmarks', children: []}]}];
-        define('bookmarks', {
-          getTree: fn(tree), getSubTree: fn(() => []), get: fn(() => []), getChildren: fn(() => []),
-          getRecent: fn(() => []), search: fn(() => []),
-          create: fn(() => { throw unavailable('Bookmarks'); }), update: fn(() => { throw unavailable('Bookmarks'); }),
-          move: fn(() => { throw unavailable('Bookmarks'); }), remove: fn(() => { throw unavailable('Bookmarks'); }),
-          removeTree: fn(() => { throw unavailable('Bookmarks'); }),
-          onCreated: event(), onRemoved: event(), onChanged: event(), onMoved: event(),
-          onChildrenReordered: event(), onImportBegan: event(), onImportEnded: event(),
-        });
-      }
-
-      // history and sessions: what the extension sees while it runs, kept in its own storage.
-      const titles = new Map();
-      const HKEY = '__den.history', CKEY = '__den.closed';
-      if (perms.includes('history') && api.tabs && api.tabs.onUpdated) {
-        const onVisited = event(), onVisitRemoved = event();
-        const record = async (url, title) => {
-          if (!/^https?:/.test(url)) return;
-          const h = await load(HKEY, []);
-          const i = h.findIndex((x) => x.url === url);
-          const item = i >= 0 ? h.splice(i, 1)[0] : {id: String(Date.now()), url, title: '', visitCount: 0, typedCount: 0};
-          item.title = title || item.title;
-          item.visitCount += 1;
-          item.lastVisitTime = Date.now();
-          h.unshift(item);
-          if (h.length > 2000) h.length = 2000;
-          save(HKEY, h);
-          onVisited.fire(item);
+      // den's own APIs (ExtensionAPIs.swift): bookmarks, history, sessions, search, downloads,
+      // sidePanel, sidebarAction and identity, answered by den over native messaging to den itself.
+      const DEN = 'io.github.abhishakenp.den';
+      const cfg = g.__denConfig || {};
+      const call = (ns, method, ...args) => new Promise((resolve, reject) => {
+        if (typeof api.runtime.sendNativeMessage !== 'function') return reject(unavailable(ns + '.' + method));
+        const done = (r) => {
+          if (r && typeof r.error === 'string') reject(new Error(r.error)); else resolve(r ? r.ok : undefined);
         };
-        if (inBackground) api.tabs.onUpdated.addListener((id, info, tab) => {
-          if (info.status === 'complete' && tab && tab.url) record(tab.url, tab.title);
-        });
-        define('history', {
-          search: fn(async (q = {}) => {
-            const text = (q.text || '').toLowerCase(), start = q.startTime || 0, end = q.endTime || Infinity;
-            const max = q.maxResults == null ? 100 : q.maxResults;
-            const h = await load(HKEY, []);
-            const out = h.filter((x) => x.lastVisitTime >= start && x.lastVisitTime <= end &&
-              (!text || x.url.toLowerCase().includes(text) || (x.title || '').toLowerCase().includes(text)));
-            return max > 0 ? out.slice(0, max) : out;
-          }),
-          getVisits: fn(async ({url}) => (await load(HKEY, [])).filter((x) => x.url === url).map((x) => ({id: x.id, visitId: x.id, visitTime: x.lastVisitTime, transition: 'link'}))),
-          addUrl: fn(({url, title}) => record(url, title)),
-          deleteUrl: fn(async ({url}) => { save(HKEY, (await load(HKEY, [])).filter((x) => x.url !== url)); onVisitRemoved.fire({allHistory: false, urls: [url]}); }),
-          deleteRange: fn(async ({startTime, endTime}) => { save(HKEY, (await load(HKEY, [])).filter((x) => x.lastVisitTime < startTime || x.lastVisitTime > endTime)); onVisitRemoved.fire({allHistory: false, urls: []}); }),
-          deleteAll: fn(() => { save(HKEY, []); onVisitRemoved.fire({allHistory: true, urls: []}); }),
-          onVisited, onVisitRemoved,
-        });
-      }
-      if (perms.includes('sessions') && api.tabs && api.tabs.onRemoved) {
-        const onChanged = event();
-        if (inBackground && api.tabs.onUpdated) api.tabs.onUpdated.addListener((id, info, tab) => { if (tab && tab.url) titles.set(id, {url: tab.url, title: tab.title || ''}); });
-        if (inBackground) api.tabs.onRemoved.addListener(async (id) => {
-          const t = titles.get(id);
-          titles.delete(id);
-          if (!t || !/^https?:/.test(t.url)) return;
-          const c = await load(CKEY, []);
-          c.unshift({lastModified: Math.floor(Date.now() / 1000), tab: {sessionId: String(Date.now()), url: t.url, title: t.title}});
-          if (c.length > 25) c.length = 25;
-          save(CKEY, c);
-          onChanged.fire();
-        });
-        define('sessions', {
-          MAX_SESSION_RESULTS: 25,
-          getRecentlyClosed: fn(async (f = {}) => (await load(CKEY, [])).slice(0, f.maxResults || 25)),
-          getDevices: fn(() => []),
-          restore: fn(async (sessionId) => {
-            const c = await load(CKEY, []);
-            const i = sessionId == null ? 0 : c.findIndex((x) => x.tab.sessionId === sessionId);
-            if (i < 0 || !c[i]) throw unavailable('That closed tab');
-            const [s] = c.splice(i, 1);
-            save(CKEY, c);
-            onChanged.fire();
-            const tab = await api.tabs.create({url: s.tab.url, active: true});
-            return {lastModified: s.lastModified, tab};
-          }),
-          onChanged,
-        });
-      }
+        let p;
+        try { p = api.runtime.sendNativeMessage(DEN, {__den: ns, method, args: args.map((a) => a === undefined ? null : a)}); } catch (e) { return reject(e); }
+        if (p && typeof p.then === 'function') p.then(done, reject); else reject(unavailable(ns + '.' + method));
+      });
+      const subs = new Map();
+      let port = null;
+      const listening = () => [...subs].filter(([, e]) => e.hasListeners()).map(([n]) => n);
+      const subscribe = (names) => {
+        if (!port) {
+          try { port = api.runtime.connectNative(DEN); } catch (e) { port = null; return; }
+          port.onMessage.addListener((m) => { const e = m && subs.get(m.event); if (e) e.fire(...(m.args || [])); });
+          port.onDisconnect.addListener(() => { port = null; setTimeout(() => { const l = listening(); if (l.length) subscribe(l); }, 1000); });
+        }
+        try { port.postMessage({subscribe: names, background: inBackground}); } catch (e) {}
+      };
+      const evt = (name) => {
+        const e = event();
+        const add = e.addListener;
+        e.addListener = (f) => { add(f); subscribe([name]); };
+        subs.set(name, e);
+        return e;
+      };
+      const ns = (name, methods, events, extra) => {
+        const o = Object.assign({}, extra || {});
+        for (const m of methods) o[m] = fn((...a) => call(name, m, ...a));
+        for (const e of events) o[e] = evt(name + '.' + e);
+        define(name, o);
+      };
+      const manifest = (() => { try { return api.runtime.getManifest(); } catch (e) { return {}; } })();
 
-      // search.query: a web search in the current tab, a new tab or a new window.
+      if (perms.includes('bookmarks')) {
+        ns('bookmarks', ['getTree', 'getSubTree', 'get', 'getChildren', 'getRecent', 'search', 'create', 'update', 'move', 'remove', 'removeTree'],
+          ['onCreated', 'onRemoved', 'onChanged', 'onMoved', 'onChildrenReordered', 'onImportBegan', 'onImportEnded'],
+          {MAX_WRITE_OPERATIONS_PER_HOUR: 1000000, MAX_SUSTAINED_WRITE_OPERATIONS_PER_MINUTE: 1000000});
+      }
+      if (perms.includes('history')) {
+        ns('history', ['search', 'getVisits', 'addUrl', 'deleteUrl', 'deleteRange', 'deleteAll'], ['onVisited', 'onVisitRemoved']);
+      }
+      if (perms.includes('sessions')) {
+        ns('sessions', ['getRecentlyClosed', 'getDevices'], ['onChanged'], {
+          MAX_SESSION_RESULTS: 25,
+          restore: fn(async (sessionId) => {
+            const s = await call('sessions', 'restore', sessionId == null ? null : sessionId);
+            try { const [t] = await api.tabs.query({active: true, currentWindow: true}); if (t) s.tab = t; } catch (e) {}
+            return s;
+          }),
+        });
+      }
       if (perms.includes('search') && api.tabs) {
         define('search', {
-          query: fn(async ({text, disposition, tabId}) => {
-            const url = 'https://www.google.com/search?q=' + encodeURIComponent(text || '');
+          query: fn(async ({text, disposition, tabId} = {}) => {
+            const {url} = await call('search', 'query', {text: text || ''});
             if (tabId != null) return void await api.tabs.update(tabId, {url});
             if (disposition === 'NEW_TAB') return void await api.tabs.create({url});
             if (disposition === 'NEW_WINDOW' && api.windows) return void await api.windows.create({url});
             const [t] = await api.tabs.query({active: true, currentWindow: true});
             if (t) await api.tabs.update(t.id, {url}); else await api.tabs.create({url});
           }),
+        });
+      }
+      if (perms.includes('downloads')) {
+        ns('downloads', ['download', 'search', 'pause', 'resume', 'cancel', 'getFileIcon', 'open', 'show', 'showDefaultFolder', 'erase', 'removeFile',
+          'acceptDanger', 'setShelfEnabled', 'setUiOptions'], ['onCreated', 'onErased', 'onChanged'], {
+          // den names files itself: this never fires.
+          onDeterminingFilename: event(), drag: () => {},
+        });
+      }
+      if (perms.includes('sidePanel') || manifest.side_panel) {
+        ns('sidePanel', ['setOptions', 'getOptions', 'setPanelBehavior', 'getPanelBehavior', 'open', 'close', 'getLayout'], ['onOpened', 'onClosed'], {
+          Side: {LEFT: 'left', RIGHT: 'right'},
+        });
+      }
+      if (manifest.sidebar_action) {
+        ns('sidebarAction', ['open', 'close', 'toggle', 'isOpen', 'setPanel', 'getPanel', 'setTitle', 'getTitle', 'setIcon'], []);
+      }
+      if (perms.includes('identity')) {
+        const redirect = (path) => (cfg.redirect || 'https://' + api.runtime.id + '.chromiumapp.org/') + String(path || '').replace(/^\//, '');
+        define('identity', {
+          getRedirectURL: redirect,
+          launchWebAuthFlow: fn((details) => call('identity', 'launchWebAuthFlow', details || {})),
+          getAuthToken: fn(() => { throw new Error('den can’t sign extensions in to a Google account (identity.getAuthToken). Sign-in through the extension’s own page (launchWebAuthFlow) works.'); }),
+          getProfileUserInfo: fn(() => ({email: '', id: ''})), getAccounts: fn(() => []),
+          removeCachedAuthToken: fn(() => undefined), clearAllCachedAuthTokens: fn(() => undefined),
+          onSignInChanged: event(),
         });
       }
     })();

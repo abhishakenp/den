@@ -683,6 +683,38 @@ final class TabsCore {
     case "restore":
       guard let id = restore(args.s("id")) else { return .err("tabs: no archived tab '" + args.s("id") + "'") }
       return ["id": .string(id)]
+    case "removeArchived":
+      // {urls?, after?, before?, all?}: archive entries leave (an extension's history.deleteUrl,
+      // deleteRange, deleteAll). Returns the removed entries.
+      let urls = args.a("urls").compactMap { $0.string }
+      let after = args["after"].int, before = args["before"].int, all = args.b("all")
+      guard all || !urls.isEmpty || after != nil || before != nil else { return .err("tabs: removeArchived needs urls, a range or all") }
+      var removed: [Value] = []
+      archive.removeAll { e in
+        let t = e.i("closedAt")
+        let hit = all || (!urls.isEmpty && urls.contains(e.s("url"))) || (urls.isEmpty && t >= (after ?? Int64.min) && t <= (before ?? Int64.max))
+        if hit { removed.append(e) }
+        return hit
+      }
+      if !removed.isEmpty {
+        saveSoon()
+        env.emit("tabs.changed", ["spaceId": .string(currentSpace)])
+      }
+      return .array(removed)
+    case "setPinnedUrl":
+      // A pinned tab or favorite's home address (the "/" reset target; an extension's bookmarks.update).
+      let id = args.s("id"), url = args.s("url")
+      guard tabs[id] != nil, kindOf(id) != "today" else { return .err("tabs: no pinned tab '" + id + "'") }
+      guard !url.isEmpty else { return .err("tabs: setPinnedUrl needs a url") }
+      // A tab that isn't open and sits at its home address goes to the new one (opening it then
+      // loads that); a live page stays where it is and shows the "/" drift marker.
+      let home = tabs[id]?.pinnedUrl
+      if tabs[id]?.url == home, !env.call("webviews", "get", ["id": .string(id)]).b("live") {
+        env.call("webviews", "navigate", ["id": .string(id), "url": .string(url)])
+        tabs[id]?.url = url
+      }
+      tabs[id]?.pinnedUrl = url
+      changed(spaceOf(id))
     case "createFolder":
       let tabIds = args.a("tabIds").compactMap { $0.string }.filter { tabs[$0] != nil }
       return ["id": .string(createFolder(space: args.sOpt("spaceId") ?? currentSpace, title: args.sOpt("title"), tabIds: tabIds))]

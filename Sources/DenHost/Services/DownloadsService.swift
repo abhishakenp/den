@@ -75,6 +75,10 @@ public final class DownloadsService: NSObject, HostService, WKDownloadDelegate {
   private var progress: [String: NSKeyValueObservation] = [:]
   private var samples: [String: (bytes: Int64, at: Double)] = [:]
   private var changePending: (() -> Void)?
+  /// `start {name, conflict}`: where a download goes instead of the server's name (a path relative
+  /// to the Downloads folder, as `chrome.downloads.download {filename}` gives it), and whether an
+  /// existing file is replaced.
+  private var destinations: [String: (name: String, overwrite: Bool)] = [:]
   private var nextId = 1
   static let ns = "downloads"
   static let limit = 300
@@ -102,10 +106,17 @@ public final class DownloadsService: NSObject, HostService, WKDownloadDelegate {
       return value(items[i])
     case "start":
       guard let u = URL(string: args.str("url")), u.scheme != nil else { return .error("downloads: bad url") }
+      let name = args.str("name")
+      if !name.isEmpty, Self.relativePath(name) == nil { return .error("downloads: bad file name '\(name)'") }
       guard let w = webView(args.str("webview")) ?? helperWebView() else { return .error("downloads: no web view") }
       let ask = args.flag("ask")
       let pending = placeholder(url: u.absoluteString, webview: args.str("webview"))
-      w.startDownload(using: URLRequest(url: u)) { [weak self] d in
+      if !name.isEmpty { destinations[pending] = (name, args.str("conflict") == "overwrite") }
+      var req = URLRequest(url: u)
+      if let m = args["method"].string, !m.isEmpty { req.httpMethod = m.uppercased() }
+      for h in args.list("headers") where !h.str("name").isEmpty { req.setValue(h.str("value"), forHTTPHeaderField: h.str("name")) }
+      if let b = args["body"].string { req.httpBody = Data(b.utf8) }
+      w.startDownload(using: req) { [weak self] d in
         MainActor.assumeIsolated { self?.adopt(d, id: pending, ask: ask) }
       }
       return ["id": .string(pending)]
@@ -141,6 +152,11 @@ public final class DownloadsService: NSObject, HostService, WKDownloadDelegate {
       }
       if n > 0 { save(); changed() }
       return ["archived": .int(Int64(n))]
+    case "showFolder":
+      let dir = folder()
+      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      NSWorkspace.shared.open(dir)
+      return .ok
     case "seen":
       guard items.contains(where: \.unseen) else { return .ok }
       for i in items.indices { items[i].unseen = false }
@@ -255,6 +271,15 @@ public final class DownloadsService: NSObject, HostService, WKDownloadDelegate {
     return s.isEmpty ? "download" : s
   }
 
+  /// A download name relative to the Downloads folder, as path components: nil for an absolute
+  /// path, an empty one, or one that climbs out (`..`). Each component is made safe.
+  public nonisolated static func relativePath(_ name: String) -> [String]? {
+    guard !name.hasPrefix("/"), !name.hasPrefix("~") else { return nil }
+    let parts = name.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+    guard !parts.isEmpty, !parts.contains(".."), !parts.contains(".") else { return nil }
+    return parts.map(safeName)
+  }
+
   /// `name` in `folder`, or Finder's "name 2.ext", "name 3.ext" … when that's taken.
   public nonisolated static func uniqueURL(in folder: URL, name: String, taken: (String) -> Bool) -> URL {
     let safe = safeName(name)
@@ -353,10 +378,22 @@ public final class DownloadsService: NSObject, HostService, WKDownloadDelegate {
       if let w = download.webView?.window { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
       return
     }
-    let dir = folder()
-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    var dir = folder()
+    var name = suggestedFilename
     let reserved = Set(items.filter { $0.active || $0.state == "paused" }.map(\.path))
-    finish(Self.uniqueURL(in: dir, name: suggestedFilename) { reserved.contains($0) || FileManager.default.fileExists(atPath: $0) })
+    if let dest = destinations.removeValue(forKey: id), let rel = Self.relativePath(dest.name) {
+      // A name with folders ("reports/q3.pdf") lands in those folders under Downloads.
+      for part in rel.dropLast() { dir.appendPathComponent(part, isDirectory: true) }
+      name = rel.last ?? name
+      let u = dir.appendingPathComponent(Self.safeName(name))
+      if dest.overwrite, !reserved.contains(u.path) {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: u)
+        return finish(u)
+      }
+    }
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    finish(Self.uniqueURL(in: dir, name: name) { reserved.contains($0) || FileManager.default.fileExists(atPath: $0) })
   }
 
   public func downloadDidFinish(_ download: WKDownload) {

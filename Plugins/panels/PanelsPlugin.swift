@@ -3,12 +3,14 @@
 nonisolated(unsafe) var panelsCore: PanelsCore?
 
 struct Plugin: CordisPlugin {
-  // `tabs`, `commands` and `settings` are optional (called, not injected).
-  static let manifest = Manifest(name: "Web Panels", version: "0.1.0", inject: ["webviews", "content", "ui", "keys", "storage"], provides: [])
+  // `tabs`, `commands` and `settings` are optional (called, not injected). Provides `panels`
+  // (extensions' side panels: `showPage`, `hidePage`, `removeOwner`, `state`).
+  static let manifest = Manifest(name: "Web Panels", version: "0.1.0", inject: ["webviews", "content", "ui", "keys", "storage"], provides: ["panels"])
 
   static func apply(_ ctx: Context) throws(PluginError) {
     let core = PanelsCore(env: PluginEnv(ctx))
     panelsCore = core
+    ctx.provide("panels") { m, a in core.handle(m, a) }
     core.start()
   }
 

@@ -183,6 +183,8 @@ public final class MockServices: @unchecked Sendable {
       return (200, [("Content-Type", "text/html; charset=utf-8")], Data(Self.vaultPage(signup: r.path.hasSuffix("signup")).utf8))
     case ("GET", "/search"): return githubSearch(r)
     case ("GET", "/redirect-out"): return (302, [("Location", "http://example.invalid/")], Data())
+    // A 302 to any address (`?to=`): an OAuth server answering with the extension's redirect URL.
+    case ("GET", "/redirect-to"): return (302, [("Location", r.query["to"] ?? "/")], Data())
     case ("GET", "/big"): return (200, [("Content-Type", "text/plain")], Data(repeating: 65, count: 300_000))
     case ("GET", "/basic-auth"):
       // HTTP Basic sign-in (user "den", password "secret") for the web page sign-in dialog.

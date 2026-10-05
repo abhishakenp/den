@@ -29,7 +29,13 @@ final class PanelsCore {
     var title: String
     var mobile: Bool
     var created = false
-    var value: Value { ["id": .string(id), "url": .string(url), "title": .string(title), "mobile": .bool(mobile)] }
+    /// An extension's side panel (`sidePanel`, `sidebarAction`): the extension's den id. Its page
+    /// is the extension's own (`webkit-extension://`), its button the extension's icon.
+    var owner: String? = nil
+    var icon: String? = nil
+    var value: Value {
+      ["id": .string(id), "url": .string(url), "title": .string(title), "mobile": .bool(mobile), "owner": .str(owner), "icon": .str(icon)]
+    }
   }
 
   static let ns = "panels"
@@ -61,7 +67,7 @@ final class PanelsCore {
     panels = list.compactMap { v in
       let id = v.s("id"), url = v.s("url")
       guard !id.isEmpty, !url.isEmpty else { return nil }
-      return Panel(id: id, url: url, title: v.s("title"), mobile: v.b("mobile"))
+      return Panel(id: id, url: url, title: v.s("title"), mobile: v.b("mobile"), owner: v.sOpt("owner"), icon: v.sOpt("icon"))
     }
     for p in panels { if let n = Text.int(Text.dropPrefix(p.id, "panel-")), n >= nextId { nextId = n + 1 } }
     let st = env.call("storage", "get", ["ns": .string(Self.ns), "key": "state"])
@@ -128,6 +134,7 @@ final class PanelsCore {
     let previous = open
     open = id
     last = id
+    env.emit("panels.shown", ["id": .string(id), "owner": .str(panels[i].owner)])
     sleepGeneration[id, default: 0] += 1
     env.call("content", "side", ["webview": .string(id), "width": .int(Int64(width))])
     renderHeader()
@@ -142,6 +149,47 @@ final class PanelsCore {
     env.call("ui", "set", ["slot": "side.header", "tree": .null])
     scheduleSleep(id)
     save()
+    env.emit("panels.hidden", ["id": .string(id), "owner": .str(panels.first { $0.id == id }?.owner)])
+  }
+
+  // MARK: Service (`panels`)
+
+  /// `showPage {owner, url, title, icon?}` -> {id}: an extension's side panel, made on first use
+  ///   and shown (switched to its page when `url` changed).
+  /// `hidePage {owner}`: hides it when it's the one on screen. `removeOwner {owner}`: removes it
+  ///   (the extension was turned off or removed).
+  /// `state` -> {open, owner}: the panel on screen and whose it is.
+  /// Events: `panels.shown {id, owner}`, `panels.hidden {id, owner}`.
+  func handle(_ method: String, _ args: Value) -> Value {
+    switch method {
+    case "showPage":
+      let owner = args.s("owner"), url = args.s("url")
+      guard !owner.isEmpty, !url.isEmpty else { return .err("panels: showPage needs owner and url") }
+      let id = "panel-ext-" + owner
+      if let i = index(id) {
+        panels[i].title = args.sOpt("title") ?? panels[i].title
+        panels[i].icon = args.sOpt("icon") ?? panels[i].icon
+        if panels[i].url != url {
+          panels[i].url = url
+          if panels[i].created { env.call("webviews", "navigate", ["id": .string(id), "url": .string(url)]) }
+        }
+      } else {
+        panels.append(Panel(id: id, url: url, title: args.sOpt("title") ?? URLs.title(url), mobile: false, owner: owner, icon: args.sOpt("icon")))
+      }
+      save()
+      show(id)
+      return ["id": .string(id)]
+    case "hidePage":
+      let id = "panel-ext-" + args.s("owner")
+      if open == id { hide() }
+    case "removeOwner":
+      remove("panel-ext-" + args.s("owner"))
+    case "state":
+      return ["open": .str(open), "owner": .str(open.flatMap { o in panels.first { $0.id == o }?.owner })]
+    default:
+      return .err("panels: unknown method " + method)
+    }
+    return .okay
   }
 
   /// A hidden panel is discarded after `sleepAfterMs` unless it was shown again meanwhile. The
@@ -229,7 +277,7 @@ final class PanelsCore {
     guard let id = open, let cur = panels.first(where: { $0.id == id }) else { return }
     var kids: [Value] = []
     for p in panels.prefix(8) {
-      let icon = URLs.favicon(p.url)
+      let icon = p.icon ?? URLs.favicon(p.url)
       kids.append(["type": "action", "id": .string("panels.switch:" + p.id), "icon": .string(icon), "tooltip": .string(p.title),
                    "height": 30, "width": 30, "iconSize": 16, "tone": p.id == id ? "strong" : "default"])
     }
@@ -317,7 +365,7 @@ final class PanelsCore {
 
   /// Settings ▸ Web Panels: add by address, and the list with Remove.
   func registerSettings() {
-    let items: [Value] = panels.map { p in
+    let items: [Value] = panels.filter { $0.owner == nil }.map { p in
       ["id": .string(p.id), "title": .string(p.title), "subtitle": .string(URLs.display(p.url)), "icon": .string(URLs.favicon(p.url)),
        "buttons": [["id": "remove", "title": "Remove", "style": "destructive"]]]
     }
