@@ -32,6 +32,8 @@ extension Tokens {
   public static let cardMaxWidth: CGFloat = 200
   public static let cardMargin: CGFloat = 8  // den: kept inside the window by this much
   public static let cardTooltipDelayMs = 500  // den: Dia's tooltip delay wasn't measured
+  public static let cardAimCheckMs = 80  // den: while the pointer heads for the card, re-check this often
+  public static let cardAimMaxMs = 600  // den: crossing another node on the way to the card holds the swap at most this long
 }
 
 /// Hover intent state machine. Pure logic: time and timers are injected, so tests drive it with a
@@ -51,6 +53,16 @@ public final class HoverIntent {
   public var onShow: (String) -> Void = { _ in }
   /// The card for this anchor closed.
   public var onHide: (String) -> Void = { _ in }
+  /// True while the pointer is heading for the card that is up (the safe triangle from where it
+  /// was to the card's corners), and it moved since the last check. Crossing another node on the
+  /// way then doesn't swap the card (Arc, Dia, macOS submenus).
+  public var aiming: () -> Bool = { false }
+  public var aimCheckMs = Tokens.cardAimCheckMs
+  public var aimMaxMs = Tokens.cardAimMaxMs
+  private var aimStart: Double = 0
+  /// A node the pointer entered while on the card above it (a tile card hangs over the tiles
+  /// below-right of its tile): it gets its turn only once the pointer leaves the card.
+  public private(set) var covered: (id: String, delayMs: Int?)?
 
   public private(set) var anchor: String?
   public private(set) var pendingId: String?
@@ -86,8 +98,22 @@ public final class HoverIntent {
     if anchor == id { stopPending(); return }
     stopPending()
     let wait = delayMs ?? self.delayMs
+    // A card is up and the pointer is on its way to it: this node is only crossed. Hold the swap
+    // while the pointer keeps heading for the card (it reaches the card: `enterCard` cancels it).
+    if anchor != nil, !overCard, aiming() {
+      pendingId = id
+      aimStart = now()
+      holdForAim(id, wait)
+      return
+    }
+    dwellOrSwap(id, wait)
+  }
+
+  private func dwellOrSwap(_ id: String, _ wait: Int) {
     // A card is up (or just closed): swap at once, or after this node's dwell with `redwell`.
     if (anchor != nil && !redwell) || (anchor == nil && now() < warmUntil) {
+      pendingId = nil
+      cancelPending = nil
       activate(id)
       return
     }
@@ -100,7 +126,27 @@ public final class HoverIntent {
     }
   }
 
+  private func holdForAim(_ id: String, _ wait: Int) {
+    cancelPending = schedule(aimCheckMs) { [weak self] in
+      guard let self, self.pendingId == id else { return }
+      self.cancelPending = nil
+      // Still moving toward the card: keep holding (bounded). Stopped on this node, or turned
+      // away: it's the node the pointer wants, so it gets its card.
+      if self.now() - self.aimStart < Double(self.aimMaxMs), self.aiming() {
+        self.holdForAim(id, wait)
+      } else {
+        self.dwellOrSwap(id, wait)
+      }
+    }
+  }
+
+  /// The pointer entered `id` where a card covers it: the card keeps the pointer.
+  public func cover(_ id: String, delayMs: Int? = nil) {
+    covered = (id, delayMs)
+  }
+
   public func exit(_ id: String) {
+    if covered?.id == id { covered = nil }
     if pendingId == id { stopPending() }
     if suppressed == id { suppressed = nil }
     if anchor != nil && !overCard && pendingId == nil { startGrace() }
@@ -114,6 +160,12 @@ public final class HoverIntent {
 
   public func exitCard() {
     overCard = false
+    // Off the card onto a node it was covering: that node's hover starts now.
+    if let c = covered {
+      covered = nil
+      enter(c.id, delayMs: c.delayMs)
+      return
+    }
     if anchor != nil { startGrace() }
   }
 
@@ -129,6 +181,7 @@ public final class HoverIntent {
     stopGrace()
     stopPending()
     overCard = false
+    covered = nil
     guard let a = anchor else { return }
     anchor = nil
     warmUntil = warm ? now() + Double(warmMs) : -1
@@ -234,6 +287,79 @@ public final class CardController {
     tooltips = TooltipPresenter()
     intent.onShow = { [weak self] id in self?.wanted(id) }
     intent.onHide = { [weak self] id in self?.closed(id) }
+    intent.aiming = { [weak self] in self?.aimingAtCard() ?? false }
+    moves.onMove = { [weak self] p in
+      guard let self, let o = self.overlays else { return }
+      self.moved(to: o.convert(p, from: nil))
+    }
+  }
+
+  // MARK: Safe triangle
+
+  /// Recent pointer positions (overlay coordinates), newest last; recorded only while a
+  /// hover-bound card is up (a `.mouseMoved` tracking area on the overlays, removed with the card).
+  private(set) var trail: [NSPoint] = []
+  private var moveCount = 0
+  private var aimCheckedAt = -1
+  private let moves = MoveTracker()
+  private weak var movesView: NSView?
+
+  /// The pointer moved to `p` (overlay coordinates). Tests call it with a synthetic path.
+  func moved(to p: NSPoint) {
+    if let last = trail.last, last == p { return }
+    trail.append(p)
+    if trail.count > 4 { trail.removeFirst(trail.count - 4) }
+    moveCount += 1
+  }
+
+  /// Where the pointer is now, in overlay coordinates.
+  func pointerInOverlays() -> NSPoint? {
+    guard let o = overlays, let w = o.window else { return nil }
+    return o.convert(HoverTracker.pointer(w), from: nil)
+  }
+
+  /// The hover-bound card that is up for the current anchor.
+  var anchoredCard: PopoverCard? {
+    guard let a = intent.anchor else { return nil }
+    return cards.values.first { $0.bound && $0.anchor == a && $0.superview != nil && !$0.leaving }
+  }
+
+  /// True when the pointer moved since the last check and is inside the safe triangle: the
+  /// convex hull of an earlier pointer position and the card (spec: Arc/Dia keep the card while
+  /// you cross other rows or tiles on the way to it).
+  func aimingAtCard() -> Bool {
+    defer { aimCheckedAt = moveCount }
+    guard moveCount != aimCheckedAt, let card = anchoredCard, let p = pointerInOverlays() ?? trail.last,
+          let apex = trail.first(where: { hypot($0.x - p.x, $0.y - p.y) >= 1 }) else { return false }
+    return Self.inSafeZone(p, from: apex, to: card.frame)
+  }
+
+  /// `p` lies in the convex hull of `apex` and `rect` (inflated by `slack`).
+  nonisolated static func inSafeZone(_ p: NSPoint, from apex: NSPoint, to rect: NSRect, slack: CGFloat = 4) -> Bool {
+    let r = rect.insetBy(dx: -slack, dy: -slack)
+    if r.contains(p) { return true }
+    let c = [NSPoint(x: r.minX, y: r.minY), NSPoint(x: r.maxX, y: r.minY), NSPoint(x: r.maxX, y: r.maxY), NSPoint(x: r.minX, y: r.maxY)]
+    func cross(_ o: NSPoint, _ a: NSPoint, _ b: NSPoint) -> CGFloat { (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x) }
+    for i in 0..<4 {
+      let a = c[i], b = c[(i + 1) % 4]
+      let d1 = cross(apex, a, p), d2 = cross(a, b, p), d3 = cross(b, apex, p)
+      let neg = d1 < 0 || d2 < 0 || d3 < 0, pos = d1 > 0 || d2 > 0 || d3 > 0
+      if !(neg && pos) { return true }
+    }
+    return false
+  }
+
+  /// The `.mouseMoved` tracking area exists only while a hover-bound card shows.
+  private func updateMoveTracking() {
+    let want = cards.values.contains { $0.bound && $0.superview != nil && !$0.leaving } ? overlays : nil
+    if movesView !== want {
+      movesView?.trackingAreas.filter { $0.owner === moves }.forEach { movesView?.removeTrackingArea($0) }
+      if let v = want {
+        v.addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: moves))
+      }
+      movesView = want
+    }
+    if want == nil { trail.removeAll() }
   }
 
   public var visible: Bool { cards.values.contains { $0.superview != nil && !$0.leaving } }
@@ -244,11 +370,18 @@ public final class CardController {
 
   func entered(_ n: NodeView) {
     guard let ms = n.node["hoverIntent"].double, !n.nodeId.isEmpty else { return }
+    // Tracking areas are geometric: a tile under a showing card still gets `mouseEntered` when
+    // the pointer crosses it on the card. The card keeps the pointer.
+    if let p = pointerInOverlays(), cards.values.contains(where: { $0.superview != nil && !$0.leaving && $0.frame.contains(p) }) {
+      intent.cover(n.nodeId, delayMs: Int(ms))
+      return
+    }
     intent.enter(n.nodeId, delayMs: Int(ms))
   }
 
   func exited(_ n: NodeView) {
     guard !n.node["hoverIntent"].isNull, !n.nodeId.isEmpty else { return }
+    if n.nodeId == intent.anchor, let p = pointerInOverlays() { moved(to: p) }
     intent.exit(n.nodeId)
   }
 
@@ -412,6 +545,7 @@ public final class CardController {
   /// While a card with shortcut buttons shows, its chords act on the card (the hovered tab, the
   /// hovered link) instead of the menu bar. The monitor exists only while such a card is up.
   func updateKeys() {
+    updateMoveTracking()
     let live = cards.values.filter { $0.superview != nil && !$0.leaving }
     let wants = live.contains { !$0.shortcuts().isEmpty }
     if wants, keyMonitor == nil {
@@ -645,6 +779,13 @@ public final class PopoverCard: FlippedView, Themable {
     l.add(g, forKey: "cardOut")
     CATransaction.commit()
   }
+}
+
+/// Receives the overlay's `.mouseMoved` events while a hover-bound card shows (the safe triangle).
+@MainActor
+final class MoveTracker: NSResponder {
+  var onMove: (NSPoint) -> Void = { _ in }
+  override func mouseMoved(with event: NSEvent) { onMove(event.locationInWindow) }
 }
 
 // MARK: - Tooltips

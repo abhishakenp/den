@@ -384,6 +384,10 @@ A generic floating card, placed next to a node or below a window rectangle, with
 
 **Hover intent on any node.** A node with `hoverIntent: <ms>` (any node type) starts a dwell when the pointer enters it; when the dwell ends the host emits `ui.action {id: <node id>, action: "hover"}`. `tabs` puts 700 on rows and 300 on favorite tiles (Dia: 685–915 ms and 285–416 ms). Passing over quickly shows nothing and leaves no timer. While a card is up (or for 600 ms after one closed), entering another intent node swaps at once; with `swap: "dwell"` on the card (or `ui.hoverIntent {redwell: true}`) the old card stays until the new node's own dwell completes (Dia). Leaving closes the card after a 200 ms grace (Dia: 202–267 ms), so the pointer can cross onto it; the card stays while the pointer is on it. Clicking the node closes its card until the pointer leaves it.
 
+**Getting to the card** (`Card.swift`, `CardTests`). Two things keep a card while the pointer travels to its buttons, like Arc, Dia and macOS submenus:
+- *Safe triangle.* While a hover-bound card is up, a `.mouseMoved` tracking area on the overlays keeps the last 4 pointer positions (it exists only while such a card shows). Entering another intent node on the way (the next row, the tile below) doesn't swap when the pointer is inside the convex hull of an earlier position and the card (4 pt slack) and still moving: the swap is held, re-checked every 80 ms, for at most 600 ms. Reaching the card drops it; stopping on that node or turning away gives that node its card.
+- *Covered nodes.* A tile card hangs over the tiles and rows below-right of its tile, and their tracking areas still fire under it. A node entered where a card covers the pointer waits; it takes over only when the pointer leaves the card onto it.
+
 `ui.card {id, tree | null, anchor?, rect?, place?, width?, gap?, swap?, graceMs?, force?}` → `{shown}`
 
 | Arg | Meaning |

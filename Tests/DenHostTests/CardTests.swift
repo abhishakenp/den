@@ -132,6 +132,81 @@ struct CardTests {
     #expect(log().last == "show:b")
   }
 
+  // MARK: Safe triangle and covered nodes
+
+  @Test func crossingAnotherNodeOnTheWayToTheCardHoldsTheSwap() {
+    let c = Clock()
+    let (i, log) = intent(c)
+    var aim = false
+    i.aiming = { aim }
+    i.enter("a")
+    c.advance(Double(i.delayMs))
+    // Heading for the card across row b: no swap, no grace close, while the pointer keeps aiming.
+    i.exit("a")
+    aim = true
+    i.enter("b")
+    #expect(i.anchor == "a" && i.pendingId == "b" && !i.graceRunning)
+    c.advance(Double(i.aimCheckMs) * 3)
+    #expect(log() == ["show:a"])
+    i.enterCard()  // reached the card: the held swap is dropped
+    i.exit("b")
+    c.advance(2000)
+    #expect(log() == ["show:a"] && i.anchor == "a" && i.idle)
+    // Stopped on the crossed row (or turned away): that row gets its card at the next check.
+    i.exitCard()
+    i.enter("b")
+    aim = false
+    c.advance(Double(i.aimCheckMs))
+    #expect(log().last == "show:b")
+    // Never held longer than aimMaxMs, even if the pointer keeps drifting toward the card.
+    i.exit("b")
+    aim = true
+    i.enter("c")
+    c.advance(Double(i.aimMaxMs + i.aimCheckMs))
+    #expect(log().last == "show:c")
+    // Not aiming: an immediate swap, as before (Arc).
+    aim = false
+    i.exit("c")
+    i.enter("d")
+    #expect(log().last == "show:d")
+  }
+
+  @Test func nodesUnderTheCardWaitUntilThePointerLeavesTheCard() {
+    let c = Clock()
+    let (i, log) = intent(c)
+    i.enter("tile1", delayMs: 300)
+    c.advance(300)
+    i.enterCard()
+    // A tile card hangs over the tiles and rows below-right: crossing them on the card is no swap.
+    i.cover("tile2", delayMs: 300)
+    i.exit("tile1")
+    c.advance(2000)
+    #expect(log() == ["show:tile1"] && i.anchor == "tile1")
+    i.exit("tile2")
+    i.cover("row9", delayMs: 700)
+    c.advance(2000)
+    #expect(log() == ["show:tile1"])
+    // Leaving the card onto the node it covered: that node takes over (a card is up: at once).
+    i.exitCard()
+    #expect(log().last == "show:row9")
+    // Leaving the card where nothing is covered: the grace close.
+    i.enterCard()
+    i.exitCard()
+    c.advance(Double(i.graceMs))
+    #expect(log().last == "hide:row9")
+  }
+
+  @Test func safeZoneIsTheHullOfThePointerAndTheCard() {
+    let card = NSRect(x: 200, y: 50, width: 100, height: 100)
+    let apex = NSPoint(x: 100, y: 100)
+    #expect(CardController.inSafeZone(NSPoint(x: 150, y: 100), from: apex, to: card))  // straight at it
+    #expect(CardController.inSafeZone(NSPoint(x: 150, y: 120), from: apex, to: card))  // toward a lower corner
+    #expect(CardController.inSafeZone(NSPoint(x: 250, y: 100), from: apex, to: card))  // on the card
+    #expect(!CardController.inSafeZone(NSPoint(x: 100, y: 130), from: apex, to: card))  // straight down: away
+    #expect(!CardController.inSafeZone(NSPoint(x: 150, y: 20), from: apex, to: card))  // above the triangle
+    #expect(!CardController.inSafeZone(NSPoint(x: 80, y: 100), from: apex, to: card))  // backwards
+  }
+
   // MARK: Placement (spec §2.2, §3.1)
 
   @Test func placementFollowsTheSpec() {
@@ -290,6 +365,184 @@ struct CardTests {
     #expect(rt.ui.cards.intent.anchor == "t1")
     _ = rt.call("ui", "set", ["slot": "overlay.library", "tree": ["type": "library", "id": "archive", "items": []]])
     #expect(rt.ui.cards.intent.anchor == nil && !rt.ui.cards.visible)
+  }
+
+  // MARK: Synthetic pointer paths through the real sidebar and card
+
+  /// Moves a fake pointer (overlay coordinates) along a straight line in small steps, the way
+  /// AppKit reports it: `mouseMoved` (the card's trail), exits, the card's exit/enter, then enters
+  /// for every intent node whose frame the pointer crosses. Tracking areas are geometric, so a
+  /// node under the card is entered too.
+  @MainActor final class PointerPath {
+    let rt: DenRuntime
+    let ids: [String]
+    var p: NSPoint
+    var inside: Set<String>
+    var onCard = false
+    var crossed: [String] = []
+
+    init(_ rt: DenRuntime, ids: [String], start: NSPoint, in node: String) {
+      self.rt = rt
+      self.ids = ids
+      p = start
+      inside = [node]
+      let overlays = rt.window.overlays
+      HoverTracker.pointer = { [weak self, weak overlays] _ in
+        guard let self, let overlays else { return .zero }
+        return overlays.convert(self.p, to: nil)
+      }
+      rt.ui.cards.moved(to: start)
+    }
+
+    static func reset() { HoverTracker.pointer = { $0.mouseLocationOutsideOfEventStream } }
+
+    func step(_ q: NSPoint) {
+      p = q
+      let cards = rt.ui.cards!
+      cards.moved(to: q)
+      let now = Set(ids.filter { rt.ui.anchorFrame($0)?.contains(q) == true })
+      for id in inside.subtracting(now) { if let n = CardTests.node(id, rt) { cards.exited(n) } }
+      if let card = cards.cards.values.first(where: { $0.superview != nil && !$0.leaving }) {
+        let has = card.frame.contains(q)
+        if has != onCard {
+          onCard = has
+          card.pointerInside = has
+          card.onHover(has)
+        }
+      }
+      for id in now.subtracting(inside) {
+        crossed.append(id)
+        if let n = CardTests.node(id, rt) { cards.entered(n) }
+      }
+      inside = now
+    }
+
+    func move(to q: NSPoint, steps: Int = 24) {
+      let a = p
+      for k in 1...steps {
+        let t = CGFloat(k) / CGFloat(steps)
+        step(NSPoint(x: (a.x + (q.x - a.x) * t).rounded(), y: (a.y + (q.y - a.y) * t).rounded()))
+      }
+    }
+  }
+
+  /// Shows card `c` for `anchor` the way the previews plugin does, after the node's real dwell.
+  static func showCard(_ rt: DenRuntime, anchor: String, place: String = "trailing") async throws -> PopoverCard {
+    rt.ui.cards.entered(try #require(node(anchor, rt)))
+    #expect(await Wait.until("the hover intent for \(anchor)") { rt.ui.cards.intent.anchor == anchor })
+    #expect(rt.call("ui", "card", ["id": "c", "anchor": .string(anchor), "place": .string(place), "tree": tabCard("Example Domain")])["shown"] == true)
+    return try #require(rt.ui.cards.card("c"))
+  }
+
+  /// Clicks `button` with mouse events at its centre, after checking that the window's own hit
+  /// test lands on it (nothing over the card swallows the click).
+  static func click(_ button: ActionNode, _ rt: DenRuntime) throws {
+    let w = rt.window.window
+    let p = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
+    let top = try #require(w.contentView?.superview ?? w.contentView)
+    let hit = try #require(top.hitTest(top.superview == nil ? p : top.superview!.convert(p, from: nil)))
+    #expect(hit === button || hit.isDescendant(of: button), "the click lands on \(type(of: hit)), not the card button")
+    for t in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+      let e = try #require(NSEvent.mouseEvent(with: t, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+      if t == .leftMouseDown { button.mouseDown(with: e) } else { button.mouseUp(with: e) }
+    }
+  }
+
+  static func seedRows(_ rt: DenRuntime) -> [String] {
+    let ids = ["t1", "t2", "t3", "t4"]
+    _ = rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "id": "today", "children": .array(ids.map {
+      ["type": "tabRow", "id": .string($0), "title": .string("Tab " + $0), "icon": "sf:globe", "hoverIntent": 10]
+    })]])
+    rt.window.window.contentView?.layoutSubtreeIfNeeded()
+    return ids
+  }
+
+  @Test func rowCardStaysWhileThePointerCrossesTheNextRowToItsButton() async throws {
+    defer { PointerPath.reset() }
+    let rt = Self.runtime()
+    let ids = Self.seedRows(rt)
+    var actions: [Value] = []
+    rt.host.on("ui.action") { actions.append($0) }
+    let card = try await Self.showCard(rt, anchor: "t1")
+    let button = try #require(card.shortcuts().first)
+    let target = rt.window.overlays.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), from: button)
+    let row = try #require(rt.ui.anchorFrame("t1"))
+    let path = PointerPath(rt, ids: ids, start: NSPoint(x: row.minX + 30, y: row.midY), in: "t1")
+    path.step(NSPoint(x: row.minX + 40, y: row.midY + 2))  // already moving down-right, toward the button
+    path.move(to: target)
+    #expect(path.crossed.contains("t2"), "the path must cross row t2 (crossed: \(path.crossed), row \(row), card \(card.frame))")
+    #expect(path.onCard && rt.ui.cards.intent.overCard)
+    #expect(rt.ui.cards.intent.anchor == "t1" && rt.ui.cards.card("c") === card)
+    #expect(!actions.contains { $0.str("id") == "t2" && $0.str("action") == "hover" })
+    try await Task.sleep(for: .milliseconds(Tokens.cardAimMaxMs + Tokens.cardGraceMs + 100))
+    #expect(rt.ui.cards.intent.anchor == "t1" && rt.ui.cards.visible)
+    #expect(!actions.contains { ["t2", "t3", "t4"].contains($0.str("id")) && $0.str("action") == "hover" })
+    try Self.click(button, rt)
+    #expect(actions.contains { $0.str("id") == "act0" && $0.str("action") == "click" })
+  }
+
+  @Test func rowCardSwapsWhenThePointerStopsOnOrHeadsAwayToAnotherRow() async throws {
+    defer { PointerPath.reset() }
+    let rt = Self.runtime()
+    let ids = Self.seedRows(rt)
+    var actions: [Value] = []
+    rt.host.on("ui.action") { actions.append($0) }
+    _ = try await Self.showCard(rt, anchor: "t1")
+    let row = try #require(rt.ui.anchorFrame("t1")), r3 = try #require(rt.ui.anchorFrame("t3"))
+    // Straight down (away from the card on the right): t2, then t3, take over at once (Arc).
+    let path = PointerPath(rt, ids: ids, start: NSPoint(x: row.minX + 30, y: row.midY), in: "t1")
+    path.step(NSPoint(x: row.minX + 30, y: row.midY + 4))
+    path.move(to: NSPoint(x: row.minX + 30, y: r3.midY), steps: 12)
+    #expect(path.crossed.first == "t2")
+    #expect(actions.contains { $0.str("id") == "t2" && $0.str("action") == "hover" })
+    #expect(rt.ui.cards.intent.anchor == "t3")
+    // Aiming at t3's card, then stopping on t4 short of it: t4 gets its card after one check.
+    _ = rt.call("ui", "card", ["id": "c", "anchor": "t3", "tree": Self.tabCard("Example Domain")])
+    let card = try #require(rt.ui.cards.card("c"))
+    let r4 = try #require(rt.ui.anchorFrame("t4"))
+    let stop = NSPoint(x: r4.maxX - 4, y: r4.minY + 4)
+    #expect(CardController.inSafeZone(stop, from: path.p, to: card.frame), "the stop point is on the way to the card (\(card.frame))")
+    path.move(to: stop, steps: 12)
+    #expect(path.crossed.last == "t4" && rt.ui.cards.intent.anchor == "t3" && rt.ui.cards.intent.pendingId == "t4")
+    #expect(await Wait.until("the stopped pointer's row takes over") { rt.ui.cards.intent.anchor == "t4" })
+  }
+
+  @Test func tileCardStaysWhileThePointerCrossesTilesAndRowsUnderIt() async throws {
+    defer { PointerPath.reset() }
+    let rt = Self.runtime()
+    let tiles = (1...8).map { "f\($0)" }
+    _ = rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "tabs.favorites", "children": .array(tiles.map {
+      ["type": "favoriteTile", "id": .string($0), "icon": "sf:star", "title": .string($0), "hoverIntent": 10]
+    })]])
+    let rows = Self.seedRows(rt)
+    let ids = tiles + rows
+    var actions: [Value] = []
+    rt.host.on("ui.action") { actions.append($0) }
+    let card = try await Self.showCard(rt, anchor: "f1", place: "tile")
+    let tile = try #require(rt.ui.anchorFrame("f1"))
+    #expect(card.frame.minX == (tile.maxX - Tokens.cardGap).rounded() && card.frame.minY == (tile.maxY - Tokens.cardGap).rounded())
+    // Under the card: the tiles below-right of f1 (and rows below the grid). Tracking areas are
+    // geometric, so each of them gets mouseEntered while the pointer is on the card.
+    let under = ids.filter { $0 != "f1" && rt.ui.anchorFrame($0)?.intersects(card.frame) == true }
+    #expect(!under.isEmpty, "the tile card covers other intent nodes (card \(card.frame))")
+    let button = try #require(card.shortcuts().first)
+    let target = rt.window.overlays.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), from: button)
+    let path = PointerPath(rt, ids: ids, start: NSPoint(x: tile.midX, y: tile.midY), in: "f1")
+    path.step(NSPoint(x: tile.midX + 2, y: tile.midY + 2))
+    path.move(to: target)
+    // Wander on the card over every covered node, then back to the button.
+    for id in under {
+      if let f = rt.ui.anchorFrame(id)?.intersection(card.frame.insetBy(dx: 2, dy: 2)), !f.isEmpty { path.move(to: NSPoint(x: f.midX, y: f.midY), steps: 8) }
+    }
+    path.move(to: target, steps: 8)
+    #expect(path.crossed.contains { $0 != "f1" }, "the path crosses other tiles or rows (\(path.crossed))")
+    #expect(path.onCard && rt.ui.cards.intent.anchor == "f1")
+    try await Task.sleep(for: .milliseconds(Tokens.cardAimMaxMs + Tokens.cardGraceMs + 100))
+    #expect(rt.ui.cards.intent.anchor == "f1" && rt.ui.cards.card("c") === card)
+    #expect(!actions.contains { $0.str("action") == "hover" && $0.str("id") != "f1" })
+    try Self.click(button, rt)
+    #expect(actions.contains { $0.str("id") == "act0" && $0.str("action") == "click" })
   }
 
   // MARK: Nodes
