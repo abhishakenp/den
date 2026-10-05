@@ -165,7 +165,9 @@ final class ImporterCore {
       guard let b = args.sOpt("batch") ?? lastBatch else { return .err("importer: nothing to undo") }
       return undo(b)
     case "state":
-      return ["running": .bool(job != nil), "source": .str(job?.browser.id), "lastBatch": .str(lastBatch), "last": last]
+      // `imported`: some import ran (the tips plugin then stops offering one).
+      let imported = !(storageGet("batches").array ?? []).isEmpty || !last.isNull
+      return ["running": .bool(job != nil), "source": .str(job?.browser.id), "lastBatch": .str(lastBatch), "last": last, "imported": .bool(imported)]
     default:
       return .err("importer: unknown method " + method)
     }

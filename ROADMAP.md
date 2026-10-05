@@ -189,7 +189,8 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - 🟡 Onboarding under the zero-friction principles (`tips` plugin)
   - ✅ tour card from the second launch (5 skippable steps in the sidebar card, each completes early when you do the thing; never back once dismissed), "Take the den Tour" command
   - ✅ quiet one-click import card, shown only when a plugin provides the `importer` service
-  - ⏳ tour callouts pointing at the real UI (the steps show in the sidebar card for now); an importer
+  - ✅ an importer behind the card: the `importer` plugin ([Import](#import)); the card goes away for good after any import
+  - ⏳ tour callouts pointing at the real UI (the steps show in the sidebar card for now)
 - 🟡 One-time discovery tips, one at a time, with a global off switch ([spec](docs/guide/_in-app-tips.md))
   - ✅ 14 tips wired to existing events, limits (1 per 10 min, 3 a day, none in the first minute or over a modal), Settings ▸ General ▸ Show tips, "Don't Show Tips" in the bar and on every tip
   - ⏳ tips that need events den doesn't emit yet (link linger, ⌘F, tab drags, context-menu opens, keyword searches)
@@ -367,8 +368,11 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 ## Import
 
-- ⏳ Import from Arc (spaces, pinned tabs), offered as a quiet one-click card, never a gate
-- ⏳ Import from Chrome, Safari, Firefox, Zen, Dia
+- ✅ Import from Arc: spaces (names, emoji, colors, grain), profiles, pinned tabs, nested folders, favorites, Today tabs and history; offered as a quiet one-click card, "Import from…" and Settings ▸ General ▸ Import…, never a gate ([guide](docs/guide/import.md))
+- ✅ Import from Chrome, Brave, Edge, Dia (bookmarks, last session's open tabs, history), Safari (bookmarks, history; Full Disk Access asked for once, on use), Firefox (bookmarks, history), Zen (workspaces, pins, Essentials, bookmarks, history)
+- ✅ Passwords from a CSV export (Chrome, Arc, Safari, 1Password, Bitwarden, Firefox) into the vault after Touch ID; other browsers' password stores are never read
+- ✅ Idempotent (re-import adds only what's new), Undo per import, history in the command bar's History and frecency (20,000 pages), databases read off the main thread
+- ⏳ Open tabs from Safari, Firefox and Zen; Zen 1.12+ workspaces (compressed session file); search engines and keywords
 
 ## Release and project
 

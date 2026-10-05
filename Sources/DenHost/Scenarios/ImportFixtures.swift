@@ -92,7 +92,8 @@ public enum ImportFixtures {
     ("https://developer.apple.com", "Apple Developer", ["/documentation/webkit", "/documentation/swiftui", "/forums/", "/videos/", "/news/"]),
     ("https://www.youtube.com", "YouTube", ["/", "/watch?v=dQw4w9WgXcQ", "/feed/subscriptions", "/watch?v=jNQXAC9IVRw", "/results?search_query=swift"]),
     ("https://en.wikipedia.org", "Wikipedia", ["/wiki/WebKit", "/wiki/Swift_(programming_language)", "/wiki/Lisbon", "/wiki/SQLite", "/wiki/Main_Page"]),
-    ("https://mail.google.com", "Gmail", ["/mail/u/0/#inbox", "/mail/u/0/#sent", "/mail/u/1/#inbox"]),
+    // No #fragments: den (like every browser) counts a page once whatever its fragment.
+    ("https://mail.google.com", "Gmail", ["/mail/u/0/", "/mail/u/1/", "/mail/u/0/?tab=sent"]),
     ("https://docs.google.com", "Google Docs", ["/document/d/1AbCdEf/edit", "/spreadsheets/d/9XyZ/edit", "/presentation/d/5QrS/edit"]),
     ("https://www.figma.com", "Figma", ["/files/recents-and-sharing", "/design/abc/Design-System"]),
     ("https://linear.app", "Linear", ["/acme/view/my-issues", "/acme/issue/ENG-1234", "/acme/project/den-import"]),

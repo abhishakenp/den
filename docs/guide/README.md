@@ -7,6 +7,7 @@ How to use den, one page per area. Everything here describes what's on `main` to
 ## Start here
 
 - [Getting started](getting-started.md): install, first run, making den your default browser
+- [Importing](import.md): spaces, pinned tabs, bookmarks, history and passwords from Arc, Safari, Chrome, Firefox and more
 - [Tips & hidden gems](tips.md): every gesture, modifier-click and drag in one list. Read this one.
 - [Keyboard shortcuts](shortcuts.md)
 

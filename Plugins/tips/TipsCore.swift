@@ -213,6 +213,12 @@ final class TipsCore {
   // MARK: - Notice card (tour, import)
 
   func importAvailable() -> Bool {
+    // Already imported some other way ("Import from…", Settings): the offer has done its job.
+    if env.call("importer", "state").b("imported") {
+      importState = "done"
+      put("import", "done")
+      return false
+    }
     let r = env.call("importer", "sources")
     importSources = r.isErr ? [] : (r.array ?? [])
     return !importSources.isEmpty
@@ -448,6 +454,13 @@ final class TipsCore {
     }
     env.on("commands.key.edit") { [self] _ in retire("editUrl") }
     env.on("briefing.key.open") { [self] _ in retire("briefingKey") }
+    // An import from anywhere ends the import offer.
+    env.on("importer.done") { [self] _ in
+      guard importState.isEmpty else { return }
+      importState = "done"
+      put("import", "done")
+      if card == "import" { refreshCard() }
+    }
   }
 
   func action(_ id: String, _ action: String, _ value: Value) {

@@ -19,7 +19,7 @@ A fast, native macOS browser built on WebKit, where everything is a plugin.
 </p>
 
 > [!IMPORTANT]
-> den is in early development. It browses the web with an Arc-style sidebar, spaces, split view and a command bar, but there are no downloads, import or sync yet. The first pre-release, [0.1.0-alpha.1](https://github.com/abhishakenp/den/releases/tag/v0.1.0-alpha.1), is out; see [Getting started](docs/guide/getting-started.md).
+> den is in early development. It browses the web with an Arc-style sidebar, spaces, split view and a command bar, but there's no sync yet. The first pre-release, [0.1.0-alpha.1](https://github.com/abhishakenp/den/releases/tag/v0.1.0-alpha.1), is out; see [Getting started](docs/guide/getting-started.md).
 
 <p align="center"><img src="docs/screenshots/main-dark.png" alt="den main window with demo data" width="820"></p>
 
