@@ -34,7 +34,7 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 
 ## Import, sync, passwords
 
-- Import from Arc (spaces, pinned tabs), then Chrome, Safari, Firefox, Zen and Dia. Offered as a quiet card, never a gate.
+- Import: open tabs from Safari, Firefox and Zen; Zen 1.12+ workspaces; search engines ([what imports today](import.md)).
 - Passkeys on every site, once Apple grants den the browser passkey entitlement.
 - Unlocking 1Password's extension with the 1Password app (needs den signed with an Apple developer account).
 - Sync of spaces and tabs through iCloud, with no den server.

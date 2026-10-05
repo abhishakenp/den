@@ -99,8 +99,9 @@ struct ImporterTests {
 
     // Nested folders, custom titles, a split's tabs, Today tabs; internal pages left out.
     let pinned = items(h, personal.str("id"), "pinned")
-    let reading = try #require(folder(pinned, "Reading"))
-    let longreads = try #require(folder(reading.list("children"), "Longreads"))
+    // Arc's "Reading" sits next to den's own sample "Reading" folder (different folders, same name).
+    #expect(pinned.filter { $0["folder"] == true && $0.str("title") == "Reading" }.count == 2)
+    let longreads = try #require(folder(pinned, "Longreads"))
     #expect(longreads.list("children").map { $0.str("url") } == ["https://aeon.co/essays/what-is-it-like-to-be-a-bat", "https://longform.org/best"])
     #expect(flat(pinned).contains { $0.str("title") == "Journal" && $0.str("url").hasPrefix("https://www.notion.so/") })
     #expect(flat(pinned).contains { $0.str("url") == "https://www.airbnb.com/s/Lisbon/homes" })
@@ -215,9 +216,28 @@ struct ImporterTests {
     #expect(folder(study, "Notes")?.list("children").map { $0.str("url") } == ["https://www.notion.so/zen-notes", "https://excalidraw.com/"])
   }
 
-  @Test func theImportDialogAndTheTipsCard() async throws {
+  @Test func theTipsCardRunsAnImportInOneClick() async throws {
+    let (h, _, _) = try start()
+    let tips = TipsCore(env: h.env)
+    tips.start()
+    h.fireTimers()
+    let card = h.rt.ui.sidebarView.notice.root?.node ?? .null
+    #expect(ValueJSON.string(card).contains("Bring your tabs and bookmarks from Arc, Safari, Chrome, Firefox or Zen in one click."))
+    h.action("tips.import.run", "click", "chrome")
+    _ = await Wait.until("chrome import from the card", seconds: 60) { h.events.contains { $0.0 == "importer.done" } }
+    #expect(h.events.last { $0.0 == "importer.done" }?.1["source"] == "chrome")
+    #expect(h.storage("tips", "import") == "done" && (h.rt.ui.sidebarView.notice.root?.node ?? .null).isNull)
+  }
+
+  @Test func importFromTheDialogAlsoEndsTheCard() async throws {
     let (h, core, _) = try start()
-    h.rt.call("commands", "run", ["id": .string(ImporterCore.openCommand)])
+    let tips = TipsCore(env: h.env)
+    tips.start()
+    h.fireTimers()
+    #expect(tips.card == "import")
+    #expect(core.commandRegistered)
+    // What picking "Import from…" in the command bar emits.
+    h.rt.plugins.emit("commands.run", ["id": .string(ImporterCore.openCommand)])
     #expect(h.rt.ui.dialogOpen && core.dialogOpen)
     let ids = h.rt.ui.dialog.node.list("choices").map { $0.str("id") }
     #expect(ids == ["arc", "safari", "chrome", "firefox", "zen", "passwords"])
@@ -225,16 +245,8 @@ struct ImporterTests {
     #expect(!h.rt.ui.dialogOpen)
     _ = await Wait.until("firefox import", seconds: 60) { h.events.contains { $0.0 == "importer.done" } }
     #expect(h.events.last { $0.0 == "importer.done" }?.1["source"] == "firefox")
-
-    // The tips plugin's one-click card names what was found and runs the import.
-    let tips = TipsCore(env: h.env)
-    tips.start()
-    h.fireTimers()
-    let card = h.rt.ui.sidebarView.notice.root?.node ?? .null
-    #expect(ValueJSON.string(card).contains("Bring your tabs and bookmarks from Arc, Safari, Chrome, Firefox or Zen in one click."))
-    h.action("tips.import.run", "click", "chrome")
-    _ = await Wait.until("chrome import from the card", seconds: 60) { h.events.last { $0.0 == "importer.done" }?.1["source"] == "chrome" }
-    #expect(h.storage("tips", "import") == "done")
+    #expect(tips.card == nil && h.storage("tips", "import") == "done")
+    #expect(h.rt.call("importer", "state")["imported"] == true)
   }
 
   @Test func passwordsFromACSVExport() async throws {

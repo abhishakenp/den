@@ -108,6 +108,7 @@ den saves logins to your Mac's Keychain and fills them after Touch ID.
 - **Filling.** Click into a login field and your saved logins for that site appear below it. Pick one, touch the sensor ("den is trying to fill your password for \<site\>"), and it's filled. Username-first sign-ins (Google, Microsoft) get the list on the email step too.
 - **The key in the URL bar.** On a site with saved logins, a key sits in the URL pill. Click it to jump to the login field, with your logins listed under it.
 - **Strong passwords.** On sign-up forms, **Use Strong Password** fills a password of three dash-separated groups of six characters (`xxxxxx-xxxxxx-xxxxxx`), with an uppercase letter and a digit.
+- **Importing.** **Import from… ▸ Passwords from a CSV File…** takes a CSV export from Chrome, Arc, Safari, 1Password, Bitwarden or Firefox after Touch ID; logins you already have are left alone ([Importing](import.md#passwords)). den never reads another browser's password store.
 - **Your list.** **Passwords…** in the command bar asks for Touch ID, then lists everything with **Copy** and **Delete**. Copying asks for Touch ID again; the message says whose password it is ("Copied password for ada on example.com · clears in 60 s"), and after 60 s the clipboard is cleared, unless you've copied something else since. The list stays unlocked for 5 minutes.
 
 The rules den follows:

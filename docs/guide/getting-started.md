@@ -58,7 +58,7 @@ On your second launch a small **New to den?** card at the bottom of the sidebar 
 
 ## Importing
 
-Importing from Arc, Chrome or Safari isn't built yet. When it is, den offers it as a quiet one-click card at the bottom of the sidebar, never as a step you have to get through. For now, sign in to the sites you use as you visit them; den offers to save each password to your Keychain ([Passwords](privacy-and-passwords.md#passwords-the-touch-id-vault)).
+When den finds Arc, Safari, Chrome, Dia, Brave, Edge, Firefox or Zen on your Mac, a quiet **Switching browsers?** card at the bottom of the sidebar offers a one-click import: spaces, pinned tabs, favorites, bookmarks, open tabs and history. It's never a step you have to get through; close it and it's gone. **Import from…** in the command bar and Settings ▸ General ▸ **Import…** do the same any time, and also take passwords from a CSV export ([Importing](import.md)).
 
 ## Make den your default browser
 
