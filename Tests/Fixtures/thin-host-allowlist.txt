@@ -20,8 +20,6 @@ call	Sources/Den/main.swift	spaces
 call	Sources/Den/main.swift	spaces
 call	Sources/Den/main.swift	spaces
 call	Sources/Den/main.swift	spaces
-call	Sources/Den/main.swift	spaces
-call	Sources/Den/main.swift	spaces
 call	Sources/Den/main.swift	tabs
 call	Sources/Den/main.swift	tabs
 call	Sources/Den/main.swift	tabs
@@ -39,11 +37,6 @@ call	Sources/Den/main.swift	tabs
 call	Sources/Den/main.swift	tabs
 call	Sources/Den/main.swift	tabs
 call	Sources/Den/main.swift	tabs
-call	Sources/Den/main.swift	tabs
-call	Sources/Den/main.swift	tabs
-call	Sources/DenHost/DenHome/ConfigService.swift	commands
-call	Sources/DenHost/DenHome/ConfigService.swift	commands
-call	Sources/DenHost/DenHome/ConfigService.swift	commands
 call	Sources/DenHost/DenRuntime.swift	commands
 call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
 call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
@@ -65,7 +58,6 @@ slot	Sources/DenHost/Services/UIService.swift	overlay.library
 slot	Sources/DenHost/Services/UIService.swift	overlay.library
 slot	Sources/DenHost/Services/UIService.swift	overlay.passwords
 slot	Sources/DenHost/Services/UIService.swift	overlay.peek
-string	Sources/DenHost/DenHome/ConfigService.swift	Shortcuts
 string	Sources/DenHost/Extensions/ExtensionText.swift	Block content on any page
 string	Sources/DenHost/Extensions/ExtensionText.swift	Block content on pages you allow
 string	Sources/DenHost/Extensions/ExtensionText.swift	Change what you copy and paste
@@ -106,12 +98,6 @@ string	Sources/DenHost/Extensions/ExtensionsUI.swift	Manage Extensions
 string	Sources/DenHost/Extensions/ExtensionsUI.swift	No extensions yet
 string	Sources/DenHost/Extensions/ExtensionsUI.swift	Pin to the URL bar
 string	Sources/DenHost/Extensions/ExtensionsUI.swift	Unpin from the URL bar
-string	Sources/DenHost/Plugins/LivePlugins.swift	Plugin “\(id)” didn't build: \(first) (~/.den/logs/build-\(id).log)
-string	Sources/DenHost/Plugins/LivePlugins.swift	Plugin “\(id)” didn't load: \(error.description)
-string	Sources/DenHost/Plugins/LivePlugins.swift	Plugin “\(id)” didn't load: \(reason)
-string	Sources/DenHost/Plugins/LivePlugins.swift	Source plugins need a Swift toolchain with Embedded Swift (swift.org, or set CORDIS_TOOLCHAIN)
-string	Sources/DenHost/Plugins/PluginLoader.swift	Plugins \(names) crashed den and were turned off
-string	Sources/DenHost/Plugins/PluginLoader.swift	The \(names) plugin crashed den and was turned off
 string	Sources/DenHost/Services/AIService.swift	A short, specific name for the group, one to three words in Title Case
 string	Sources/DenHost/Services/AIService.swift	Groups of related items
 string	Sources/DenHost/Services/AIService.swift	One imperative sentence under 110 characters naming the person, the action and where it lives (channel, repo, PR or issue number)

@@ -132,7 +132,7 @@ public final class DenRuntime {
     sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
     sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
     sitePolicy.resource = { [permissions] p, f in permissions.resource(p, f) }
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, nowPlaying, speech, translate, spotlight, handoff] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, nowPlaying, speech, translate, spotlight, handoff] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

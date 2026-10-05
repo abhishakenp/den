@@ -66,8 +66,14 @@ den_install() {
   local fw=$(print -r -- $line | sed -E 's/.*firstWindowEpochMs=([0-9]+).*/\1/')
   local launch=$(print -r -- $line | sed -E 's/.*firstWindowMs=([0-9.]+).*/\1/')
   den_say "relaunch: quit $((t_quit - t0)) ms, swap $((t_open - t_quit)) ms, launch ${launch} ms (process start -> first window); gap quit->first window $((fw - t0)) ms"
-  local before=$(tail -n +$((lines + 1)) $DEN_LOG 2>/dev/null | grep " quit pid=" | tail -1 | grep -Eo 'spaces=.*')
-  local after=$(print -r -- $line | grep -Eo 'spaces=.*')
+  # The tabs plugin logs the session after each launch and quit line (`session launch|quit spaces=…`).
+  local before=$(tail -n +$((lines + 1)) $DEN_LOG 2>/dev/null | grep " session quit " | tail -1 | grep -Eo 'spaces=.*')
+  local after="" t=0
+  while (( t < 40 )); do
+    after=$(tail -n +$((lines + 1)) $DEN_LOG 2>/dev/null | grep -m1 " session launch " | grep -Eo 'spaces=.*' || true)
+    [[ -n $after ]] && break
+    sleep 0.05; (( t += 1 ))
+  done
   if [[ -z $before ]]; then den_say "session: $after (previous den logged no quit state)"
   elif [[ $before == $after ]]; then den_say "session restored: $after"
   else den_say "session CHANGED: before [$before] after [$after]"; fi

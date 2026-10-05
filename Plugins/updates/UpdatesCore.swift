@@ -66,6 +66,7 @@ final class UpdatesCore {
       }
     }
     env.on("updates.stateChanged") { [self] v in followMainState(v["state"]) }
+    startNotices()
     env.on("updates.fetched") { [self] v in if v.s("url") == manifestURL() { manifest(v) } }
     env.on("updates.pluginInstalled") { [self] v in pluginInstalled(v) }
     env.on("updates.sparkle") { [self] v in sparkle(v) }

@@ -25,12 +25,6 @@ extension Harness {
     fakeBrowsers[ObjectIdentifier(self)] = FakeBrowsers()
     pendingSuggest[ObjectIdentifier(self)] = nil
     if rt.plugins.serviceNames.contains("tabs") == false { startTabs() }
-    // Offline: web suggestions never answer unless a test answers them (see `answerSuggestions`).
-    suggest.fetch = { [weak self] q, done in
-      MainActor.assumeIsolated { self?.suggestRequests.append((q, done)) }
-      return {}
-    }
-    suggest.debounce = 0
     // A fresh fake per harness: a new Harness can reuse a finished one's address, and so its
     // ObjectIdentifier, which would hand this test the other test's browser state.
     let fake = FakeBrowsers()
@@ -43,7 +37,25 @@ extension Harness {
         fake.current = url
         done(nil)
       })
+    // Offline: web suggestions (net.fetch to Google) never answer unless a test answers them
+    // (see `answerSuggestions`).
+    var env = self.env
+    let pass = env.invoke
+    let rt = rt
+    env.invoke = { [weak self] s, m, a in
+      guard s == "net", m == "fetch", a.s("url").hasPrefix(WebSuggestions.endpoint) else { return pass(s, m, a) }
+      let id = "sugg-\(UInt64.random(in: 0...UInt64.max))"
+      let q = String(a.s("url").dropFirst(WebSuggestions.endpoint.count)).replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? ""
+      let done: @Sendable ([String]?) -> Void = { items in
+        let r: Value = items.map { ["id": .string(id), "ok": true, "status": 200, "json": [.string(q), .array($0.map { .string($0) })]] }
+          ?? ["id": .string(id), "ok": false, "error": "offline"]
+        MainActor.assumeIsolated { rt.plugins.emit("net.result", r) }
+      }
+      MainActor.assumeIsolated { self?.suggestRequests.append((q, done)) }
+      return ["id": .string(id)]
+    }
     let core = CommandBarCore(env: env)
+    core.suggest.debounceMs = 0
     rt.plugins.provide("commands") { m, a in core.handle(m, a) }
     core.start()
     return core
@@ -69,7 +81,6 @@ extension Harness {
     fakeBrowsers[ObjectIdentifier(self)] = b
     return b
   }
-  var suggest: SuggestService { rt.host.services["suggest"] as! SuggestService }
   /// Answers the latest pending web-suggestion request, then waits for the event to land.
   var suggestRequests: [(String, @Sendable ([String]?) -> Void)] {
     get { pendingSuggest[ObjectIdentifier(self)] ?? [] }
@@ -412,6 +423,53 @@ struct CommandBarTests {
     #expect(CommandBarCore.searchURL(.init("g", "Google", "https://www.google.com/search?q=%s"), "a/b c") == "https://www.google.com/search?q=a%2Fb+c")
   }
 
+  // MARK: - config.toml [shortcuts] and [search.keywords] (ConfigShortcuts.swift)
+
+  /// The command bar applies its config sections from `config.changed` (the host's `config`
+  /// service only reads the file) and reports problems back with `config.report`.
+  @Test func configShortcutsAndKeywords() {
+    let h = Harness()
+    MainMenu.install()  // menu item ids are remapped in place
+    let home = DenHome(root: FileManager.default.temporaryDirectory.appendingPathComponent("den-home-\(UUID().uuidString)"))
+    home.ensureLayout()
+    let config = ConfigService(host: h.rt.host, home: home) { [rt = h.rt] s, m, a in rt.call(s, m, a) }
+    h.rt.provide(config)
+    h.startCommandBar()
+    let write = { (text: String) in try? text.write(to: home.config, atomically: true, encoding: .utf8) }
+    write("""
+      [shortcuts]
+      "cmd+shift+y" = "den.toggleSidebar"
+      "cmd+shift+9" = "view.zoomIn"
+      "cmd+shift+8" = 3
+      [search.keywords]
+      sf = { name = "Swift Forums", url = "https://forums.swift.org/search?q=%s" }
+      bad = { url = "https://example.com/" }
+      """)
+    config.start()
+    // A command id gets its own binding that runs the command.
+    let b = h.rt.keys.bindings["cmd+shift+y"]
+    #expect(b?.event == "commands.shortcut" && b?.payload["id"] == "den.toggleSidebar")
+    // A menu item id takes the chord in place.
+    #expect(h.rt.keys.bindings["cmd+shift+9"] == nil)
+    #expect(Shortcuts.chord(for: "view.zoomIn") == "shift+cmd+9")
+    // Keywords join the engines (config wins); problems are reported to the config service.
+    let kws = { (h.rt.call("commands", "engines").array ?? []).map { $0.str("keyword") } }
+    #expect(kws().contains("sf") && !kws().contains("bad"))
+    #expect(config.errors.contains { $0.hasPrefix("config.toml [shortcuts] \"cmd+shift+8\"") })
+    #expect(config.errors.contains("config.toml [search.keywords] bad needs a url with %s"))
+    // The bound shortcut runs its command through commands.run.
+    h.record(["commands.run"])
+    h.key("cmd+shift+y")
+    #expect(h.events.last?.1["id"] == "den.toggleSidebar")
+    // Removing the sections unbinds the chord, resets the remap and takes the keyword out again.
+    write("")
+    config.reloadConfig()
+    #expect(h.rt.keys.bindings["cmd+shift+y"] == nil)
+    #expect(Shortcuts.chord(for: "view.zoomIn") != "shift+cmd+9")
+    #expect(!kws().contains("sf"))
+    #expect(!config.errors.contains { $0.hasPrefix("config.toml [") })
+  }
+
   // MARK: - Web suggestions, merging and ranking
 
   @Test func mergeKeepsShownSuggestionsStableWhileTyping() {
@@ -452,7 +510,9 @@ struct CommandBarTests {
     h.type("swif")
     #expect(h.barRowIds.filter { $0.hasPrefix("sugg:") } == ["sugg:swift"])
     // A late answer for the old query is ignored.
-    h.rt.plugins.emit("suggest.results", ["q": "swi", "items": ["swiggy"]])
+    let stale = h.suggestRequests.removeFirst()
+    #expect(stale.0 == "swi")
+    stale.1(["swiggy"])
     #expect(!h.barRowIds.contains("sugg:swiggy"))
     await h.answerSuggestions(["swift", "swiftui", "swift codes"])
     #expect(h.barRowIds.filter { $0.hasPrefix("sugg:") } == ["sugg:swift", "sugg:swiftui", "sugg:swift codes"])

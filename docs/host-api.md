@@ -598,9 +598,12 @@ Events: `updates.stateChanged {state}`, `updates.fetched`, `updates.pluginInstal
 | `get` | `key?` (dotted, e.g. `plugins.disabled`) | the whole config object, or the value at `key`, or null |
 | `themes` | – | `[{name, colors, intensity?, grain?, appearance?, file}]`, sorted by name |
 | `paths` | – | `{root, plugins, themes, config, logs}` |
-| `errors` | – | `[string]`: problems in config.toml and the theme files, as of the last read |
+| `errors` | – | `[string]`: problems in config.toml and the theme files, as of the last read, plus what plugins reported |
+| `report` | `source`, `errors: [string]` | ok. A plugin's problems applying its own sections (replaces that source's last report) |
 
-Events: `config.changed {config}`, `config.themesChanged {themes}`.
+Events: `config.changed {config, edited}` (`edited`: the file changed while den ran), `config.themesChanged {themes}`.
+
+The host applies no section itself: each plugin applies its own on `config.changed` (the `commandbar` plugin: `[shortcuts]` and `[search.keywords]`) and reports problems with `report`.
 
 ## plugins
 
@@ -610,6 +613,10 @@ Lets a plugin hide features whose provider isn't loaded.
 |---|---|---|
 | `get` | – | `{services: [name], plugins: [{id, active}]}` |
 | `listening` | `event` | `{listening}`: true when the host or any plugin listens to `event` |
+
+Events (the `updates` plugin turns them into toasts; the host logs them to plugins.log either way):
+- `plugins.crashed {ids}`: plugins refused at launch because they crashed den last time.
+- `plugins.failed {id?, stage: load|build|toolchain, reason, log?}`: a `~/.den` plugin didn't load or build (`reason`: the loader's error or the compiler's first error line), or source plugins can't build (`reason: noCordisBuild|noEmbeddedSwift`).
 
 ## app
 
@@ -628,6 +635,7 @@ Lets a plugin hide features whose provider isn't loaded.
 | `relaunch` | `background?` | ok. Quits cleanly (no quit dialog) and starts den again. With `background`, it doesn't take focus |
 | `setAbout` | `credits` | ok. Text for the About panel |
 | `showAbout` | – | ok. Shows the About panel (the command bar's "About den") |
+| `log` | `line` | ok. One line in `~/.den/logs/den.log` (nothing without a den home); a line break is an error |
 | `paths` | – | `{home, downloads, pictures, desktop}` |
 | `chooseFolder` | `request?`, `message?`, `prompt?` | `{pending}`. An open panel (a sheet on den's window); emits `app.folder {request, path}` (`""` when cancelled) |
 | `pasteboard` | – | `{text, url}` when the clipboard holds one line of text (≤ 2,048 characters, trimmed); `url` is whether it opens as an address (the command bar's rule). `{}` otherwise. Read only when called |
@@ -639,7 +647,7 @@ Lets a plugin hide features whose provider isn't loaded.
 | `completePath` | `path`, `limit?` (6) | `{items: [{path, url, name, folder, package, display}]}`: entries of the typed path's folder whose name starts with its last component (case-insensitive), in Finder's order; hidden ones only when that starts with a dot; the typed path itself left out |
 | `openPath` | `path` | ok. Shows a folder in Finder (a package is selected in Finder; a file opens in its app). An error when nothing is there |
 
-Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`, `app.folder`, `app.saved`, `app.active {active}` (den became or stopped being the frontmost app), `app.power {battery, lowPower}` (the power source or Low Power Mode changed; IOKit's power-source notification and `NSProcessInfoPowerStateDidChange`, no polling).
+Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`, `app.folder`, `app.saved`, `app.active {active}` (den became or stopped being the frontmost app), `app.power {battery, lowPower}` (the power source or Low Power Mode changed; IOKit's power-source notification and `NSProcessInfoPowerStateDidChange`, no polling), `app.session {phase: launch|quit, pid}` (den.log has just logged the first window or a quit; the `tabs` plugin adds `session <phase> spaces=… current=… tabs=… selected=… sig=…` with `log`, which `scripts/lib/app.zsh` compares across a relaunch).
 
 **Clipboard and sharing cost nothing until used** (`AppShare.swift`): no pasteboard reads at launch or while idle (a `paste` menu item reads it when its menu opens), and the share picker, QR image and save panel are made on demand.
 
@@ -676,19 +684,6 @@ Language detection (NaturalLanguage) and translation (Apple's Translation framew
 | `run` | `texts: [string]`, `from`, `to?` (default: the user's), `request?` | `{request}`, then `translate.result {request, ok, texts, from, to, ms}` or `{…, ok: false, error, needsDownload}`. Empty strings stay empty; order is kept |
 
 A session per language pair is kept while den runs. `supported` means the model isn't downloaded: `run` then shows macOS's own download prompt (a hidden SwiftUI `translationTask` view in den's window) and continues once it's installed; declining ends with `error: "notInstalled"`. `unsupported` pairs end with `error: "unsupported"`. On this Mac (macOS 26.5, en-GB), French, Japanese, German and Spanish to English all report `installed`, and translate with no network.
-
-## suggest
-
-Web search autocomplete (Google's public suggest endpoint, `client=firefox`) for the command bar.
-
-| Method | Args | Returns |
-|---|---|---|
-| `query` | `q` | `{q, items}` at once when cached (no network, no event); otherwise `{q, pending: true}`, then `suggest.results {q, items}` |
-| `cancel` | – | ok. Drops the pending query |
-
-A pending query is debounced (50 ms) and cancels the one before it, so only the latest query emits; late answers for older queries are still cached. `q` is normalized (trimmed, lowercased, spaces collapsed). The cache is in memory (256 queries). A failed fetch emits `items: []` and isn't cached.
-
-Events: `suggest.results {q, items}`.
 
 ## pagestyle
 

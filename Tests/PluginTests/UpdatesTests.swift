@@ -42,6 +42,30 @@ struct UpdatesTests {
 
   func toastTexts(_ h: Harness) -> [String] { h.rt.ui.toasts.map { $0.label.stringValue + "|" + $0.actionLabel.stringValue } }
 
+  /// Plugin crash and failure notices: the host emits what happened, this plugin words the toast
+  /// (thin-host step 2; the strings moved here unchanged from the host).
+  @Test func pluginCrashAndFailureNotices() {
+    let fake = FakeUpdates()
+    let (h, _, _) = setup(fake)
+    let before = h.rt.ui.toasts.count
+    h.rt.host.emit("plugins.crashed", ["ids": ["peek"]])
+    h.rt.host.emit("plugins.crashed", ["ids": ["peek", "tabs"]])
+    h.rt.host.emit("plugins.failed", ["id": "x", "stage": "load", "reason": "bad image"])
+    h.rt.host.emit("plugins.failed", ["id": "y", "stage": "build", "reason": "error: oops", "log": "~/.den/logs/build-y.log"])
+    h.rt.host.emit("plugins.failed", ["stage": "toolchain", "reason": "noEmbeddedSwift"])
+    h.rt.host.emit("plugins.failed", ["stage": "toolchain", "reason": "noCordisBuild"])
+    let texts = h.rt.ui.toasts.dropFirst(before).map { $0.label.stringValue }
+    #expect(texts == [
+      "The “peek” plugin crashed den and was turned off",
+      "Plugins “peek”, “tabs” crashed den and were turned off",
+      "Plugin “x” didn't load: bad image",
+      "Plugin “y” didn't build: error: oops (~/.den/logs/build-y.log)",
+      "Source plugins need a Swift toolchain with Embedded Swift (swift.org, or set CORDIS_TOOLCHAIN)",
+      "den can't find cordis-build (its bundled copy is missing)",
+    ])
+    #expect(h.rt.ui.toasts.last?.icon.spec == "sf:puzzlepiece.extension")
+  }
+
   @Test func followMainHostInstallAsksToRestartAndRelaunchesInTheBackground() {
     let fake = FakeUpdates()
     fake.state = ["deployed": "bbbbbbb2", "installedCommit": "bbbbbbb2", "deployedAt": "2026-09-27T19:00:00Z", "lastCheck": "2026-09-27T19:01:00Z"]

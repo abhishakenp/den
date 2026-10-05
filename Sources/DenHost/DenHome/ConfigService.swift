@@ -7,15 +7,16 @@ import Foundation
 ///   get {key?}   -> the whole config object, or the value at a dotted key ("plugins.disabled"), or null
 ///   themes       -> [{name, colors, intensity?, grain?, appearance?, file}] from ~/.den/themes, sorted by name
 ///   paths        -> {root, plugins, themes, config, logs}
-///   errors       -> [string]: problems found in config.toml and theme files, last read
-/// Events: config.changed {config}, config.themesChanged {themes}
+///   errors       -> [string]: problems found in config.toml and theme files, last read, plus
+///                   what plugins reported
+///   report {source, errors: [string]} -> ok: a plugin's problems applying its config sections
+///                   (replaces that source's earlier report)
+/// Events: config.changed {config, edited} (`edited`: the file changed while den ran), config.themesChanged {themes}
 ///
 /// The service reads nothing until `start()` (after the first window), so plugins that call it
-/// during launch get the empty config and pick up the real one from the events.
-///
-/// It applies two sections itself, through public APIs:
-///   [shortcuts]        "<chord>" = "<command id>"  -> keys.bind, running commands.run {id}
-///   [search.keywords]  kw = {name, url}             -> merged into commands.engines
+/// during launch get the empty config and pick up the real one from the events. It applies no
+/// section itself: plugins apply theirs on `config.changed` (the `commandbar` plugin applies
+/// [shortcuts] and [search.keywords]).
 @MainActor
 public final class ConfigService: HostService {
   public let name = "config"
@@ -25,25 +26,17 @@ public final class ConfigService: HostService {
   public var call: (String, String, Value) -> Value
   public private(set) var config: Value = .object([])
   public private(set) var themes: [Value] = []
-  public private(set) var errors: [String] = []
+  /// Problems reading config.toml and the themes.
+  private var readErrors: [String] = []
+  /// Problems plugins reported applying their sections (`report`), by source.
+  private var reported: [(String, [String])] = []
+  public var errors: [String] { readErrors + reported.flatMap(\.1) }
   public private(set) var started = false
-  var boundChords: [String] = []
-  var appliedKeywords: [String] = []
 
   public init(host: ServiceHost, home: DenHome, call: @escaping (String, String, Value) -> Value) {
     self.host = host
     self.home = home
     self.call = call
-    host.on("config.shortcut") { [weak self] v in
-      let id = v["payload"].str("id")
-      if !id.isEmpty { _ = self?.call("commands", "run", ["id": .string(id)]) }
-    }
-  }
-
-  /// A plugin was applied (loaded or hot-reloaded): the command bar may have come back after
-  /// the keywords were merged.
-  public func pluginApplied() {
-    if started, !(Self.lookup(config, "search.keywords").object ?? []).isEmpty { applyKeywords() }
   }
 
   public func handle(method: String, args: Value) -> Value {
@@ -56,6 +49,13 @@ public final class ConfigService: HostService {
       return ["root": .string(home.root.path), "plugins": .string(home.plugins.path), "themes": .string(home.themes.path),
               "config": .string(home.config.path), "logs": .string(home.logs.path)]
     case "errors": return .array(errors.map { .string($0) })
+    case "report":
+      let source = args.str("source")
+      guard !source.isEmpty else { return .error("config: report needs a source") }
+      let list = args.list("errors").compactMap(\.string)
+      reported.removeAll { $0.0 == source }
+      if !list.isEmpty { reported.append((source, list)) }
+      return .ok
     default: return .error("config: unknown method '\(method)'")
     }
   }
@@ -76,19 +76,18 @@ public final class ConfigService: HostService {
 
   public var disabled: Set<String> { Set(Self.lookup(config, "plugins.disabled").array?.compactMap(\.string) ?? []) }
 
-  public func reloadConfig() {
-    errors.removeAll { $0.hasPrefix("config.toml") }
+  public func reloadConfig(edited: Bool = false) {
+    readErrors.removeAll { $0.hasPrefix("config.toml") }
     if let text = try? String(contentsOf: home.config, encoding: .utf8) {
-      do { config = try TOML.parse(text) } catch { errors.append("config.toml \(error)") }  // keep the last good config
+      do { config = try TOML.parse(text) } catch { readErrors.append("config.toml \(error)") }  // keep the last good config
     } else {
       config = .object([])
     }
-    apply()
-    host.emit("config.changed", ["config": config])
+    host.emit("config.changed", ["config": config, "edited": .bool(edited)])
   }
 
   public func reloadThemes() {
-    errors.removeAll { $0.hasPrefix("themes/") }
+    readErrors.removeAll { $0.hasPrefix("themes/") }
     var list: [Value] = []
     let names = (try? FileManager.default.contentsOfDirectory(atPath: home.themes.path)) ?? []
     for file in names.sorted() where file.hasSuffix(".json") || file.hasSuffix(".toml") {
@@ -96,62 +95,11 @@ public final class ConfigService: HostService {
       guard let data = try? Data(contentsOf: url) else { continue }
       switch Self.parseTheme(file: file, data: data) {
       case let .success(t): list.append(t)
-      case let .failure(e): errors.append("themes/\(file): \(e.message)")
+      case let .failure(e): readErrors.append("themes/\(file): \(e.message)")
       }
     }
     themes = list.sorted { $0.str("name").localizedCaseInsensitiveCompare($1.str("name")) == .orderedAscending }
     host.emit("config.themesChanged", ["themes": .array(themes)])
-  }
-
-  // MARK: Applying
-
-  // thin-host: feature-specific, migrate to plugin (shortcuts -> commands, keywords -> command bar engines)
-  func apply() {
-    // Shortcuts: rebind from scratch.
-    for c in boundChords { _ = call("keys", "unbind", ["chord": .string(c)]) }
-    boundChords = []
-    _ = call("keys", "resetRemaps", .null)
-    for (chord, v) in Self.lookup(config, "shortcuts").object ?? [] {
-      guard let id = v.string, !id.isEmpty else {
-        errors.append("config.toml [shortcuts] \"\(chord)\" needs a command id string")
-        continue
-      }
-      // A menu item id (docs/shortcuts.md: "tabs.next", "view.zoomIn", …) takes the chord in place;
-      // anything else is a command bar command, run through commands.run.
-      if MainMenu.item(id) != nil {
-        let r = call("keys", "remap", ["chord": .string(chord), "item": .string(id)])
-        if r.isError { errors.append("config.toml [shortcuts] \(r.str("error"))") }
-        continue
-      }
-      let r = call("keys", "bind", ["chord": .string(chord), "event": "config.shortcut", "title": .string(id), "menu": "Shortcuts", "payload": ["id": .string(id)]])
-      if r.isError { errors.append("config.toml [shortcuts] \(r.str("error"))") } else { boundChords.append(chord.lowercased()) }
-    }
-    applyKeywords()
-  }
-
-  /// Merges `[search.keywords]` into the command bar's engines (config wins per keyword).
-  /// Keywords this service added before and that are gone from the file are removed again.
-  func applyKeywords() {
-    let wanted = Self.lookup(config, "search.keywords").object ?? []
-    guard !wanted.isEmpty || !appliedKeywords.isEmpty else { return }
-    let current = call("commands", "engines", .null)
-    guard let engines = current.array else { return }  // no command bar (yet)
-    var out = engines.filter { e in
-      let k = e.str("keyword")
-      return !appliedKeywords.contains(k) && !wanted.contains { $0.0 == k }
-    }
-    var added: [String] = []
-    for (kw, v) in wanted {
-      let url = v.str("url"), name = v.str("name", kw)
-      guard url.contains("%s") else {
-        errors.append("config.toml [search.keywords] \(kw) needs a url with %s")
-        continue
-      }
-      out.append(["keyword": .string(kw), "name": .string(name), "url": .string(url)])
-      added.append(kw)
-    }
-    if out != engines { _ = call("commands", "engines", ["engines": .array(out)]) }
-    appliedKeywords = added
   }
 
   // MARK: Parsing

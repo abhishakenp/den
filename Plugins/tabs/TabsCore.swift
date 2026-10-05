@@ -266,6 +266,7 @@ final class TabsCore {
     registerSettings()
     startDownloads()
     tidyStart()
+    startSessionLog()
     tidyReady = true
     renderAll()
     showSelected()
