@@ -235,6 +235,38 @@ struct CommandBarTests {
     #expect(hints().count == 3)
   }
 
+  /// Creation commands open each site's new-item URL in a new tab; New GitHub Issue only shows on
+  /// a repository's page, and files in that repository.
+  @Test func creationCommands() {
+    let h = Harness()
+    h.startCommandBar()
+    func urls() -> [String] { (h.tabs("list")["today"].array ?? []).map { $0.s("url") } }
+    for (q, id, url) in [("new google doc", "googleDoc", "https://docs.new"), ("new sheet", "googleSheet", "https://sheets.new"),
+                         ("notion", "notionPage", "https://notion.new"), ("linear issue", "linearIssue", "https://linear.new"),
+                         ("new gist", "gist", "https://gist.new"), ("figma", "figmaFile", "https://figma.new")] {
+      h.key("cmd+t")
+      h.type(q)
+      #expect(h.barRowIds.contains("cmd:den.new." + id), "\(q)")
+      h.submit("cmd:den.new." + id)
+      #expect(urls().contains(url), "\(q)")
+    }
+    #expect(!h.rt.ui.commandBarOpen)
+    // Not on a repository page: no New GitHub Issue.
+    h.key("cmd+t")
+    h.type("new issue")
+    #expect(!h.barRowIds.contains("cmd:den.new.githubIssue") && h.barRowIds.contains("cmd:den.new.linearIssue"))
+    h.key("cmd+t")  // closes it
+    h.tabs("open", ["url": "https://github.com/abhishakenp/den/pull/12"])
+    h.key("cmd+t")
+    h.type("new issue")
+    #expect(h.barRows.first { $0.str("id") == "cmd:den.new.githubIssue" }?.str("title") == "New GitHub Issue in abhishakenp/den")
+    h.submit("cmd:den.new.githubIssue")
+    #expect(urls().contains("https://github.com/abhishakenp/den/issues/new"))
+    #expect(CommandBarCore.githubRepo("https://github.com/settings/profile") == nil)
+    #expect(CommandBarCore.githubRepo("https://github.com/abhishakenp") == nil)
+    #expect(CommandBarCore.githubRepo("https://gist.github.com/a/b") == nil)
+  }
+
   @Test func tabSwitchesIntoActionsMode() {
     let h = Harness()
     h.startCommandBar()
