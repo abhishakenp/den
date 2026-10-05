@@ -257,3 +257,49 @@ with the first-run store listed none from den or its WebKit processes.
 off 462.2 / 273.6, on 488.6 / 299.6 ms ([36394683462](https://github.com/abhishakenp/den/actions/runs/36394683462));
 the same run confirmed the Info.plist value is what matters (`emptycompile@MallocLargeCache=1`
 71.3 MB). **Not measured:** energy (`powermetrics` needs root), a real 2x display.
+
+## Discarded tabs, 2026-10-05
+
+Perf lab again (same runner and method as the Energy lane above), `empty` and `tabs200`, before =
+`main` 9a70adc. Run 1 measured the first two commits (rows, pill lists), run 2 all four.
+
+| den process, MB (n=5 medians) | run 1 before | run 1 after | run 2 before | run 2 after |
+|---|---:|---:|---:|---:|
+| no tabs | 21.0 | 21.1 | 19.6 | 21.1 |
+| 200 discarded (never-loaded) tabs | 24.8 | 21.4 | 25.3 | 21.1 |
+| **per discarded tab** ((200 tabs − none) / 200) | **19.0 KB** | **1.5 KB** | **28.5 KB** | **0.0 KB** |
+
+Runs: [37303525850](https://github.com/abhishakenp/den/actions/runs/37303525850),
+[37313162291](https://github.com/abhishakenp/den/actions/runs/37313162291).
+
+The footprint difference is now inside the runner's noise: "no tabs" on the same code was 19.6
+on one runner and 21.0-21.1 on the others (in run 2's 19.6 den had drawn no menu bar: 44 fewer
+`NSMenuBarItemView` in its heap), single launches jump between 18.9 and 21.x, and the first
+`tabs200` launch of each "after" read 22.8-22.9 MB (the other four 21.0-21.5). The live heap is
+the steadier gauge: `heap` of the first launch, 200 tabs minus none, **3.76 MB → 1.37 MB, 18.8 →
+6.8 KB per tab** (run 2).
+
+Where it went (`heap`, 200 tabs minus none, run 2):
+
+| | before | after |
+|---|---:|---:|
+| sidebar rows with views | 32 | 17 |
+| views per row (`_NSViewLayoutAux`) | 17 | 4 |
+| row views: layout aux, autoresizing constraints, icon views, icon buttons, text fields | 696 KB | 78 KB |
+| "non-object" (plugins' Embedded Swift allocations, layers, CFNetwork) | 1137 KB | 577 KB |
+| `(String, Value)` arrays: row values in the sidebar, the storage cache | 167 KB | 77 KB |
+| `WebRecord` + its dictionary | 91 KB | 91 KB |
+
+- **Rows** (`TabRowNode`): the drift slash, speaker, unread dot, close button and the three
+  playback buttons (each an `IconButton` with its own icon view, layer, tracking area and
+  tooltip) were made with every row. They are now made the first time a flag or hover needs them.
+  Rows keep their views until 400 pt off screen (was 1000).
+- **URL-pill buttons**: Shields gives every web view its pill at launch; the tabs plugin kept 200
+  equal lists (86 KB, `malloc_history` of a local build). Equal lists now share one copy.
+- **Storage cache**: values are cached encoded (the 200-tab state: 35 KB) instead of as a
+  decoded tree.
+- **Row values**: false flags and the default close title are left out (12 → 7-8 keys).
+
+Left per tab: the tabs plugin's record, the host's `WebRecord` (384 B), the row's value, the
+encoded state, and a screenful of rows. `ServiceTests.longListsAreVirtualized` makes 28 of 200
+rows (was 39).
