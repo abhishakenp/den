@@ -55,6 +55,16 @@ public final class ExtensionsService: NSObject, HostService {
   lazy var mainWindow = ExtWindow(svc: self)
   var tabObjects: [String: ExtTab] = [:]
   lazy var delegateObject = ExtensionControllerDelegate(svc: self)
+  /// `runtime.connectNative` / `sendNativeMessage` (NativeMessaging.swift). Nothing is read or
+  /// started until an extension asks.
+  var native: NativeMessaging {
+    if let n = _native { return n }
+    let n = NativeMessaging(directories: NativeMessaging.defaultDirectories(denHome: homeFolder?.deletingLastPathComponent()))
+    n.log = { [weak self] in self?.record($0) }
+    _native = n
+    return n
+  }
+  private(set) var _native: NativeMessaging?
   var selectedTab: String?
   /// One per den window (main first): each window's URL pill shows the extension buttons.
   var uis: [ExtensionsUI]
@@ -479,6 +489,7 @@ public final class ExtensionsService: NSObject, HostService {
   func retire(_ ctx: WKWebExtensionContext, id: String, from c: WKWebExtensionController, then done: (@MainActor () -> Void)? = nil) {
     let wait = (rulesTouchedAt[id].map { Self.rulesGrace - Date().timeIntervalSince($0) } ?? 0)
     let previous = retiring[id]
+    _native?.stopAll(extensionId: id)
     retireCount += 1
     let token = retireCount
     retiring[id] = Task { @MainActor [weak self] in
@@ -609,6 +620,18 @@ public final class ExtensionsService: NSObject, HostService {
   }
 
   /// Technical lines for `~/.den/logs/extensions.log` (and the unified log).
+  /// Who an extension is to a native messaging host: its Chrome id (store installs, or a manifest
+  /// `key`) and its gecko id (Firefox builds).
+  func nativeCaller(_ ctx: WKWebExtensionContext) -> NativeMessaging.Caller {
+    let id = ctx.uniqueIdentifier
+    let m = ctx.webExtension.manifest
+    var chrome: String?
+    if let e = registry.item(id), e.sourceKind == .chrome, e.storeId == id { chrome = id }
+    if chrome == nil, let k = m["key"] as? String, let der = Data(base64Encoded: k) { chrome = ExtensionPackage.chromeId(publicKey: der) }
+    let gecko = ((m["browser_specific_settings"] ?? m["applications"]) as? [String: Any]).flatMap { ($0["gecko"] as? [String: Any])?["id"] as? String }
+    return .init(id: id, chromeId: chrome, geckoId: gecko)
+  }
+
   func record(_ line: String) {
     Self.log.error("\(line, privacy: .public)")
     logFile?.write(line)

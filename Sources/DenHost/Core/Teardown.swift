@@ -21,6 +21,8 @@ extension DenRuntime {
     // Extension background pages run in WebContent processes of their own.
     for ctx in extensions.contexts.values { try? extensions.controller?.unload(ctx) }
     extensions.contexts = [:]
+    // Desktop apps' native messaging hosts an extension started.
+    extensions._native?.stopAll()
     for r in Array(webviews.records.values) { webviews.close(r) }
     let close = NSSelectorFromString("_close")
     for w in views {
