@@ -354,6 +354,23 @@ struct TabsTests {
     #expect(tile["audio"] == true && tile["muted"] == true)
   }
 
+  /// A page using the camera or microphone: its row and tile carry `capture` until both stop.
+  @Test func captureStateOnRowsAndTiles() {
+    let h = Harness()
+    h.startTabs()
+    guard let tab = h.ids("today").first, let fav = h.ids("favorites").first else { Issue.record("no tabs"); return }
+    func row() -> Value { h.tree("sidebar.today", 0)["children"].array?.first { $0.s("id") == tab } ?? .null }
+    func tile() -> Value { h.tree("sidebar.favorites", 0)["children"].array?.first { $0.s("id") == fav } ?? .null }
+    #expect(row()["capture"].isNull && tile()["capture"].isNull)
+    h.rt.plugins.emit("webviews.capture", ["id": .string(tab), "camera": "active", "microphone": "active"])
+    h.rt.plugins.emit("webviews.capture", ["id": .string(fav), "camera": "none", "microphone": "muted"])
+    #expect(row()["capture"] == ["camera": "active", "microphone": "active"])
+    #expect(tile()["capture"] == ["camera": "none", "microphone": "muted"])
+    h.action(tab, "stopCapture")  // asks webviews to turn both off; the event below is WebKit's answer
+    h.rt.plugins.emit("webviews.capture", ["id": .string(tab), "camera": "none", "microphone": "none"])
+    #expect(row()["capture"].isNull)
+  }
+
   /// Arc (Jan 2024): dropping a tab onto the middle of another makes a split of the two.
   @Test func dropOntoATabMakesASplit() {
     // Row geometry: the middle half is "into" for rows that take it, the edges reorder.

@@ -63,6 +63,9 @@ public final class WebRecord {
   public var rate: Double?
   /// The page's first media report since its last navigation has re-applied `volume`/`rate`.
   fileprivate var playbackApplied = false
+  /// The page's camera and microphone: "none", "active" or "muted" (`webviews.capture`).
+  public var camera = "none"
+  public var microphone = "none"
   /// Media and form state per frame ("main", or the subframe's URL), and the frame it came from.
   public fileprivate(set) var frames: [String: (frame: WKFrameInfo, media: PageMedia)] = [:]
   /// WebKit says a video of this page is in picture in picture (`_webView:hasVideoInPictureInPictureDidChange:`).
@@ -162,6 +165,8 @@ public final class WebRecord {
 ///                                                 media elements of the main frame, now and again after each load
 ///                                                 (no WebKit page SPI for these); kept across discards like `setMuted`
 ///   setRate {id, rate}                         -> playback speed (0.25…4); see setVolume
+///   stopCapture {id}                           -> turns off the page's camera and microphone (WebKit's capture state)
+///   events: webviews.capture {id, camera, microphone}: "none" | "active" | "muted", when either changes
 ///   pauseMedia {id}                            -> pauses every video and audio element of a page that is not on screen
 ///                                                 (no window, no PiP): {paused: true} or {paused: false, reason}
 ///   setAutoplay {allowed}                      -> all web views: whether media may start without a click. Applies to
@@ -295,6 +300,9 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     case "setMuted": setMuted(r, args.flag("muted"))
     case "setVolume": return setVolume(r, args)
     case "setRate": return setRate(r, args)
+    case "stopCapture":
+      r.webView?.setCameraCaptureState(.none)
+      r.webView?.setMicrophoneCaptureState(.none)
     case "pauseMedia": return pauseMedia(r)
     case "mediaControl": return mediaControl(r, args.str("action"), args.num("value"))
     case "snapshot":
@@ -469,7 +477,26 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       on(\.isLoading) { [weak self] wv in self?.progress(r, wv) },
       on(\.canGoBack) { [weak self] wv in self?.navState(r, wv) },
       on(\.canGoForward) { [weak self] wv in self?.navState(r, wv) },
+      on(\.cameraCaptureState) { [weak self] wv in self?.captureChanged(r, wv) },
+      on(\.microphoneCaptureState) { [weak self] wv in self?.captureChanged(r, wv) },
     ]
+  }
+
+  static func captureName(_ s: WKMediaCaptureState) -> String {
+    switch s {
+    case .active: return "active"
+    case .muted: return "muted"
+    default: return "none"
+    }
+  }
+
+  /// The camera or microphone turned on, off or was paused: `webviews.capture`.
+  func captureChanged(_ r: WebRecord, _ w: WKWebView) {
+    let cam = Self.captureName(w.cameraCaptureState), mic = Self.captureName(w.microphoneCaptureState)
+    guard cam != r.camera || mic != r.microphone else { return }
+    r.camera = cam
+    r.microphone = mic
+    host.emit("webviews.capture", ["id": .string(r.id), "camera": .string(cam), "microphone": .string(mic)])
   }
 
   func progress(_ r: WebRecord, _ w: WKWebView) {
@@ -489,6 +516,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       "canGoBack": .bool(r.webView?.canGoBack ?? false), "canGoForward": .bool(r.webView?.canGoForward ?? false),
       "audio": .bool(r.audio), "muted": .bool(r.muted), "suspended": .bool(r.isSuspended), "live": .bool(r.webView != nil),
       "volume": r.volume.map { .double($0) } ?? .null, "rate": r.rate.map { .double($0) } ?? .null,
+      "camera": .string(r.camera), "microphone": .string(r.microphone),
       "profile": .string(r.profile), "snapshot": r.snapshotPath.map { .string($0) } ?? .null, "media": mediaValue(r.media),
       "zoom": .double(Double(r.webView?.pageZoom ?? 1)),
       "opener": r.opener.map { .string($0) } ?? .null, "popupWindow": r.popupWindow.map { .string($0) } ?? .null,
@@ -519,6 +547,11 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     r.observers = []
     r.frames = [:]
     r.nativePip = false
+    if r.camera != "none" || r.microphone != "none" {
+      r.camera = "none"
+      r.microphone = "none"
+      host.emit("webviews.capture", ["id": .string(r.id), "camera": "none", "microphone": "none"])
+    }
 
     if r.audio {
       r.audio = false

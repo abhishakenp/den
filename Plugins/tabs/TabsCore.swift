@@ -20,6 +20,8 @@ final class TabsCore {
     /// The page's now-playing media (`webviews.nowPlaying`), runtime only: the row's hover
     /// play/pause and skip buttons. nil when nothing played or it stopped.
     var media: Value?
+    /// The page's camera / microphone (`webviews.capture`), runtime only: nil when neither is on.
+    var capture: Value?
     /// An icon the user chose (an emoji or `sf:` symbol, TabsIcons.swift); it replaces the favicon.
     var customIcon: String?
     /// The page was discarded (its WebContent process exited; the host kept the URL, history and
@@ -1836,6 +1838,7 @@ final class TabsCore {
                          "hoverIntent": .int(Self.tileCardDelayMs)]
       if !badges.isEmpty, let b = badges[URLs.host(t.url)] { tile.put("badge", .string(b)) }
       if let m = mediaNode(t) { tile.put("media", m) }
+      if let c = t.capture { tile.put("capture", c) }
       return tile
     })]])
   }
@@ -1856,6 +1859,7 @@ final class TabsCore {
                     "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1",
                     "hoverIntent": .int(Self.rowCardDelayMs)]
     if let m = mediaNode(t) { r.put("media", m) }
+    if let c = t.capture { r.put("capture", c) }
     if editing == id { r.put("editing", true) }
     if multi.contains(id) { r.put("highlighted", true) }
     return r
@@ -2134,6 +2138,16 @@ final class TabsCore {
     }
     // A discarded tab (idle unload, ⌘W on a pinned tab or favorite, Unload Space): dim its icon.
     env.on("webviews.suspended") { [self] v in setSuspended(v.s("id"), true) }
+    // Camera and microphone in use: a red badge on the row or tile (a click turns them off).
+    env.on("webviews.capture") { [self] v in
+      let id = v.s("id")
+      guard tabs[id] != nil else { return }
+      let on = v.s("camera") != "none" || v.s("microphone") != "none"
+      let c: Value? = on ? ["camera": .string(v.s("camera")), "microphone": .string(v.s("microphone"))] : nil
+      guard tabs[id]?.capture != c else { return }
+      tabs[id]?.capture = c
+      if favorites.contains(id) { renderFavorites() } else if let sid = spaceOf(id) { renderPage(sid) }
+    }
     // Now-playing media: the row's hover playback buttons.
     env.on("webviews.nowPlaying") { [self] v in
       let id = v.s("id")
@@ -2450,6 +2464,7 @@ final class TabsCore {
       case "close": close(id)
       case "reset": reset(id)
       case "mute": toggleMute(id)
+      case "stopCapture": env.call("webviews", "stopCapture", ["id": .string(id)])
       case "media":
         // The row's hover playback buttons (toggle / next / previous).
         env.call("webviews", "mediaControl", ["id": .string(id), "action": .string(value.s("action"))])

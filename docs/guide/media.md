@@ -44,6 +44,10 @@ den uses the Mac's own picture in picture, the same floating video window Safari
 - **While it floats,** den's own controls still reach it: its row in the [now-playing dock](#now-playing-at-the-bottom-of-the-sidebar) (play/pause, mute, stop, and a picture-in-picture button), the tab's speaker to mute it, **⌃⌘P** to play or pause, and your keyboard's media keys and Control Center.
 - Turn the automatic part off by typing "picture in picture" in the [command bar](command-bar.md#settings-from-the-bar): **Picture in Picture when you leave a playing video** (on by default).
 
+## Camera and microphone
+
+A tab that's using your camera or microphone shows a red camera or mic icon on its row (on a favorite, in the tile's corner), slashed while the site has paused it. Click it to turn the camera and microphone off for that page.
+
 ## Web panels
 
 <p align="center"><img src="../screenshots/web-panel-dark.png" alt="A chat site docked as a web panel beside the page" width="620"></p>

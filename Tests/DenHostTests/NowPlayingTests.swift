@@ -264,6 +264,37 @@ struct NowPlayingTests {
     #expect(row.playPause.isHidden)
   }
 
+  /// A row or tile whose page uses the camera / microphone shows a red button (always, not only
+  /// on hover) that emits `stopCapture`; `webviews.get` reports both states.
+  @Test func captureBadge() throws {
+    let rt = ServiceTests.runtime()
+    var actions: [Value] = []
+    let obs = rt.host.on("ui.action") { v in actions.append(v) }
+    defer { rt.host.off(obs) }
+    _ = rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "id": "l", "children": [
+      ["type": "tabRow", "id": "call", "title": "Meet", "icon": "sf:video", "selected": false, "capture": ["camera": "active", "microphone": "muted"]],
+      ["type": "tabRow", "id": "quiet", "title": "Docs", "icon": "sf:doc", "selected": false],
+    ]]])
+    _ = rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "g", "children": [
+      ["type": "favoriteTile", "id": "mic", "icon": "sf:mic", "title": "Voice", "capture": ["camera": "none", "microphone": "active"]],
+    ]]])
+    rt.ui.sidebarView.layoutSubtreeIfNeeded()
+    func all<T: NSView>(_ v: NSView, _ t: T.Type) -> [T] { ((v as? T).map { [$0] } ?? []) + v.subviews.flatMap { all($0, t) } }
+    let rows = all(rt.ui.sidebarView, TabRowNode.self)
+    let call = try #require(rows.first { $0.node.str("id") == "call" }), quiet = try #require(rows.first { $0.node.str("id") == "quiet" })
+    #expect(!call.capture.button.isHidden && quiet.capture.button.isHidden)
+    #expect(call.capture.button.icon.spec == "sf:video.fill" && call.capture.button.toolTip == "Turn Off Camera and Microphone")
+    #expect(call.label.frame.maxX <= call.capture.button.frame.minX)
+    let tile = try #require(all(rt.ui.sidebarView, FavoriteTileNode.self).first)
+    #expect(!tile.capture.button.isHidden && tile.capture.button.icon.spec == "sf:mic.fill" && tile.capture.button.toolTip == "Turn Off Microphone")
+    call.capture.button.action()
+    tile.capture.button.action()
+    #expect(actions.filter { $0.str("action") == "stopCapture" }.map { $0.str("id") } == ["call", "mic"])
+    #expect(WebViewsService.captureName(.muted) == "muted" && WebViewsService.captureName(.none) == "none")
+    _ = rt.call("webviews", "create", ["id": "page"])
+    #expect(rt.call("webviews", "get", ["id": "page"])["camera"] == "none" && rt.call("webviews", "stopCapture", ["id": "page"]) == .ok)
+  }
+
   /// A favorite tile with `media`: hovered, play/pause takes the icon's place; a wide tile (one
   /// favorite fills the row) also gets previous / next, a narrow one (four in a row) doesn't.
   @Test func favoriteTileHoverPlayback() throws {

@@ -417,6 +417,35 @@ final class GridNode: NodeView {
   }
 }
 
+/// A tab using the camera or microphone (`capture: {camera, microphone}`, each "active" or
+/// "muted"): a red video / mic icon, always shown (not only on hover), like Safari's. A click
+/// emits `stopCapture`; the owner turns both off.
+@MainActor
+final class CaptureButton {
+  let button: IconButton
+  init(_ emit: @escaping () -> Void) {
+    button = IconButton(symbol: "video.fill", size: 22) { emit() }
+    button.isHidden = true
+  }
+  func update(_ c: Value) {
+    let cam = c.str("camera"), mic = c.str("microphone")
+    let on = (cam == "active" || cam == "muted") || (mic == "active" || mic == "muted")
+    button.isHidden = !on
+    guard on else { return }
+    let camOn = cam == "active" || cam == "muted"
+    let paused = (camOn ? cam : mic) == "muted"
+    button.icon.spec = camOn ? (paused ? "sf:video.slash.fill" : "sf:video.fill") : (paused ? "sf:mic.slash.fill" : "sf:mic.fill")
+    let what = camOn && (mic == "active" || mic == "muted") ? "Camera and Microphone" : camOn ? "Camera" : "Microphone"
+    button.toolTip = "Turn Off " + what
+    button.setAccessibilityLabel("Turn Off " + what)
+  }
+  func apply(_ p: Palette) {
+    button.apply(p)
+    button.hoverFill = p.controlHoverFill
+    button.tint = p.tokens.destructive.ns
+  }
+}
+
 /// Hover playback buttons for a tab playing (or paused) media: previous, play/pause, next. Shared
 /// by tab rows and favorite tiles; `media` is the node's `{paused, next, previous}`.
 @MainActor
@@ -450,10 +479,12 @@ final class MediaButtons {
   var visible: [IconButton] { all.filter { !$0.isHidden } }
 }
 
-/// {type:"favoriteTile", id, icon, title, selected, audio, muted?, suspended?, badge?, media?: {paused, next, previous}}
+/// {type:"favoriteTile", id, icon, title, selected, audio, muted?, suspended?, badge?, media?: {paused, next, previous},
+///  capture?: {camera, microphone}}  (stopCapture: the capture badge clicked)
 /// actions: click, doubleClick, reorder, mute (speaker badge), media {action: toggle|next|previous}
 /// `badge`: a short text chip at the bottom of the tile ("in 8m": a plugin's countdown).
 /// `suspended`: the page was discarded; the icon dims until the page comes back.
+/// `capture`: a red camera / mic button (stopCapture) while the page uses them.
 /// `media`: while hovered, play/pause (and previous / next when the tile is wide enough) take the
 /// icon's place, like a tab row's.
 final class FavoriteTileNode: HoverNode {
@@ -461,6 +492,7 @@ final class FavoriteTileNode: HoverNode {
   lazy var audio = SpeakerBadge { [weak self] in self?.emit("mute") }
   let chip = TextChip()
   lazy var media = MediaButtons { [weak self] a in self?.emit("media", ["action": .string(a)]) }
+  lazy var capture = CaptureButton { [weak self] in self?.emit("stopCapture") }
   /// Shown while hovered (or `forceMedia`, for snapshots) when the tab has media.
   var forceMedia = false { didSet { updateMedia(); needsLayout = true } }
   static let skipsWidth: CGFloat = 3 * 22 + 8
@@ -473,6 +505,7 @@ final class FavoriteTileNode: HoverNode {
     addSubview(audio)
     addSubview(chip)
     media.all.forEach { addSubview($0) }
+    addSubview(capture.button)
   }
   required init?(coder: NSCoder) { fatalError() }
   override func hoverChanged() { updateMedia(); needsLayout = true }
@@ -486,6 +519,7 @@ final class FavoriteTileNode: HoverNode {
     icon.fallbackLetter = v.str("title")
     audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))
+    capture.update(v["capture"])
     chip.text = v.str("badge")
     chip.isHidden = chip.text.isEmpty
     setAccessibilityValue(chip.text.isEmpty ? nil : chip.text)
@@ -497,6 +531,7 @@ final class FavoriteTileNode: HoverNode {
     icon.alphaValue = node.flag("suspended") ? 0.45 : 1  // a discarded tab's icon dims
     audio.apply(p); chip.apply(p)
     media.apply(p)
+    capture.apply(p)
     needsDisplay = true
   }
   override func layout() {
@@ -512,6 +547,8 @@ final class FavoriteTileNode: HoverNode {
     for b in shown { b.frame = NSRect(x: bx, y: icon.frame.midY - 11, width: 22, height: 22); bx += 22 }
     // A small round badge in the top-right corner, clear of the icon (den's estimate).
     audio.frame = NSRect(x: bounds.width - 21, y: 3, width: 18, height: 18)
+    // The capture badge in the top-left corner, opposite the speaker.
+    capture.button.frame = NSRect(x: 2, y: 2, width: 20, height: 20)
     if !chip.isHidden {
       let w = min(bounds.width - 6, chip.width)
       chip.frame = NSRect(x: (bounds.width - w) / 2, y: bounds.height - TextChip.height - 3, width: w, height: TextChip.height)
@@ -1000,7 +1037,8 @@ final class RenameSupport {
 // MARK: - Tabs
 
 /// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, suspended?, editing?, editText?, unread?,
-///  media?: {paused, next, previous}}
+///  media?: {paused, next, previous}, capture?: {camera, microphone}}
+/// `capture`: a red camera / mic button (stopCapture) while the page uses them.
 /// `unread`: an accent dot on the right (a live folder's new item).
 /// `suspended`: the page was discarded (its WebContent process exited); the icon dims until the
 /// page comes back.
@@ -1016,6 +1054,7 @@ final class TabRowNode: HoverNode {
   lazy var close = IconButton(symbol: "xmark", size: 22) { [weak self] in self?.emit("close") }
   // Hover playback buttons for a tab with media (`media`): previous, play/pause, next.
   lazy var media = MediaButtons { [weak self] a in self?.emit("media", ["action": .string(a)]) }
+  lazy var capture = CaptureButton { [weak self] in self?.emit("stopCapture") }
   var previous: IconButton { media.previous }
   var playPause: IconButton { media.playPause }
   var next: IconButton { media.next }
@@ -1027,7 +1066,7 @@ final class TabRowNode: HoverNode {
   override var busy: Bool { super.busy || rename.active }
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
-    [icon, drift, label, audio, dot, previous, playPause, next, close].forEach { addSubview($0) }
+    [icon, drift, label, capture.button, audio, dot, previous, playPause, next, close].forEach { addSubview($0) }
     close.isHidden = true
     dot.isHidden = true
   }
@@ -1050,6 +1089,7 @@ final class TabRowNode: HoverNode {
     drift.isHidden = !v.flag("drift")
     audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))
+    capture.update(v["capture"])
     close.toolTip = v.str("closeTitle", "Close Tab")
     dot.isHidden = !v.flag("unread")
     apply(r.palette)
@@ -1065,6 +1105,7 @@ final class TabRowNode: HoverNode {
     icon.tint = p.text
     icon.alphaValue = node.flag("suspended") ? 0.45 : 1  // a discarded tab's icon dims
     audio.apply(p)
+    capture.apply(p)
     dot.apply(p)
     close.apply(p)
     close.hoverFill = p.controlHoverFill
@@ -1085,6 +1126,7 @@ final class TabRowNode: HoverNode {
     var right = bounds.width - 6
     if !close.isHidden { close.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 26 }
     if !audio.isHidden { audio.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 24 }
+    if !capture.button.isHidden { capture.button.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 24 }
     if !dot.isHidden { dot.frame = NSRect(x: right - 10, y: (h - 6) / 2, width: 6, height: 6); right -= 14 }
     for b in mediaButtons.reversed() where !b.isHidden { b.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 22 }
     label.frame = NSRect(x: x, y: (h - 18) / 2, width: max(0, right - x), height: 18)
