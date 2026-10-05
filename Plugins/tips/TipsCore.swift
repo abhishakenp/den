@@ -51,6 +51,8 @@ final class TipsCore {
     Tip(key: "editUrl", text: "⌘L edits the address from anywhere."),
     Tip(key: "copyMarkdown", text: "⌥⇧⌘C copies the link as Markdown."),
     Tip(key: "briefingKey", text: "⇧⌘B opens your briefing any time."),
+    // `{keyword}` and `{name}`: the site search the command bar matched (`commands.keywordHint`).
+    Tip(key: "siteKeyword", text: "Type {keyword}, then Tab, to search {name} directly."),
   ]
 
   struct Step {
@@ -342,12 +344,13 @@ final class TipsCore {
   func done(_ key: String) -> Bool { shown.contains(key) || retired.contains(key) }
 
   /// Counts an occurrence; offers the tip from the `at`-th on (a blocked offer comes back next time).
-  func bump(_ key: String, at: Int64 = 1) {
+  /// `fill`: values for the tip's `{placeholders}`.
+  func bump(_ key: String, at: Int64 = 1, fill: [(String, String)] = []) {
     guard enabled, !done(key) else { return }
     let n = (counts[key] ?? 0) + 1
     counts[key] = n
     saveSoon()
-    if n >= at { offer(key) }
+    if n >= at { offer(key, fill: fill) }
   }
 
   /// Why a tip can't show now (nil: it can).
@@ -365,8 +368,9 @@ final class TipsCore {
   }
 
   @discardableResult
-  func offer(_ key: String) -> Bool {
-    guard blocked(key) == nil, let t = tip(key) else { return false }
+  func offer(_ key: String, fill: [(String, String)] = []) -> Bool {
+    guard blocked(key) == nil, var t = tip(key) else { return false }
+    t = Tip(key: t.key, text: Self.filled(t.text, fill))
     let now = env.now()
     shown.insert(key)
     put("shown." + key, true)
@@ -381,6 +385,20 @@ final class TipsCore {
     put("dayCount", .int(dayCount))
     display(t)
     return true
+  }
+
+  /// `text` with each `{name}` replaced by its value.
+  static func filled(_ text: String, _ fill: [(String, String)]) -> String {
+    var out = Array(text.utf8)
+    for (k, v) in fill {
+      let needle = Array(("{" + k + "}").utf8)
+      var from = 0
+      while from < out.count, let r = URLs.find(Array(out[from...]), needle) {
+        out.replaceSubrange((from + r)..<(from + r + needle.count), with: Array(v.utf8))
+        from += r + v.utf8.count
+      }
+    }
+    return String(decoding: out, as: UTF8.self)
   }
 
   func display(_ t: Tip) {
@@ -448,6 +466,10 @@ final class TipsCore {
     }
     env.on("commands.key.edit") { [self] _ in retire("editUrl") }
     env.on("briefing.key.open") { [self] _ in retire("briefingKey") }
+    env.on("commands.keywordHint") { [self] v in
+      bump("siteKeyword", fill: [("keyword", v.s("keyword")), ("name", v.s("name"))])
+    }
+    env.on("commands.keywordSearch") { [self] _ in retire("siteKeyword") }
   }
 
   func action(_ id: String, _ action: String, _ value: Value) {
@@ -538,7 +560,7 @@ final class TipsCore {
       card = "import"
       env.call("ui", "set", ["slot": "sidebar.notice", "tree": importTree()])
     default:
-      if let t = tip(key) { display(t) }
+      if let t = tip(key) { display(Tip(key: t.key, text: Self.filled(t.text, [("keyword", v.sOpt("keyword") ?? "yt"), ("name", v.sOpt("name") ?? "YouTube")]))) }
     }
   }
 }

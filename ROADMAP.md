@@ -153,7 +153,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ Command bar (`commandbar` plugin: tabs, archive/history, spaces, actions, URLs, web and site search, frecency; [contract](docs/plugin-services.md#commands-plugin-commandbar))
 - ✅ Command bar as a launcher: den's commands, destinations and individual settings, ranked above web search
 - ⏳ "new doc / notion / linear…" creation commands in the command bar
-- ⏳ Command bar names the real search engine, and suggests site-search keywords with a toast
+- ✅ Command bar names the real search engine ("— Search DuckDuckGo"), and a one-time tip suggests a site's keyword when you open the site or search for it by name ("Type yt, then Tab, to search YouTube directly.")
 - ✅ Peek / link preview (⇧/⌥-click any link, links from pinned tabs; Open as Tab, Open in Split View; ⌘Z reopen)
 - ✅ "Open Link in Peek" and "Open Link in Split View" in the link context menu
 - ✅ Split view, including drag-to-split, 2–4 panes, side by side, top and bottom, grid
@@ -185,8 +185,8 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
   - ✅ quiet one-click import card, shown only when a plugin provides the `importer` service
   - ⏳ tour callouts pointing at the real UI (the steps show in the sidebar card for now); an importer
 - 🟡 One-time discovery tips, one at a time, with a global off switch ([spec](docs/guide/_in-app-tips.md))
-  - ✅ 14 tips wired to existing events, limits (1 per 10 min, 3 a day, none in the first minute or over a modal), Settings ▸ General ▸ Show tips, "Don't Show Tips" in the bar and on every tip
-  - ⏳ tips that need events den doesn't emit yet (link linger, ⌘F, tab drags, context-menu opens, keyword searches)
+  - ✅ 15 tips wired to existing events, limits (1 per 10 min, 3 a day, none in the first minute or over a modal), Settings ▸ General ▸ Show tips, "Don't Show Tips" in the bar and on every tip
+  - ⏳ tips that need events den doesn't emit yet (link linger, ⌘F, tab drags, context-menu opens)
 - ✅ Shortcuts shown on every surface where the action appears, remaps included (read from the menu bar item: `keyFor` / `shortcutFor`)
   - ✅ menu bar, command bar rows (menu glyph order ⌃⌥⇧⌘; Copy URL as Markdown ⌥⇧⌘C)
   - ✅ hover-card button tooltips (and the shortcuts act on the hovered tab while its card is open, a remapped chord too)

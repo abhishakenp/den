@@ -211,6 +211,30 @@ struct CommandBarTests {
     #expect(h2.barRows.first?.str("subtitle") == "— Search DuckDuckGo")
   }
 
+  /// Opening a site that has a keyword, or a web search starting with its keyword or name, hints
+  /// at the keyword (the tips plugin shows it once); a search through the keyword says so.
+  @Test func siteKeywordHints() {
+    let h = Harness()
+    h.startCommandBar()
+    h.record(["commands.keywordHint", "commands.keywordSearch"])
+    func hints() -> [String] { h.events.filter { $0.0 == "commands.keywordHint" }.map { $0.1.s("keyword") + " " + $0.1.s("name") } }
+    for q in ["youtube.com", "yt cats", "wikipedia otters", "hello world", "google.com", "youtube"] {
+      h.key("cmd+t")
+      h.type(q)
+      h.submit()
+    }
+    // youtube.com, "yt cats", "wikipedia otters"; not a plain search, the default engine's site, or one word.
+    #expect(hints() == ["yt YouTube", "yt YouTube", "w Wikipedia"])
+    #expect(h.events.allSatisfy { $0.0 != "commands.keywordSearch" })
+    h.key("cmd+t")
+    h.type("yt")
+    h.action("commandBar", "tab", ["query": "yt"])
+    h.type("lofi")
+    h.submit()
+    #expect(h.events.filter { $0.0 == "commands.keywordSearch" }.map { $0.1.s("keyword") } == ["yt"])
+    #expect(hints().count == 3)
+  }
+
   @Test func tabSwitchesIntoActionsMode() {
     let h = Harness()
     h.startCommandBar()

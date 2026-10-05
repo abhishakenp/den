@@ -106,6 +106,23 @@ struct TipsTests {
     #expect(toastTexts(h).isEmpty)
   }
 
+  /// The command bar's keyword hint becomes a one-time tip naming that site's keyword.
+  @Test func siteKeywordTipNamesTheKeyword() {
+    let h = Harness()
+    _ = start(h)
+    settle(h)
+    h.rt.plugins.emit("commands.keywordHint", ["keyword": "yt", "name": "YouTube"])
+    #expect(toastTexts(h) == ["Type yt, then Tab, to search YouTube directly."])
+    #expect(h.storage("tips", "shown.siteKeyword") == true)
+    // Using a keyword takes it away; never again.
+    h.rt.plugins.emit("commands.keywordSearch", ["keyword": "yt"])
+    #expect(toastTexts(h).isEmpty)
+    h.clock += TipsCore.minGapMs * 2
+    h.rt.plugins.emit("commands.keywordHint", ["keyword": "w", "name": "Wikipedia"])
+    #expect(toastTexts(h).isEmpty)
+    #expect(TipsCore.filled("{a} and {a}{b}", [("a", "{a}x"), ("b", "y")]) == "{a}x and {a}xy")
+  }
+
   @Test func aRetiredTipNeverShows() {
     let h = Harness()
     _ = start(h)
