@@ -32,7 +32,7 @@ struct SettingsTests {
     #expect(h2.rt.call("settings", "get", ["id": "demo", "key": "n"]) == 7)
     // Sections: General (host) first, then by order; a registration with `section` is a group.
     h.rt.call("settings", "register", ["id": "extra", "section": "demo", "title": "More", "controls": []])
-    #expect(h.rt.call("settings", "list").array?.map { $0.s("id") } == ["general", "demo"])
+    #expect(h.rt.call("settings", "list").array?.map { $0.s("id") } == ["general", "plugins", "demo"])  // "plugins": den's Settings ▸ Plugins
     #expect(s.groups(of: "demo").map(\.id) == ["demo", "extra"])
     #expect(h.rt.call("settings", "set", ["id": "../x", "key": "k", "value": 1]).isError)
     // Nothing is built until Settings opens.
@@ -85,7 +85,7 @@ struct SettingsTests {
     // General gains "Quitting"; Tabs gains "Downloads" and "Links".
     #expect(h.rt.settings.groups(of: "general").map(\.id) == ["general", "quit"])
     #expect(h.rt.settings.groups(of: "tabs").map(\.id) == ["tabs", "tabs.downloads", "peek"])
-    #expect(h.rt.call("settings", "list").array?.map { $0.s("id") } == ["general", "tabs", "commandbar", "briefing"])
+    #expect(h.rt.call("settings", "list").array?.map { $0.s("id") } == ["general", "tabs", "commandbar", "briefing", "plugins"])
     // Quit prompt.
     #expect(quit.warn)
     h.rt.call("settings", "set", ["id": "quit", "key": "warn", "value": false])
