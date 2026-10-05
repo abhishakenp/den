@@ -20,6 +20,9 @@ final class TabsCore {
     /// The page's now-playing media (`webviews.nowPlaying`), runtime only: the row's hover
     /// play/pause and skip buttons. nil when nothing played or it stopped.
     var media: Value?
+    /// The page has a live web view (it loaded since launch and wasn't unloaded since), runtime
+    /// only. An unloaded tab's row and tile show its icon dimmed, like Chrome's discarded tabs.
+    var loaded = false
     /// An icon the user chose (an emoji or `sf:` symbol, TabsIcons.swift); it replaces the favicon.
     var customIcon: String?
 
@@ -1814,6 +1817,7 @@ final class TabsCore {
       let id = splits[fid]?.children.first ?? fid
       guard let t = tabs[id] else { return nil }
       var tile: Value = ["type": "favoriteTile", "id": .string(id), "icon": .string(t.icon), "title": .string(t.displayTitle), "selected": .bool(id == sel),
+                         "dimmed": .bool(!t.loaded && id != sel),
                          "audio": .bool(t.audio), "muted": .bool(t.muted), "dropInto": true,
                          "hoverIntent": .int(Self.tileCardDelayMs)]
       if !badges.isEmpty, let b = badges[URLs.host(t.url)] { tile.put("badge", .string(b)) }
@@ -1833,7 +1837,7 @@ final class TabsCore {
     let t = tabs[id]!
     var r: Value = ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(selOf(sid) == id),
                     "audio": .bool(t.audio), "muted": .bool(t.muted), "drift": .bool(kind(of: box) != "today" && t.drift),
-                    "closeTitle": .string(kind(of: box) == "today" ? "Archive Tab" : "Close Tab"),
+                    "closeTitle": .string(kind(of: box) == "today" ? "Archive Tab" : "Close Tab"), "dimmed": .bool(!t.loaded && selOf(sid) != id),
                     "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1",
                     "hoverIntent": .int(Self.rowCardDelayMs)]
     if let m = mediaNode(t) { r.put("media", m) }
@@ -2110,7 +2114,7 @@ final class TabsCore {
     env.on("tabs.key.stop") { [self] _ in web("stop") }
     env.on("tabs.key.sidebar") { [self] _ in env.call("window", "toggleSidebar") }
     env.on("tabs.key.copy") { [self] _ in copyURL() }
-    for e in ["webviews.title", "webviews.url", "webviews.favicon", "webviews.progress", "webviews.state", "webviews.audio", "webviews.muted"] {
+    for e in ["webviews.title", "webviews.url", "webviews.favicon", "webviews.progress", "webviews.state", "webviews.audio", "webviews.muted", "webviews.suspended"] {
       env.on(e) { [self] v in webEvent(e, v) }
     }
     // Now-playing media: the row's hover playback buttons.
@@ -2336,6 +2340,13 @@ final class TabsCore {
     if ptabs[id] != nil { return privateWebEvent(e, v) }
     guard tabs[id] != nil else { return }
     let isSelected = id == selectedId || isShownElsewhere(id)
+    // Loaded (any page event) or unloaded: the icon's dimming follows.
+    let loaded = e != "webviews.suspended"
+    if tabs[id]?.loaded != loaded {
+      tabs[id]?.loaded = loaded
+      if favorites.contains(id) { renderFavorites() } else if let sid = spaceOf(id) { renderPage(sid) }
+    }
+    if !loaded { return }
     switch e {
     case "webviews.title":
       tabs[id]?.title = v.s("title")

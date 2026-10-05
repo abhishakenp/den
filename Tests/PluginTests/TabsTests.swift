@@ -331,6 +331,30 @@ struct TabsTests {
     #expect(tile["audio"] == true && tile["muted"] == true)
   }
 
+  /// An unloaded tab's icon is dimmed (row and tile); it brightens once the page loads, and the
+  /// tab on screen is never dimmed.
+  @Test func unloadedTabsHaveDimmedIcons() {
+    let h = Harness()
+    h.startTabs()
+    let today = h.ids("today")
+    guard today.count >= 2, let fav = h.ids("favorites").first else { Issue.record("needs two tabs and a favorite"); return }
+    h.tabs("select", ["id": .string(today[0])])
+    let other = today[1]
+    func row(_ id: String) -> Value { h.tree("sidebar.today", 0)["children"].array?.first { $0.s("id") == id } ?? .null }
+    func tile() -> Value { h.tree("sidebar.favorites", 0)["children"].array?.first { $0.s("id") == fav } ?? .null }
+    h.rt.plugins.emit("webviews.title", ["id": .string(other), "title": "Loaded"])
+    h.rt.plugins.emit("webviews.title", ["id": .string(fav), "title": "Loaded"])
+    #expect(row(other)["dimmed"] == false && tile()["dimmed"] == false)
+    h.rt.plugins.emit("webviews.suspended", ["id": .string(other)])
+    h.rt.plugins.emit("webviews.suspended", ["id": .string(fav)])
+    #expect(row(other)["dimmed"] == true && tile()["dimmed"] == true)
+    #expect(row(other)["title"] == "Loaded", "unloading keeps the title")
+    h.rt.plugins.emit("webviews.suspended", ["id": .string(today[0])])
+    #expect(row(today[0])["dimmed"] == false, "the selected tab isn't dimmed")
+    h.rt.plugins.emit("webviews.progress", ["id": .string(other), "progress": 0.3])
+    #expect(row(other)["dimmed"] == false)
+  }
+
   /// Arc (Jan 2024): dropping a tab onto the middle of another makes a split of the two.
   @Test func dropOntoATabMakesASplit() {
     // Row geometry: the middle half is "into" for rows that take it, the edges reorder.

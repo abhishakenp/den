@@ -443,7 +443,8 @@ final class MediaButtons {
   var visible: [IconButton] { all.filter { !$0.isHidden } }
 }
 
-/// {type:"favoriteTile", id, icon, title, selected, audio, muted?, badge?, media?: {paused, next, previous}}
+/// {type:"favoriteTile", id, icon, title, selected, audio, muted?, badge?, dimmed?, media?: {paused, next, previous}}
+/// `dimmed`: the tab is unloaded (its icon at `Tokens.unloadedIconAlpha`).
 /// actions: click, doubleClick, reorder, mute (speaker badge), media {action: toggle|next|previous}
 /// `badge`: a short text chip at the bottom of the tile ("in 8m": a plugin's countdown).
 /// `media`: while hovered, play/pause (and previous / next when the tile is wide enough) take the
@@ -476,6 +477,7 @@ final class FavoriteTileNode: HoverNode {
     super.update(v)
     icon.spec = v.str("icon")
     icon.fallbackLetter = v.str("title")
+    icon.alphaValue = v.flag("dimmed") ? Tokens.unloadedIconAlpha : 1
     audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))
     chip.text = v.str("badge")
@@ -985,7 +987,7 @@ final class RenameSupport {
 
 // MARK: - Tabs
 
-/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, editing?, editText?, unread?,
+/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, editing?, editText?, unread?, dimmed?,
 ///  media?: {paused, next, previous}}
 /// `unread`: an accent dot on the right (a live folder's new item).
 /// actions: click {modifiers?}, doubleClick, close, reset (favicon click while drifted), mute, contextMenu/menu, reorder,
@@ -1031,6 +1033,7 @@ final class TabRowNode: HoverNode {
     label.stringValue = v.str("title", "Untitled")
     icon.spec = v.str("icon")
     icon.fallbackLetter = v.str("title")
+    icon.alphaValue = v.flag("dimmed") ? Tokens.unloadedIconAlpha : 1
     drift.isHidden = !v.flag("drift")
     audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))

@@ -132,6 +132,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
   - ✅ speaker icon on tabs and favorites playing audio
   - 🟡 muting
 - ✅ Faster tab close: the next tab goes on screen first, one render, one snapshot
+- ✅ Unloaded tabs show their icon dimmed (rows and favorite tiles), brightening once the page loads
 - ✅ Tab menu shows shortcuts and ⌥ alternates (Copy Link as Markdown, Close Other Tabs, Close Tabs Above), Close Tabs Below
 - ✅ Split modifiers: ⇧⌥-click a link → right split; ⌥-click New Tab → new tab in a split
 - ✅ Resize split panes by dragging the gap between them (double-click: equal sizes); the split keeps its sizes

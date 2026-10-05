@@ -75,6 +75,7 @@ public enum Tokens {
   public static let favoriteTileCornerRadius: CGFloat = 10  // estimate
   public static let favoriteTileSpacing: CGFloat = 8  // estimate
   public static let favoriteIconSize: CGFloat = 20  // estimate
+  public static let unloadedIconAlpha: CGFloat = 0.5  // estimate: an unloaded tab's icon (Chrome/Edge dim discarded tabs)
 
   // MARK: Footer / space switcher
   public static let footerHeight: CGFloat = 50  // spec §1: switcher strip 144x50 at y 750 of 800
