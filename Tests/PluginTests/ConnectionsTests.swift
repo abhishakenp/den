@@ -92,8 +92,8 @@ struct ConnectionsTests {
     // The real sidecars in the repo.
     let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     let q = Permissions()
-    #expect(q.loadSidecar(plugin: "slack", dylib: repo.appendingPathComponent("Plugins/slack/permissions.dylib")) == ["session:slack.com"])
-    #expect(q.loadSidecar(plugin: "github", dylib: repo.appendingPathComponent("Plugins/github/permissions.dylib")) == ["session:github.com"])
+    #expect(q.loadSidecar(plugin: "slack", dylib: repo.appendingPathComponent("Plugins/slack/plugin.dylib")) == ["session:slack.com"])
+    #expect(q.loadSidecar(plugin: "github", dylib: repo.appendingPathComponent("Plugins/github/plugin.dylib")) == ["session:github.com"])
   }
 
   @Test func sessionReadsCookiesAndSiteStorageAfterSignIn() async throws {

@@ -417,6 +417,8 @@ final class CommandBarCore {
   }
 
   func open(_ m: String, query q: String?) {
+    // Lazy plugins whose commands change at runtime load on this (their sidecar's `events`).
+    if !isOpen { env.emit("commands.opened", ["mode": .string(m)]) }
     let reopen = isOpen
     mode = m
     scope = .main

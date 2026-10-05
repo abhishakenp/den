@@ -109,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       case let .applied(id):
         trace("applied \(id)")
         self.config?.pluginApplied()
+        self.loader?.pluginApplied(id)
       case let .reloaded(id, hash): print("plugin \(id) reloaded (build \(hash))")
       case let .reloadFailed(path, reason):
         print("plugin reload failed \(path): \(reason)")

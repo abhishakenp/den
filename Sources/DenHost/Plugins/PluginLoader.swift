@@ -16,6 +16,9 @@ import Foundation
 /// load before the first frame; `loadDeferred()` loads the rest right after it. Until then each
 /// deferred plugin's services (as it provided them last launch, `ManifestCache`) are stubs that
 /// load it on the first call and forward, so an early caller never sees a missing service.
+/// A plugin whose sidecar says `"launch": "lazy"` isn't loaded at all: what its `activation`
+/// declares (services, events, commands, keys, settings) is registered for it, and its first use
+/// loads it (LazyPlugins.swift). Every load, lazy or not, goes through `load(_:watch:)`.
 ///
 /// A plugin whose build crashed den last time is refused by cordis (`crashedBuild`); the loader
 /// records it in `crashed` so the app can tell the user.
@@ -30,8 +33,14 @@ public final class PluginLoader {
 
   let plugins: PluginHost
   public private(set) var outcome = Outcome()
+  /// Lazy plugins (`"launch": "lazy"`) registered but not loaded: LazyPlugins.swift.
+  var lazy = LazyRegistry()
+  static var loaders: [ObjectIdentifier: WeakLoader] = [:]
 
-  public init(plugins: PluginHost) { self.plugins = plugins }
+  public init(plugins: PluginHost) {
+    self.plugins = plugins
+    Self.loaders[ObjectIdentifier(plugins)] = WeakLoader(loader: self)
+  }
 
   public static var bundleDirectory: URL? { Bundle.main.builtInPlugInsURL }
 
@@ -63,6 +72,8 @@ public final class PluginLoader {
     if deferring { manifests = ManifestCache(directory: plugins.cacheDirectory) }
     for name in chosen.keys.sorted() {
       let (url, watch) = chosen[name]!
+      // Lazy: registered from its sidecar, loaded on the first trigger (LazyPlugins.swift).
+      if !watch, arm(url) { continue }
       if deferring, !watch, !Self.paintsFirstFrame(url) {
         deferred.append(url)
         continue
@@ -88,6 +99,8 @@ public final class PluginLoader {
   }
 
   func load(_ url: URL, watch: Bool) {
+    let lazyID = lazyWillLoad(url)
+    defer { if let lazyID { lazyDidLoad(lazyID) } }
     if watch {
       plugins.watch(url.path)
       guard let info = plugins.plugins.first(where: { $0.path == url.path }) else {

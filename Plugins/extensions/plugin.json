@@ -1,0 +1,14 @@
+{
+  "permissions": [],
+  "launch": "lazy",
+  "activation": {
+    "services": ["extensions"],
+    "events": ["webext.openPage"],
+    "commands": [
+      {"id": "extensions.installFile", "title": "Install Extension from File…", "icon": "sf:square.and.arrow.down",
+       "keywords": ["extension", "crx", "xpi", "unpacked", "load", "install"]},
+      {"id": "extensions.get", "title": "Get Extensions", "icon": "sf:plus.circle",
+       "keywords": ["chrome web store", "firefox add-ons", "store", "extensions", "browse"]}
+    ]
+  }
+}
