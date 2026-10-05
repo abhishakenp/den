@@ -740,6 +740,7 @@ final class CommandBarCore {
             url: "https://linear.app/new"),
     Builtin(id: "den.renameTab", title: "Rename Tab", icon: "sf:pencil", keywords: ["title"], shortcut: "", needsTab: true, service: "tabs"),
     Builtin(id: "den.pinTab", title: "Pin Tab", icon: "sf:pin", keywords: ["unpin", "pinned"], shortcut: "⌘D", needsTab: true, service: "tabs"),
+    Builtin(id: "den.muteTab", title: "Mute Tab", icon: "sf:speaker.slash", keywords: ["unmute", "sound", "audio", "silence"], shortcut: "", needsTab: true, service: "tabs"),
     Builtin(id: "den.duplicateTab", title: "Duplicate Tab", icon: "sf:plus.rectangle.on.rectangle", keywords: ["copy", "clone"], shortcut: "", needsTab: true, service: "tabs"),
     Builtin(id: "den.copyURL", title: "Copy URL", icon: "sf:link", keywords: ["link", "share"], shortcut: "⇧⌘C", needsTab: true, service: "app"),
     Builtin(id: "den.copyMarkdown", title: "Copy URL as Markdown", icon: "sf:text.quote", keywords: ["link", "share", "md"], shortcut: "⌥⇧⌘C", needsTab: true, service: "app"),
@@ -797,7 +798,11 @@ final class CommandBarCore {
         guard let repo = Self.githubRepo(tab.s("url")) else { continue }
         c.title = "New GitHub Issue in " + repo
       }
-            if b.id == "den.pinTab", tab.s("kind") != "today" {
+            if b.id == "den.muteTab", tab.b("muted") {
+        c.title = "Unmute Tab"
+        c.icon = "sf:speaker.wave.2"
+      }
+      if b.id == "den.pinTab", tab.s("kind") != "today" {
         c.title = "Unpin Tab"
         c.icon = "sf:pin.slash"
       }
@@ -848,6 +853,9 @@ final class CommandBarCore {
       env.call("tabs", tab.s("kind") == "today" ? "pin" : "unpin", ["id": .string(tabId)])
     case "den.duplicateTab":
       env.call("tabs", "duplicate", ["id": .string(tabId)])
+    case "den.muteTab":
+      guard !tabId.isEmpty else { return }
+      env.call("tabs", "act", ["id": .string(tabId), "action": .string(tab.b("muted") ? "unmute" : "mute")])
     case "den.copyURL":
       env.call("app", "copy", ["text": tab["url"]])
       toast(Copied.link(tab.s("url")), "sf:link")

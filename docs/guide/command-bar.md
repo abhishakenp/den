@@ -80,7 +80,7 @@ sf = { name = "Swift Forums", url = "https://forums.swift.org/search?q=%s" }
 
 Everything in den is a command you can type. The built-in ones:
 
-**New Space**, **Rename Tab**, **Pin Tab** ⌘D, **Duplicate Tab**, **Copy URL** ⇧⌘C, **Copy URL as Markdown**, **Clear Today Tabs** ⇧⌘K, **View Archive**, **Toggle Sidebar** ⌘S, **Edit Theme**, **Reload Page** ⌘R, **Split Right**, **Quit den** ⌘Q, **Settings**, **Extensions**, **Library**, **Keyboard Shortcuts**, **About den**.
+**New Space**, **Rename Tab**, **Pin Tab** ⌘D, **Mute Tab** (or **Unmute Tab**), **Duplicate Tab**, **Copy URL** ⇧⌘C, **Copy URL as Markdown**, **Clear Today Tabs** ⇧⌘K, **View Archive**, **Toggle Sidebar** ⌘S, **Edit Theme**, **Reload Page** ⌘R, **Split Right**, **Quit den** ⌘Q, **Settings**, **Extensions**, **Library**, **Keyboard Shortcuts**, **About den**.
 
 **Create something new** in a new tab: **New Google Doc**, **New Google Sheet**, **New Google Slides**, **New Google Form**, **New Google Meet**, **New Calendar Event**, **New Google Keep Note**, **New Notion Page**, **New Linear Issue**, **New Figma File**, **New FigJam Board**, **New GitHub Repository**, **New GitHub Gist**, **New Spotify Playlist**. Each opens the site's own `.new` address (docs.new, notion.new…), so you land on a blank one, signed in as you. On a GitHub repository's page there's also **New GitHub Issue in owner/repo**.
 

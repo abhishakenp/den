@@ -299,6 +299,24 @@ struct CommandBarTests {
     #expect(CommandBarCore.githubRepo("https://gist.github.com/a/b") == nil)
   }
 
+  /// "Mute Tab" mutes the current tab; then the same command reads "Unmute Tab".
+  @Test func muteTabCommand() {
+    let h = Harness()
+    h.startCommandBar()
+    guard let id = h.selected else { Issue.record("no selected tab"); return }
+    h.key("cmd+t")
+    h.type("mute tab")
+    #expect(h.barRows.first { $0.str("id") == "cmd:den.muteTab" }?.str("title") == "Mute Tab")
+    h.submit("cmd:den.muteTab")
+    #expect(h.rt.call("webviews", "get", ["id": .string(id)])["muted"] == true)
+    #expect((h.tabs("list")["today"].array ?? []).first { $0.s("id") == id }?["muted"] == true)
+    h.key("cmd+t")
+    h.type("unmute")
+    #expect(h.barRows.first { $0.str("id") == "cmd:den.muteTab" }?.str("title") == "Unmute Tab")
+    h.submit("cmd:den.muteTab")
+    #expect(h.rt.call("webviews", "get", ["id": .string(id)])["muted"] == false)
+  }
+
   @Test func tabSwitchesIntoActionsMode() {
     let h = Harness()
     h.startCommandBar()
