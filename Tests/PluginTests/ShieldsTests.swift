@@ -106,9 +106,9 @@ struct ShieldsTests {
   @Test func pushesRulesAndGuardsNavigations() {
     let h = Harness()
     let core = start(h)
-    #expect(h.rt.sitePolicy.defaultRule.lists == ["shields.ads", "shields.trackers", "shields.cookies"])
+    #expect(h.rt.sitePolicy.defaultRule.lists == ["shields.ads", "shields.trackers", "shields.cookies", "shields.consent"])
     #expect(h.rt.sitePolicy.defaultRule.autoplay == "sound")
-    #expect(h.rt.sitePolicy.defaultRule.scripts == ["shields.scriptlets", "shields.sites"])
+    #expect(h.rt.sitePolicy.defaultRule.scripts == ["shields.scriptlets", "shields.sites", "shields.consentFrames"])
     #expect(h.rt.sitePolicy.httpsFirst)
     // The guard: parameters, bounce, lookalike.
     let p = h.rt.call("shields", "navigate", ["url": "https://news.example/a?utm_campaign=x&id=2"])
@@ -130,8 +130,8 @@ struct ShieldsTests {
 
     // Per site: blocker off drops the ad and tracker lists there and stops link cleaning.
     #expect(h.rt.call("shields", "site", ["host": "news.example", "blocker": false]).isError == false)
-    #expect(h.rt.sitePolicy.rule(for: "www.news.example").lists == ["shields.cookies"])
-    #expect(h.rt.sitePolicy.rule(for: "www.news.example").scripts.isEmpty)
+    #expect(h.rt.sitePolicy.rule(for: "www.news.example").lists == ["shields.cookies", "shields.consent"])
+    #expect(h.rt.sitePolicy.rule(for: "www.news.example").scripts == ["shields.consentFrames"])  // consent answering is its own switch
     #expect(h.rt.call("shields", "navigate", ["url": "https://news.example/a?utm_campaign=x"]).isNull)
     #expect(h.rt.call("shields", "clean", ["url": "https://news.example/a?utm_campaign=x"])["url"] == "https://news.example/a?utm_campaign=x")
     #expect(h.storage("shields", "sites")["news.example"]["blocker"] == false)
@@ -142,7 +142,7 @@ struct ShieldsTests {
 
     // Settings: global switches arrive through the settings service.
     h.rt.call("settings", "set", ["id": "shields", "key": "cookies", "value": false])
-    #expect(h.rt.sitePolicy.defaultRule.lists == ["shields.ads", "shields.trackers"])
+    #expect(h.rt.sitePolicy.defaultRule.lists == ["shields.ads", "shields.trackers", "shields.consent"])
     h.rt.call("settings", "set", ["id": "shields", "key": "https", "value": false])
     #expect(!h.rt.sitePolicy.httpsFirst)
     core.stop()
@@ -248,7 +248,7 @@ struct ShieldsTests {
     #expect(try await until { core.unsaved })
     let note = core.panelTree()["children"].array?.first { $0["id"] == "shields.reloadNote" }
     #expect(note?["text"].string?.contains("haven’t sent") == true)
-    #expect(h.rt.sitePolicy.rule(for: "example.com").lists == ["shields.cookies"])
+    #expect(h.rt.sitePolicy.rule(for: "example.com").lists == ["shields.cookies", "shields.consent"])
     #expect(core.pill("https://example.com/")["icon"] == "sf:shield.slash")
 
     h.action("shields.panel", "dismiss")
@@ -266,6 +266,6 @@ struct ShieldsTests {
     h.action("shields.ubo", "toast")
     #expect(!core.on("blocker"))
     #expect(h.rt.call("settings", "get", ["id": "shields", "key": "blocker"]) == false)
-    #expect(h.rt.sitePolicy.defaultRule.lists == ["shields.cookies"])
+    #expect(h.rt.sitePolicy.defaultRule.lists == ["shields.cookies", "shields.consent"])
   }
 }

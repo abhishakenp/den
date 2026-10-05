@@ -28,8 +28,8 @@ Shields are on for every site from the first launch; there's nothing to set up.
 Click the shield in the address pill, or press **⌥⌘S**. For the site you're on:
 
 - **Block trackers and ads** (⌥⌘B without opening the panel). Turn it off when a site breaks; its links then keep their parameters too. The shield in the pill stays crossed out as a reminder.
-- **Hide cookie banners**, **Autoplay** (Block Sound, Allow, Block All), **Pop-ups** (Block, Allow), **Zoom** (⌘− ⌘+ ⌘0).
-- **On this page:** how many trackers and ads WebKit blocked (a real count), a skipped bounce redirect, tracking parameters removed, whether the connection is secure, and your camera and microphone answers (with a reset).
+- **Hide cookie banners**, **Reject cookie consent**, **Autoplay** (Block Sound, Allow, Block All), **Pop-ups** (Block, Allow), **Zoom** (⌘− ⌘+ ⌘0).
+- **On this page:** how many trackers and ads WebKit blocked (a real count), a skipped bounce redirect, tracking parameters removed, how den answered a cookie consent dialog ("Cookie consent: Rejected (OneTrust)"), whether the connection is secure, and your camera and microphone answers (with a reset).
 - **Forget This Site…** removes its cookies, site data and cache, and your Shields, zoom and permission choices for it. You'll be signed out.
 
 A change applies from the next load, so the panel offers **Reload** (⌘R). If you've typed something you haven't sent yet, it says so first and the button becomes **Reload Anyway**.
@@ -40,9 +40,14 @@ Everything also lives in the command bar (type "shields") and in **Settings ▸ 
 
 ### Cookie banners
 
-den hides banners and blocks their scripts; it doesn't click "Reject" for you. DuckDuckGo's autoconsent library does click, but it's JavaScript that would run on every page and in every frame; its measured cost is below, and den doesn't ship it.
+Two things, both on by default and both switchable per site (the panel, the command bar) and in **Settings ▸ Shields**:
 
-"Accept or subscribe" consent walls that lock the page (Sourcepoint's on spiegel.de, zeit.de, theguardian.com) are left alone on purpose by the list: hiding one would leave a page you can't scroll. Answer those yourself; den remembers nothing about them.
+- **Hide cookie banners.** The EasyList Cookie List hides banners and blocks many consent platforms' scripts outright. A blocked platform never runs, so it never gets to ask.
+- **Reject cookie consent.** When a site asks through OneTrust, Didomi, Quantcast (InMobi) Choice, Sourcepoint, TrustArc or Cookiebot, den answers for you with the most private choice: "Reject all", "Necessary only", "Deny", and where the platform has it, an objection to every "legitimate interest". It never clicks "Accept". The panel's "On this page" says what happened ("Cookie consent: Rejected (Sourcepoint)"). An answer you gave on an earlier visit is left as it is.
+
+"Pay or accept" walls (Sourcepoint's "subscribe or accept" on bild.de, spiegel.de) have no free reject: den leaves them alone ("Left open"), and the list leaves them visible on purpose, because hiding one would leave a page you can't scroll. Other platforms aren't answered; their banners are only hidden.
+
+**What it costs.** Nothing on a page without one of the six platforms: den finds them with 11 WebKit content rules that watch for the platforms' own scripts (no script in the page), and only on a page that loads one does it run its answering script (13 KB), in its own isolated world. Sourcepoint's message is a frame of its own; WebKit injects a 3.6 KB frame script only into frames at `/index.html` or `/privacy-manager/index.html` and TrustArc's preference frame, and it stops at its first line anywhere else. DuckDuckGo's autoconsent (MPL-2.0), which covers far more platforms, would mean 441 KB of script evaluated in every page and frame (16–78 ms each, below), so den doesn't ship it; den's scripts are its own (MIT), written for these six.
 
 ### What it costs
 
@@ -70,6 +75,27 @@ Page loads, same page alternately without and with Shields, 3 loads each, median
 Cookie banners, with cookie-banner hiding off and on (same run): hidden on stackoverflow.com, gov.uk, dell.com and hp.com; the Sourcepoint consent wall on spiegel.de stays, as described above. DuckDuckGo's autoconsent (v16.42.0, MPL-2.0) is 441 KB of script with its rules; just evaluating it took 16–78 ms per page load (example.com, spiegel.de, lemonde.fr), before it does any work, in every page.
 
 The same test checks, on the real web: `https://example.com/?utm_source=den&fbclid=abc123&id=1` opens as `https://example.com/?id=1`; a Rakuten deep link (`click.linksynergy.com/deeplink?…&murl=https%3A%2F%2Fexample.org%2F%3Futm_medium%3Daffiliate`) opens `https://example.org/` without contacting Rakuten; a server redirect that adds `utm_campaign` is cleaned too; `http://example.com/` opens over HTTPS; `http://httpforever.com/` shows den's page; `xn--pple-43d.com` shows the lookalike warning; autoplay with sound is refused (`NotAllowedError`) until you allow it for the site; a pop-up without a click is blocked until you allow it.
+
+Consent answering, measured on 2026-10-05 (Apple M3, macOS 26.5; other agents' builds put the 1-minute load between 3.6 and 177 when checked, so treat timings as noisy; `build/den.app --scenario consentCheck`, [ConsentCheck.swift](../../Sources/Den/ConsentCheck.swift)):
+
+- **Detection:** the 11-rule list compiles once in 290–555 ms (5 launches) and takes 8,430 bytes on disk; later launches look it up. On example.com, two Wikipedia articles and rfc-editor.org, 6 loads each with answering on (alternating with 6 off), den's consent script was never evaluated (its global absent in Shields' world on all 24 loads). Load times on and off were within each other's spread (example.com medians 48 / 56 ms; en.wikipedia.org/wiki/Cookie 559 / 357 ms in one run and 1,004 / 476 ms in another; rfc6265 1,561 / 1,450 ms; single loads vary up to 10x with the network).
+- **On a page with a platform** (trustarc.com, 6 loads each): the answering script was evaluated on every load with answering on; DOMContentLoaded medians 218 / 221 ms. Evaluating consent.js (it only defines its functions) took under 1 ms inside the page (WebKit's `performance.now()` resolution is 1 ms; 5 runs each on example.com and trustarc.com) and 0.5–17.7 ms round trip from den. The frame script, in a frame that isn't a platform's, under 1 ms in the page, 0.3–0.9 ms round trip.
+
+Live sites, from Nepal (outside the EU, so some sites show no dialog or a different one), den with its default settings unless the site's Shields switches say otherwise; "stored" is what the platform itself kept, read back from the page:
+
+| Platform | Site | Shields | Answer | Stored |
+|---|---|---|---|---|
+| OneTrust | nvidia.com/en-us | blocker and banner hiding off | Rejected | OptanonConsent `groups=C0001:1,C0002:0,C0003:0,C0004:0`, OptanonAlertBoxClosed set |
+| Didomi | as.com | default | Rejected | didomi_token: purposes enabled 0 of 4, vendors 0 of 7; TCF: purpose consents 0, purpose legitimate interests 0 |
+| Didomi | bfmtv.com | banner hiding off | Rejected | purposes enabled 0 of 11, vendors 0 of 19; TCF consents 0, legitimate interests 0 |
+| Quantcast (InMobi) | ilgiornale.it | blocker and banner hiding off | Rejected, legitimate interests objected | TCF: purpose consents 0, purpose legitimate interests 0 (the site's own "Disagree" leaves 6 on) |
+| Sourcepoint | theguardian.com | default | Rejected | consentStatus: consented to nothing, legitimate interests objected; TCF consents 0, legitimate interests 0 |
+| Sourcepoint | bild.de | default | Left open (pay or accept) | nothing: no choice made |
+| TrustArc | ibm.com | default | Rejected (in its preference centre) | notice_preferences `0:`, cmapi_cookie_privacy `permit_1_required` |
+| TrustArc | trustarc.com | default | Rejected ("Reject Optional") | notice_preferences `0:` |
+| Cookiebot | bt.dk, tfl.gov.uk | default | Rejected | CookieConsent `necessary:true,preferences:false,statistics:false,marketing:false` |
+
+With the default settings some platforms never load (the lists block them), so there is nothing to answer: OneTrust's banner on nvidia.com and coca-cola.com didn't appear in later runs either way, InMobi on ilgiornale.it and Cookiebot on l3harris.com were blocked by the lists. Revisits are left alone: ibm.com and theguardian.com reported "Answered before" and nothing was clicked.
 
 ## Dark mode for every website
 

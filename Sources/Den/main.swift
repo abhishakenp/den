@@ -15,6 +15,8 @@ import os
 //                                  (discard and pip print a line per check and exit 0/1)
 //                                  (split*, command*, dialog, peek and littleArcLink need those plugins)
 //                                  page: opens --url <url> as the selected tab (dark mode, sign-in and vault checks)
+//                                  adCheck / consentCheck: Shields against real ads / consent dialogs, each
+//                                  --url in turn (space separated); a line per URL, then den exits
 //   --dev-plugins <dir>            also load <dir>/*.dylib and hot-reload them when rebuilt
 //   --snapshot <path.png>          render the window to PNG after load, then quit
 //   --snapshot-delay <seconds>     wait before snapshot (default 4)
@@ -447,6 +449,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // the player for 30 s. Other pages: WebKit's blocked count. One `scenario.ad` line per URL,
       // then `scenario.adDone ok=…`, and den exits.
       AdCheck(rt: rt, urls: (arg("--url") ?? "").split(separator: " ").map(String.init)).start()
+    case "consentCheck":
+      // Shields' consent answering on real sites: one `scenario.consent` line per --url (what was
+      // answered, the dialog, the page's TCF answer, the platform's cookies), then den exits.
+      ConsentCheck(rt: rt, urls: (arg("--url") ?? "").split(separator: " ").map(String.init)).start()
     case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
     case "commandEdit": rt.plugins.emit("commands.key.edit")  // Cmd-L
     case "commandActions":

@@ -17,14 +17,15 @@ final class ShieldsCore {
   static let pillId = "tabs.url"
   static let autoplayOptions: [(String, String)] = [("sound", "Block Sound"), ("allow", "Allow"), ("none", "Block All")]
   static let popupOptions: [(String, String)] = [("block", "Block"), ("allow", "Allow")]
-  static let globals: [(String, Bool)] = [("blocker", true), ("cookies", true), ("params", true), ("bounce", true), ("https", true), ("lookalike", true)]
+  static let globals: [(String, Bool)] = [("blocker", true), ("cookies", true), ("consent", true), ("params", true), ("bounce", true), ("https", true), ("lookalike", true)]
 
   struct Site: Equatable {
     var blocker: Bool?
     var cookies: Bool?
     var autoplay: String?
     var popups: String?
-    var isEmpty: Bool { blocker == nil && cookies == nil && autoplay == nil && popups == nil }
+    var consent: Bool?
+    var isEmpty: Bool { blocker == nil && cookies == nil && autoplay == nil && popups == nil && consent == nil }
   }
 
   let env: PluginEnv
@@ -39,6 +40,9 @@ final class ShieldsCore {
   var scriptletsReady = false
   var scriptletsVersion = ""
   var support: Value = .null
+  var consentRequested = false
+  /// The last consent answer per web view: (host, platform, result, detail).
+  var consentResults: [String: (host: String, cmp: String, result: String, detail: String)] = [:]
 
   var panelOpen = false
   var panelWebview = ""
@@ -72,7 +76,10 @@ final class ShieldsCore {
     env.on("sitepolicy.httpsUnavailable") { [self] v in httpsUnavailable(v) }
     env.on("sitepolicy.interstitialAction") { [self] v in interstitialAction(v) }
     env.on("sitepolicy.forgotten") { [self] v in forgotten(v) }
+    env.on("sitepolicy.notified") { [self] v in notified(v) }
+    env.on("webviews.message") { [self] v in if v.s("plugin") == "shields" { consentAnswered(v.s("webview"), v["value"]["consent"]) } }
     env.on("webviews.url") { [self] v in
+      if let r = consentResults[v.s("id")], r.host != URLs.host(v.s("url")) { consentResults[v.s("id")] = nil }
       updatePill(v.s("id"), v.s("url"))
       if panelOpen, v.s("id") == panelWebview { urlChanged() }
     }
@@ -118,7 +125,7 @@ final class ShieldsCore {
   func loadState() {
     if case let .object(pairs) = load("sites") {
       for (h, v) in pairs {
-        let s = Site(blocker: v["blocker"].bool, cookies: v["cookies"].bool, autoplay: v["autoplay"].string, popups: v["popups"].string)
+        let s = Site(blocker: v["blocker"].bool, cookies: v["cookies"].bool, autoplay: v["autoplay"].string, popups: v["popups"].string, consent: v["consent"].bool)
         if !s.isEmpty { sites[h] = s }
       }
     }
@@ -139,6 +146,7 @@ final class ShieldsCore {
       if let b = s.cookies { v.put("cookies", .bool(b)) }
       if let a = s.autoplay { v.put("autoplay", .string(a)) }
       if let p = s.popups { v.put("popups", .string(p)) }
+      if let b = s.consent { v.put("consent", .bool(b)) }
       o.put(h, v)
     }
     save("sites", o)
@@ -148,6 +156,7 @@ final class ShieldsCore {
   func site(_ host: String) -> Site { sites[host] ?? Site() }
   func blocker(_ host: String) -> Bool { site(host).blocker ?? on("blocker") }
   func cookies(_ host: String) -> Bool { site(host).cookies ?? on("cookies") }
+  func consent(_ host: String) -> Bool { site(host).consent ?? on("consent") }
 
   func setSite(_ host: String, _ change: (inout Site) -> Void) {
     guard !host.isEmpty else { return }
@@ -156,6 +165,7 @@ final class ShieldsCore {
     // A value equal to the global choice isn't an exception.
     if s.blocker == on("blocker") { s.blocker = nil }
     if s.cookies == on("cookies") { s.cookies = nil }
+    if s.consent == on("consent") { s.consent = nil }
     if s.autoplay == autoplay { s.autoplay = nil }
     if s.popups == "block" { s.popups = nil }
     if s.isEmpty { sites[host] = nil } else { sites[host] = s }
@@ -167,18 +177,20 @@ final class ShieldsCore {
 
   // MARK: Lists and rules
 
-  func listNames(blocker: Bool, cookies: Bool) -> [String] {
+  func listNames(blocker: Bool, cookies: Bool, consent: Bool = false) -> [String] {
     var l: [String] = []
     if blocker { l += [ShieldsLists.ads.name, ShieldsLists.trackers.name] }
     if cookies { l.append(ShieldsLists.cookies.name) }
+    if consent { l.append(Consent.list) }
     return l
   }
 
   /// Asks `sitepolicy` for each list some rule uses (a lookup after the first compile).
   func loadLists() {
-    var needed = listNames(blocker: on("blocker"), cookies: on("cookies"))
-    for (h, _) in sites { for n in listNames(blocker: blocker(h), cookies: cookies(h)) where !needed.contains(n) { needed.append(n) } }
+    var needed = listNames(blocker: on("blocker"), cookies: on("cookies"), consent: on("consent"))
+    for (h, _) in sites { for n in listNames(blocker: blocker(h), cookies: cookies(h), consent: consent(h)) where !needed.contains(n) { needed.append(n) } }
     if needed.contains(ShieldsLists.ads.name) { loadScriptlets() }
+    if needed.contains(Consent.list) { loadConsent() }
     for l in ShieldsLists.all where needed.contains(l.name) && !requested.contains(l.name) {
       requested.append(l.name)
       loadList(l)
@@ -274,6 +286,42 @@ final class ShieldsCore {
     }
   }
 
+  /// The consent detection list (notify rules, compiled once) and the frame script.
+  func loadConsent() {
+    guard !consentRequested else { return }
+    consentRequested = true
+    let l = env.call("sitepolicy", "define", ["name": .string(Consent.list), "json": .string(Consent.rulesJSON())])
+    let f = env.call("sitepolicy", "script", ["name": .string(Consent.frames), "plugin": "shields", "file": .string(Consent.frameScript),
+                                              "matches": .array(Consent.framePatterns.map { .string($0) })])
+    if l.isErr || f.isErr {
+      consentRequested = false
+      env.log("shields: consent: " + l.s("error") + f.s("error"))
+    }
+  }
+
+  /// A page loaded a consent platform's script (`notify` rule): answer it in that page.
+  func notified(_ v: Value) {
+    let note = v.s("notification")
+    guard Text.hasPrefix(note, Consent.prefix), !v.b("blocked") else { return }
+    let id = v.s("id"), cmp = Text.dropPrefix(note, Consent.prefix)
+    let host = URLs.host(env.call("webviews", "get", ["id": .string(id)]).s("url"))
+    guard !host.isEmpty, consent(host) else { return }
+    let r = env.call("webviews", "inject", ["id": .string(id), "plugin": "shields", "files": [.string(Consent.pageScript)], "global": "__denConsent",
+                                            "script": "__denConsent(cmp); return true", "args": ["cmp": .string(cmp)]])
+    if r.isErr { env.log("shields: consent: " + r.s("error")) }
+  }
+
+  /// consent.js's report for a page: `{cmp, result, detail}`.
+  func consentAnswered(_ webview: String, _ c: Value) {
+    let cmp = c.s("cmp"), result = c.s("result")
+    guard !cmp.isEmpty, !result.isEmpty else { return }
+    let host = URLs.host(env.call("webviews", "get", ["id": .string(webview)]).s("url"))
+    env.log("shields: consent " + Consent.name(cmp) + " " + result + " on " + host + (c.s("detail").isEmpty ? "" : " (" + c.s("detail") + ")"))
+    guard result != "none" else { return }
+    consentResults[webview] = (host, cmp, result, c.s("detail"))
+    if panelOpen, panelWebview == webview { renderPanel() }
+  }
+
   static let day: Int64 = 24 * 3600 * 1000
 
   /// Daily refresh of the scriptlet data (YouTube changes often): a minute after launch when the
@@ -333,19 +381,23 @@ final class ShieldsCore {
 
   /// The page scripts a site gets: the scriptlets wherever the blocker is on (they run only on
   /// the sites their data lists).
-  func scriptNames(blocker: Bool) -> Value { blocker ? [.string(ShieldsLists.scriptlets), .string(ShieldsLists.sites)] : [] }
+  func scriptNames(blocker: Bool, consent: Bool = false) -> Value {
+    var l: [Value] = blocker ? [.string(ShieldsLists.scriptlets), .string(ShieldsLists.sites)] : []
+    if consent { l.append(.string(Consent.frames)) }
+    return .array(l)
+  }
 
   func rules() -> Value {
     var hosts: Value = .object([])
     for h in sites.keys.sorted() {
       guard let s = sites[h] else { continue }
-      var r: Value = ["lists": .array(listNames(blocker: blocker(h), cookies: cookies(h)).map { .string($0) }), "autoplay": .string(s.autoplay ?? autoplay)]
-      r.put("scripts", scriptNames(blocker: blocker(h)))
+      var r: Value = ["lists": .array(listNames(blocker: blocker(h), cookies: cookies(h), consent: consent(h)).map { .string($0) }), "autoplay": .string(s.autoplay ?? autoplay)]
+      r.put("scripts", scriptNames(blocker: blocker(h), consent: consent(h)))
       r.put("popups", .string(s.popups ?? "block"))
       hosts.put(h, r)
     }
-    return ["default": ["lists": .array(listNames(blocker: on("blocker"), cookies: on("cookies")).map { .string($0) }),
-                        "scripts": scriptNames(blocker: on("blocker")), "autoplay": .string(autoplay), "popups": "block"],
+    return ["default": ["lists": .array(listNames(blocker: on("blocker"), cookies: on("cookies"), consent: on("consent")).map { .string($0) }),
+                        "scripts": scriptNames(blocker: on("blocker"), consent: on("consent")), "autoplay": .string(autoplay), "popups": "block"],
             "hosts": hosts]
   }
 
@@ -462,15 +514,19 @@ final class ShieldsCore {
         if let b = a["cookies"].bool { s.cookies = b }
         if let x = a["autoplay"].string { s.autoplay = x }
         if let x = a["popups"].string { s.popups = x }
+        if let b = a["consent"].bool { s.consent = b }
       }
       return .okay
     case "get":
       let h = URLs.host(a.s("host"))
-      var v: Value = ["blocker": .bool(blocker(h)), "cookies": .bool(cookies(h)), "autoplay": .string(site(h).autoplay ?? autoplay),
+      var v: Value = ["blocker": .bool(blocker(h)), "cookies": .bool(cookies(h)), "consent": .bool(consent(h)), "autoplay": .string(site(h).autoplay ?? autoplay),
                       "popups": .string(site(h).popups ?? "block"), "httpAllowed": .bool(httpAllowed.contains(h)),
                       "lists": .array(ready.map { .string($0) }), "ubo": .bool(uboInstalled),
                       "scriptlets": .bool(scriptletsReady), "scriptletsVersion": .string(scriptletsVersion)]
       for (k, _) in Self.globals { v.put("global." + k, .bool(on(k))) }
+      if let w = a["webview"].string, let r = consentResults[w] {
+        v.put("consentResult", ["cmp": .string(r.cmp), "result": .string(r.result), "detail": .string(r.detail), "host": .string(r.host)])
+      }
       return v
     case "state":
       return ["panelOpen": .bool(panelOpen), "webview": .string(panelWebview), "pendingReload": .bool(pendingReload), "unsaved": .bool(unsaved),
@@ -569,6 +625,7 @@ final class ShieldsCore {
     var siteRows: [Value] = [
       ["type": "toggleRow", "id": "shields.blocker", "title": "Block trackers and ads", "on": .bool(blockOn), "shortcut": "⌥⌘B"],
       ["type": "toggleRow", "id": "shields.cookies", "title": "Hide cookie banners", "on": .bool(cookieOn)],
+      ["type": "toggleRow", "id": "shields.consent", "title": "Reject cookie consent", "on": .bool(consent(h))],
     ]
     if support.b("autoplay") {
       siteRows.append(["type": "choiceRow", "id": "shields.autoplay", "title": "Autoplay", "selected": .string(site(h).autoplay ?? autoplay),
@@ -610,6 +667,11 @@ final class ShieldsCore {
     }
     if !bounce.isEmpty { privacy.append(["type": "valueRow", "id": "shields.bounce", "title": "Bounce redirect skipped", "value": .string(bounce)]) }
     if params > 0 { privacy.append(["type": "valueRow", "id": "shields.params", "title": "Tracking parameters removed", "value": .string(String(params))]) }
+    if let c = consentResults[panelWebview], c.host == h, !Consent.describe(c.result).isEmpty {
+      privacy.append(["type": "valueRow", "id": "shields.consentResult", "title": "Cookie consent",
+                      "value": .string(Consent.describe(c.result) + " (" + Consent.name(c.cmp) + ")"),
+                      "tone": .string(c.result == "rejected" || c.result == "answered" ? "success" : "secondary")])
+    }
     let conn: (String, String)
     switch st.s("connection") {
     case "secure": conn = (st.b("upgraded") ? "Upgraded to HTTPS" : "Secure", "success")
@@ -662,6 +724,7 @@ final class ShieldsCore {
     case Self.panelId: if action == "dismiss" { closePanel() }
     case "shields.blocker": if action == "toggle" { changed { setSite(h) { $0.blocker = value.b("on") } } }
     case "shields.cookies": if action == "toggle" { changed { setSite(h) { $0.cookies = value.b("on") } } }
+    case "shields.consent": if action == "toggle" { changed { setSite(h) { $0.consent = value.b("on") } } }
     case "shields.autoplay": if action == "select" { changed { setSite(h) { $0.autoplay = value.s("option") } } }
     case "shields.popups": if action == "select" { changed { setSite(h) { $0.popups = value.s("option") } } }
     case "shields.zoom":
@@ -760,7 +823,11 @@ final class ShieldsCore {
     let url = env.call("webviews", "get", ["id": .string(w)]).s("url")
     let h = URLs.host(url)
     guard Text.hasPrefix(url, "http") else { return }
-    if key == "blocker" { setSite(h) { $0.blocker = !blocker(h) } } else { setSite(h) { $0.cookies = !cookies(h) } }
+    switch key {
+    case "blocker": setSite(h) { $0.blocker = !blocker(h) }
+    case "consent": setSite(h) { $0.consent = !consent(h) }
+    default: setSite(h) { $0.cookies = !cookies(h) }
+    }
     if panelOpen { renderPanel() }
     toastReload = w
     unsavedRequest = env.call("sitepolicy", "unsaved", ["id": .string(w)]).s("request")
@@ -778,6 +845,7 @@ final class ShieldsCore {
     ("shields.panel", "Shields for This Site", "sf:shield.lefthalf.filled", "⌥⌘S"),
     ("shields.blocker", "Block Trackers and Ads on This Site: On/Off", "sf:shield.slash", "⌥⌘B"),
     ("shields.cookies", "Hide Cookie Banners on This Site: On/Off", "sf:checkmark.shield", ""),
+    ("shields.consent", "Reject Cookie Consent on This Site: On/Off", "sf:hand.raised", ""),
     ("shields.forget", "Forget This Site…", "sf:trash", ""),
     ("shields.settings", "Shields Settings", "sf:gearshape", ""),
   ]
@@ -787,6 +855,7 @@ final class ShieldsCore {
     case "shields.panel": openPanel(nil)
     case "shields.blocker": toggleSiteFromKey("blocker")
     case "shields.cookies": toggleSiteFromKey("cookies")
+    case "shields.consent": toggleSiteFromKey("consent")
     case "shields.forget":
       if let w = currentWebview() {
         let h = URLs.host(env.call("webviews", "get", ["id": .string(w)]).s("url"))
@@ -811,7 +880,7 @@ final class ShieldsCore {
     for (id, title, icon, shortcut) in Self.commands {
       let r = env.call("commands", "register", [
         "id": .string(id), "title": .string(title), "icon": .string(icon), "shortcut": .string(shortcut), "owner": "shields",
-        "keywords": ["shields", "block", "blocker", "ads", "adblock", "trackers", "privacy", "cookies", "cookie banner", "site settings", "forget"],
+        "keywords": ["shields", "block", "blocker", "ads", "adblock", "trackers", "privacy", "cookies", "cookie banner", "consent", "gdpr", "reject", "site settings", "forget"],
       ])
       if r.isErr { return false }
     }
@@ -862,6 +931,7 @@ final class ShieldsCore {
     var parts: [String] = []
     if let b = s.blocker { parts.append(b ? "Blocker on" : "Blocker off") }
     if let b = s.cookies { parts.append(b ? "Cookie banners hidden" : "Cookie banners shown") }
+    if let b = s.consent { parts.append(b ? "Consent rejected" : "Consent left alone") }
     if let a = s.autoplay { parts.append("Autoplay: " + (autoplayOptions.first { $0.0 == a }?.1 ?? a)) }
     if s.popups == "allow" { parts.append("Pop-ups allowed") }
     var out = ""
@@ -885,6 +955,8 @@ final class ShieldsCore {
        "subtitle": "EasyList and EasyPrivacy, built into WebKit. Turn it off for one site with the shield in the address pill (⌥⌘S) or ⌥⌘B."],
       ["key": "cookies", "type": "toggle", "title": "Hide cookie banners", "default": true,
        "subtitle": "The EasyList Cookie List hides consent pop-ups and blocks their scripts. The site gets no answer, so nothing is accepted."],
+      ["key": "consent", "type": "toggle", "title": "Reject cookie consent", "default": true,
+       "subtitle": "When a site asks through OneTrust, Didomi, Quantcast, Sourcepoint, TrustArc or Cookiebot, den answers with the most private choice: reject all, necessary only, object to legitimate interest. It never accepts."],
       ["key": "params", "type": "toggle", "title": "Remove tracking parameters", "default": true,
        "subtitle": "utm_…, fbclid, gclid and 30 more click IDs come off every page you open, not only when you copy a link."],
       ["key": "bounce", "type": "toggle", "title": "Skip bounce-tracking redirects", "default": true,
