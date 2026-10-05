@@ -9,8 +9,19 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 traits=(--disable-default-traits)
 [[ -n ${DEN_SCENARIOS:-} ]] && traits=()
-swift build -c release --product Den $traits
-BIN="$(swift build -c release --show-bin-path)/Den"
+# App Intents (Shortcuts, Siri, Spotlight actions): swiftc records the intents' constant values,
+# extracted into Contents/Resources/Metadata.appintents below (scripts/lib/appintents.zsh).
+source scripts/lib/appintents.zsh
+BINDIR="$(swift build -c release --show-bin-path)"
+mkdir -p .build
+appintents_protocols .build/appintents-protocols.json
+# swiftc skips rewriting an unchanged .swiftconstvalues, but llbuild doesn't track it: a missing
+# one (new checkout of the flags, a cleaned folder) needs its module recompiled.
+for m in DenHost Den; do
+  [[ -f "$BINDIR/$m.build/$m.swiftconstvalues" ]] || find "Sources/$m" -name '*.swift' -exec touch {} +
+done
+swift build -c release --product Den $traits ${=$(appintents_swift_flags "$PWD/.build/appintents-protocols.json")}
+BIN="$BINDIR/Den"
 APP=build/den.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -34,6 +45,7 @@ mkdir -p "$APP/Contents/Frameworks"
 ditto .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework "$APP/Contents/Frameworks/Sparkle.framework"
 install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/den" 2>/dev/null || true
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+appintents_extract "$BINDIR" io.github.abhishakenp.den "$APP/Contents/Resources" build/appintents DenHost Den
 # Every Plugins/<id>/ becomes Contents/PlugIns/<id>.dylib (Embedded Swift, via cordis-build).
 # Plugins/Shared/ is compiled into each plugin. Builds run in parallel.
 CORDIS_BUILD=.build/checkouts/cordis-swift/Scripts/cordis-build
