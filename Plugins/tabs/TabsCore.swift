@@ -1407,6 +1407,7 @@ final class TabsCore {
     let r = env.call("ai", "summarize", [
       "id": .string("tabs.name:" + fid), "items": .array(titles.map { .string($0) }),
       "instructions": "These are the titles of browser tabs opened together. Name the group like a folder: one to three words, specific, Title Case. Reply with the name only: no quotes, no punctuation, no explanation.",
+      "merge": "Merge these partial summaries into one.",
     ])
     if r.isErr {
       naming.remove(fid)

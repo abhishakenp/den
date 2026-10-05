@@ -495,6 +495,7 @@ struct CommandBarTests {
     let before = h.barRowIds
     #expect(before.first == "search")
     #expect(!before.contains { $0.hasPrefix("sugg:") })
+    let first = h.suggestRequests.last!
     await h.answerSuggestions(["swi", "swiggy", "swift", "switch 2", "swimming", "swiss"])
     let after = h.barRowIds
     // Everything that was on screen keeps its position; suggestions come after the strong tab matches
@@ -510,9 +511,8 @@ struct CommandBarTests {
     h.type("swif")
     #expect(h.barRowIds.filter { $0.hasPrefix("sugg:") } == ["sugg:swift"])
     // A late answer for the old query is ignored.
-    let stale = h.suggestRequests.removeFirst()
-    #expect(stale.0 == "swi")
-    stale.1(["swiggy"])
+    #expect(first.0 == "swi")
+    first.1(["swiggy"])
     #expect(!h.barRowIds.contains("sugg:swiggy"))
     await h.answerSuggestions(["swift", "swiftui", "swift codes"])
     #expect(h.barRowIds.filter { $0.hasPrefix("sugg:") } == ["sugg:swift", "sugg:swiftui", "sugg:swift codes"])

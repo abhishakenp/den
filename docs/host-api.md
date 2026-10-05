@@ -879,12 +879,14 @@ Apple's on-device Foundation Models, for summaries, todos and grouping only. The
 |---|---|---|
 | `availability` | – | returns `{available, reason?, contextSize}` directly. `reason`: `deviceNotEligible`, `appleIntelligenceNotEnabled`, `modelNotReady` |
 | `respond` | `instructions`, `prompt`, `id?` | `{id, ok, text, ms}`: one plain request with the caller's own instructions (no chunking: the prompt must fit `contextSize`, about 3 characters per token; otherwise `{ok: false, reason: "contextOverflow"}`, so chunk or use `summarize`). The generic call for plugins that bring their own prompts |
-| `summarize` | `items: [string]`, `instructions?` | `{id, ok, text, ms}` |
-| `brief` | `sources: [{name, items: [string]}]`, `instructions?` | `{id, ok, text, sources: [{name, text}], ms}`: one summary per source, then one combined brief |
-| `todos` | `items: [{id, text}]`, `max?` (8), `instructions?` | `{id, ok, todos: [{item, title}], ms}`: guided generation (`@Generable {actionable, title}`), one request per item so a todo can't be attached to another item; non-actionable items are dropped |
-| `group` | `items: [{id, text}]`, `maxGroups?` (6), `instructions?` | `{id, ok, groups: [{name, items: [id]}], skipped, ms}`: guided generation (`@Generable {groups: [{name, items: [Int]}]}`) over a numbered list (each line cut to 120 characters). Out-of-range numbers, repeats across groups and empty or unnamed groups are dropped here, so groups are disjoint. Items past the context budget are left out and counted in `skipped`. Used by Tidy Tabs; the prompt policy is the caller's |
+| `summarize` | `items: [string]`, `instructions`, `merge?` (appended to `instructions` when partial summaries are merged) | `{id, ok, text, ms}` |
+| `brief` | `sources: [{name, items: [string]}]`, `instructions`, `sourceInstructions` (`{name}` is replaced by the source's name), `merge?` | `{id, ok, text, sources: [{name, text}], ms}`: one summary per source, then one combined brief |
+| `todos` | `items: [{id, text}]`, `max?` (8), `instructions` | `{id, ok, todos: [{item, title}], ms}`: guided generation (`@Generable {actionable, title}`), one request per item so a todo can't be attached to another item; non-actionable items are dropped |
+| `group` | `items: [{id, text}]`, `maxGroups?` (6), `instructions` | `{id, ok, groups: [{name, items: [id]}], skipped, ms}`: guided generation (`@Generable {groups: [{name, items: [Int]}]}`) over a numbered list (each line cut to 120 characters). Out-of-range numbers, repeats across groups and empty or unnamed groups are dropped here, so groups are disjoint. Items past the context budget are left out and counted in `skipped`. Used by Tidy Tabs; the prompt policy is the caller's |
 
 When the model can't run: `{id, ok: false, error: "unavailable", reason}`; callers fall back to plain lists.
+
+Every prompt is the caller's: `instructions` is required and the host adds no words to it (the briefing's prompts live in the `briefing` plugin, Tidy's in `tabs`). The one exception is the guided-generation schema (`@Guide` descriptions of the todo and group fields), which FoundationModels takes at compile time.
 
 Every call except `availability` returns `{id}` at once (pass your own `id`, or use the generated one) and answers later on the `ai.result` event, which every listener receives: match on `id`, and prefix your ids with your plugin id.
 

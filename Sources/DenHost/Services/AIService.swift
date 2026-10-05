@@ -7,19 +7,24 @@ import FoundationModels
 /// from `SystemLanguageModel.contextSize`), so long inputs are summarized in chunks (map) and the
 /// partial summaries merged (reduce).
 ///
+/// Every prompt is the caller's (docs/architecture/thin-host.md: the host holds no feature
+/// policy): `instructions` is required, and the host adds no words of its own.
+///
 ///   availability                           -> {available, reason?, contextSize}
 ///   respond {instructions, prompt, id?}    -> {id}; `ai.result {id, ok, text}`
 ///                                             (one plain request: the prompt must fit the context;
 ///                                             if it doesn't, `ok: false, reason: "contextOverflow"`)
-///   summarize {items: [string], instructions?, id?}
-///                                          -> {id}; `ai.result {id, ok, text}`
-///   brief {sources: [{name, items: [string]}], instructions?, id?}
+///   summarize {items: [string], instructions, merge?, id?}
+///                                          -> {id}; `ai.result {id, ok, text}`. `merge` is appended
+///                                             to `instructions` when partial summaries are merged
+///   brief {sources: [{name, items: [string]}], instructions, sourceInstructions, merge?, id?}
 ///                                          -> {id}; `ai.result {id, ok, text, sources: [{name, text}]}`
-///                                             (one summary per source, then one combined brief)
-///   todos {items: [{id, text}], max? (8), instructions?, id?}
+///                                             (one summary per source with `sourceInstructions`, where
+///                                             `{name}` is the source's name, then one combined brief)
+///   todos {items: [{id, text}], max? (8), instructions, id?}
 ///                                          -> {id}; `ai.result {id, ok, todos: [{item, title}]}`
 ///                                             (guided generation; `item` is an input id)
-///   group {items: [{id, text}], instructions?, maxGroups? (6), id?}
+///   group {items: [{id, text}], instructions, maxGroups? (6), id?}
 ///                                          -> {id}; `ai.result {id, ok, groups: [{name, items: [id]}]}`
 ///                                             (guided generation: named groups of input ids; each id in
 ///                                             at most one group, empty groups dropped; items past the
@@ -63,6 +68,9 @@ public final class AIService: HostService {
       if let r = a.reason { v = v.with("reason", .string(r)) }
       return v
     case "summarize", "brief", "todos", "group", "respond":
+      guard !args.str("instructions").isEmpty, method != "brief" || !args.str("sourceInstructions").isEmpty else {
+        return .error("ai: \(method) needs instructions\(method == "brief" ? " and sourceInstructions" : "")")
+      }
       var id = args.str("id")
       if id.isEmpty { id = "ai-\(nextId)"; nextId += 1 }
       enqueue(id: id, method: method, args: args)
@@ -90,15 +98,16 @@ public final class AIService: HostService {
             let text = try await self.generator.respond(instructions: args.str("instructions"), prompt: args.str("prompt"))
             result = ["ok": true, "text": .string(text.trimmingCharacters(in: .whitespacesAndNewlines))]
           case "summarize":
-            let text = try await self.summarize(args.list("items").compactMap(\.string), instructions: args.str("instructions", Self.summaryInstructions))
+            let text = try await self.summarize(args.list("items").compactMap(\.string), instructions: args.str("instructions"), merge: args.str("merge"))
             result = ["ok": true, "text": .string(text)]
           case "brief":
-            result = try await self.brief(args.list("sources"), instructions: args.str("instructions", Self.briefInstructions))
+            result = try await self.brief(args.list("sources"), instructions: args.str("instructions"),
+                                          sourceInstructions: args.str("sourceInstructions"), merge: args.str("merge"))
           case "group":
-            result = try await self.group(args.list("items"), instructions: args.str("instructions", Self.groupInstructions),
+            result = try await self.group(args.list("items"), instructions: args.str("instructions"),
                                           maxGroups: Int(args.num("maxGroups", 6)))
           default:
-            let todos = try await self.todos(args.list("items"), max: Int(args.num("max", 8)), instructions: args.str("instructions", Self.todoInstructions))
+            let todos = try await self.todos(args.list("items"), max: Int(args.num("max", 8)), instructions: args.str("instructions"))
             result = ["ok": true, "todos": .array(todos)]
           }
         } catch AIError.contextOverflow {
@@ -114,12 +123,6 @@ public final class AIService: HostService {
   }
 
   // MARK: Map-reduce
-
-  static let summaryInstructions = "You summarize a person's work notifications. Keep every notification that asks something of the user: never drop one. For each, say who needs what, and where (channel, repo, PR or issue number). Merge only true duplicates. Group pure FYIs into one short line with a count. Be concrete and neutral. Never invent facts."
-  static let briefInstructions = "You write a morning briefing from per-source summaries. Cover every item that needs the user, most urgent first, one short sentence per item; then one line counting the FYIs. Mention each item once. Plain text, no lists, no greeting. Never invent facts."
-  static let todoInstructions = "You turn one work notification into a todo for the user. Decide whether it needs them to act (reply, review, fix, answer, decide); thanks, FYIs and announcements do not. Write one imperative sentence under 110 characters that names the person, the action and where it lives (channel, repo, PR or issue number), plus any deadline stated. Use only words and facts from the notification; never add details that are not in it."
-
-  static let groupInstructions = "You sort a list of numbered items into a few groups of related items. Give each group a short, specific name. Use each item number at most once. Leave out items that fit no group."
 
   /// Characters of input that fit in one request.
   public var chunkBudget: Int { max(800, (generator.contextSize - reservedTokens) * charsPerToken) }
@@ -145,7 +148,7 @@ public final class AIService: HostService {
 
   /// Summarizes any number of lines: each chunk is summarized, then partial summaries are merged
   /// until one remains. A chunk that still overflows the context is split in half and retried.
-  public func summarize(_ lines: [String], instructions: String) async throws -> String {
+  public func summarize(_ lines: [String], instructions: String, merge: String = "") async throws -> String {
     guard !lines.isEmpty else { return "" }
     var parts: [String] = []
     for c in Self.chunk(lines, budget: chunkBudget) { parts += try await summarizeChunk(c, instructions: instructions, depth: 0) }
@@ -154,7 +157,7 @@ public final class AIService: HostService {
       rounds += 1
       var merged: [String] = []
       for c in Self.chunk(parts, budget: chunkBudget) {
-        merged += try await summarizeChunk(c, instructions: instructions + " Merge these partial summaries into one.", depth: 0)
+        merged += try await summarizeChunk(c, instructions: merge.isEmpty ? instructions : instructions + " " + merge, depth: 0)
       }
       parts = merged
     }
@@ -172,18 +175,18 @@ public final class AIService: HostService {
     }
   }
 
-  func brief(_ sources: [Value], instructions: String) async throws -> Value {
+  func brief(_ sources: [Value], instructions: String, sourceInstructions: String, merge: String) async throws -> Value {
     var per: [Value] = []
     var lines: [String] = []
     for s in sources {
       let items = s.list("items").compactMap(\.string)
       guard !items.isEmpty else { continue }
       let name = s.str("name")
-      let text = try await summarize(items, instructions: Self.summaryInstructions + " These are from \(name). Answer in at most 2 sentences.")
+      let text = try await summarize(items, instructions: sourceInstructions.replacingOccurrences(of: "{name}", with: name), merge: merge)
       per.append(["name": .string(name), "text": .string(text)])
       lines.append("\(name): \(text)")
     }
-    let text = lines.isEmpty ? "" : try await summarize(lines, instructions: instructions)
+    let text = lines.isEmpty ? "" : try await summarize(lines, instructions: instructions, merge: merge)
     return ["ok": true, "text": .string(text), "sources": .array(per)]
   }
 
@@ -225,7 +228,7 @@ extension AIService {
       size += line.count + 1
     }
     guard ids.count >= 2 else { return ["ok": true, "groups": [], "skipped": .int(Int64(skipped))] }
-    let raw = try await generator.group(instructions: instructions + " Make at most \(max(1, maxGroups)) groups.", prompt: lines.joined(separator: "\n"))
+    let raw = try await generator.group(instructions: instructions, prompt: lines.joined(separator: "\n"))
     var used = Set<Int>()
     var out: [Value] = []
     for g in raw where out.count < max(1, maxGroups) {

@@ -400,6 +400,12 @@ final class BriefingCore {
     }
   }
 
+  // The on-device model's prompts (they were the host `ai` service's defaults).
+  static let summaryInstructions = "You summarize a person's work notifications. Keep every notification that asks something of the user: never drop one. For each, say who needs what, and where (channel, repo, PR or issue number). Merge only true duplicates. Group pure FYIs into one short line with a count. Be concrete and neutral. Never invent facts."
+  static let briefInstructions = "You write a morning briefing from per-source summaries. Cover every item that needs the user, most urgent first, one short sentence per item; then one line counting the FYIs. Mention each item once. Plain text, no lists, no greeting. Never invent facts."
+  static let todoInstructions = "You turn one work notification into a todo for the user. Decide whether it needs them to act (reply, review, fix, answer, decide); thanks, FYIs and announcements do not. Write one imperative sentence under 110 characters that names the person, the action and where it lives (channel, repo, PR or issue number), plus any deadline stated. Use only words and facts from the notification; never add details that are not in it."
+  static let mergeInstructions = "Merge these partial summaries into one."
+
   func compose() {
     refreshing = false
     updatedAt = env.now()
@@ -423,7 +429,9 @@ final class BriefingCore {
           summaryState = "ai"
           return next()
         }
-        requests.call("ai", "brief", ["sources": .array(sources)]) { [self] r in
+        requests.call("ai", "brief", ["sources": .array(sources), "instructions": .string(Self.briefInstructions),
+                                      "sourceInstructions": .string(Self.summaryInstructions + " These are from {name}. Answer in at most 2 sentences."),
+                                      "merge": .string(Self.mergeInstructions)]) { [self] r in
           guard gen == generation else { return next() }
           if r.b("ok") && !r.s("text").isEmpty {
             summary = r.s("text")
@@ -439,7 +447,7 @@ final class BriefingCore {
       }
       let todoStep: (@escaping () -> Void) -> Void = { [self] next in
         guard !todoInput.isEmpty else { return next() }
-        requests.call("ai", "todos", ["items": .array(todoInput), "max": 8]) { [self] r in
+        requests.call("ai", "todos", ["items": .array(todoInput), "max": 8, "instructions": .string(Self.todoInstructions)]) { [self] r in
           guard gen == generation else { return next() }
           if r.b("ok") {
             var titles: [String: String] = [:]

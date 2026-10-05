@@ -45,7 +45,7 @@ extension CommandBarCore {
         // A menu item id ("tabs.next", "view.zoomIn", … docs/shortcuts.md) takes the chord in place.
         let r = env.call("keys", "remap", ["chord": .string(chord), "item": .string(id)])
         if !r.isErr { continue }
-        if !r["noItem"].b() {
+        if r["noItem"].bool != true {
           errors.append("config.toml [shortcuts] " + r.s("error"))
           continue
         }
