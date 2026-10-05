@@ -352,7 +352,7 @@ public final class VaultService: HostService {
     addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('button,input[type=submit],input[type=button],[role=button]');
     if(b){const s=scope(b);if(pwds(s).some(x=>x.value))capture(s)}},true);
     addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target instanceof I){const s=scope(e.target);if(pwds(s).some(x=>x.value))capture(s)}},true);
-    addEventListener('focusin',e=>{const t=e.target;if(!(isPw(t)||textish(t)))return;const s=scope(t);
+    addEventListener('focusin',e=>{const t=e.target;if(window.__denVaultFilling)return;if(!(isPw(t)||textish(t)))return;const s=scope(t);
     if(!pwds(s).length&&!(t.type==='email'||/username/.test(t.autocomplete||'')))return;
     if(!isPw(t)&&!/user|mail|login|account|name|phone/i.test((t.autocomplete||'')+' '+t.name+' '+t.id+' '+t.type))return;
     const r=t.getBoundingClientRect();
@@ -374,6 +374,10 @@ public final class VaultService: HostService {
   /// Arguments o (expected origin), u, p, all (fill every password field: generated passwords).
   static let fillScript = """
     if (location.origin !== o) return 'origin';
+    // Filling focuses each field: the focus listener above ignores those (no list popping back up).
+    window.__denVaultFilling = true;
+    try { return fill(); } finally { window.__denVaultFilling = false; }
+    function fill() {
     const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
     const set = (el, v) => { el.focus(); d.set.call(el, v); el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true})); };
     const a = document.activeElement;
@@ -395,6 +399,7 @@ public final class VaultService: HostService {
     }
     set(pw[0], p);
     return 'ok';
+    }
     """
 }
 

@@ -187,6 +187,10 @@ struct VaultTests {
     let p1 = await js(w, "return document.getElementById('p1').value"), p2 = await js(w, "return document.getElementById('p2').value")
     #expect(p1 == p2 && p1.range(of: "^[a-zA-Z2-9]{6}-[a-zA-Z2-9]{6}-[a-zA-Z2-9]{6}$", options: .regularExpression) != nil)
     #expect(e.auth.asked.isEmpty)  // generating needs no Touch ID
+    // Filling focused each field on the way: the list doesn't pop back up under the last one.
+    let focuses = e.events.filter { $0.0 == "vault.focus" }.count
+    try await Task.sleep(for: .milliseconds(300))
+    #expect(e.events.filter { $0.0 == "vault.focus" }.count == focuses && e.h.rt.vault.suggestions["t5"] == nil)
     await type(w, ["u": "new@example.com"])
     await js(w, "document.getElementById('f').requestSubmit()")
     #expect(try await wait { e.h.rt.ui.dialogOpen })
