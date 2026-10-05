@@ -184,6 +184,37 @@ struct NowPlayingTests {
     #expect(rt.call("content", "side", ["webview": "nope"]).str("error").contains("no webview"))
   }
 
+  /// The gap right of a web panel is a drag handle: dragging resizes the panel live (within
+  /// `sideWidths`), and the end of a drag or a double-click tells the panel's owner.
+  @Test func sideColumnDragResize() async throws {
+    let rt = ServiceTests.runtime()
+    var got: [Value] = []
+    let obs = rt.host.on("content.sideWidth") { got.append($0) }
+    defer { rt.host.off(obs) }
+    _ = rt.call("webviews", "create", ["id": "tab"])
+    _ = rt.call("webviews", "create", ["id": "panel"])
+    _ = rt.call("content", "show", ["panes": ["tab"]])
+    _ = rt.call("content", "side", ["webview": "panel", "width": 360])
+    rt.window.window.contentView?.layoutSubtreeIfNeeded()
+    let side = try #require(rt.content.sideIfLoaded)
+    #expect(await wait(5, "the column open") { side.frame.width == 360 })
+    let wc = rt.content.current
+    let d = try #require(wc.sideDivider)
+    #expect(!d.isHidden && d.superview === rt.window.contentArea && d.frame.minX < side.frame.maxX && d.frame.maxX > side.frame.maxX)
+    wc.dragSide(to: CGPoint(x: 450, y: 100))
+    #expect(abs(side.frame.width - (450 - Tokens.splitGap / 2)) < 1 && (rt.content.card("tab")?.frame.minX ?? 0) > side.frame.maxX)
+    wc.dragSide(to: CGPoint(x: 5, y: 100))
+    #expect(side.frame.width == ContentService.sideWidths.lowerBound)
+    wc.dragSide(to: CGPoint(x: 400, y: 100))
+    d.onDragEnd?()
+    #expect(got.last?["webview"] == "panel" && abs((got.last?["width"].double ?? 0) - Double(400 - Tokens.splitGap / 2)) < 1 && got.last?["reset"] == false)
+    d.onDoubleClick?()
+    #expect(got.last?["reset"] == true)
+    // Hidden with the panel.
+    _ = rt.call("content", "side")
+    #expect(await wait(5, "the column closed") { rt.content.sideId == nil && d.isHidden })
+  }
+
   /// `sidebar.dock`: above the footer, sized by its tree, the pager above it.
   @Test func sidebarDockSlot() throws {
     let rt = ServiceTests.runtime()

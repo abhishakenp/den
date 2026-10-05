@@ -197,6 +197,9 @@ final class WindowContent {
   private var elsewhere: [String: ElsewhereView] = [:]
   /// Drag handles in the gaps between split panes (none for a single page).
   private(set) var dividers: [SplitDividerView] = []
+  /// The drag handle in the gap between the side column (a web panel) and the panes: drag to
+  /// resize the panel, double-click for its default width. Built when a panel first opens.
+  private(set) var sideDivider: SplitDividerView?
 
   init(svc: ContentService, wc: DenWindowController) {
     self.svc = svc
@@ -429,6 +432,7 @@ final class WindowContent {
   func layout() {
     let (sf, b) = sideSplit(wc.contentArea.bounds)
     if let s = sideView, s.superview != nil { s.frame = sf }
+    layoutSideDivider(sf)
     emptyCard.frame = b
     let frames = SplitLayout.frames(count: panes.count, orientation: orientation, in: b, gap: Tokens.splitGap, ratios: ratios)
     for (id, f) in zip(panes, frames) {
@@ -466,6 +470,43 @@ final class WindowContent {
       d.frame = g.alongX ? g.rect.insetBy(dx: -slop, dy: 0) : g.rect.insetBy(dx: 0, dy: -slop)
       if d.superview !== area || (area.subviews.firstIndex(of: d) ?? -1) < lastCard { area.addSubview(d, positioned: .above, relativeTo: nil) }
     }
+  }
+
+  /// The side column's handle sits over the gap right of the panel, above every card.
+  func layoutSideDivider(_ sf: NSRect) {
+    guard sideId != nil, sf.width > 0 else { sideDivider?.isHidden = true; return }
+    let d = sideDivider ?? {
+      let d = SplitDividerView()
+      d.setAccessibilityLabel("Resize Web Panel")
+      d.onDrag = { [weak self] p in self?.dragSide(to: p) }
+      d.onDragEnd = { [weak self] in self?.sideWidthChanged(reset: false) }
+      d.onDoubleClick = { [weak self] in self?.sideWidthChanged(reset: true) }
+      sideDivider = d
+      return d
+    }()
+    d.isHidden = false
+    d.alongX = true
+    let slop = Tokens.splitDividerSlop
+    d.frame = NSRect(x: sf.maxX - slop, y: sf.minY, width: Tokens.splitGap + 2 * slop, height: sf.height)
+    let area = wc.contentArea
+    let lastCard = area.subviews.lastIndex { $0 is CardView || $0 is SideColumnView } ?? -1
+    if d.superview !== area || (area.subviews.firstIndex(of: d) ?? -1) < lastCard { area.addSubview(d, positioned: .above, relativeTo: nil) }
+  }
+
+  /// The side handle dragged to `p` (content-area coordinates): the panel resizes live, within
+  /// `sideWidths`, always leaving the panes room.
+  func dragSide(to p: CGPoint) {
+    let b = wc.contentArea.bounds
+    let w = min(max(p.x - b.minX - Tokens.splitGap / 2, Self.sideWidths.lowerBound), Self.sideWidths.upperBound)
+    sideWidth = min(w, max(Self.sideWidths.lowerBound, b.width - 320))
+    layout()
+  }
+
+  /// A side resize ended: `content.sideWidth {window, webview, width, reset}` for the panel's owner to
+  /// keep; `reset: true` (double-click) asks it for its default width.
+  func sideWidthChanged(reset: Bool) {
+    guard let id = sideId else { return }
+    host.emit("content.sideWidth", ["window": .string(wc.id), "webview": .string(id), "width": .double(Double(sideWidth)), "reset": .bool(reset)])
   }
 
   /// A divider dragged to `p` (content-area coordinates): the panes beside it resize live.

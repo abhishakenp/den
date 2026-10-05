@@ -206,7 +206,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ⏳ Around the native window: per-tab volume and playback speed from den (the system window has neither)
 - ✅ Now-playing dock at the bottom of the sidebar, Control Center and media keys ([guide](docs/guide/media.md#now-playing-at-the-bottom-of-the-sidebar)). ⏳ Verify on a real Mac how macOS picks between den's Now Playing entry and WebKit's own (CI has no media keys)
 - ✅ Hover play/pause/skip on the row or favorite tile of any tab playing (or paused) media
-- ✅ Web panels (optional `panels` plugin, ⌃⌘S; [guide](docs/guide/media.md#web-panels)). ⏳ Drag to resize a panel
+- ✅ Web panels (optional `panels` plugin, ⌃⌘S; [guide](docs/guide/media.md#web-panels); resized by dragging the gap beside it, double-click: default width)
 - ✅ AutoPiP like Safari's video viewer, on by default: leaving a playing video's tab or space, or minimizing, hiding or covering den (or a full-screen video's Space switched away) puts it in native picture in picture; coming back takes it out
 - ✅ Tabs playing audio are never archived or unloaded, and updates never relaunch during playback
 - ⏳ Camera, mic and screen-share badges on tabs, click to turn off
