@@ -79,6 +79,68 @@ struct LocalFileTests {
     h.action("commandBar", "dismiss")
   }
 
+  /// A local page reads only its own folder and subfolders: a stylesheet beside its parent folder
+  /// (`../other/evil.css`) doesn't load, and neither `fetch` of a sibling folder's file nor of
+  /// ~/.ssh/known_hosts gets anything. The same stylesheet does load for a page whose folder holds
+  /// it (so the check isn't vacuous), and a subfolder's stylesheet loads.
+  @Test func localPagesCantReadOutsideTheirFolder() async throws {
+    let h = Harness()
+    // In the home folder, not $TMPDIR: WebKit's WebContent sandbox may read the app's temporary
+    // folder on its own, which would let `../other` load whatever den granted.
+    let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("den-sandbox-test-\(UUID().uuidString)").resolvingSymlinksInPath()
+    defer { try? FileManager.default.removeItem(at: root) }
+    for d in ["site/sub", "other"] { try FileManager.default.createDirectory(at: root.appendingPathComponent(d), withIntermediateDirectories: true) }
+    try "#q { color: rgb(9, 9, 9); }".write(to: root.appendingPathComponent("other/evil.css"), atomically: true, encoding: .utf8)
+    try "secret".write(to: root.appendingPathComponent("other/secret.txt"), atomically: true, encoding: .utf8)
+    try "#p { color: rgb(1, 2, 3); }".write(to: root.appendingPathComponent("site/sub/ok.css"), atomically: true, encoding: .utf8)
+    try #"<title>page</title><link rel="stylesheet" href="sub/ok.css"><link rel="stylesheet" href="../other/evil.css"><p id="p">p</p><p id="q">q</p>"#
+      .write(to: root.appendingPathComponent("site/page.html"), atomically: true, encoding: .utf8)
+    try #"<title>control</title><link rel="stylesheet" href="other/evil.css"><p id="q">q</p>"#
+      .write(to: root.appendingPathComponent("control.html"), atomically: true, encoding: .utf8)
+    #expect(LocalFiles.readAccess(for: root.appendingPathComponent("site/page.html")).path == root.appendingPathComponent("site").path)
+
+    func open(_ id: String, _ file: URL) async throws -> WKWebView {
+      h.rt.call("webviews", "create", ["id": .string(id), "url": .string(file.path)])
+      let w = try #require(h.rt.webviews.materialize(id))
+      w.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+      h.rt.window.window.contentView?.addSubview(w)
+      #expect(await Wait.until("\(file.lastPathComponent) to load") { !w.isLoading && w.url == file })
+      return w
+    }
+    let color = "getComputedStyle(document.getElementById('q')).color"
+    let page = try await open("page", root.appendingPathComponent("site/page.html"))
+    #expect(await Wait.until("the subfolder's stylesheet") { await Wait.js(page, "getComputedStyle(document.getElementById('p')).color").map { "\($0)" } == "rgb(1, 2, 3)" })
+    #expect(await Wait.js(page, color).map { "\($0)" } != "rgb(9, 9, 9)", "../other/evil.css must not load")
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    for target in [root.appendingPathComponent("other/secret.txt"), home.appendingPathComponent(".ssh/known_hosts")] {
+      let got = await Wait.asyncJS(page, "try { const r = await fetch('\(target.absoluteString)'); return 'read:' + (await r.text()).length } catch (e) { return 'blocked' }")
+      #expect(got as? String == "blocked", "\(target.path): \(String(describing: got))")
+    }
+
+    // Control (after: WebKit's read grants add up in a WebContent process): from a page whose
+    // folder holds it, the same stylesheet loads, so the block above isn't vacuous.
+    let control = try await open("control", root.appendingPathComponent("control.html"))
+    #expect(await Wait.until("the control page's stylesheet") { await Wait.js(control, color).map { "\($0)" } == "rgb(9, 9, 9)" })
+    // Does the earlier page now share the wider grant (one WebContent process)? Logged, not asserted.
+    page.reload()
+    _ = await Wait.until("page reloaded") { !page.isLoading }
+    let after = await Wait.js(page, color).map { "\($0)" } ?? "nil"
+    print("local-sandbox: page after control loaded: \(after) pid page=\(page.value(forKey: "_webProcessIdentifier") ?? "?") control=\(control.value(forKey: "_webProcessIdentifier") ?? "?")")
+  }
+
+  @Test func readAccessIsNeverHomeLibraryOrADotFolder() {
+    let home = "/Users/me"
+    let access = { (p: String) in LocalFiles.readAccess(for: URL(fileURLWithPath: p), home: home).path }
+    #expect(access("/Users/me/proj/site/index.html") == "/Users/me/proj/site")
+    #expect(access("/Users/me/Downloads/a.html") == "/Users/me/Downloads")  // a download: its own folder, never more
+    #expect(access("/Users/me/a.html") == "/Users/me/a.html")  // in home itself: the file only
+    #expect(access("/Users/a.html") == "/Users/a.html" && access("/a.html") == "/a.html" && access("/tmp/a.html") == "/tmp/a.html")
+    #expect(access("/Users/me/Library/Caches/x/a.html") == "/Users/me/Library/Caches/x/a.html")
+    #expect(access("/Users/me/Library/a.html") == "/Users/me/Library/a.html")
+    #expect(access("/Users/me/.ssh/a.html") == "/Users/me/.ssh/a.html" && access("/Users/me/proj/.git/a.html") == "/Users/me/proj/.git/a.html")
+    #expect(access("/tmp/x/y.html") == "/tmp/x")
+  }
+
   @Test func typingAPathListsItsFolderLikeFinder() throws {
     let h = Harness()
     h.startCommandBar()
@@ -174,10 +236,9 @@ struct LocalFileTests {
     #expect(WebViewsService.normalize(file.path) == file)
     #expect(WebViewsService.normalize("file://" + file.path) == file)
     #expect(WebViewsService.normalize("/nope/nothing") == nil)
-    // Read access: the home folder for a file inside it (relative `../` assets load), else its folder.
+    // Read access: the file's own folder (see readAccessIsNeverHomeLibraryOrADotFolder).
     let home = FileManager.default.homeDirectoryForCurrentUser
-    #expect(LocalFiles.readAccess(for: home.appendingPathComponent("a/b/c.html")).standardizedFileURL.path == home.standardizedFileURL.path)
-    #expect(LocalFiles.readAccess(for: URL(fileURLWithPath: "/tmp/x/y.html")).path == "/tmp/x")
+    #expect(LocalFiles.readAccess(for: home.appendingPathComponent("a/b/c.html")).standardizedFileURL.path == home.appendingPathComponent("a/b").standardizedFileURL.path)
     // app.fileInfo / app.completePath
     let h = Harness()
     let info = h.rt.call("app", "fileInfo", ["path": .string(file.path)])

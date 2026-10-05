@@ -38,13 +38,24 @@ enum LocalFiles {
     return (u, dir.boolValue && !isPackage(u))
   }
 
-  /// What a web view may read for a local page: the home folder for a file inside it (so
-  /// `../assets/app.css` loads, as in Safari), else the file's folder.
-  nonisolated static func readAccess(for u: URL) -> URL {
-    let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
-    let path = u.standardizedFileURL.path
-    if path.hasPrefix(home + "/") { return URL(fileURLWithPath: home, isDirectory: true) }
-    return u.deletingLastPathComponent()
+  /// What a web view may read for a local page: the file's own folder and its subfolders
+  /// (`assets/app.css` loads; `../x` and anything else on the Mac don't), so a downloaded HTML
+  /// file can't read ~/.ssh, ~/.aws or browser profiles and send them out. When that folder is
+  /// too broad or sensitive (the root, the home folder or one of its ancestors, anything in
+  /// ~/Library or a dot-folder such as ~/.ssh), only the file itself.
+  nonisolated static func readAccess(for u: URL, home: String = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path) -> URL {
+    let file = u.standardizedFileURL
+    let folder = file.deletingLastPathComponent().path
+    return folderIsSafe(folder, home: home) ? URL(fileURLWithPath: folder, isDirectory: true) : file
+  }
+
+  nonisolated static func folderIsSafe(_ folder: String, home: String) -> Bool {
+    let f = folder.hasSuffix("/") && folder.count > 1 ? String(folder.dropLast()) : folder
+    if f == "/" || f == home || (home + "/").hasPrefix(f + "/") { return false }  // root, home, /Users
+    if f.split(separator: "/").count < 2 { return false }  // a top-level folder: /tmp, /Volumes
+    if f.split(separator: "/").contains(where: { $0.hasPrefix(".") }) { return false }  // ~/.ssh, /x/.git
+    if f == home + "/Library" || f.hasPrefix(home + "/Library/") { return false }
+    return true
   }
 
   /// Finder-style completion: entries of the typed path's folder whose name starts with its last
