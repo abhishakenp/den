@@ -111,7 +111,7 @@
   | `Setting` | `key` (`<id>.<key>`), `value` (JSON) | last writer wins; device-specific keys (window sizes, the default-browser banner) never sync |
 
   Today tabs, history, the archive, downloads, passwords and site data don't sync: they're per device, or private.
-- **Status:** the capability check and the design are written. The plugin is not built: it can't be run or tested at all without the entitlements, since CloudKit crashes or the app is killed. It ships with the signing work (§6).
+- **Status:** the capability check and the design are written, and the gate ships: `cloud.state` reports `{available: false, reason: "signing"}` (`CloudGateTests`). The sync engine and plugin are not built: they can't be run or tested without the entitlements, since CloudKit crashes or the app is killed. They ship with the signing work (§6).
 
 ## 5. Website permissions
 
