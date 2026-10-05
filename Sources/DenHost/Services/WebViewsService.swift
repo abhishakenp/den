@@ -988,7 +988,9 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   func contentRuleList(_ webView: WKWebView, identifier: NSString, performedAction action: NSObject, forURL url: NSURL) {
     guard let sp = sitePolicy, let r = recordFor(webView) else { return }
     let blocked = action.responds(to: NSSelectorFromString("blockedLoad")) && (action.value(forKey: "blockedLoad") as? Bool ?? false)
-    sp.performed(r, list: identifier as String, blocked: blocked)
+    // `notify` rules (WebKit content rule action type "notify"): their `notification` strings.
+    let notes = action.responds(to: NSSelectorFromString("notifications")) ? (action.value(forKey: "notifications") as? [String] ?? []) : []
+    sp.performed(r, list: identifier as String, blocked: blocked, notifications: notes, url: url as URL)
   }
 
   public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {

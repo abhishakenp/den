@@ -166,6 +166,8 @@ public final class SitePolicyService: HostService {
     var scripted = -1
     var countPending = false
     var blocked: [String: Int] = [:]
+    /// `notify` notifications already emitted for this page.
+    var notified: Set<String> = []
     var rewrites: [Value] = []
     var pendingRewrites: [Value] = []
     var rewriteTimes: [Date] = []
@@ -404,6 +406,8 @@ public final class SitePolicyService: HostService {
     let t0 = Date()
     let pageToken = pageToken
     let perSite = args.flag("perSite")
+    // `matches`: WebKit match patterns (`*://*/index.html*`) instead of the data's hosts.
+    let patterns = args.list("matches").compactMap(\.string)
     DispatchQueue.global(qos: .utility).async {
       let built = Self.buildScript(js: js, data: data, token: pageToken, perSite: perSite)
       DispatchQueue.main.async {
@@ -423,7 +427,13 @@ public final class SitePolicyService: HostService {
               let placeholder = WKUserScript(source: "", injectionTime: .atDocumentStart, forMainFrameOnly: true)
               self.scripts[n] = PageScript(id: id, hosts: [], user: placeholder, bytes: site.bytes, version: built.version, framesFiltered: false, site: site)
             } else {
-              let (user, filtered) = Self.userScript(built.source, hosts: built.hosts)
+              let (user, filtered) = Self.userScript(built.source, hosts: built.hosts, patterns: patterns)
+              // Match patterns need WebKit's SPI; a plain user script would run in every frame.
+              guard patterns.isEmpty || filtered else {
+                self.scriptIds[n] = nil
+                self.host.emit("sitepolicy.loaded", ["name": .string(n), "ok": false, "kind": "script", "error": "match patterns need WebKit's _initWithSource:…includeMatchPatternStrings: SPI"])
+                return
+              }
               self.scripts[n] = PageScript(id: id, hosts: built.hosts, user: user, bytes: built.source.utf8.count, version: built.version, framesFiltered: filtered, site: nil)
             }
           }
@@ -503,14 +513,15 @@ public final class SitePolicyService: HostService {
   /// use), WebKit itself injects it only into frames on those hosts, whatever the top-level site:
   /// `filtered` is then true. Without the SPI it's a plain user script and the host attaches it only
   /// to pages whose main frame is on those hosts.
-  static func userScript(_ source: String, hosts: [String]) -> (WKUserScript, filtered: Bool) {
-    if !hosts.isEmpty, WKUserScript.instancesRespond(to: initWithPatterns),
+  static func userScript(_ source: String, hosts: [String], patterns: [String] = []) -> (WKUserScript, filtered: Bool) {
+    let include = patterns.isEmpty ? matchPatterns(hosts) : patterns
+    if !include.isEmpty, WKUserScript.instancesRespond(to: initWithPatterns),
        let alloc = (WKUserScript.self as AnyObject).perform(NSSelectorFromString("alloc"))?.takeUnretainedValue() as? NSObject {
       typealias Init = @convention(c) (AnyObject, Selector, NSString, Int, Bool, NSArray, NSArray, NSURL?, WKContentWorld) -> WKUserScript?
       let imp = alloc.method(for: initWithPatterns)
       let f = unsafeBitCast(imp, to: Init.self)
       if let s = f(alloc, initWithPatterns, source as NSString, WKUserScriptInjectionTime.atDocumentStart.rawValue, false,
-                   matchPatterns(hosts) as NSArray, [] as NSArray, nil, .page) {
+                   include as NSArray, [] as NSArray, nil, .page) {
         return (s, true)
       }
     }
@@ -804,6 +815,7 @@ public final class SitePolicyService: HostService {
   func committed(_ r: WebRecord, _ w: WKWebView) {
     let p = page(r.id)
     p.blocked = [:]
+    p.notified = []
     p.scripted = -1
     p.rewrites = p.pendingRewrites
     p.pendingRewrites = []
@@ -812,10 +824,22 @@ public final class SitePolicyService: HostService {
     changed(r.id)
   }
 
-  /// WebKit's rule-list action callback (SPI): one blocked or upgraded load.
-  func performed(_ r: WebRecord, list identifier: String, blocked: Bool) {
-    guard blocked, let n = identifiers.first(where: { $0.value == identifier })?.key ?? listIds.first(where: { $0.value == identifier })?.key else { return }
+  /// WebKit's rule-list action callback (SPI): one blocked or upgraded load, and the `notify`
+  /// rules it matched. Each notification is emitted once per page (`sitepolicy.notified`), and only
+  /// for den's own lists, while someone listens.
+  func performed(_ r: WebRecord, list identifier: String, blocked: Bool, notifications: [String] = [], url: URL? = nil) {
+    guard let n = identifiers.first(where: { $0.value == identifier })?.key ?? listIds.first(where: { $0.value == identifier })?.key else { return }
     let p = page(r.id)
+    if !notifications.isEmpty, host.hasListeners("sitepolicy.notified") {
+      // A blocked load and a loaded one are told apart: a page may load one of a platform's
+      // scripts after another list blocked a different one.
+      for note in notifications where !p.notified.contains(blocked ? note + "\u{0}blocked" : note) {
+        p.notified.insert(blocked ? note + "\u{0}blocked" : note)
+        host.emit("sitepolicy.notified", ["id": .string(r.id), "list": .string(n), "notification": .string(note),
+                                          "url": .string(url?.absoluteString ?? ""), "blocked": .bool(blocked)])
+      }
+    }
+    guard blocked else { return }
     p.blocked[n, default: 0] += 1
     changed(r.id)
   }
