@@ -43,7 +43,7 @@ class PanelView: FlippedView, Themable {
 
 /// {type:"dialog", id, title, message?, icon?, iconStyle?: accent|destructive|plain,
 ///  buttons: [{id, title, style: default|cancel|destructive|secondary, default?, keycap?}], checkbox?: {id, title, checked},
-///  fields?: [{id, placeholder?, value?, secure?}], choices?: [{id, title, subtitle?, icon?}], multiple?}
+///  fields?: [{id, placeholder?, value?, secure?}], choices?: [{id, title, subtitle?, icon?, selected?}], multiple?}
 /// action (id = dialog id): button {button, checked, fields?: {id: text}, choices?: [id]}.
 /// Choices (the upload picker) are rows under the message: one is selected (the first at the start);
 /// a click on a row presses the default button with it, or with `multiple` ticks it on and off. Fields (a web page's prompt(),
@@ -126,7 +126,7 @@ final class DialogView: PanelView {
       r.title.stringValue = c.str("title")
       r.subtitle.stringValue = c.str("subtitle")
       r.multiple = multiple
-      r.selected = !multiple && i == 0
+      r.selected = multiple ? c.flag("selected") : i == 0  // `multiple`: rows can start ticked
       r.onClick = { [weak self] in self?.choiceClicked(i) }
       surface.addSubview(r)
       return r
@@ -378,18 +378,25 @@ final class Keycap: NSView {
 
 // MARK: - Toast
 
-/// {type:"toast", id?, text, icon?, duration?: ms, action?: "Restart", dismiss?}. Theme-tinted
-/// pill; auto-dismisses. With `action`, a button at the end emits `ui.action {id, action: "toast"}`
-/// and closes the toast; `duration: 0` keeps it until then. A new toast with the same `id`
-/// replaces it; `dismiss: true` removes it.
+/// {type:"toast", id?, text, icon?, duration?: ms, action?: "Restart", actions?: [{id, title}],
+/// dismiss?}. Theme-tinted pill; auto-dismisses. With `action`, a button at the end emits
+/// `ui.action {id, action: "toast"}` and closes the toast; `actions` puts several buttons there,
+/// each emitting `ui.action {id, action: "toast", value: {button: <its id>}}`. `duration: 0` keeps
+/// it until a button is clicked. A new toast with the same `id` replaces it; `dismiss: true` removes it.
 @MainActor
 final class ToastView: FlippedView, Themable {
   let icon = IconView()
   let label = makeLabel(size: 13, weight: .medium)
+  /// The first button (`action`, or the first of `actions`) and its divider.
   let actionLabel = makeLabel(size: 13, weight: .semibold)
   let divider = NSView()
+  /// More buttons from `actions`, after the first.
+  var moreLabels: [NSTextField] = []
+  var moreDividers: [NSView] = []
+  /// Button ids, in order ("" for a single `action`).
+  var actionIDs: [String] = []
   var color: NSColor = .black
-  var onAction: (() -> Void)?
+  var onAction: ((String) -> Void)?
   var toastId = ""
 
   override init(frame: NSRect) {
@@ -410,21 +417,46 @@ final class ToastView: FlippedView, Themable {
   required init?(coder: NSCoder) { fatalError() }
 
   var hasAction: Bool { !actionLabel.stringValue.isEmpty }
+  var buttonLabels: [NSTextField] { hasAction ? [actionLabel] + moreLabels : [] }
+  var buttonDividers: [NSView] { hasAction ? [divider] + moreDividers : [] }
 
   func update(_ v: Value, palette p: Palette) {
     label.stringValue = v.str("text")
     icon.spec = v.str("icon")
     icon.isHidden = icon.spec.isEmpty
-    actionLabel.stringValue = v.str("action")
+    var buttons: [(String, String)] = v.list("actions").map { ($0.str("id"), $0.str("title")) }.filter { !$0.1.isEmpty }
+    if buttons.isEmpty, !v.str("action").isEmpty { buttons = [("", v.str("action"))] }
+    actionIDs = buttons.map(\.0)
+    actionLabel.stringValue = buttons.first?.1 ?? ""
     actionLabel.isHidden = !hasAction
     divider.isHidden = !hasAction
+    moreLabels.forEach { $0.removeFromSuperview() }
+    moreDividers.forEach { $0.removeFromSuperview() }
+    moreLabels = []
+    moreDividers = []
+    for (_, title) in buttons.dropFirst() {
+      let d = NSView()
+      d.wantsLayer = true
+      d.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.3).cgColor
+      let l = makeLabel(size: 13, weight: .semibold)
+      l.stringValue = title
+      addSubview(d)
+      addSubview(l)
+      moreDividers.append(d)
+      moreLabels.append(l)
+    }
     apply(p)
   }
 
   override func mouseDown(with event: NSEvent) {
     guard hasAction else { return super.mouseDown(with: event) }
     let p = convert(event.locationInWindow, from: nil)
-    if p.x >= divider.frame.minX - 4 { onAction?() }
+    // Each button owns the space from its divider to the next divider (or the end).
+    let dividers = buttonDividers
+    for i in dividers.indices.reversed() where p.x >= dividers[i].frame.minX - 4 {
+      onAction?(i < actionIDs.count ? actionIDs[i] : "")
+      return
+    }
   }
   override func resetCursorRects() {
     if hasAction { addCursorRect(NSRect(x: divider.frame.minX, y: 0, width: bounds.width - divider.frame.minX, height: bounds.height), cursor: .pointingHand) }
@@ -434,20 +466,24 @@ final class ToastView: FlippedView, Themable {
     layer?.backgroundColor = p.toast.cgColor
     label.textColor = p.onToast
     actionLabel.textColor = p.onToast
+    moreLabels.forEach { $0.textColor = p.onToast }
     icon.tint = p.onToast
     layer?.shadowColor = p.shadowColor.cgColor
   }
-  var actionWidth: CGFloat { hasAction ? ceil(actionLabel.textWidth) + 25 : 0 }
+  var actionWidth: CGFloat { buttonLabels.reduce(0) { $0 + ceil($1.textWidth) + 25 } }
   var contentWidth: CGFloat { ceil(label.textWidth) + (icon.isHidden ? 40 : 64) + actionWidth }
   override func layout() {
     super.layout()
     var x: CGFloat = 16
     if !icon.isHidden { icon.frame = NSRect(x: x, y: (bounds.height - 15) / 2, width: 15, height: 15); x += 24 }
     label.frame = NSRect(x: x, y: (bounds.height - 17) / 2, width: bounds.width - x - 14 - actionWidth, height: 17)
-    if hasAction {
-      let ax = bounds.width - 14 - ceil(actionLabel.textWidth)
-      actionLabel.frame = NSRect(x: ax, y: (bounds.height - 17) / 2, width: ceil(actionLabel.textWidth) + 2, height: 17)
-      divider.frame = NSRect(x: ax - 12, y: 9, width: 1, height: bounds.height - 18)
+    // Buttons from the right edge leftwards; the first one is leftmost.
+    var right = bounds.width - 14
+    for (l, d) in zip(buttonLabels, buttonDividers).reversed() {
+      let w = ceil(l.textWidth)
+      l.frame = NSRect(x: right - w, y: (bounds.height - 17) / 2, width: w + 2, height: 17)
+      d.frame = NSRect(x: right - w - 12, y: 9, width: 1, height: bounds.height - 18)
+      right -= w + 25
     }
     layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Tokens.toastCornerRadius, cornerHeight: Tokens.toastCornerRadius, transform: nil)
   }

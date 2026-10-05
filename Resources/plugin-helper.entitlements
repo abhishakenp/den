@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- cordis-plugin-helper hosts one third-party plugin: a dylib signed by its author, ad hoc, or
+       built by den from ~/.den/plugins. It loads it under the hardened runtime, then enters the
+       pure-computation sandbox (no files, network or processes). -->
+  <key>com.apple.security.cs.disable-library-validation</key><true/>
+</dict>
+</plist>

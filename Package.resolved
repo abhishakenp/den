@@ -1,13 +1,13 @@
 {
-  "originHash" : "8d90bf66fa62a869bb0899bed3893c3b6d45960370d35f71d8d431732dc963cf",
+  "originHash" : "f91273a35101a75f583dc67c5c04b42ea2299467eecda25d9e24c86d1cc6e5ca",
   "pins" : [
     {
       "identity" : "cordis-swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/abhishakenp/cordis-swift",
       "state" : {
-        "revision" : "46e5b97bd8b2852ee70e98fd34b325c6657abc65",
-        "version" : "0.1.2"
+        "revision" : "0672e45e0a040887676e3a112c96a1cf84d293b9",
+        "version" : "0.2.0"
       }
     },
     {

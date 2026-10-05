@@ -35,10 +35,10 @@ Only tick an item after checking it against the code and tests on `origin/main`.
 - 🟡 Core features as swappable services
   - ✅ tabs, spaces, command bar, peek, previews, theme, connections, briefing, passwords, dark mode, extensions, quit, updates are plugins
   - ⏳ history, and the sidebar rendering itself (see Thin host)
-- 🟡 Plugin API versioning and permissions
+- ✅ Plugin API versioning and permissions
   - ✅ versioning: cordis ABI check per plugin, `DenHostAPI` generation stamped by `scripts/bundle.sh`; managed plugins load only into a matching host
   - ✅ declared permissions: `session:<domain>` / `net:<domain>` per plugin (`plugin.json`), anything undeclared is denied
-  - ⏳ user-granted permissions for third-party plugins
+  - ✅ user-granted permissions for third-party plugins: an Allow / Don't Allow sheet lists what a `~/.den` plugin declares (rows can be unticked) before it first loads, remembered, revocable in Settings ▸ Plugins; every call, listen, emit and provide it makes is gated (`tabs`, `ai`, `clipboard`, `files`, `net:`, `session:`, `pages:`; its own names; its own async results) ([docs](docs/den-home.md#third-party-plugins-sandbox-and-permissions))
 - 🟡 Lazy loading for plugins and services
   - ✅ optional features do no work until used: Settings, connections, previews, the briefing build nothing at launch; nothing polls until a connection exists
   - ✅ only the plugins that paint the first window load before it (`"launch": "firstFrame"` in their sidecar: spaces, tabs); the rest load right after it, and until then their services are stubs that load the plugin on the first call
@@ -46,9 +46,10 @@ Only tick an item after checking it against the code and tests on `origin/main`.
   - ⏳ more lazy plugins: the connections family (slack, github, gmail, notion, calendar, connections, briefing) auto-connects at launch by watching cookies, and quit, updates, pagetools, panels, previews, darkmode, shields, media, passwords, peek and tips do work at launch (quit interception, page probes, link watching, restoring an open panel); each needs that launch work moved into a declared host rule first
 - ✅ Settings system, per plugin, editable at runtime (`settings` service; Settings window ⌘, with plugin-contributed sections; settings also editable from the command bar)
 - ✅ Command registry: every command bar action is a command; `[shortcuts]` in `config.toml` binds any command id or menu item
-- 🟡 Crash isolation
+- ✅ Crash isolation
   - ✅ a plugin that crashed den is refused at the next launch, and a managed update that crashed is rolled back
-  - ⏳ a plugin failing doesn't take the browser down at all
+  - ✅ a plugin failing doesn't take the browser down: a trap or segfault in a plugin's own code unloads that plugin and den keeps running, tabs and pages intact; a toast offers Reload / Disable (cordis-swift 0.2 crash recovery; the guard measured no slower than the old call). Heap corruption or a fault inside `malloc` still crashes den (then the build is refused next launch)
+  - ✅ third-party plugins run out of process, one sandboxed helper each: a crash or 5 s hang ends only the helper (measured ~9 µs per call, ~1.2–1.9 MB per helper)
 - ✅ `~/.den`: plugins (prebuilt dylibs, or `.swift` folders den compiles), themes, unpacked extensions and `config.toml`, applied live ([docs](docs/den-home.md))
 - ✅ Menu bar: complete standard macOS menus; every shortcut is a menu item ([docs/shortcuts.md](docs/shortcuts.md))
 
@@ -272,7 +273,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ Works without the model (plain counts and lists) on Macs without Apple Intelligence
 - ✅ Auto tab grouping and tidy tabs (on-device, lazy): Tidy Tabs, plus "Group new tabs automatically" (off by default, needs Tidy on): 20 s after the last new Today tab, one `ai.group` batch files new tabs into their Today group or starts a group of 3+ related tabs; one ⌃Z undoes the batch
 - ✅ `ai.respond {instructions, prompt}`: a plain request with the caller's own prompt, for plugins
-- ⏳ Plugin API is rich enough for someone else to build a chat/AI plugin, gated by user-granted permissions
+- ✅ Plugin API is rich enough for someone else to build a chat/AI plugin, gated by user-granted permissions: page text (`webviews.inject`, `pages:`), tabs (`tabs`), the on-device model (`ai.respond`, `ai`), UI (dialogs, sheets, toasts, its own web views), network to declared hosts; example: [`examples/summarize`](examples/summarize/) (tested end to end in a sandboxed helper)
 
 ## Apple integration
 
@@ -303,9 +304,9 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - 🟡 Per-site permissions UI
   - ✅ camera/mic answers remembered per site until quit
   - ⏳ a UI to review and change them
-- 🟡 Sandboxed plugins
+- ✅ Sandboxed plugins
   - ✅ plugins can reach only the sites they declare (`session:` / `net:`)
-  - ⏳ process-level sandboxing
+  - ✅ process-level sandboxing for third-party plugins (pure-computation sandbox: no files, network or processes of their own); den's own plugins stay in process
 
 ## Page tools
 

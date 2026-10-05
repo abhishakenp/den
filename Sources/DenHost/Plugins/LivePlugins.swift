@@ -292,6 +292,16 @@ public final class LivePlugins {
       if let current { _ = try? plugins.unload(current.id) }
       log.write("unloaded \(current?.id ?? id)")
     case let .reload(path):
+      // A rebuilt third-party plugin may declare something new: it asks again before it reloads.
+      if let rt = DenRuntime.runtime(for: plugins), rt.consent.isThirdParty(URL(fileURLWithPath: path)) {
+        switch rt.consent.admit(URL(fileURLWithPath: path), retry: { [weak self] in self?.refresh(name) }) {
+        case .load: break
+        case .wait, .refuse:
+          if let current { _ = try? plugins.unload(current.id) }
+          log.write("\(id) waits for permission")
+          return
+        }
+      }
       switch plugins.reload(path: path) {
       case .unchanged: return
       case let .reloaded(info, _):
@@ -313,17 +323,25 @@ public final class LivePlugins {
   }
 
   /// Grants what the file's `<id>.json` sidecar declares, as the launch loader does.
-  func grant(_ id: String, _ dylib: URL) {
-    guard let p = DenRuntime.permissions(for: plugins) else { return }
-    p.revoke(id)
-    _ = p.loadSidecar(plugin: id, dylib: dylib)
-  }
+  func grant(_ id: String, _ dylib: URL) { PluginLoader.grant(plugins, id, dylib) }
 
-  /// Loads the first candidate that works.
+  /// Loads the first candidate that works. Third-party files ask first (`PluginConsent`).
   func load(_ options: [URL], id: String) {
     for url in options {
+      var isolation = PluginIsolation.inProcess
+      if let rt = DenRuntime.runtime(for: plugins) {
+        switch rt.consent.admit(url, retry: { [weak self] in self?.refresh(url.lastPathComponent) }) {
+        case .wait:
+          log.write("\(id) waits for permission")
+          return
+        case let .refuse(why):
+          log.write("not loading \(id): \(why)")
+          return
+        case let .load(i): isolation = i
+        }
+      }
       do {
-        let info = try plugins.load(url.path)
+        let info = try plugins.load(url.path, isolation: isolation)
         grant(info.id, url)
         log.write("loaded \(info.id) from \(Self.tilde(url.path)) build \(info.buildHash)")
         return
@@ -360,6 +378,7 @@ public final class LivePlugins {
       rebuild.insert(id)
       return
     }
+    syncSidecar(id)
     let stamp = compiler.fingerprint(id: id, sources: files)
     if (try? String(contentsOf: stampFile, encoding: .utf8)) == stamp, FileManager.default.fileExists(atPath: out.path) {
       refresh(name)
@@ -391,6 +410,20 @@ public final class LivePlugins {
           if self.rebuild.remove(id) != nil { self.build(id) }
         }
       }
+    }
+  }
+
+  /// A source plugin's `plugin.json` rides next to its build as `<id>.json`, like any dylib's sidecar.
+  func syncSidecar(_ id: String) {
+    let src = home.plugins.appendingPathComponent(id).appendingPathComponent("plugin.json")
+    let dst = home.buildCache.appendingPathComponent("\(id).json")
+    guard let data = try? Data(contentsOf: src) else {
+      try? FileManager.default.removeItem(at: dst)
+      return
+    }
+    if (try? Data(contentsOf: dst)) != data {
+      try? FileManager.default.createDirectory(at: home.buildCache, withIntermediateDirectories: true)
+      try? data.write(to: dst, options: .atomic)
     }
   }
 

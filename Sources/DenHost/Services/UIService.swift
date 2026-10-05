@@ -430,8 +430,10 @@ public final class UIService: HostService {
     }
     if t.hasAction {
       let id = tree.str("id")
-      t.onAction = { [weak self] in
-        self?.host.emit("ui.action", ["id": .string(id), "action": "toast"])
+      t.onAction = { [weak self] button in
+        var payload: Value = ["id": .string(id), "action": "toast"]
+        if !button.isEmpty { payload = payload.with("value", ["button": .string(button)]) }
+        self?.host.emit("ui.action", payload)
         dismiss()
       }
     }

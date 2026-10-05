@@ -17,10 +17,13 @@ import Foundation
 /// A plugin's other sidecar is its resource folder, `<id>.resources/` next to the dylib
 /// (bundled plugins: `Contents/Resources/plugin-resources/<id>/`, from `Plugins/<id>/resources/`): files `webviews.inject` reads by name.
 ///
-/// cordis doesn't tell a host service which plugin called it, so callers pass their own id as
-/// `plugin` (the same convention as `commands.register {owner}`). Plugins are native code in den's
-/// process, so this is a declared-intent gate that keeps each plugin to its own sites, not a
-/// sandbox.
+/// Plain permissions (no domain), for third-party plugins (`PluginPolicy`): `tabs`, `ai`,
+/// `clipboard`, `files`. First-party plugins don't need them.
+///
+/// Callers pass their own id as `plugin`. For a third-party plugin (in a sandboxed helper process)
+/// den replaces it with the real caller (cordis `PluginHost.caller`) before the service sees it, and
+/// grants only what the user allowed (`PluginConsent`); first-party plugins are den's own code in
+/// den's process, so for them this is a declared-intent gate that keeps each to its own sites.
 @MainActor
 public final class Permissions {
   private var grants: [String: [String]] = [:]
@@ -38,20 +41,35 @@ public final class Permissions {
   public func list(_ plugin: String) -> [String] { grants[plugin] ?? [] }
 
   /// Reads `<dylib without extension>.json` and grants its `permissions`. Returns what was granted.
+  /// With `only`, grants just those of the declared permissions (a third-party plugin: what the
+  /// user allowed).
   @discardableResult
-  public func loadSidecar(plugin: String, dylib: URL) -> [String] {
+  public func loadSidecar(plugin: String, dylib: URL, only: [String]? = nil) -> [String] {
     let res = dylib.deletingPathExtension().appendingPathExtension("resources")
     var isDir: ObjCBool = false
     if FileManager.default.fileExists(atPath: res.path, isDirectory: &isDir), isDir.boolValue { resources[plugin] = res }
+    var valid = Self.declared(dylib)
+    if let only { valid = valid.filter { only.contains($0) } }
+    grant(plugin, valid)
+    return valid
+  }
+
+  /// The valid permissions `<dylib>.json` declares, in order, without repeats.
+  nonisolated public static func declared(_ dylib: URL) -> [String] {
     let url = dylib.deletingPathExtension().appendingPathExtension("json")
     guard let data = try? Data(contentsOf: url),
       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let perms = obj["permissions"] as? [String]
     else { return [] }
-    let valid = perms.filter { Self.parse($0) != nil }
-    grant(plugin, valid)
-    return valid
+    var out: [String] = []
+    for p in perms where valid(p) && !out.contains(p) { out.append(p) }
+    return out
   }
+
+  /// Permissions without a domain (third-party plugins; see `PluginPolicy`).
+  nonisolated public static let plain: Set<String> = ["tabs", "ai", "clipboard", "files"]
+
+  nonisolated public static func valid(_ p: String) -> Bool { plain.contains(p) || parse(p) != nil }
 
   /// "session:slack.com" -> ("session", "slack.com").
   nonisolated static func parse(_ p: String) -> (kind: String, domain: String)? {

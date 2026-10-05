@@ -51,6 +51,16 @@ public final class DenRuntime {
   /// Lets `PluginLoader` (built by the app from `plugins` alone) grant sidecar permissions.
   static var permissionsByHost: [ObjectIdentifier: Permissions] = [:]
   static func permissions(for plugins: PluginHost) -> Permissions? { permissionsByHost[ObjectIdentifier(plugins)] }
+  /// The same for the plugin platform pieces below (`PluginLoader`, `LivePlugins`).
+  private static var runtimes: [ObjectIdentifier: WeakRuntime] = [:]
+  private struct WeakRuntime { weak var runtime: DenRuntime? }
+  static func runtime(for plugins: PluginHost) -> DenRuntime? { runtimes[ObjectIdentifier(plugins)]?.runtime }
+  /// What third-party plugins may do (`authorize`, `deliver` on `plugins`).
+  public private(set) var policy: PluginPolicy!
+  /// Allow / Don't Allow for third-party plugins, and Settings ▸ Plugins.
+  public private(set) var consent: PluginConsent!
+  /// A plugin that crashes is unloaded and the user told (Reload / Disable).
+  public private(set) var crashes: PluginCrashes!
 
   /// `crashMarkerPath: nil` skips cordis' crash signal handlers (tests); the app passes
   /// `PluginHost.defaultCrashMarkerPath`.
@@ -132,9 +142,13 @@ public final class DenRuntime {
     sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
     sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
     sitePolicy.resource = { [permissions] p, f in permissions.resource(p, f) }
+    policy = PluginPolicy(plugins: plugins, permissions: permissions)
+    plugins.authorize = { [policy] plugin, access, args in MainActor.assumeIsolated { policy!.authorize(plugin, access, args) } }
+    plugins.deliver = { [policy] listener, event, payload in MainActor.assumeIsolated { policy!.deliver(listener, event, payload) } }
+    if !FileManager.default.isExecutableFile(atPath: plugins.helperExecutable), let dev = Self.devHelper() { plugins.helperExecutable = dev }
     for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, nowPlaying, speech, translate, spotlight, handoff] {
       host.provide(s)
-      serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
+      serviceHandles[s.name] = provideService(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }
     plugins.provide("plugins") { [weak plugins] method, args in
       guard let plugins else { return ["error": "plugins: host is gone"] }
@@ -156,6 +170,19 @@ public final class DenRuntime {
     ui.onPalette = { [weak settings] _ in settings?.window?.applyAppearance() }
     GeneralSettings.install(self)
     MenuActions.install(self)
+    Self.runtimes[ObjectIdentifier(plugins)] = WeakRuntime(runtime: self)
+    consent = PluginConsent(runtime: self)
+    consent.start()
+    crashes = PluginCrashes(runtime: self)
+    crashes.disable = { [weak self] id in self?.consent.setDisabled(id, true) }
+    // The app routes these through its own loader (stubs stay consistent); this default works alone.
+    consent.reload = { [weak self] _, url in
+      guard let self else { return }
+      PluginLoader(plugins: self.plugins).load(url, watch: false)
+    }
+    crashes.reload = { [weak self] id, url in self?.consent.reload(id, url) }
+    crashes.start()
+    PluginSettings.install(self)
     Self.onCreate?(self)
   }
 
@@ -174,6 +201,36 @@ public final class DenRuntime {
     default:
       return ["error": .string("plugins: unknown method \(method)")]
     }
+  }
+
+  /// Provides a host service to plugins. A third-party plugin's call is checked against
+  /// `PluginPolicy` first (its own names, `plugin` set to the real caller), and its async request
+  /// ids are noted so only it gets the result event.
+  @discardableResult
+  public func provideService(_ name: String, _ handler: @escaping (String, Value) -> Value) -> CordisHandle {
+    plugins.provide(name) { [weak self] method, args in
+      guard let self else { return handler(method, args) }
+      let caller = self.plugins.caller
+      switch self.policy.check(caller: caller, service: name, method: method, args: args) {
+      case let .denied(why): return .error("permission denied: \(why)")
+      case let .ok(checked):
+        let result = handler(method, checked)
+        self.policy.noteResult(caller: caller, result)
+        return result
+      }
+    }
+  }
+
+  /// The plugin helper next to the build products (`swift build` / `swift test`): `DenPluginHelper`.
+  static func devHelper() -> String? {
+    var dirs: [URL] = []
+    if let exe = Bundle.main.executableURL { dirs.append(exe.deletingLastPathComponent()) }
+    dirs.append(Bundle(for: DenRuntime.self).bundleURL.deletingLastPathComponent())
+    for d in dirs {
+      let p = d.appendingPathComponent("DenPluginHelper").path
+      if FileManager.default.isExecutableFile(atPath: p) { return p }
+    }
+    return nil
   }
 
   /// Calls a host or plugin service.

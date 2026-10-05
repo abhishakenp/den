@@ -21,12 +21,16 @@ for m in DenHost Den; do
   [[ -f "$BINDIR/$m.build/$m.swiftconstvalues" ]] || find "Sources/$m" -name '*.swift' -exec touch {} +
 done
 swift build -c release --product Den $traits ${=$(appintents_swift_flags "$PWD/.build/appintents-protocols.json")}
+# The process a third-party plugin runs in (cordis PluginIsolation.process, sandboxed).
+swift build -c release --product DenPluginHelper $traits
 BIN="$BINDIR/Den"
 APP=build/den.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Lowercase, like the app name: Spotlight and launchers (Raycast) match "den" against it.
 cp "$BIN" "$APP/Contents/MacOS/den"
+mkdir -p "$APP/Contents/Helpers"
+cp "$(dirname "$BIN")/DenPluginHelper" "$APP/Contents/Helpers/cordis-plugin-helper"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 # Build identity (docs/updates.md). DenHostAPI counts the commits that changed the host: a managed
 # plugin only loads into a host of the generation it was built for. CFBundleVersion is monotonic
@@ -86,6 +90,8 @@ echo "signing with ${SIGN/#-/ad hoc}"
 for lib in "$APP"/Contents/PlugIns/*.dylib(N); do
   codesign --force --options runtime --sign "$SIGN" "$lib"
 done
+# The plugin helper loads plugins signed by their authors (or ad hoc), like den itself.
+codesign --force --options runtime --entitlements Resources/plugin-helper.entitlements --sign "$SIGN" "$APP/Contents/Helpers/cordis-plugin-helper"
 codesign --force --deep --options runtime --entitlements Resources/den.entitlements --sign "$SIGN" "$APP"
 codesign --verify --strict "$APP"
 echo "built $APP"

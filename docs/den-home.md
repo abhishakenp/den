@@ -83,6 +83,20 @@ Next to a plugin's code goes one JSON file that den reads without loading the pl
 - A lazy plugin that doesn't load (a broken build, permissions not allowed yet) keeps its registrations, so the next trigger tries again; every attempt is logged.
 - A `lazy` sidecar without any `activation` entry is loaded like `deferred`, because nothing could ever wake it.
 
+### Third-party plugins: sandbox and permissions
+
+Plugins in `~/.den/plugins` (dylibs and source folders) and the older `~/Library/Application Support/den/Plugins` are third-party. den's own plugins (in den.app, den's updates of them, and `--dev-plugins`) are not.
+
+- **They run in their own process.** Each one runs in `cordis-plugin-helper` (`den.app/Contents/Helpers`), in macOS's "pure computation" sandbox: no files, no network, no other processes. Everything goes through den's services. If it crashes or stops answering for 5 s, only its process ends; den unloads it and shows the crash toast. A call costs about 9 µs, against 0.1 µs in process, and each one uses about 1.2 to 1.9 MB of memory (measured; [cordis-swift README](https://github.com/abhishakenp/cordis-swift#benchmarks)).
+- **They ask first.** Before one loads for the first time, or after its `plugin.json` asks for something new, den shows what it declared in an Allow / Don't Allow sheet, one row per permission. You can untick rows. Nothing loads until you answer, and the answer is remembered. A plugin that declares nothing loads without asking and gets only the basics.
+- **Settings ▸ Plugins** lists them, with what each was allowed. **Revoke** unloads it, and it asks again next time. **Turn Off** keeps it off, and **Reload** brings back one that crashed.
+- **Permissions** they can declare: `tabs` (see and manage tabs: list, open, select, close, navigate; tab and page events), `ai` (Apple's on-device model), `clipboard`, `files` (save panels, downloads), `net:<domain>` (fetch without cookies), `session:<domain>` (your signed-in session there), `pages:<domain>` or `pages:*` (run their own script in those pages, which can read them). Anything else is denied, with `{"error": "permission denied: …"}`.
+- **The basics** need no permission: `ui` (toasts, dialogs, sheets, sidebar slots), `keys`, `commands` (register and run their own), `settings` (their own section), `storage` (their own namespace), `schedule`, `plugins`, `app.info`, and web views they create themselves.
+- **Their own names.** A third-party plugin's ids start with its id: `<id>` or `<id>.<anything>`. That goes for its services, the events it emits, its commands, settings section, storage namespace, schedules, its own web views, and the UI node ids it wants clicks for. It hears `ui.action`, `commands.run`, `settings.*` and `schedule.fire` only for its own ids, and async results (`ai.result`, `net.result`, `webviews.injectResult`, …) only for its own requests.
+- The plugin id must match the file or folder name.
+
+An example to start from: [`examples/summarize`](../examples/summarize/) reads the page in front and summarizes it with the on-device model.
+
 ## Themes
 
 Each file in `~/.den/themes` is one preset. The theme plugin offers every preset in the command bar as **Theme: \<name\>**, and picking one applies it to the current space.

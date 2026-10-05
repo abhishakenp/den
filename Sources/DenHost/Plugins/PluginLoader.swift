@@ -22,6 +22,11 @@ import Foundation
 ///
 /// A plugin whose build crashed den last time is refused by cordis (`crashedBuild`); the loader
 /// records it in `crashed` so the app can tell the user.
+///
+/// Every load goes through `load(_:watch:)`, which asks `PluginConsent.admit` first: den's own
+/// plugins load in process; third-party ones (`~/.den/plugins`, the legacy user folder) load in a
+/// sandboxed helper process, and only once the user allowed what they declare (until then the
+/// Allow sheet is up and the load happens after Allow).
 @MainActor
 public final class PluginLoader {
   public struct Outcome: Equatable {
@@ -29,6 +34,7 @@ public final class PluginLoader {
     public var failed: [String: String] = [:]  // path -> reason
     public var crashed: [String] = []  // plugin ids disabled because their build crashed den
     public var permissions: [String: [String]] = [:]  // plugin id -> granted sidecar permissions
+    public var waiting: [String] = []  // third-party plugin ids waiting for the user's Allow
   }
 
   let plugins: PluginHost
@@ -98,7 +104,23 @@ public final class PluginLoader {
     return outcome
   }
 
-  func load(_ url: URL, watch: Bool) {
+  public func load(_ url: URL, watch: Bool) {
+// --dev-plugins (watched) are den's own builds; everything else asks first. A plugin waiting
+    // for the user's Allow isn't loaded, so lazy stubs stay as they are.
+    var isolation = PluginIsolation.inProcess
+    if !watch, let rt = DenRuntime.runtime(for: plugins) {
+      // `self` strongly: a loader made just for this load must still load after Allow.
+      switch rt.consent.admit(url, retry: { self.load(url, watch: false) }) {
+      case .wait:
+        outcome.waiting.append(PluginConsent.id(of: url))
+        return
+      case let .refuse(why):
+        outcome.failed[url.path] = why
+        return
+      case let .load(i):
+        isolation = i
+      }
+    }
     let lazyID = lazyWillLoad(url)
     defer { if let lazyID { lazyDidLoad(lazyID) } }
     if watch {
@@ -116,7 +138,13 @@ public final class PluginLoader {
       return
     }
     do {
-      let id = try plugins.load(url.path).id
+      let id = try plugins.load(url.path, isolation: isolation).id
+      if case .process = isolation, id != PluginConsent.id(of: url) {
+        // The user allowed the file's name: a plugin must carry the id its file is named after.
+        _ = try? plugins.unload(id)
+        outcome.failed[url.path] = "its id '\(id)' doesn't match its file name"
+        return
+      }
       outcome.loaded.append(id)
       grantPermissions(id, url)
     } catch let PluginHostError.crashedBuild(id, _) {
@@ -189,12 +217,21 @@ public final class PluginLoader {
     }
   }
 
-  /// Grants what the plugin's `<id>.json` sidecar declares (see `Permissions`).
+  /// Grants what the plugin's `<id>.json` sidecar declares (see `Permissions`); for a third-party
+  /// plugin, only what the user allowed.
   func grantPermissions(_ id: String, _ dylib: URL) {
-    guard let p = DenRuntime.permissions(for: plugins) else { return }
-    p.revoke(id)
-    let granted = p.loadSidecar(plugin: id, dylib: dylib)
+    let granted = Self.grant(plugins, id, dylib)
     if !granted.isEmpty { outcome.permissions[id] = granted }
+  }
+
+  @discardableResult
+  static func grant(_ plugins: PluginHost, _ id: String, _ dylib: URL) -> [String] {
+    guard let p = DenRuntime.permissions(for: plugins) else { return [] }
+    p.revoke(id)
+    if let rt = DenRuntime.runtime(for: plugins), rt.consent.isThirdParty(dylib) {
+      return p.loadSidecar(plugin: id, dylib: dylib, only: rt.consent.granted(id, dylib: dylib))
+    }
+    return p.loadSidecar(plugin: id, dylib: dylib)
   }
 
   /// Toast text naming the plugins that were turned off because they crashed den.

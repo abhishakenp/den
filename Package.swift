@@ -7,6 +7,8 @@ let package = Package(
   platforms: [.macOS("26.0")],
   products: [
     .executable(name: "Den", targets: ["Den"]),
+    // Hosts a third-party plugin in its own sandboxed process (Contents/Helpers/cordis-plugin-helper).
+    .executable(name: "DenPluginHelper", targets: ["DenPluginHelper"]),
     .library(name: "DenHost", targets: ["DenHost"]),
   ],
   // `Scenarios`: --scenario fixtures and the local fake Slack/GitHub (Sources/DenHost/Scenarios, `#if Scenarios`).
@@ -17,7 +19,7 @@ let package = Package(
     .default(enabledTraits: ["Scenarios"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/abhishakenp/cordis-swift", from: "0.1.2"),
+    .package(url: "https://github.com/abhishakenp/cordis-swift", from: "0.2.0"),
     // Host updates (EdDSA-signed appcast). Embedded into den.app/Contents/Frameworks by scripts/bundle.sh.
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
   ],
@@ -29,6 +31,7 @@ let package = Package(
         .product(name: "Cordis", package: "cordis-swift"),
       ]
     ),
+    .executableTarget(name: "DenPluginHelper", dependencies: [.product(name: "CordisHelper", package: "cordis-swift")]),
     .executableTarget(
       name: "Den",
       dependencies: ["DenHost", .product(name: "CordisValue", package: "cordis-swift"), .product(name: "Sparkle", package: "Sparkle")]
@@ -47,12 +50,12 @@ let package = Package(
     .target(name: "DenTestSupport", dependencies: ["DenHost"], path: "Tests/DenTestSupport"),
     .testTarget(
       name: "PluginTests",
-      dependencies: ["DenHost", "PluginCores", "DenTestSupport", .product(name: "CordisValue", package: "cordis-swift"), .product(name: "Cordis", package: "cordis-swift")],
+      dependencies: ["DenHost", "PluginCores", "DenTestSupport", "DenPluginHelper", .product(name: "CordisValue", package: "cordis-swift"), .product(name: "Cordis", package: "cordis-swift")],
       swiftSettings: [.swiftLanguageMode(.v5)]
     ),
     .testTarget(
       name: "DenHostTests",
-      dependencies: ["DenHost", "DenTestSupport", .product(name: "CordisValue", package: "cordis-swift")]
+      dependencies: ["DenHost", "DenTestSupport", "DenPluginHelper", .product(name: "CordisValue", package: "cordis-swift"), .product(name: "Cordis", package: "cordis-swift")]
     ),
   ]
 )

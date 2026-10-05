@@ -109,6 +109,6 @@ extension DenRuntime {
   /// Registers a host service created outside the runtime (e.g. `ConfigService`) on both buses.
   public func provide(_ s: HostService) {
     host.provide(s)
-    plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
+    provideService(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
   }
 }

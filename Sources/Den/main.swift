@@ -111,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.config?.pluginApplied()
         self.loader?.pluginApplied(id)
       case let .reloaded(id, hash): print("plugin \(id) reloaded (build \(hash))")
+      case let .crashed(r): print("plugin \(r.id) crashed (\(signalName(r.signal))) and was unloaded; den keeps running")
       case let .reloadFailed(path, reason):
         print("plugin reload failed \(path): \(reason)")
         self.live?.log.write("reload failed \(path): \(reason)")
@@ -124,6 +125,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     pendingURLs = []
     trace("plugins.start")
     loader = PluginLoader(plugins: runtime.plugins)
+    // Third-party plugins (~/.den/plugins, its build cache, the legacy user folder) ask first and run
+    // in a sandboxed helper; den's own (bundled, its updates, --dev-plugins) run in process.
+    runtime.consent.thirdPartyDirectories = [PluginLoader.userDirectory] + (home.map { [$0.plugins, $0.buildCache] } ?? [])
+    let pluginLog = home.map { DenLog(url: $0.logs.appendingPathComponent("plugins.log")) }
+    runtime.consent.log = { line in if let pluginLog { pluginLog.write(line) } else { print(line) } }
+    runtime.crashes.log = runtime.consent.log
+    runtime.consent.reload = { [weak self] _, url in self?.loader.load(url, watch: false) }
     // ~/.den on the launch path: one directory read (which plugins override bundled ones) and,
     // only if config.toml exists, one small read for [plugins] disabled. Everything else waits
     // for the first window (startDenHome).
