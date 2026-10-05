@@ -184,6 +184,19 @@ struct ServiceTests {
     #expect(rt.ui.toasts[0].frame.maxX > rt.window.root.bounds.width - 40 && rt.ui.toasts[0].frame.minY < 40)
   }
 
+  /// Arc: a toast stays while the pointer is on it, and leaves about a second after it moves off.
+  @Test func toastStaysWhileHovered() async {
+    let rt = Self.runtime()
+    var over = true
+    rt.ui.pointerOnToast = { _ in over }
+    _ = rt.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "id": "keep", "text": "Kept", "duration": 50]])
+    _ = rt.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "id": "go", "text": "Gone", "duration": 50, "hold": false]])
+    try? await Task.sleep(for: .milliseconds(600))
+    #expect(rt.ui.toasts.map(\.toastId) == ["keep"], "hovered: kept; hold: false leaves anyway")
+    over = false
+    #expect(await Wait.until("the toast to leave once the pointer is off", seconds: 5) { rt.ui.toasts.isEmpty })
+  }
+
   @Test func keysBindThroughTheMainMenu() {
     let rt = Self.runtime()
     NSApp.mainMenu = NSMenu()

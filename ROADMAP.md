@@ -196,7 +196,8 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ User guide ([docs/guide](docs/guide/)), with Tips & hidden gems
 - 🟡 Detail audit: every interaction compared with Arc/Dia (hover states, click targets, tooltips, context menus, animations, empty states, error pages, keyboard coverage) and fixed, plus Dia's micro-interactions
   - ✅ first pass (2026-09-28): tooltips and VoiceOver names on every icon button, an empty space shows Arc's "Open a tab." card with a ⌘T keycap, the Little Arc "Open in" button drops its duplicate tooltip, command bar glyph order, consistent "Title  ⌘X" tooltips
-  - ⏳ Favorites empty-state card ("Drag to add Favorites"), toast hover-to-keep, Dia's micro-interactions
+  - ✅ toast hover-to-keep: every toast stays while the pointer is on it and leaves a second after
+  - ⏳ Favorites empty-state card ("Drag to add Favorites"), Dia's micro-interactions
 
 ## Media
 

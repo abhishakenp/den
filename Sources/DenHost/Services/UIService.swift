@@ -436,15 +436,18 @@ public final class UIService: HostService {
       }
     }
     guard ms > 0 else { return }
-    // `hold`: the toast stays while the pointer is on it (a tip has something to read), and
-    // leaves 1 s after the pointer does.
-    scheduleDismiss(t, after: ms, hold: tree.flag("hold"), dismiss)
+    // Hover to keep (Arc): a toast stays while the pointer is on it, and leaves 1 s after the
+    // pointer does. `hold: false` opts out.
+    scheduleDismiss(t, after: ms, hold: tree.flag("hold", true), dismiss)
   }
+
+  /// Is the pointer on this toast? (Tests swap it.)
+  var pointerOnToast: (NSView) -> Bool = { UIService.pointerInside($0) }
 
   func scheduleDismiss(_ t: ToastView, after ms: Int, hold: Bool, _ dismiss: @escaping () -> Void) {
     DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(ms)) { [weak self, weak t] in
-      guard let t else { return }
-      if hold, Self.pointerInside(t) { self?.scheduleDismiss(t, after: 1000, hold: hold, dismiss) } else { dismiss() }
+      guard let t, let self else { return }
+      if hold, self.pointerOnToast(t) { self.scheduleDismiss(t, after: 1000, hold: hold, dismiss) } else { dismiss() }
     }
   }
 
