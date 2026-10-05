@@ -220,7 +220,11 @@ Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 - ✅ Unpacked extensions from `~/.den/extensions`, and installs from `.crx` / `.xpi` / `.zip`
 - ⏳ Fill in APIs Apple leaves out where feasible: `bookmarks`, `sidePanel`, `downloads`, `history`, `identity`
 - ⏳ Extension keyboard `commands` and context-menu items in den's menus
-- ⏳ Native messaging bridge (password managers)
+- 🟡 Native messaging bridge (password managers) ([notes](docs/research/password-managers.md))
+  - ✅ `runtime.connectNative` / `sendNativeMessage` to desktop apps' hosts through Chrome's and Firefox's manifests and protocol (`NativeMessagingTests` with a real extension and host)
+  - ✅ Bitwarden's popup renders (it's told it runs in Chrome; with Safari's user agent it hung on a spinner)
+  - ⏳ Bitwarden desktop unlock checked on a real account
+  - ❌ 1Password desktop unlock: the 1Password app accepts only browsers with an Apple-issued signature (Team ID; Developer ID + notarization in every confirmed case). Needs Developer ID signing
 - ✅ Built-in ad/tracker blocker: EasyList, EasyPrivacy and the EasyList Cookie List compiled to WebKit content rules at release time with `adblock-rust`, including element hiding ([Shields](docs/plugin-services.md#shields-plugin-shields)); offers to step aside when uBlock Origin Lite is installed
 - ✅ Scriptlets for YouTube ads (pre-roll, mid-roll, feed and search promotions, the anti-adblock dialog): uBlock Origin's YouTube rules as data, run by den's own engine in the page's world; the data refreshes daily without a release ([Shields](docs/plugin-services.md#shields-plugin-shields))
 - ✅ Scriptlets for ~21,000 other sites (anti-adblock walls, pop-unders): uBlock Origin's site rules, converted to data for den's engine and delivered per site ([Shields](docs/plugin-services.md#shields-plugin-shields))

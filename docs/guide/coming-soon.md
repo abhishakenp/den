@@ -37,7 +37,7 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 
 - Import from Arc (spaces, pinned tabs), then Chrome, Safari, Firefox, Zen and Dia. Offered as a quiet card, never a gate.
 - Passkeys on every site, once Apple grants den the browser passkey entitlement.
-- A native-messaging bridge for password manager extensions.
+- Unlocking 1Password's extension with the 1Password app (needs den signed with an Apple developer account).
 - Sync of spaces and tabs through iCloud, with no den server.
 
 ## Getting around
