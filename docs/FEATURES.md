@@ -196,7 +196,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 
 | Feature | Arc | Dia | Zen | den | Notes |
 |---|---|---|---|---|---|
-| Password manager extensions (1Password, Bitwarden) | ✅ | ? | ✅ | ⏳ | Needs the native messaging bridge |
+| Password manager extensions (1Password, Bitwarden) | ✅ | ? | ✅ | 🟡 | Native messaging bridge ✅ (Chrome's manifests and protocol); Bitwarden's popup ✅; 1Password's desktop unlock needs Developer ID signing |
 | [Built-in password vault](guide/privacy-and-passwords.md) | ✅ Chromium | ? | ✅ Firefox | ✅ | den's own vault in the Keychain, filled after Touch ID. No API reads iCloud Keychain |
 | [Passkeys for all sites](guide/privacy-and-passwords.md) | ✅ | ? | ? | 🟡 | ✅ researched ([notes](research/passkeys.md)). ⏳ Apple's browser entitlement and a real signing identity |
 | Sync spaces and tabs across Macs | ✅ | ✅ | ✅ | ⏳ | Via iCloud/CloudKit, no den server |

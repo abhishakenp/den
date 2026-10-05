@@ -67,7 +67,7 @@ Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatT
 | uBlock Origin (full) | Not on WebKit | Installs from Firefox Add-ons and its popup opens, but it can't block: it needs to stop web requests, which Safari's engine doesn't allow. den says so on its store page and offers uBlock Origin Lite. The Chrome Web Store no longer offers it |
 | Dark Reader | Works | Firefox build darkens a page; Chrome build starts and its popup opens |
 | JSON Formatter | Works | Formats a JSON page |
-| 1Password | Partial | Installs, starts, popup opens. Unlocking through the desktop app isn't checked |
+| 1Password | Partial | Installs, starts, popup opens; sign in inside the extension. Unlocking with the 1Password app doesn't work yet: the app only talks to browsers signed by an Apple developer account (den isn't yet) |
 | SponsorBlock | Works | Starts; popup opens ("No YouTube video found" off YouTube) |
 | Return YouTube Dislike | Works | Starts; popup opens |
 | Grammarly | Partial | Starts; popup opens. Signing in (`identity`) isn't available |
@@ -76,7 +76,7 @@ Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatT
 | Vimium (Chrome Web Store) | Works | Link hints (`f` follows a link, `F` opens it in a new tab, `Esc`), scrolling (`j`, `d`, `G`, `gg`), the Vomnibar (`o`), find (`/`), next tab (`K`). Not in den: bookmarks (the Vomnibar finds none), history from before you installed it |
 | Vimium (Firefox Add-ons) | Works | Same as above; its toolbar icon shows an error, because that build lacks the icons Vimium asks for outside Firefox. Prefer the Chrome Web Store build |
 | ColorPick Eyedropper | Partial | The popup opens; its background doesn't start, so picking colors doesn't work |
-| Bitwarden | Partial | Installs, starts and its popup opens. Signing in and filling aren't checked yet; unlocking with the desktop app (native messaging) isn't available |
+| Bitwarden | Partial | Installs, starts, and its popup shows Log in. Signing in, filling and unlocking with the desktop app aren't checked yet (they need a real account) |
 
 An extension's keyboard shortcuts work: they're listed, with their keys, in the **Extensions** menu in the menu bar. Its right-click items show at the end of a page's right-click menu.
 
@@ -87,4 +87,12 @@ WebKit's extension support is good but not Chrome's. These don't exist on WebKit
 - **blocking `webRequest`**: so full **uBlock Origin can't work**. Use **uBlock Origin Lite**, which does.
 - `identity`, `downloads`, side panels, offscreen documents; den's real `history` and `bookmarks`.
 
-Extensions that talk to a desktop app through native messaging (for example a password manager's desktop integration) need a bridge den doesn't have yet. See [Coming soon](coming-soon.md).
+### Password managers and other desktop apps
+
+Some extensions talk to an app on your Mac, for example a password manager's extension asking its desktop app to unlock with Touch ID (native messaging). den does this the way Chrome does: when the desktop app has set itself up for Chrome, Chromium, Brave, Edge, Vivaldi, Arc or Firefox, den finds that and connects the extension to it. Nothing to set up in den.
+
+- **Bitwarden:** turn on browser integration in the Bitwarden desktop app (Settings ▸ Allow browser integration), then "Unlock with biometrics" in the extension. den asks once whether the extension may talk to apps on your Mac.
+- **1Password:** works in the extension on its own (sign in with your account password). Unlocking with the 1Password app needs a den signed by an Apple developer account, which isn't there yet; 1Password then lets you add den under Settings ▸ Browser ▸ Add Browser.
+- **Only for den:** put the app's manifest (`<name>.json`) in `~/.den/NativeMessagingHosts`.
+
+What happened is in `~/.den/logs/extensions.log` (each connection, refusal and exit). Details: [research notes](../research/password-managers.md).
