@@ -69,6 +69,13 @@ final class PanelsCore {
     width = Int(st.i("width", Int64(Self.defaultWidth)))
     env.call("keys", "bind", ["chord": .string(Self.toggleChord), "event": "panels.key.toggle", "title": "Toggle Web Panel", "menu": "View"])
     env.on("panels.key.toggle") { [self] _ in toggle() }
+    // The gap beside the panel dragged (keep the width) or double-clicked (back to the default).
+    env.on("content.sideWidth") { [self] v in
+      guard let id = open, v.s("webview") == id else { return }
+      width = v.b("reset") ? Self.defaultWidth : Int(v.i("width", Int64(width)))
+      save()
+      if v.b("reset") { env.call("content", "side", ["webview": .string(id), "width": .int(Int64(width))]) }
+    }
     env.on("ui.action") { [self] v in action(v.s("id"), v.s("action"), v["value"]) }
     env.on("commands.run") { [self] v in command(v.s("id")) }
     env.on("settings.action") { [self] v in settingsAction(v) }
