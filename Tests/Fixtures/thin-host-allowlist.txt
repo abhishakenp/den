@@ -1,0 +1,367 @@
+# Thin-host guardrail allowlist (docs/architecture/thin-host.md §6, step 1; ThinHostGuardrailTests).
+# Feature knowledge the host still holds: English UI strings, named overlay slots, and calls to
+# plugin services. One line per occurrence: kind<TAB>file<TAB>text. Each migration step removes
+# lines; a new line needs a reason the code can't take the copy or policy from a plugin.
+# Regenerate: DEN_THIN_HOST_ALLOWLIST=write swift test --filter ThinHostGuardrail
+call	Sources/Den/main.swift	commands
+call	Sources/Den/main.swift	commands
+call	Sources/Den/main.swift	commands
+call	Sources/Den/main.swift	commands
+call	Sources/Den/main.swift	peek
+call	Sources/Den/main.swift	peek
+call	Sources/Den/main.swift	peek
+call	Sources/Den/main.swift	shields
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	spaces
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/Den/main.swift	tabs
+call	Sources/DenHost/DenHome/ConfigService.swift	commands
+call	Sources/DenHost/DenHome/ConfigService.swift	commands
+call	Sources/DenHost/DenHome/ConfigService.swift	commands
+call	Sources/DenHost/DenRuntime.swift	commands
+call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
+call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
+call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
+call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
+call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
+call	Sources/DenHost/Extensions/ExtensionsService.swift	tabs
+call	Sources/DenHost/Extensions/ExtensionsService.swift	tabs
+call	Sources/DenHost/Extensions/ExtensionsService.swift	tabs
+call	Sources/DenHost/Services/MenuActions.swift	commands
+call	Sources/DenHost/Services/MenuActions.swift	commands
+call	Sources/DenHost/Services/MenuActions.swift	tabs
+slot	Sources/DenHost/Services/UIService.swift	overlay.briefing
+slot	Sources/DenHost/Services/UIService.swift	overlay.commandBar
+slot	Sources/DenHost/Services/UIService.swift	overlay.commandBar
+slot	Sources/DenHost/Services/UIService.swift	overlay.connections
+slot	Sources/DenHost/Services/UIService.swift	overlay.extensions
+slot	Sources/DenHost/Services/UIService.swift	overlay.library
+slot	Sources/DenHost/Services/UIService.swift	overlay.library
+slot	Sources/DenHost/Services/UIService.swift	overlay.passwords
+slot	Sources/DenHost/Services/UIService.swift	overlay.peek
+string	Sources/DenHost/DenHome/ConfigService.swift	Shortcuts
+string	Sources/DenHost/Extensions/ExtensionText.swift	Block content on any page
+string	Sources/DenHost/Extensions/ExtensionText.swift	Block content on pages you allow
+string	Sources/DenHost/Extensions/ExtensionText.swift	Change what you copy and paste
+string	Sources/DenHost/Extensions/ExtensionText.swift	Change your privacy-related settings
+string	Sources/DenHost/Extensions/ExtensionText.swift	Change your proxy settings
+string	Sources/DenHost/Extensions/ExtensionText.swift	Communicate with cooperating native apps
+string	Sources/DenHost/Extensions/ExtensionText.swift	Detect your physical location
+string	Sources/DenHost/Extensions/ExtensionText.swift	Display notifications
+string	Sources/DenHost/Extensions/ExtensionText.swift	Get uBlock Origin Lite
+string	Sources/DenHost/Extensions/ExtensionText.swift	Manage your apps, extensions and themes
+string	Sources/DenHost/Extensions/ExtensionText.swift	Manage your downloads
+string	Sources/DenHost/Extensions/ExtensionText.swift	Observe your network requests
+string	Sources/DenHost/Extensions/ExtensionText.swift	Read and change all your data on all websites
+string	Sources/DenHost/Extensions/ExtensionText.swift	Read and change cookies on sites it can access
+string	Sources/DenHost/Extensions/ExtensionText.swift	Read and change your bookmarks
+string	Sources/DenHost/Extensions/ExtensionText.swift	Read and change your browsing history
+string	Sources/DenHost/Extensions/ExtensionText.swift	Read and change your data on \(names.count) sites
+string	Sources/DenHost/Extensions/ExtensionText.swift	Read what you copy and paste
+string	Sources/DenHost/Extensions/ExtensionText.swift	Read your browsing history
+string	Sources/DenHost/Extensions/ExtensionText.swift	Read your browsing history
+string	Sources/DenHost/Extensions/ExtensionText.swift	Run scripts you add on sites
+string	Sources/DenHost/Extensions/ExtensionText.swift	See which requests it blocked
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Add Extension
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Add “\(name)” to den?
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Added \(name)
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Allow
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Cancel
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Choose an unpacked extension folder, or a .crx, .xpi or .zip file.
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Install Extension
+string	Sources/DenHost/Extensions/ExtensionsService.swift	It can:\n
+string	Sources/DenHost/Extensions/ExtensionsService.swift	It needs no special access.
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Its background script didn’t finish starting within \(Int(Self.backgroundCheckSeconds)) seconds.
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Part of \(name) didn’t start
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Update “\(name)”?
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Updated \(name)
+string	Sources/DenHost/Extensions/ExtensionsUI.swift	Get Extensions
+string	Sources/DenHost/Extensions/ExtensionsUI.swift	Manage Extensions
+string	Sources/DenHost/Extensions/ExtensionsUI.swift	No extensions yet
+string	Sources/DenHost/Extensions/ExtensionsUI.swift	Pin to the URL bar
+string	Sources/DenHost/Extensions/ExtensionsUI.swift	Unpin from the URL bar
+string	Sources/DenHost/Plugins/LivePlugins.swift	Plugin “\(id)” didn't build: \(first) (~/.den/logs/build-\(id).log)
+string	Sources/DenHost/Plugins/LivePlugins.swift	Plugin “\(id)” didn't load: \(error.description)
+string	Sources/DenHost/Plugins/LivePlugins.swift	Plugin “\(id)” didn't load: \(reason)
+string	Sources/DenHost/Plugins/LivePlugins.swift	Source plugins need a Swift toolchain with Embedded Swift (swift.org, or set CORDIS_TOOLCHAIN)
+string	Sources/DenHost/Plugins/PluginLoader.swift	Plugins \(names) crashed den and were turned off
+string	Sources/DenHost/Plugins/PluginLoader.swift	The \(names) plugin crashed den and was turned off
+string	Sources/DenHost/Services/AIService.swift	A short, specific name for the group, one to three words in Title Case
+string	Sources/DenHost/Services/AIService.swift	Groups of related items
+string	Sources/DenHost/Services/AIService.swift	One imperative sentence under 110 characters naming the person, the action and where it lives (channel, repo, PR or issue number)
+string	Sources/DenHost/Services/AIService.swift	The numbers of the items in this group
+string	Sources/DenHost/Services/AIService.swift	True only if the user has to do something: reply, review, fix, decide or answer. False for thanks, FYIs and announcements.
+string	Sources/DenHost/Services/AIService.swift	You sort a list of numbered items into a few groups of related items. Give each group a short, specific name. Use each item number at most once. Leave out items that fit no group.
+string	Sources/DenHost/Services/AIService.swift	You summarize a person's work notifications. Keep every notification that asks something of the user: never drop one. For each, say who needs what, and where (channel, repo, PR or issue number). Merge only true duplicates. Group pure FYIs into one short line with a count. Be concrete and neutral. Never invent facts.
+string	Sources/DenHost/Services/ContentService.swift	Open as Tab
+string	Sources/DenHost/Services/ContentService.swift	Open in Split View
+string	Sources/DenHost/Services/ContentService.swift	Open in another window
+string	Sources/DenHost/Services/ContentService.swift	Show Here
+string	Sources/DenHost/Services/DevTools.swift	Firefox — macOS
+string	Sources/DenHost/Services/DevTools.swift	Google Chrome — Android
+string	Sources/DenHost/Services/DevTools.swift	Google Chrome — macOS
+string	Sources/DenHost/Services/DevTools.swift	Microsoft Edge — macOS
+string	Sources/DenHost/Services/DevTools.swift	Safari — iPad
+string	Sources/DenHost/Services/DevTools.swift	Safari — iPhone
+string	Sources/DenHost/Services/DevTools.swift	Safari — macOS
+string	Sources/DenHost/Services/DownloadsService.swift	Couldn’t save the file
+string	Sources/DenHost/Services/DownloadsService.swift	Download failed
+string	Sources/DenHost/Services/DownloadsService.swift	File unavailable
+string	Sources/DenHost/Services/DownloadsService.swift	Network connection lost
+string	Sources/DenHost/Services/DownloadsService.swift	Timed out
+string	Sources/DenHost/Services/ExternalLinks.swift	Cancel
+string	Sources/DenHost/Services/ExternalLinks.swift	No app on this Mac opens “\(scheme):” links.
+string	Sources/DenHost/Services/ExternalLinks.swift	Open
+string	Sources/DenHost/Services/ExternalLinks.swift	Open “\(app)”?
+string	Sources/DenHost/Services/GeneralSettings.swift	Accent color
+string	Sources/DenHost/Services/GeneralSettings.swift	Buttons, selection and toggles take their color from the current space, or from macOS.
+string	Sources/DenHost/Services/GeneralSettings.swift	Configuration
+string	Sources/DenHost/Services/GeneralSettings.swift	Default browser
+string	Sources/DenHost/Services/GeneralSettings.swift	Default browser
+string	Sources/DenHost/Services/GeneralSettings.swift	General
+string	Sources/DenHost/Services/GeneralSettings.swift	Links from other apps open in \(name).
+string	Sources/DenHost/Services/GeneralSettings.swift	Links from other apps open in den.
+string	Sources/DenHost/Services/GeneralSettings.swift	Make den Default
+string	Sources/DenHost/Services/GeneralSettings.swift	Open
+string	Sources/DenHost/Services/GeneralSettings.swift	Plugins, themes, shortcuts and search keywords. Saved changes apply at once.
+string	Sources/DenHost/Services/GeneralSettings.swift	Problem: \($0)
+string	Sources/DenHost/Services/GeneralSettings.swift	Show in Finder
+string	Sources/DenHost/Services/GeneralSettings.swift	Show in Finder
+string	Sources/DenHost/Services/GeneralSettings.swift	Skip passkey sign-in, use the password
+string	Sources/DenHost/Services/GeneralSettings.swift	Space colors
+string	Sources/DenHost/Services/GeneralSettings.swift	System accent
+string	Sources/DenHost/Services/MainMenu.swift	About den
+string	Sources/DenHost/Services/MainMenu.swift	Actual Size
+string	Sources/DenHost/Services/MainMenu.swift	Add Split View
+string	Sources/DenHost/Services/MainMenu.swift	Clear Today Tabs
+string	Sources/DenHost/Services/MainMenu.swift	Close Other Tabs
+string	Sources/DenHost/Services/MainMenu.swift	Close Peek
+string	Sources/DenHost/Services/MainMenu.swift	Close Split Pane
+string	Sources/DenHost/Services/MainMenu.swift	Close Tab
+string	Sources/DenHost/Services/MainMenu.swift	Copy URL
+string	Sources/DenHost/Services/MainMenu.swift	Copy URL as Markdown
+string	Sources/DenHost/Services/MainMenu.swift	Daily Briefing
+string	Sources/DenHost/Services/MainMenu.swift	Disable Caches
+string	Sources/DenHost/Services/MainMenu.swift	Duplicate Tab
+string	Sources/DenHost/Services/MainMenu.swift	Edit Theme Color…
+string	Sources/DenHost/Services/MainMenu.swift	Empty Caches
+string	Sources/DenHost/Services/MainMenu.swift	Find Next
+string	Sources/DenHost/Services/MainMenu.swift	Find Previous
+string	Sources/DenHost/Services/MainMenu.swift	Focus Split Pane
+string	Sources/DenHost/Services/MainMenu.swift	Go to Tab
+string	Sources/DenHost/Services/MainMenu.swift	Inspect Element
+string	Sources/DenHost/Services/MainMenu.swift	Keyboard Shortcuts
+string	Sources/DenHost/Services/MainMenu.swift	Make den Your Default Browser
+string	Sources/DenHost/Services/MainMenu.swift	New Folder with Selected Tabs
+string	Sources/DenHost/Services/MainMenu.swift	New Private Window
+string	Sources/DenHost/Services/MainMenu.swift	New Space
+string	Sources/DenHost/Services/MainMenu.swift	New Tab in Group
+string	Sources/DenHost/Services/MainMenu.swift	New Tab…
+string	Sources/DenHost/Services/MainMenu.swift	New Window
+string	Sources/DenHost/Services/MainMenu.swift	Next Space
+string	Sources/DenHost/Services/MainMenu.swift	Next Tab
+string	Sources/DenHost/Services/MainMenu.swift	Open Location…
+string	Sources/DenHost/Services/MainMenu.swift	Open Peek or Mini Window in Space
+string	Sources/DenHost/Services/MainMenu.swift	Previous Space
+string	Sources/DenHost/Services/MainMenu.swift	Previous Tab
+string	Sources/DenHost/Services/MainMenu.swift	QR Code for This Page
+string	Sources/DenHost/Services/MainMenu.swift	Reload Page
+string	Sources/DenHost/Services/MainMenu.swift	Reload Page from Origin
+string	Sources/DenHost/Services/MainMenu.swift	Rename Tab
+string	Sources/DenHost/Services/MainMenu.swift	Reopen Closed Tab
+string	Sources/DenHost/Services/MainMenu.swift	Reopen Closed Window
+string	Sources/DenHost/Services/MainMenu.swift	Report an Issue…
+string	Sources/DenHost/Services/MainMenu.swift	Save Page As…
+string	Sources/DenHost/Services/MainMenu.swift	Search Archive…
+string	Sources/DenHost/Services/MainMenu.swift	Services
+string	Sources/DenHost/Services/MainMenu.swift	Show JavaScript Console
+string	Sources/DenHost/Services/MainMenu.swift	Show Library
+string	Sources/DenHost/Services/MainMenu.swift	Show Page Source
+string	Sources/DenHost/Services/MainMenu.swift	Show Web Inspector
+string	Sources/DenHost/Services/MainMenu.swift	Split Right
+string	Sources/DenHost/Services/MainMenu.swift	Stop Loading
+string	Sources/DenHost/Services/MainMenu.swift	Switch to Oldest Recent Tab
+string	Sources/DenHost/Services/MainMenu.swift	Switch to Recent Tab
+string	Sources/DenHost/Services/MainMenu.swift	Tidy Tabs
+string	Sources/DenHost/Services/MainMenu.swift	Undo Sidebar Action
+string	Sources/DenHost/Services/MainMenu.swift	Unload Space
+string	Sources/DenHost/Services/MainMenu.swift	Use Selection for Find
+string	Sources/DenHost/Services/MainMenu.swift	User Agent
+string	Sources/DenHost/Services/MainMenu.swift	Web Extension Background Content
+string	Sources/DenHost/Services/MainMenu.swift	Window
+string	Sources/DenHost/Services/MainMenu.swift	Zoom In
+string	Sources/DenHost/Services/MainMenu.swift	Zoom Out
+string	Sources/DenHost/Services/MenuActions.swift	Close Web Inspector
+string	Sources/DenHost/Services/MenuActions.swift	Default (Automatically Chosen)
+string	Sources/DenHost/Services/MenuActions.swift	No Extensions Loaded
+string	Sources/DenHost/Services/MenuActions.swift	No background page running (a service worker background is inspectable from Safari's Develop menu)
+string	Sources/DenHost/Services/MenuActions.swift	Page
+string	Sources/DenHost/Services/MenuActions.swift	Show Web Inspector
+string	Sources/DenHost/Services/NativePiP.swift	Picture in Picture
+string	Sources/DenHost/Services/NativePiP.swift	Picture in Picture
+string	Sources/DenHost/Services/ScheduleService.swift	EEEE, MMMM d
+string	Sources/DenHost/Services/SitePolicyService.swift	HTTP \(status)
+string	Sources/DenHost/Services/SitePolicyService.swift	HTTP \(status)
+string	Sources/DenHost/Services/UniversalLinks.swift	Always for this site
+string	Sources/DenHost/Services/UniversalLinks.swift	Open \(app)
+string	Sources/DenHost/Services/UniversalLinks.swift	Open in “\(app)”?
+string	Sources/DenHost/Services/UniversalLinks.swift	Stay in den
+string	Sources/DenHost/Services/UploadPicker.swift	Cancel
+string	Sources/DenHost/Services/UploadPicker.swift	Choose File…
+string	Sources/DenHost/Services/UploadPicker.swift	Copied file
+string	Sources/DenHost/Services/UploadPicker.swift	Copied image
+string	Sources/DenHost/Services/UploadPicker.swift	From the clipboard
+string	Sources/DenHost/Services/UploadPicker.swift	From the clipboard, saved as PNG
+string	Sources/DenHost/Services/UploadPicker.swift	Pasted Image \(f.string(from: now())).png
+string	Sources/DenHost/Services/UploadPicker.swift	Pick a recent file, or choose any file on your Mac.
+string	Sources/DenHost/Services/UploadPicker.swift	Pick recent files, or choose any file on your Mac.
+string	Sources/DenHost/Services/UploadPicker.swift	Screen Recording
+string	Sources/DenHost/Services/UploadPicker.swift	Screen Shot
+string	Sources/DenHost/Services/UploadPicker.swift	Upload
+string	Sources/DenHost/Services/UploadPicker.swift	Upload a file
+string	Sources/DenHost/Services/UploadPicker.swift	Upload to \(host)
+string	Sources/DenHost/Services/WebErrorPage.swift	Can’t connect to \(host)
+string	Sources/DenHost/Services/WebErrorPage.swift	Can’t find \(host)
+string	Sources/DenHost/Services/WebErrorPage.swift	Can’t open \(host)
+string	Sources/DenHost/Services/WebErrorPage.swift	Check the address for typos. The site may also be down, or not exist.
+string	Sources/DenHost/Services/WebErrorPage.swift	Check your Wi‑Fi or network connection, then try again.
+string	Sources/DenHost/Services/WebErrorPage.swift	Its web content stopped unexpectedly. Reload to try again.
+string	Sources/DenHost/Services/WebErrorPage.swift	The site didn’t answer in time. It may be busy or down.
+string	Sources/DenHost/Services/WebErrorPage.swift	The site refused the connection. It may be down.
+string	Sources/DenHost/Services/WebErrorPage.swift	This connection isn’t private
+string	Sources/DenHost/Services/WebErrorPage.swift	This page couldn’t load
+string	Sources/DenHost/Services/WebErrorPage.swift	This page crashed
+string	Sources/DenHost/Services/WebErrorPage.swift	Try Again
+string	Sources/DenHost/Services/WebErrorPage.swift	You’re offline
+string	Sources/DenHost/Services/WebPrompts.swift	Allow
+string	Sources/DenHost/Services/WebPrompts.swift	Allow \(host) to use your \(what)?
+string	Sources/DenHost/Services/WebPrompts.swift	Cancel
+string	Sources/DenHost/Services/WebPrompts.swift	Cancel
+string	Sources/DenHost/Services/WebPrompts.swift	Cancel
+string	Sources/DenHost/Services/WebPrompts.swift	Don’t Allow
+string	Sources/DenHost/Services/WebPrompts.swift	Sign In
+string	Sources/DenHost/Services/WebPrompts.swift	Sign in to \(host)
+string	Sources/DenHost/Services/WebPrompts.swift	Stop this page from showing dialogs
+string	Sources/DenHost/Services/WebPrompts.swift	This page says
+string	Sources/DenHost/Services/WebPrompts.swift	This site asks for a username and password.
+string	Sources/DenHost/Toolkit/CommandBarView.swift	Paste and Go
+string	Sources/DenHost/Toolkit/CommandBarView.swift	Paste and Search
+string	Sources/DenHost/Toolkit/CommandBarView.swift	Search or Enter URL…
+string	Sources/DenHost/Toolkit/EmptyState.swift	Open a tab.
+string	Sources/DenHost/Toolkit/EmptyState.swift	Press \(k) to search or type an address, or click New Tab in the sidebar.
+string	Sources/DenHost/Toolkit/FindBar.swift	Find on page
+string	Sources/DenHost/Toolkit/FindBar.swift	Find on page
+string	Sources/DenHost/Toolkit/FindBar.swift	Next Match
+string	Sources/DenHost/Toolkit/FindBar.swift	No matches
+string	Sources/DenHost/Toolkit/FindBar.swift	Previous Match
+string	Sources/DenHost/Toolkit/IconPicker.swift	Remove
+string	Sources/DenHost/Toolkit/IconPicker.swift	Space Icon
+string	Sources/DenHost/Toolkit/IconPicker.swift	Space Icon
+string	Sources/DenHost/Toolkit/IconPicker.swift	Type or paste an emoji
+string	Sources/DenHost/Toolkit/IconPicker.swift	Type or paste an emoji
+string	Sources/DenHost/Toolkit/Library.swift	Archive
+string	Sources/DenHost/Toolkit/Library.swift	Clear Archive
+string	Sources/DenHost/Toolkit/Library.swift	Clear Archive
+string	Sources/DenHost/Toolkit/Library.swift	MMMM d
+string	Sources/DenHost/Toolkit/Library.swift	No matches
+string	Sources/DenHost/Toolkit/Library.swift	Nothing in the Archive yet
+string	Sources/DenHost/Toolkit/Library.swift	Restore
+string	Sources/DenHost/Toolkit/Library.swift	Search the Archive
+string	Sources/DenHost/Toolkit/Library.swift	Untitled
+string	Sources/DenHost/Toolkit/Rows.swift	Add to den
+string	Sources/DenHost/Toolkit/Rows.swift	Add to den
+string	Sources/DenHost/Toolkit/Rows.swift	Adding…
+string	Sources/DenHost/Toolkit/Rows.swift	Close Tab
+string	Sources/DenHost/Toolkit/Rows.swift	Copy Link
+string	Sources/DenHost/Toolkit/Rows.swift	Folder
+string	Sources/DenHost/Toolkit/Rows.swift	Install this extension in den
+string	Sources/DenHost/Toolkit/Rows.swift	Installing this extension
+string	Sources/DenHost/Toolkit/Rows.swift	Mute Tab
+string	Sources/DenHost/Toolkit/Rows.swift	New Tab
+string	Sources/DenHost/Toolkit/Rows.swift	Next Track
+string	Sources/DenHost/Toolkit/Rows.swift	Pause
+string	Sources/DenHost/Toolkit/Rows.swift	Play
+string	Sources/DenHost/Toolkit/Rows.swift	Previous Track
+string	Sources/DenHost/Toolkit/Rows.swift	Reload Page
+string	Sources/DenHost/Toolkit/Rows.swift	Reload Page
+string	Sources/DenHost/Toolkit/Rows.swift	Search or Enter URL…
+string	Sources/DenHost/Toolkit/Rows.swift	Stop Loading
+string	Sources/DenHost/Toolkit/Rows.swift	Toggle Sidebar
+string	Sources/DenHost/Toolkit/Rows.swift	Unmute Tab
+string	Sources/DenHost/Toolkit/Rows.swift	Untitled
+string	Sources/DenHost/Toolkit/Rows.swift	Untitled
+string	Sources/DenHost/Toolkit/SettingsControls.swift	None
+string	Sources/DenHost/Toolkit/SettingsControls.swift	Nothing here yet.
+string	Sources/DenHost/Toolkit/SettingsControls.swift	Open
+string	Sources/DenHost/Toolkit/SettingsControls.swift	Type a shortcut…
+string	Sources/DenHost/Toolkit/SettingsWindow.swift	Settings
+string	Sources/DenHost/Toolkit/ThemePicker.swift	Add Color
+string	Sources/DenHost/Toolkit/ThemePicker.swift	Automatic Appearance
+string	Sources/DenHost/Toolkit/ThemePicker.swift	Dark Appearance
+string	Sources/DenHost/Toolkit/ThemePicker.swift	Light Appearance
+string	Sources/DenHost/Toolkit/ThemePicker.swift	Next Presets
+string	Sources/DenHost/Toolkit/ThemePicker.swift	Previous Presets
+string	Sources/DenHost/Toolkit/ThemePicker.swift	Remove Color
+string	Sources/DenHost/Toolkit/ThemePicker.swift	Tap to pick a color for this space
+string	Sources/DenHost/Updates/UpdatesService.swift	HTTP \(status)
+string	Sources/DenHost/Window/DenWindowController.swift	Private
+string	Sources/DenHost/Window/MiniWindow.swift	Copy Link
+string	Sources/DenHost/Window/MiniWindow.swift	Open in
+string	Sources/DenHost/Window/MiniWindow.swift	Open in Space
+string	Sources/DenHost/Window/MiniWindow.swift	Space
+string	Sources/DenHost/Window/PageContextMenu.swift	Copy Audio Address
+string	Sources/DenHost/Window/PageContextMenu.swift	Copy Image Address
+string	Sources/DenHost/Window/PageContextMenu.swift	Copy Image Address
+string	Sources/DenHost/Window/PageContextMenu.swift	Copy Link as Markdown
+string	Sources/DenHost/Window/PageContextMenu.swift	Copy Link to Highlight
+string	Sources/DenHost/Window/PageContextMenu.swift	Copy Video Address
+string	Sources/DenHost/Window/PageContextMenu.swift	Copy \(media) Address
+string	Sources/DenHost/Window/PageContextMenu.swift	CopyImage
+string	Sources/DenHost/Window/PageContextMenu.swift	CopySubject
+string	Sources/DenHost/Window/PageContextMenu.swift	Cut
+string	Sources/DenHost/Window/PageContextMenu.swift	Download Linked File
+string	Sources/DenHost/Window/PageContextMenu.swift	Enter Picture in Picture
+string	Sources/DenHost/Window/PageContextMenu.swift	Exit Picture in Picture
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Audio in New Tab
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Frame in New Tab
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Image in New Tab
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Image in New Tab
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Link in New Tab
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Link in New Tab
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Link in New Window
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Link in Peek
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Link in Private Window
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Link in Split View
+string	Sources/DenHost/Window/PageContextMenu.swift	Open Video in New Tab
+string	Sources/DenHost/Window/PageContextMenu.swift	Open \(media) in New Tab
+string	Sources/DenHost/Window/PageContextMenu.swift	Paste and Match Style
+string	Sources/DenHost/Window/PageContextMenu.swift	Picture in Picture
+string	Sources/DenHost/Window/PageContextMenu.swift	View Page Source
+string	Sources/DenHost/Window/ThemeBackgroundView.swift	Close Split Pane
+string	Sources/DenHost/Window/ThemeBackgroundView.swift	Separate Page from Split View

@@ -1,5 +1,6 @@
 import AppKit
 import CordisValue
+import os
 
 /// `ui` service: the Arc UI toolkit, rendered natively from `Value` trees.
 ///
@@ -187,10 +188,26 @@ public final class UIService: HostService {
     host.emit("ui.action", ["id": .string(id), "action": .string(action), "value": value])
   }
 
+  /// Instruments' "ui" signposts (thin-host baseline, docs/architecture/thin-host.md §6 step 0):
+  /// one interval per `ui.set` / `ui.card`, with the slot or card id and the tree's node count.
+  static let signposter = OSSignposter(subsystem: "io.github.abhishakenp.den", category: "ui")
+
+  /// Nodes in a tree (the node count a `ui.set` signpost reports).
+  static func nodeCount(_ v: Value) -> Int {
+    guard v["type"].string != nil else { return 0 }
+    return 1 + v.list("children").reduce(0) { $0 + nodeCount($1) }
+  }
+
   public func handle(method: String, args: Value) -> Value {
     switch method {
     case "set":
-      return set(args.str("slot"), args["tree"], page: args["page"].int.map(Int.init), window: args["window"].string)
+      guard Self.signposter.isEnabled else {
+        return set(args.str("slot"), args["tree"], page: args["page"].int.map(Int.init), window: args["window"].string)
+      }
+      let slot = args.str("slot"), nodes = Self.nodeCount(args["tree"])
+      let state = Self.signposter.beginInterval("ui.set", id: Self.signposter.makeSignpostID(), "\(slot, privacy: .public) nodes=\(nodes)")
+      defer { Self.signposter.endInterval("ui.set", state) }
+      return set(slot, args["tree"], page: args["page"].int.map(Int.init), window: args["window"].string)
     case "setPages":
       // Every normal window has the same space pages; `current` places the active one (or `window`).
       let n = max(1, Int(args.num("count", 1)))
@@ -226,6 +243,9 @@ public final class UIService: HostService {
       return ["page": .int(Int64(sidebarView.pager.current)), "pages": .int(Int64(sidebarView.pager.pages.count)), "overlays": .array(overlays),
               "cards": .array(shown), "window": .string(wc.id)]
     case "card":
+      let state = Self.signposter.isEnabled
+        ? Self.signposter.beginInterval("ui.card", id: Self.signposter.makeSignpostID(), "\(args.str("id"), privacy: .public) nodes=\(Self.nodeCount(args["tree"]))") : nil
+      defer { if let state { Self.signposter.endInterval("ui.card", state) } }
       let r = cards.set(args)
       HoverTracker.setNeedsRefresh(wc.window)
       return r
