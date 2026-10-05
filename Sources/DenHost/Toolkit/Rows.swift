@@ -932,6 +932,21 @@ final class RenameSupport {
 
 // MARK: - Tabs
 
+/// One palette held by many rows (a `Palette` is over a kilobyte; a row keeps a reference).
+@MainActor
+final class PaletteRef {
+  let palette: Palette
+  private init(_ p: Palette) { palette = p }
+  private static var last: PaletteRef?
+  /// The same object for an equal palette, so a sidebar's rows share one.
+  static func shared(_ p: Palette) -> PaletteRef {
+    if let l = last, l.palette == p { return l }
+    let n = PaletteRef(p)
+    last = n
+    return n
+  }
+}
+
 /// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, editing?, editText?, unread?,
 ///  media?: {paused, next, previous}}
 /// `unread`: an accent dot on the right (a live folder's new item).
@@ -939,34 +954,78 @@ final class RenameSupport {
 /// dropOnContent, rename {title} / renameCancel (while `editing`), media {action: toggle|next|previous} (the hover
 /// playback buttons of a tab with `media`)
 /// dropOnContent, rename {title} / renameCancel / pickIcon (the icon clicked, while `editing`)
+///
+/// Memory: a row only owns the views it shows. The drift slash, speaker, unread dot, close
+/// button and playback buttons are made the first time they are needed (a flag, or hover), so
+/// a plain row is three views (row, icon, label) instead of seventeen; the sidebar keeps a
+/// screenful of rows alive (docs/perf/baseline.md, "Discarded tabs, 2026-10-05").
 final class TabRowNode: HoverNode {
   let icon = IconView()
   let label = makeLabel()
-  let drift = makeLabel("/", size: Tokens.tabRowFontSize, weight: .medium)
-  lazy var audio = SpeakerBadge(badge: false) { [weak self] in self?.emit("mute") }
-  lazy var close = IconButton(symbol: "xmark", size: 22) { [weak self] in self?.emit("close") }
+  // Made on first use (`made(_:)`); `_x` is nil until then. Reading `x` makes the view (hidden).
+  private var _drift: NSTextField?, _audio: SpeakerBadge?, _dot: UnreadDot?, _close: IconButton?
+  private var _previous: IconButton?, _playPause: IconButton?, _next: IconButton?
+  /// The palette the row was last drawn with (a background window's own): a view made later,
+  /// on hover, takes it too. Rows drawn with the same palette share it (`PaletteRef`).
+  private var applied: PaletteRef?
+  var drift: NSTextField {
+    _drift ?? made(&_drift, makeLabel("/", size: Tokens.tabRowFontSize, weight: .medium)) { $0.textColor = $1.tertiaryText }
+  }
+  var audio: SpeakerBadge {
+    _audio ?? made(&_audio, SpeakerBadge(badge: false) { [weak self] in self?.emit("mute") }) { $0.apply($1) }
+  }
+  var dot: UnreadDot { _dot ?? made(&_dot, UnreadDot()) { $0.apply($1) } }
+  var close: IconButton {
+    _close ?? made(&_close, IconButton(symbol: "xmark", size: 22) { [weak self] in self?.emit("close") }) { [unowned self] b, p in
+      Self.style(b, p)
+      b.toolTip = self.node.str("closeTitle", "Close Tab")
+    }
+  }
   // Hover playback buttons for a tab with media (`media`): previous, play/pause, next.
-  lazy var previous = IconButton(symbol: "backward.fill", size: 22) { [weak self] in self?.emit("media", ["action": "previous"]) }
-  lazy var playPause = IconButton(symbol: "pause.fill", size: 22) { [weak self] in self?.emit("media", ["action": "toggle"]) }
-  lazy var next = IconButton(symbol: "forward.fill", size: 22) { [weak self] in self?.emit("media", ["action": "next"]) }
-  var mediaButtons: [IconButton] { [previous, playPause, next] }
+  var previous: IconButton {
+    _previous ?? made(&_previous, IconButton(symbol: "backward.fill", size: 22) { [weak self] in self?.emit("media", ["action": "previous"]) }) {
+      Self.style($0, $1)
+      $0.toolTip = "Previous Track"
+    }
+  }
+  var playPause: IconButton {
+    _playPause ?? made(&_playPause, IconButton(symbol: "pause.fill", size: 22) { [weak self] in self?.emit("media", ["action": "toggle"]) }) { Self.style($0, $1) }
+  }
+  var next: IconButton {
+    _next ?? made(&_next, IconButton(symbol: "forward.fill", size: 22) { [weak self] in self?.emit("media", ["action": "next"]) }) {
+      Self.style($0, $1)
+      $0.toolTip = "Next Track"
+    }
+  }
+  /// The playback buttons made so far.
+  var mediaButtons: [IconButton] { [_previous, _playPause, _next].compactMap { $0 } }
   lazy var rename = RenameSupport(owner: self, label: label)
-  let dot = UnreadDot()
   override var draggable: Bool { node.flag("draggable", true) && !rename.active }
   override class func fixedHeight(_ v: Value) -> CGFloat? { Tokens.tabRowHeight }
   override var busy: Bool { super.busy || rename.active }
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
-    [icon, drift, label, audio, dot, previous, playPause, next, close].forEach { addSubview($0) }
-    close.isHidden = true
-    dot.isHidden = true
-    mediaButtons.forEach { $0.isHidden = true }
+    [icon, label].forEach { addSubview($0) }
   }
   required init?(coder: NSCoder) { fatalError() }
+
+  /// Adds a view made on first use: hidden, themed with the row's palette, kept in `slot`.
+  private func made<V: NSView>(_ slot: inout V?, _ v: V, _ theme: (V, Palette) -> Void) -> V {
+    v.isHidden = true
+    theme(v, applied?.palette ?? r.palette)
+    addSubview(v)
+    slot = v
+    return v
+  }
+  private static func style(_ b: IconButton, _ p: Palette) {
+    b.apply(p)
+    b.hoverFill = p.controlHoverFill
+  }
+
   var indent: CGFloat { CGFloat(node.num("indent", 0)) * Tokens.folderIndent }
   override var fillRect: NSRect { bounds.insetBy(dx: 0, dy: (bounds.height - 36) / 2) }  // spec §1: 212x36 highlight
   override func hoverChanged() {
-    close.isHidden = !(hovering && node.flag("closable", true))
+    if hovering && node.flag("closable", true) { close.isHidden = false } else { _close?.isHidden = true }
     updateMediaButtons()
     needsLayout = true
   }
@@ -975,44 +1034,48 @@ final class TabRowNode: HoverNode {
   func updateMediaButtons() {
     let m = node["media"]
     let show = (hovering || forceMedia) && !m.isNull && !rename.active
+    guard show else {
+      mediaButtons.forEach { $0.isHidden = true }
+      return
+    }
     let paused = m.flag("paused")
     playPause.icon.spec = paused ? "sf:play.fill" : "sf:pause.fill"
     playPause.toolTip = paused ? "Play" : "Pause"
-    previous.toolTip = "Previous Track"
-    next.toolTip = "Next Track"
-    playPause.isHidden = !show
-    previous.isHidden = !show || !m.flag("previous")
-    next.isHidden = !show || !m.flag("next")
+    playPause.isHidden = false
+    if m.flag("previous") { previous.isHidden = false } else { _previous?.isHidden = true }
+    if m.flag("next") { next.isHidden = false } else { _next?.isHidden = true }
   }
   override func update(_ v: Value) {
     super.update(v)
     label.stringValue = v.str("title", "Untitled")
     icon.spec = v.str("icon")
     icon.fallbackLetter = v.str("title")
-    drift.isHidden = !v.flag("drift")
-    audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
-    audio.isHidden = !(v.flag("audio") || v.flag("muted"))
-    close.toolTip = v.str("closeTitle", "Close Tab")
-    dot.isHidden = !v.flag("unread")
+    if v.flag("drift") { drift.isHidden = false } else { _drift?.isHidden = true }
+    if v.flag("audio") || v.flag("muted") {
+      audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
+      audio.isHidden = false
+    } else if let a = _audio {
+      a.set(playing: false, muted: false)
+      a.isHidden = true
+    }
+    _close?.toolTip = v.str("closeTitle", "Close Tab")
+    if v.flag("unread") { dot.isHidden = false } else { _dot?.isHidden = true }
     apply(r.palette)
     rename.update(v)
     updateMediaButtons()
     needsLayout = true
   }
   override func apply(_ p: Palette) {
+    applied = PaletteRef.shared(p)
     label.textColor = p.text
     label.font = .systemFont(ofSize: Tokens.tabRowFontSize, weight: node.flag("selected") ? .medium : .regular)
     rename.editor?.textColor = p.text
-    drift.textColor = p.tertiaryText
+    _drift?.textColor = p.tertiaryText
     icon.tint = p.text
-    audio.apply(p)
-    dot.apply(p)
-    close.apply(p)
-    close.hoverFill = p.controlHoverFill
-    for b in mediaButtons {
-      b.apply(p)
-      b.hoverFill = p.controlHoverFill
-    }
+    _audio?.apply(p)
+    _dot?.apply(p)
+    if let c = _close { Self.style(c, p) }
+    for b in mediaButtons { Self.style(b, p) }
     needsDisplay = true
   }
   override func height(for w: CGFloat) -> CGFloat { Tokens.tabRowHeight }
@@ -1021,15 +1084,15 @@ final class TabRowNode: HoverNode {
     var x = Tokens.tabRowPaddingX + indent
     icon.frame = NSRect(x: x, y: (h - s) / 2, width: s, height: s)
     x += s + 8
-    if !drift.isHidden {
+    if let drift = _drift, !drift.isHidden {
       drift.sizeToFit()
       drift.frame = NSRect(x: x - 2, y: (h - 17) / 2, width: drift.frame.width, height: 17)
       x += drift.frame.width + 2
     }
     var right = bounds.width - 6
-    if !close.isHidden { close.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 26 }
-    if !audio.isHidden { audio.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 24 }
-    if !dot.isHidden { dot.frame = NSRect(x: right - 10, y: (h - 6) / 2, width: 6, height: 6); right -= 14 }
+    if let close = _close, !close.isHidden { close.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 26 }
+    if let audio = _audio, !audio.isHidden { audio.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 24 }
+    if let dot = _dot, !dot.isHidden { dot.frame = NSRect(x: right - 10, y: (h - 6) / 2, width: 6, height: 6); right -= 14 }
     for b in mediaButtons.reversed() where !b.isHidden { b.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 22 }
     label.frame = NSRect(x: x, y: (h - 18) / 2, width: max(0, right - x), height: 18)
     rename.layout()

@@ -133,7 +133,9 @@ final class StackNode: NodeView {
   var specs: [Value] = []
   var kids: [NodeView] { slots.compactMap { $0 } }
   static let margin: CGFloat = 200
-  static let dropMargin: CGFloat = 1000
+  /// Twice `margin`: a row made on the way in isn't dropped again until it is 200 pt further out.
+  /// (perf lab, 200 tabs in a 674 pt window: 1000 kept 32 rows alive, 400 keeps 17.)
+  static let dropMargin: CGFloat = 400
   private var scrollObserver: NSObjectProtocol?
 
   override func viewDidMoveToWindow() {
