@@ -1,3 +1,4 @@
+import DenTestSupport
 import Foundation
 import Testing
 
@@ -6,7 +7,7 @@ import Testing
 /// The parts of native messaging that need no extension: host names, manifest lookup and
 /// precedence, Chrome/Firefox access rules, arguments and message framing.
 @MainActor
-@Suite struct NativeMessagingUnitTests {
+@Suite(.watchdog) struct NativeMessagingUnitTests {
   func folder(_ manifests: [String: String]) throws -> URL {
     let d = FileManager.default.temporaryDirectory.appendingPathComponent("den-nmu-\(UUID())", isDirectory: true)
     try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)

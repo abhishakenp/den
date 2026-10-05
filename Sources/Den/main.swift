@@ -535,6 +535,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     if let runtime { runtime.app.open(urls) } else { pendingURLs += urls }
   }
 
+  /// A den item picked in Spotlight, or a page handed over from another device (Handoff).
+  func application(_ application: NSApplication, willContinueUserActivityWithType userActivityType: String) -> Bool { true }
+
+  func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                   restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+    guard let runtime else { return false }
+    return runtime.spotlight.continueActivity(userActivity) || runtime.handoff.continueActivity(userActivity)
+  }
+
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     if quittingForUpdate { return .terminateNow }
     return runtime?.app.shouldTerminate() ?? .terminateNow
