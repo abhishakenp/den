@@ -1150,6 +1150,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   /// Host-drawn dialogs for alert/confirm/prompt, HTTP sign-in and camera/mic (set by DenRuntime).
   public var prompts: WebPrompts?
+  /// Whether macOS lets den use location (Core Location; tests put a stand-in here).
+  public lazy var locationAccess: LocationAuthorizing = SystemLocation()
 
   public func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor () -> Void) {
     guard let prompts else { return completionHandler() }

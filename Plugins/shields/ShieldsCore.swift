@@ -623,12 +623,8 @@ final class ShieldsCore {
     }
     privacy.append(["type": "valueRow", "id": "shields.connection", "title": "Connection", "value": .string(conn.0), "tone": .string(conn.1)])
     let perms = env.call("sitepolicy", "permissions", ["host": .string(h)]).array ?? []
-    var permText = "Asks first"
-    if !perms.isEmpty {
-      let allowed = perms.filter { $0.b("allowed") }.count
-      permText = allowed == perms.count ? "Allowed" : (allowed == 0 ? "Blocked" : "Some allowed")
-    }
-    var permRow: Value = ["type": "valueRow", "id": "shields.permissions", "title": "Camera and microphone", "value": .string(permText)]
+    let permText = perms.isEmpty ? "Asks first" : Self.describePermissions(perms)
+    var permRow: Value = ["type": "valueRow", "id": "shields.permissions", "title": "Permissions", "value": .string(permText)]
     if !perms.isEmpty { permRow.put("buttons", [["id": "reset", "icon": "sf:arrow.counterclockwise"]]) }
     privacy.append(permRow)
     // One row per remembered answer: Allow / Block it, or Ask First (forgets it, the site asks
@@ -919,6 +915,8 @@ final class ShieldsCore {
       ["key": "autoplay", "type": "choice", "title": "Autoplay", "default": "sound", "subtitle": "Videos may start on their own only when muted.",
        "options": .array(Self.autoplayOptions.map { ["value": .string($0.0), "title": .string($0.1)] })],
       ["key": "sites", "type": "list", "title": "Sites with their own settings", "items": .array(siteItems), "empty": "None yet. Set them from the shield in the address pill."],
+      ["key": "permissions", "type": "list", "title": "Site permissions", "items": .array(permissionItems()),
+       "empty": "No site has asked yet. Camera, microphone, location and notifications are asked for per site."],
     ]
     if !httpItems.isEmpty { controls.append(["key": "http", "type": "list", "title": "Allowed without HTTPS", "items": .array(httpItems)]) }
     if uboInstalled {
@@ -934,10 +932,52 @@ final class ShieldsCore {
       if let a = v["autoplay"].string { autoplay = a }
       env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { setGlobal(v.s("key"), v["value"]) } }
       env.on("settings.action") { [self] v in if v.s("id") == Self.ns { settingsAction(v.s("key"), v.s("item")) } }
+      // Answers given to a site's prompt (or reset) show in the list at once.
+      env.on("sitepolicy.permissionsChanged") { [self] _ in registerSettings() }
+      env.on("notifications.changed") { [self] _ in registerSettings() }
     }
   }
 
   var settingsListening = false
+
+  static let permissionNames: [(String, String)] = [("camera", "Camera"), ("microphone", "Microphone"), ("location", "Location"), ("notifications", "Notifications")]
+
+  /// "Camera, Location allowed · Notifications blocked", from `sitepolicy.permissions`.
+  static func describePermissions(_ perms: [Value]) -> String {
+    var allowed: [String] = []
+    var blocked: [String] = []
+    for (kind, name) in permissionNames {
+      for p in perms where p.s("kind") == kind {
+        if p.b("allowed") { if !allowed.contains(name) { allowed.append(name) } } else if !blocked.contains(name) { blocked.append(name) }
+      }
+    }
+    var parts: [String] = []
+    if !allowed.isEmpty { parts.append(Self.join(allowed) + " allowed") }
+    if !blocked.isEmpty { parts.append(Self.join(blocked) + " blocked") }
+    return Self.join(parts, " · ")
+  }
+
+  static func join(_ l: [String], _ sep: String = ", ") -> String {
+    var out = ""
+    for (i, s) in l.enumerated() { out += (i > 0 ? sep : "") + s }
+    return out
+  }
+
+  /// Settings ▸ Shields ▸ Site permissions: every site with a remembered answer, one row each.
+  func permissionItems() -> [Value] {
+    let all = env.call("sitepolicy", "allPermissions").array ?? []
+    var origins: [String] = []
+    for p in all where !origins.contains(p.s("origin")) { origins.append(p.s("origin")) }
+    var items: [Value] = []
+    for o in origins {
+      let mine = all.filter { $0.s("origin") == o }
+      let session = mine.contains { !$0.b("kept") }
+      items.append(["id": .string(o), "title": .string(IDN.display(URLs.host(o))),
+                    "subtitle": .string(Self.describePermissions(mine) + (session ? " (camera, microphone and location until you quit)" : "")),
+                    "buttons": [["id": "remove", "title": "Remove"]]])
+    }
+    return items
+  }
 
   func settingsAction(_ key: String, _ item: String) {
     switch key {
@@ -947,6 +987,11 @@ final class ShieldsCore {
     case "http":
       httpAllowed.removeAll { $0 == item }
       save("httpAllowed", .array(httpAllowed.map { .string($0) }))
+    case "permissions":
+      for (kind, _) in Self.permissionNames { env.call("sitepolicy", "setPermission", ["origin": .string(item), "kind": .string(kind), "allowed": .null]) }
+      registerSettings()
+      if panelOpen { renderPanel() }
+      return
     default: return
     }
     apply()
