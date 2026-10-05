@@ -184,10 +184,13 @@ public final class UpdatesService: HostService {
         try fm.copyItem(at: dylib, to: prev)
         if fm.fileExists(atPath: json.path) { try fm.copyItem(at: json, to: prevJSON) }
       }
-      let m: [String: Any] = ["id": id, "version": meta.str("version"), "hostAPI": meta["hostAPI"].int.map { Int($0) } ?? 0,
+      var m: [String: Any] = ["id": id, "version": meta.str("version"), "hostAPI": meta["hostAPI"].int.map { Int($0) } ?? 0,
                               "sha256": meta.str("sha256"), "source": meta.str("source", "release"), "installedAt": ISO8601DateFormatter().string(from: Date()),
                               // Same sidecar the loader reads plugin permissions from.
                               "permissions": meta.list("permissions").compactMap(\.string)]
+      // When it loads and what it registers before (LazyPlugins.swift), from the same plugin.json.
+      if let l = meta["launch"].string { m["launch"] = l }
+      if !meta["activation"].isNull { m["activation"] = ValueJSON.any(meta["activation"]) }
       try JSONSerialization.data(withJSONObject: m, options: [.sortedKeys]).write(to: json, options: .atomic)
       let tmp = dir.appendingPathComponent(".\(id).dylib.tmp")
       try data.write(to: tmp)

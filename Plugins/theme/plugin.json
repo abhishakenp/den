@@ -1,0 +1,15 @@
+{
+  "permissions": [],
+  "launch": "lazy",
+  "activation": {
+    "events": [
+      "spaces.editTheme",
+      "commands.opened",
+      {"event": "commands.run", "match": {"id": "theme.*"}}
+    ],
+    "commands": [
+      {"id": "theme.edit", "title": "Theme…", "icon": "sf:paintpalette",
+       "keywords": ["theme", "color", "colour", "gradient", "appearance", "dark mode", "light mode"]}
+    ]
+  }
+}
