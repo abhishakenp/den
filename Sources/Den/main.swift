@@ -92,6 +92,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       ?? (args.contains("--demo") ? FileManager.default.temporaryDirectory.appendingPathComponent("den-demo-\(UUID().uuidString)") : StorageService.defaultRoot)
     trace("setUp")
     runtime = DenRuntime(storageRoot: root, crashMarkerPath: PluginHost.defaultCrashMarkerPath)
+    // Shortcuts, Siri and Spotlight actions act on this runtime (DenHost/Intents).
+    DenIntents.runtime = runtime
     // Unpacked development extensions (docs/den-home.md). Only a path: nothing is read until the first web view.
     runtime.extensions.homeFolder = home?.extensions
     runtime.extensions.logFile = home.map { DenLog(url: $0.logs.appendingPathComponent("extensions.log")) }
@@ -186,6 +188,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
       self?.loadDeferredPlugins()
       self?.runtime.content.releaseWebViews()
+    }
+    // App Shortcut phrases with a space in them ("Switch to Work in den"). The system only talks
+    // to apps signed with a Team ID; with den's local signature it would refuse (and log it).
+    if Signing.teamIdentifier != nil, !invisible {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 5) { DenShortcuts.updateAppShortcutParameters() }
     }
     // The window server reports the window visible -> first frame is on screen. (In the
     // background it may stay covered, so don't wait for that.)
