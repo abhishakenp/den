@@ -1817,8 +1817,16 @@ final class TabsCore {
                          "audio": .bool(t.audio), "muted": .bool(t.muted), "dropInto": true,
                          "hoverIntent": .int(Self.tileCardDelayMs)]
       if !badges.isEmpty, let b = badges[URLs.host(t.url)] { tile.put("badge", .string(b)) }
+      if let m = mediaNode(t) { tile.put("media", m) }
       return tile
     })]])
+  }
+
+  /// A row's or tile's hover playback buttons: `{paused, next, previous}` for a tab with media.
+  func mediaNode(_ t: Tab) -> Value? {
+    guard let m = t.media else { return nil }
+    let acts = m.a("acts")
+    return ["paused": .bool(m.b("paused")), "next": .bool(acts.contains("nexttrack")), "previous": .bool(acts.contains("previoustrack"))]
   }
 
   func row(_ id: String, _ sid: String, box: Box) -> Value {
@@ -1828,10 +1836,7 @@ final class TabsCore {
                     "closeTitle": .string(kind(of: box) == "today" ? "Archive Tab" : "Close Tab"),
                     "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1",
                     "hoverIntent": .int(Self.rowCardDelayMs)]
-    if let m = t.media {
-      let acts = m.a("acts")
-      r.put("media", ["paused": .bool(m.b("paused")), "next": .bool(acts.contains("nexttrack")), "previous": .bool(acts.contains("previoustrack"))])
-    }
+    if let m = mediaNode(t) { r.put("media", m) }
     if editing == id { r.put("editing", true) }
     if multi.contains(id) { r.put("highlighted", true) }
     return r

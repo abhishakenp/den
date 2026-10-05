@@ -164,4 +164,28 @@ struct MediaDockTests {
     emit(h, id, nil)
     #expect(row()?["media"].isNull == true)
   }
+
+  /// A favorite tile and a pinned row playing media get the same hover playback as a Today row.
+  @Test func favoriteAndPinnedGetHoverPlayback() {
+    let h = Harness()
+    h.startTabs()
+    guard let fav = h.ids("favorites").first, let tab = h.ids("today").first else { Issue.record("no favorites / tabs"); return }
+    _ = h.tabs("pin", ["id": .string(tab)])
+    #expect(h.ids("pinned").contains(tab))
+    func node(_ slot: String, _ id: String) -> Value {
+      func find(_ v: Value) -> Value? {
+        if v.str("id") == id { return v }
+        for c in v.list("children") { if let r = find(c) { return r } }
+        return nil
+      }
+      return find(h.tree(slot, 0)) ?? .null
+    }
+    #expect(node("sidebar.favorites", fav)["type"] == "favoriteTile" && node("sidebar.favorites", fav)["media"].isNull)
+    emit(h, fav, now("Song", next: true))
+    emit(h, tab, now("Talk", paused: true))
+    #expect(node("sidebar.favorites", fav)["media"] == ["paused": false, "next": true, "previous": true])
+    #expect(node("sidebar.pinned", tab)["media"] == ["paused": true, "next": false, "previous": false])
+    emit(h, fav, nil)
+    #expect(node("sidebar.favorites", fav)["media"].isNull)
+  }
 }

@@ -20,7 +20,7 @@ When a tab you've left is playing music or a video with sound, a small player si
 
 ## Hover controls on a tab
 
-Point at a tab that's playing (or paused) something and its row shows **play/pause** and, when the site has them, **previous** and **next** buttons, next to the speaker.
+Point at a tab that's playing (or paused) something and its row shows **play/pause** and, when the site has them, **previous** and **next** buttons, next to the speaker. A favorite does the same: pointing at its tile swaps the icon for **play/pause**, with **previous** and **next** too when the tile is wide enough (fewer favorites in its row, or a wider sidebar).
 
 ## Tab audio and mute
 

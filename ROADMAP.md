@@ -176,7 +176,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ Cards for GitHub issues, Google Calendar (Join button), Gmail, Slack, and a page snapshot for anything else
 - ✅ Inline "Connect GitHub" button on cards that need a connection (private repos), filling in live
 - ✅ ⇧-hover link previews on any page: an OpenGraph card from the target's `<head>`, cached, zero cost until a deliberate hover; rich providers reused; Open in Peek / Split / Copy Link; stays out of the way where a site has its own previews; plain hover as an option
-- ⏳ Hover play/pause/skip for any tab playing audio
+- ✅ Hover play/pause/skip for any tab playing audio: Today and pinned rows, favorite tiles (play/pause in the icon's place; previous/next when the tile is wide enough)
 
 ### Getting around
 
@@ -203,7 +203,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ Picture in picture is the system's (WebKit's native PiP, the window Safari uses: on top of every app, every Space and full-screen apps, stash, resize, the system's play/pause, skip, close and return-to-tab). den's custom mini player is gone. ⌥⌘P / View ▸ Picture in Picture / the command bar toggle it; the now-playing dock, the tab speaker, ⌃⌘P, media keys and Control Center control the video while it floats ([guide](docs/guide/media.md#picture-in-picture))
 - ⏳ Around the native window: per-tab volume and playback speed from den (the system window has neither)
 - ✅ Now-playing dock at the bottom of the sidebar, Control Center and media keys ([guide](docs/guide/media.md#now-playing-at-the-bottom-of-the-sidebar)). ⏳ Verify on a real Mac how macOS picks between den's Now Playing entry and WebKit's own (CI has no media keys)
-- ✅ Hover play/pause/skip on the row of any tab playing (or paused) media
+- ✅ Hover play/pause/skip on the row or favorite tile of any tab playing (or paused) media
 - ✅ Web panels (optional `panels` plugin, ⌃⌘S; [guide](docs/guide/media.md#web-panels)). ⏳ Drag to resize a panel
 - ✅ AutoPiP like Safari's video viewer, on by default: leaving a playing video's tab or space, or minimizing, hiding or covering den (or a full-screen video's Space switched away) puts it in native picture in picture; coming back takes it out
 - ✅ Tabs playing audio are never archived or unloaded, and updates never relaunch during playback
