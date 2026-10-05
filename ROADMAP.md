@@ -128,9 +128,9 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - 🟡 Icon and title fallbacks: never "data:" or blank
   - ✅ sharp letter/globe fallback favicons
   - 🟡 title fallbacks and the rest of the sweep
-- 🟡 Tab mute: click the speaker icon, badge on favorites, "Mute Tab" in the menu
+- ✅ Tab mute: click the speaker icon, badge on favorites, "Mute Tab" in the menu
   - ✅ speaker icon on tabs and favorites playing audio
-  - 🟡 muting
+  - ✅ muting: the speaker on rows and tiles, "Mute Tab" / "Unmute Tab" in the tab menu, on the hover card, in the now-playing dock and in the command bar
 - ✅ Faster tab close: the next tab goes on screen first, one render, one snapshot
 - ✅ Unloaded tabs show their icon dimmed (rows and favorite tiles), brightening once the page loads
 - ✅ Tab menu shows shortcuts and ⌥ alternates (Copy Link as Markdown, Close Other Tabs, Close Tabs Above), Close Tabs Below
