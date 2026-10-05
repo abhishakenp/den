@@ -11,7 +11,8 @@ import os
 //                                  load10, load10discard, split, split3, command, commandEdit, commandActions, dialog, peek,
 //                                  littleArcLink, littleArcCmdO (prints scenario.cmdO … ok=true|false, exits), rename, themeLive,
 //                                  blank (no web view at all: den's own footprint), discard, pip, pipAway, pipInline,
-//                                  pipURL, nowPlaying, webPanel
+//                                  pipURL, nowPlaying, webPanel, importCard, importDialog, importArc,
+//                                  importSafariAccess, importE2E (prints scenario.import … ok=true|false, exits)
 //                                  (discard and pip print a line per check and exit 0/1)
 //                                  (split*, command*, dialog, peek and littleArcLink need those plugins)
 //                                  page: opens --url <url> as the selected tab (dark mode, sign-in and vault checks)
@@ -506,6 +507,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // The tips plugin's tour card, its second step, and a tip (limits ignored, nothing recorded).
       let preview: Value = s == "tourCard" ? ["key": "tour"] : s == "tourStep" ? ["key": "step", "step": 1] : ["key": "reopenClosed"]
       DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.plugins.emit("tips.preview", preview) }
+    case "importCard", "importDialog", "importArc", "importSafariAccess", "importE2E":
+      // The importer plugin on a synthetic home (DenHost/Scenarios/ImportScenarios.swift).
+      #if Scenarios
+      ImportScenarios.apply(s, runtime: rt)
+      #endif
     case "dialog": rt.plugins.emit("app.quitRequested")
     case "toast": DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { rt.call("tabs", "clearToday") }
     case "peek": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { rt.call("peek", "open", ["url": "https://www.swift.org"]) }

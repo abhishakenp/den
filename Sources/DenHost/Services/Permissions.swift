@@ -13,6 +13,8 @@ import Foundation
 /// - `net:<domain>`: `net.fetch` to `<domain>` and its subdomains, without cookies.
 /// - `pages:<domain>` (or `pages:*`): run the plugin's own scripts in pages of `<domain>` (every
 ///   page with `*`) through `webviews.inject`, in the plugin's isolated content world.
+/// - `files:<path>` (`~/…` or absolute): read that file or anything under that folder through the
+///   `files` service (importers).
 ///
 /// A plugin's other sidecar is its resource folder, `<id>.resources/` next to the dylib
 /// (bundled plugins: `Contents/Resources/plugin-resources/<id>/`, from `Plugins/<id>/resources/`): files `webviews.inject` reads by name.
@@ -53,10 +55,16 @@ public final class Permissions {
     return valid
   }
 
-  /// "session:slack.com" -> ("session", "slack.com").
+  /// "session:slack.com" -> ("session", "slack.com"); "files:~/Library/Safari" -> ("files", "~/Library/Safari")
+  /// (paths keep their case and must start with `~/` or `/`).
   nonisolated static func parse(_ p: String) -> (kind: String, domain: String)? {
     let parts = p.split(separator: ":", maxSplits: 1).map(String.init)
-    guard parts.count == 2, ["session", "net", "pages"].contains(parts[0]), !parts[1].isEmpty else { return nil }
+    guard parts.count == 2, ["session", "net", "pages", "files"].contains(parts[0]), !parts[1].isEmpty else { return nil }
+    if parts[0] == "files" {
+      let path = parts[1]
+      guard path.hasPrefix("~/") || path.hasPrefix("/"), !path.split(separator: "/").contains("..") else { return nil }
+      return ("files", path)
+    }
     // Cookies are never granted for every site (`net:*` and `pages:*` are).
     if parts[0] == "session" && parts[1] == "*" { return nil }
     return (parts[0], parts[1].lowercased())
@@ -81,7 +89,7 @@ public final class Permissions {
   /// read the `<head>` of whatever link the user deliberately hovers). `session:*` isn't a thing.
   public func allowsNet(_ plugin: String, host: String) -> Bool {
     list(plugin).contains { p in
-      guard let (k, d) = Self.parse(p), k != "pages" else { return false }
+      guard let (k, d) = Self.parse(p), k == "session" || k == "net" else { return false }
       return Self.covers(domain: d, host: host)
     }
   }
@@ -92,6 +100,27 @@ public final class Permissions {
       guard let (k, d) = Self.parse(p), k == "pages" || k == "session" else { return false }
       return d == "*" || Self.covers(domain: d, host: host)
     }
+  }
+
+  /// `files` access to `path` (`~/…` or absolute): inside a granted `files:<prefix>`. Both sides are
+  /// expanded against `home`, standardized and symlink-resolved, so `..` and links can't escape.
+  public func allowsFile(_ plugin: String, path: String, home: URL) -> Bool {
+    guard let target = Self.resolve(path, home: home) else { return false }
+    return list(plugin).contains { p in
+      guard let (k, prefix) = Self.parse(p), k == "files", let root = Self.resolve(prefix, home: home) else { return false }
+      return target == root || target.hasPrefix(root.hasSuffix("/") ? root : root + "/")
+    }
+  }
+
+  /// `~/x` against `home`, or an absolute path; standardized and with symlinks resolved. nil for
+  /// relative paths and any `..` component.
+  nonisolated static func resolve(_ path: String, home: URL) -> String? {
+    guard !path.split(separator: "/").contains("..") else { return nil }
+    let url: URL
+    if path == "~" { url = home } else if path.hasPrefix("~/") { url = home.appendingPathComponent(String(path.dropFirst(2))) } else if path.hasPrefix("/") {
+      url = URL(fileURLWithPath: path)
+    } else { return nil }
+    return url.standardizedFileURL.resolvingSymlinksInPath().path
   }
 
   /// A file in the plugin's resource folder: plain names and subfolders only ("vendor/x.js").

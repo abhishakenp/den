@@ -1,0 +1,249 @@
+{
+  "sidebar": {
+    "containers": [
+      { "global": {} },
+      {
+        "spaces": [
+          "S-PERSONAL",
+          {
+            "id": "S-PERSONAL",
+            "title": "Personal",
+            "profile": { "default": true },
+            "newContainerIDs": [{ "pinned": {} }, "C-PERSONAL-PINNED", { "unpinned": { "_0": { "shared": {} } } }, "C-PERSONAL-TODAY"],
+            "containerIDs": ["pinned", "C-PERSONAL-PINNED", "unpinned", "C-PERSONAL-TODAY"],
+            "customInfo": {
+              "iconType": { "emoji_v2": "🏠", "emoji": 127968 },
+              "windowTheme": {
+                "background": {
+                  "single": {
+                    "_0": {
+                      "style": {
+                        "color": {
+                          "_0": {
+                            "blendedGradient": {
+                              "baseColors": [
+                                { "red": 0.9647, "green": 0.6196, "blue": 0.4784, "alpha": 1, "colorSpace": "extendedSRGB" },
+                                { "red": 0.9804, "green": 0.8314, "blue": 0.5529, "alpha": 1, "colorSpace": "extendedSRGB" }
+                              ],
+                              "overlayColors": [],
+                              "wheel": { "brightness": 0.62, "angle": 0.2 }
+                            }
+                          }
+                        }
+                      },
+                      "contentOverBackgroundOpacity": 0.9
+                    }
+                  }
+                },
+                "noiseFactor": 0.25,
+                "primaryColorPalette": {
+                  "midTone": { "red": 0.71, "green": 0.33, "blue": 0.22, "alpha": 1, "colorSpace": "extendedSRGB" }
+                }
+              }
+            }
+          },
+          "S-WORK",
+          {
+            "id": "S-WORK",
+            "title": "Work",
+            "profile": { "default": true },
+            "newContainerIDs": [{ "pinned": {} }, "C-WORK-PINNED", { "unpinned": { "_0": { "shared": {} } } }, "C-WORK-TODAY"],
+            "customInfo": {
+              "iconType": { "emoji_v2": "💼" },
+              "windowTheme": {
+                "background": {
+                  "single": {
+                    "_0": {
+                      "style": {
+                        "color": {
+                          "_0": {
+                            "blendedSingleColor": {
+                              "_0": { "color": { "red": 0.2196, "green": 0.3412, "blue": 0.8902, "alpha": 1, "colorSpace": "extendedSRGB" } }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "noiseFactor": 0
+              }
+            }
+          },
+          "S-RESEARCH",
+          {
+            "id": "S-RESEARCH",
+            "title": "Research",
+            "profile": { "default": true },
+            "containerIDs": ["pinned", "C-RESEARCH-PINNED", "unpinned", "C-RESEARCH-TODAY"],
+            "customInfo": {
+              "iconType": { "emoji": 128300 },
+              "windowTheme": {
+                "background": {
+                  "single": {
+                    "_0": {
+                      "style": {
+                        "color": {
+                          "_0": {
+                            "blendedGradient": {
+                              "baseColors": [
+                                { "red": 0.3725, "green": 0.8118, "blue": 0.6588, "alpha": 1, "colorSpace": "extendedSRGB" },
+                                { "red": 0.2353, "green": 0.5294, "blue": 0.8235, "alpha": 1, "colorSpace": "extendedSRGB" }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "S-SIDE",
+          {
+            "id": "S-SIDE",
+            "title": "Side Project",
+            "profile": { "custom": { "_0": { "directoryBasename": "Profile 1", "machineID": "6E1B5C2A" } } },
+            "newContainerIDs": [{ "pinned": {} }, "C-SIDE-PINNED", { "unpinned": { "_0": { "shared": {} } } }, "C-SIDE-TODAY"],
+            "customInfo": {
+              "iconType": { "emoji_v2": "🚀" },
+              "windowTheme": {
+                "background": {
+                  "single": {
+                    "_0": {
+                      "style": {
+                        "color": {
+                          "_0": {
+                            "blendedGradient": {
+                              "baseColors": [
+                                { "red": 0.5451, "green": 0.3608, "blue": 0.9647, "alpha": 1, "colorSpace": "extendedSRGB" },
+                                { "red": 0.9255, "green": 0.2824, "blue": 0.6, "alpha": 1, "colorSpace": "extendedSRGB" },
+                                { "red": 0.9765, "green": 0.451, "blue": 0.0863, "alpha": 1, "colorSpace": "extendedSRGB" },
+                                { "red": 0.1, "green": 0.1, "blue": 0.1, "alpha": 1, "colorSpace": "extendedSRGB" }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "noiseFactor": 0.6
+              }
+            }
+          }
+        ],
+        "items": [
+          "C-PERSONAL-PINNED",
+          { "id": "C-PERSONAL-PINNED", "parentID": null, "title": null, "childrenIds": ["T-YTMUSIC", "F-READING", "T-JOURNAL", "SPLIT-TRIP"], "data": { "itemContainer": { "containerType": { "spaceItems": { "_0": "S-PERSONAL" } } } } },
+          "T-YTMUSIC",
+          { "id": "T-YTMUSIC", "parentID": "C-PERSONAL-PINNED", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://music.youtube.com/", "savedTitle": "YouTube Music", "timeLastActiveAt": 781221301.2 } } },
+          "F-READING",
+          { "id": "F-READING", "parentID": "C-PERSONAL-PINNED", "title": "Reading", "childrenIds": ["T-NYT", "T-VERGE", "F-LONGREADS"], "data": { "list": {} } },
+          "T-NYT",
+          { "id": "T-NYT", "parentID": "F-READING", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://www.nytimes.com/", "savedTitle": "The New York Times - Breaking News" } } },
+          "T-VERGE",
+          { "id": "T-VERGE", "parentID": "F-READING", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://www.theverge.com/", "savedTitle": "The Verge" } } },
+          "F-LONGREADS",
+          { "id": "F-LONGREADS", "parentID": "F-READING", "title": "Longreads", "childrenIds": ["T-AEON", "T-LONGFORM"], "data": { "list": {} } },
+          "T-AEON",
+          { "id": "T-AEON", "parentID": "F-LONGREADS", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://aeon.co/essays/what-is-it-like-to-be-a-bat", "savedTitle": "What is it like to be a bat? | Aeon Essays" } } },
+          "T-LONGFORM",
+          { "id": "T-LONGFORM", "parentID": "F-LONGREADS", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://longform.org/best", "savedTitle": "Longform: Best of" } } },
+          "T-JOURNAL",
+          { "id": "T-JOURNAL", "parentID": "C-PERSONAL-PINNED", "title": "Journal", "childrenIds": [], "data": { "tab": { "savedURL": "https://www.notion.so/Journal-1b2c3d4e5f60718293a4b5c6d7e8f901", "savedTitle": "Journal 2026 | Notion" } } },
+          "SPLIT-TRIP",
+          { "id": "SPLIT-TRIP", "parentID": "C-PERSONAL-PINNED", "title": null, "childrenIds": ["T-MAPS", "T-AIRBNB"], "data": { "splitView": { "layout": "horizontal" } } },
+          "T-MAPS",
+          { "id": "T-MAPS", "parentID": "SPLIT-TRIP", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://www.google.com/maps/place/Lisbon", "savedTitle": "Lisbon - Google Maps" } } },
+          "T-AIRBNB",
+          { "id": "T-AIRBNB", "parentID": "SPLIT-TRIP", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://www.airbnb.com/s/Lisbon/homes", "savedTitle": "Lisbon · Stays · Airbnb" } } },
+          "C-PERSONAL-TODAY",
+          { "id": "C-PERSONAL-TODAY", "parentID": null, "title": null, "childrenIds": ["T-HN", "T-SETTINGS"], "data": { "itemContainer": { "containerType": { "spaceItems": { "_0": "S-PERSONAL" } } } } },
+          "T-HN",
+          { "id": "T-HN", "parentID": "C-PERSONAL-TODAY", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://news.ycombinator.com/", "savedTitle": "Hacker News" } } },
+          "T-SETTINGS",
+          { "id": "T-SETTINGS", "parentID": "C-PERSONAL-TODAY", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "arc://settings", "savedTitle": "Settings" } } },
+
+          "C-WORK-PINNED",
+          { "id": "C-WORK-PINNED", "parentID": null, "title": null, "childrenIds": ["T-LINEAR", "T-GHPRS", "F-DOCS", "F-DASH"], "data": { "itemContainer": { "containerType": { "spaceItems": { "_0": "S-WORK" } } } } },
+          "T-LINEAR",
+          { "id": "T-LINEAR", "parentID": "C-WORK-PINNED", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://linear.app/acme/view/my-issues", "savedTitle": "My issues · Linear" } } },
+          "T-GHPRS",
+          { "id": "T-GHPRS", "parentID": "C-WORK-PINNED", "title": "Reviews", "childrenIds": [], "data": { "tab": { "savedURL": "https://github.com/pulls/review-requested", "savedTitle": "Review requests" } } },
+          "F-DOCS",
+          { "id": "F-DOCS", "parentID": "C-WORK-PINNED", "title": "Docs", "childrenIds": ["T-WIKI", "T-FIGMA"], "data": { "list": {} } },
+          "T-WIKI",
+          { "id": "T-WIKI", "parentID": "F-DOCS", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://www.notion.so/acme/Engineering-Wiki-0a1b2c3d", "savedTitle": "Engineering Wiki" } } },
+          "T-FIGMA",
+          { "id": "T-FIGMA", "parentID": "F-DOCS", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://www.figma.com/files/team/1234/Design-System", "savedTitle": "Design System – Figma" } } },
+          "F-DASH",
+          { "id": "F-DASH", "parentID": "C-WORK-PINNED", "title": "Dashboards", "childrenIds": ["T-GRAFANA", "T-DATADOG", "F-INCIDENTS"], "data": { "list": {} } },
+          "T-GRAFANA",
+          { "id": "T-GRAFANA", "parentID": "F-DASH", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://grafana.acme.dev/d/api-latency", "savedTitle": "API latency - Grafana" } } },
+          "T-DATADOG",
+          { "id": "T-DATADOG", "parentID": "F-DASH", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://app.datadoghq.com/dashboard/abc-123", "savedTitle": "Service overview | Datadog" } } },
+          "F-INCIDENTS",
+          { "id": "F-INCIDENTS", "parentID": "F-DASH", "title": "Incidents", "childrenIds": ["T-PAGER"], "data": { "list": {} } },
+          "T-PAGER",
+          { "id": "T-PAGER", "parentID": "F-INCIDENTS", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://acme.pagerduty.com/incidents", "savedTitle": "Incidents - PagerDuty" } } },
+          "C-WORK-TODAY",
+          { "id": "C-WORK-TODAY", "parentID": null, "title": null, "childrenIds": ["T-GDOC"], "data": { "itemContainer": { "containerType": { "spaceItems": { "_0": "S-WORK" } } } } },
+          "T-GDOC",
+          { "id": "T-GDOC", "parentID": "C-WORK-TODAY", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://docs.google.com/document/d/1AbCdEf/edit", "savedTitle": "Q4 planning - Google Docs" } } },
+
+          "C-RESEARCH-PINNED",
+          { "id": "C-RESEARCH-PINNED", "parentID": null, "title": null, "childrenIds": ["T-ARXIV", "T-SCHOLAR", "F-PAPERS"], "data": { "itemContainer": { "containerType": { "spaceItems": { "_0": "S-RESEARCH" } } } } },
+          "T-ARXIV",
+          { "id": "T-ARXIV", "parentID": "C-RESEARCH-PINNED", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://arxiv.org/list/cs.LG/recent", "savedTitle": "Machine Learning authors/titles recent" } } },
+          "T-SCHOLAR",
+          { "id": "T-SCHOLAR", "parentID": "C-RESEARCH-PINNED", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://scholar.google.com/", "savedTitle": "Google Scholar" } } },
+          "F-PAPERS",
+          { "id": "F-PAPERS", "parentID": "C-RESEARCH-PINNED", "title": "Papers", "childrenIds": ["T-PAPER1", "T-PAPER2", "T-PAPER3"], "data": { "list": {} } },
+          "T-PAPER1",
+          { "id": "T-PAPER1", "parentID": "F-PAPERS", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://arxiv.org/abs/1706.03762", "savedTitle": "Attention Is All You Need" } } },
+          "T-PAPER2",
+          { "id": "T-PAPER2", "parentID": "F-PAPERS", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://arxiv.org/abs/2005.14165", "savedTitle": "Language Models are Few-Shot Learners" } } },
+          "T-PAPER3",
+          { "id": "T-PAPER3", "parentID": "F-PAPERS", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://arxiv.org/abs/2106.09685", "savedTitle": "LoRA: Low-Rank Adaptation" } } },
+          "C-RESEARCH-TODAY",
+          { "id": "C-RESEARCH-TODAY", "parentID": null, "title": null, "childrenIds": [], "data": { "itemContainer": { "containerType": { "spaceItems": { "_0": "S-RESEARCH" } } } } },
+
+          "C-SIDE-PINNED",
+          { "id": "C-SIDE-PINNED", "parentID": null, "title": null, "childrenIds": ["T-REPO", "T-VERCEL", "T-LOCAL"], "data": { "itemContainer": { "containerType": { "spaceItems": { "_0": "S-SIDE" } } } } },
+          "T-REPO",
+          { "id": "T-REPO", "parentID": "C-SIDE-PINNED", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://github.com/jdoe/tiny-garden", "savedTitle": "jdoe/tiny-garden" } } },
+          "T-VERCEL",
+          { "id": "T-VERCEL", "parentID": "C-SIDE-PINNED", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://vercel.com/jdoe/tiny-garden", "savedTitle": "tiny-garden – Overview – Vercel" } } },
+          "T-LOCAL",
+          { "id": "T-LOCAL", "parentID": "C-SIDE-PINNED", "title": "Local dev", "childrenIds": [], "data": { "tab": { "savedURL": "http://localhost:3000/", "savedTitle": "Tiny Garden" } } },
+          "C-SIDE-TODAY",
+          { "id": "C-SIDE-TODAY", "parentID": null, "title": null, "childrenIds": [], "data": { "itemContainer": { "containerType": { "spaceItems": { "_0": "S-SIDE" } } } } },
+
+          "C-TOPAPPS-DEFAULT",
+          { "id": "C-TOPAPPS-DEFAULT", "parentID": null, "title": null, "childrenIds": ["T-GMAIL", "T-GCAL", "T-SLACK", "T-SPOTIFY"], "data": { "itemContainer": { "containerType": { "topApps": { "_0": { "default": true } } } } } },
+          "T-GMAIL",
+          { "id": "T-GMAIL", "parentID": "C-TOPAPPS-DEFAULT", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://mail.google.com/mail/u/0/#inbox", "savedTitle": "Inbox (3) - jdoe@gmail.com - Gmail" } } },
+          "T-GCAL",
+          { "id": "T-GCAL", "parentID": "C-TOPAPPS-DEFAULT", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://calendar.google.com/calendar/u/0/r", "savedTitle": "Google Calendar" } } },
+          "T-SLACK",
+          { "id": "T-SLACK", "parentID": "C-TOPAPPS-DEFAULT", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://app.slack.com/client/T0123/C0456", "savedTitle": "general (Channel) - Acme - Slack" } } },
+          "T-SPOTIFY",
+          { "id": "T-SPOTIFY", "parentID": "C-TOPAPPS-DEFAULT", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://open.spotify.com/", "savedTitle": "Spotify – Web Player" } } },
+          "C-TOPAPPS-P1",
+          { "id": "C-TOPAPPS-P1", "parentID": null, "title": null, "childrenIds": ["T-GMAIL-P1", "T-DISCORD"], "data": { "itemContainer": { "containerType": { "topApps": { "_0": { "custom": { "_0": { "directoryBasename": "Profile 1" } } } } } } } },
+          "T-GMAIL-P1",
+          { "id": "T-GMAIL-P1", "parentID": "C-TOPAPPS-P1", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://mail.google.com/mail/u/0/#inbox", "savedTitle": "Gmail" } } },
+          "T-DISCORD",
+          { "id": "T-DISCORD", "parentID": "C-TOPAPPS-P1", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://discord.com/channels/@me", "savedTitle": "Discord" } } },
+
+          "T-ORPHAN",
+          { "id": "T-ORPHAN", "parentID": "GONE", "title": null, "childrenIds": [], "data": { "tab": { "savedURL": "https://example.com/orphan", "savedTitle": "An archived tab no container lists" } } }
+        ],
+        "topAppsContainerIDs": [{ "default": true }, "C-TOPAPPS-DEFAULT", { "custom": { "_0": { "directoryBasename": "Profile 1", "machineID": "6E1B5C2A" } } }, "C-TOPAPPS-P1"]
+      }
+    ]
+  },
+  "version": 1
+}

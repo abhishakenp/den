@@ -248,6 +248,10 @@ final class TabsCore {
   var privates: [String: PrivateWindow] = [:]
   var ptabs: [String: Tab] = [:]
   var nextPrivate: Int64 = 1
+  /// Imported items (TabsImport.swift): importer key -> tab or folder id, and what each import
+  /// batch created. Storage keys `imported` / `importBatches`, read on the first import only.
+  var importKeys: [String: String]?
+  var importBatches: [String: [String]]?
 
   init(env: PluginEnv) { self.env = env }
 
@@ -683,6 +687,11 @@ final class TabsCore {
     case "restore":
       guard let id = restore(args.s("id")) else { return .err("tabs: no archived tab '" + args.s("id") + "'") }
       return ["id": .string(id)]
+    case "importItems":
+      return importItems(args)
+    case "removeImported":
+      guard !args.s("batch").isEmpty else { return .err("tabs: removeImported needs a batch") }
+      return removeImported(args.s("batch"))
     case "createFolder":
       let tabIds = args.a("tabIds").compactMap { $0.string }.filter { tabs[$0] != nil }
       return ["id": .string(createFolder(space: args.sOpt("spaceId") ?? currentSpace, title: args.sOpt("title"), tabIds: tabIds))]

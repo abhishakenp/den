@@ -19,6 +19,9 @@ import WebKit
 ///   copy {account, request?}      -> {request}. Touch ID, then the password on the pasteboard (cleared after 60 s)
 ///   delete {account}              -> ok, while unlocked
 ///   suggest {webview, items: [{id, title, subtitle?, icon?}]}  -> ok. A small list under the focused field; [] hides
+///   importFile {columns: {origin, username, password: [header name]}, request?}  -> {request}. An open panel for a
+///                                 CSV export, Touch ID, then every new login saved (existing origin+username kept);
+///                                 `vault.result {request, method: importFile, ok, added, existing, skipped, error?}`
 ///
 /// Events (never carrying a password):
 ///   vault.focus {webview, origin, field: username|password, signup, accounts: [{id, username}]}
@@ -48,6 +51,8 @@ public final class VaultService: HostService {
   /// something else was copied since (the pasteboard's change count moved). Tests use their own.
   public var pasteboard: NSPasteboard = .general
   public var clipboardClearSeconds: TimeInterval = 60
+  /// Asks for the CSV `importFile` reads (an open panel; tests return a fixture).
+  public var pickFile: (@escaping @MainActor (URL?) -> Void) -> Void = VaultService.defaultPickFile
 
   // thin-host: feature-specific, migrate to plugin (the save-a-login flow (captures, save/dismiss) belongs in the passwords plugin; the host keeps a generic secret store)
   struct Capture {
@@ -130,6 +135,7 @@ public final class VaultService: HostService {
     case "suggest":
       suggest(args.str("webview"), args.list("items"))
       return .ok
+    case "importFile": return importFile(args)
     default:
       return .error("vault: unknown method '\(method)'")
     }

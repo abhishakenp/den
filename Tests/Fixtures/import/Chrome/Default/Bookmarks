@@ -1,0 +1,125 @@
+{
+   "checksum": "6f1d2c0b8a9e4c3d2b1a0f9e8d7c6b5a",
+   "roots": {
+      "bookmark_bar": {
+         "children": [ {
+            "date_added": "13371234567890123",
+            "date_last_used": "0",
+            "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a01",
+            "id": "5",
+            "name": "MDN Web Docs",
+            "type": "url",
+            "url": "https://developer.mozilla.org/en-US/"
+         }, {
+            "date_added": "13371234567890456",
+            "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a02",
+            "id": "6",
+            "name": "Swift Forums",
+            "type": "url",
+            "url": "https://forums.swift.org/"
+         }, {
+            "children": [ {
+               "date_added": "13371234567891000",
+               "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a04",
+               "id": "8",
+               "name": "WebKit Bugzilla",
+               "type": "url",
+               "url": "https://bugs.webkit.org/"
+            }, {
+               "date_added": "13371234567892000",
+               "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a05",
+               "id": "9",
+               "name": "Swift Evolution",
+               "type": "url",
+               "url": "https://github.com/swiftlang/swift-evolution"
+            }, {
+               "children": [ {
+                  "date_added": "13371234567893000",
+                  "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a07",
+                  "id": "11",
+                  "name": "Apple Developer Forums",
+                  "type": "url",
+                  "url": "https://developer.apple.com/forums/"
+               }, {
+                  "date_added": "13371234567894000",
+                  "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a08",
+                  "id": "12",
+                  "name": "App Store Connect",
+                  "type": "url",
+                  "url": "https://appstoreconnect.apple.com/"
+               } ],
+               "date_added": "13371234567892500",
+               "date_modified": "13371234567894000",
+               "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a06",
+               "id": "10",
+               "name": "Apple",
+               "type": "folder"
+            } ],
+            "date_added": "13371234567890999",
+            "date_modified": "13371234567894000",
+            "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a03",
+            "id": "7",
+            "name": "Dev",
+            "type": "folder"
+         }, {
+            "date_added": "13371234567895000",
+            "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a09",
+            "id": "13",
+            "name": "Dark mode bookmarklet",
+            "type": "url",
+            "url": "javascript:(function(){document.body.style.filter='invert(1)'})()"
+         } ],
+         "date_added": "13371234560000000",
+         "date_modified": "13371234567895000",
+         "guid": "0bc5d13f-2cba-5d74-951f-3f233fe6c908",
+         "id": "1",
+         "name": "Bookmarks bar",
+         "type": "folder"
+      },
+      "other": {
+         "children": [ {
+            "children": [ {
+               "date_added": "13371234567896000",
+               "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a11",
+               "id": "15",
+               "name": "Shakshuka Recipe - NYT Cooking",
+               "type": "url",
+               "url": "https://cooking.nytimes.com/recipes/1014721-shakshuka-with-feta"
+            }, {
+               "date_added": "13371234567897000",
+               "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a12",
+               "id": "16",
+               "name": "Serious Eats: Pizza",
+               "type": "url",
+               "url": "https://www.seriouseats.com/the-pizza-lab"
+            } ],
+            "date_added": "13371234567895500",
+            "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a10",
+            "id": "14",
+            "name": "Recipes",
+            "type": "folder"
+         }, {
+            "date_added": "13371234567898000",
+            "guid": "0b6f0a52-1c1e-4f0e-9a51-6c2d1b0e7a13",
+            "id": "17",
+            "name": "Wikipedia",
+            "type": "url",
+            "url": "https://en.wikipedia.org/wiki/Main_Page"
+         } ],
+         "date_added": "13371234560000000",
+         "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
+         "id": "2",
+         "name": "Other bookmarks",
+         "type": "folder"
+      },
+      "synced": {
+         "children": [  ],
+         "date_added": "13371234560000000",
+         "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
+         "id": "3",
+         "name": "Mobile bookmarks",
+         "type": "folder"
+      }
+   },
+   "version": 1
+}
