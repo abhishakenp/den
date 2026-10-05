@@ -93,8 +93,22 @@ public enum MediaScenarios {
     return true
   }
 
+  /// The PiP view controller of the PiP that is up now: its panel is visible and it still has a
+  /// delegate. An earlier PiP's panel can stay in `NSApp.windows` after it closed (delegate gone),
+  /// and the new one's panel appears a moment after WebKit says it entered, so "the first
+  /// PIPViewController" could be the stale one or none yet.
   static func pipViewController() -> NSViewController? {
-    NSApp.windows.compactMap(\.contentViewController).first { NSStringFromClass(type(of: $0)).contains("PIPViewController") }
+    let live = NSApp.windows.filter { w in
+      guard let vc = w.contentViewController, NSStringFromClass(type(of: vc)).contains("PIPViewController") else { return false }
+      return (vc.value(forKey: "delegate") as? NSObject) != nil
+    }
+    return (live.first(where: \.isVisible) ?? live.last)?.contentViewController
+  }
+
+  /// Whether the PiP that is up has its buttons ready (`pressPipButton` would reach WebKit).
+  public static func pipButtonsReady(_ selector: String = "pipShouldClose:") -> Bool {
+    guard let d = pipViewController()?.value(forKey: "delegate") as? NSObject else { return false }
+    return d.responds(to: NSSelectorFromString(selector))
   }
 
   /// The close button: WebKit's `pipActionStop:` (it pauses the video), then the window closes
