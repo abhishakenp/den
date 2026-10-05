@@ -282,7 +282,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ "Save password?" prompt on form submit
 - 🟡 Native look: vibrancy, SF Symbols, system accent colors
   - ✅ SF Symbols throughout; accent from the space or the macOS accent (Settings ▸ General)
-  - ⏳ vibrancy
+  - ✅ vibrancy: Settings ▸ General ▸ Translucent window (off by default): macOS's behind-window material under the theme at 72%, every window and the floating sidebar. den's memory +32 KB (measured in-process); window-server energy not measured (needs an on-screen window). Liquid Glass (`NSGlassEffectView`) not used: its refraction and highlights would change Arc's flat look
 - 🟡 Shortcuts / App Intents / Spotlight ([notes](docs/research/apple-integration.md))
   - ✅ Spotlight finds den's open tabs and spaces (den's Core Spotlight index; a pick selects them; off in Settings ▸ General ▸ Continuity)
   - ✅ App Intents built and tested in-process: open URL, new tab in a space, switch space, find tabs, open tab, current page (title, URL), toggle picture in picture; Siri phrases; `Metadata.appintents` extracted by bundle.sh
