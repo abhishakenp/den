@@ -430,6 +430,10 @@ These plugins provide no service; they only use the ones above.
   - Storage ns `tips`: `enabled`, `tour` (`new|dismissed|done`), `import`, `launches`, `shown.<key>`, `retired.<key>`, `counts`, `last`, `day`, `dayCount`.
   - `importer` (provided by no plugin yet): `sources` → `[{id, name}]`, `run {source}`.
   - `tips.preview {key}` (snapshot scenarios only) shows a card or tip without limits or records.
+- **`continuity`:** den in the rest of macOS. Injects `spotlight`, `handoff`, `settings`; calls `tabs`, `spaces`, `webviews`.
+  - Spotlight: every sidebar tab (favorites once, folders and splits opened up, web pages only) and every space, through `spotlight.index` (domains `tabs`, `spaces`, `replace: true`), 2 s after `tabs.changed`, `spaces.changed`, `webviews.url` or `webviews.title` (one refresh at a time). `spotlight.open {id}` selects the tab (`tabs:<id>`) or switches to the space (`spaces:<id>`).
+  - Handoff: `handoff.set` with the selected tab's page on `tabs.selected`, `window.activated` and its URL/title changes; `handoff.clear` for a private window, a non-web page or the setting off.
+  - Settings ▸ General ▸ Continuity (id `continuity`): `spotlight`, `handoff` (both on). Spotlight off calls `spotlight.remove`.
 - `theme` and `quit` call `commands.register` without injecting `commands` (the command bar is optional), retrying every 500 ms for 30 s until it exists.
 
 ## Ownership rules

@@ -277,15 +277,18 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 - 🟡 Passkeys for all sites
   - ✅ researched: WebKit does WebAuthn itself, but only with Apple's browser passkey entitlement, which ad-hoc signing can't carry ([notes](docs/research/passkeys.md))
-  - ⏳ apply for the entitlement; sign with a real identity
+  - ⏳ apply for the entitlement; sign with a real identity. Needs an **organization** Apple Developer account (Account Holder), Apple's approval and a Developer ID profile; Chrome 154 ships it that way (observed). Steps: [apple-integration.md §6](docs/research/apple-integration.md#6-what-the-maintainer-must-do-signing)
 - ✅ Passwords: den ships its own vault in the Keychain, filled after Touch ID; save, fill, strong-password suggestions, "Passwords…" list with copy (clipboard cleared after 60 s) and delete. No API reads iCloud Keychain / the Passwords app
 - ✅ "Save password?" prompt on form submit
 - 🟡 Native look: vibrancy, SF Symbols, system accent colors
   - ✅ SF Symbols throughout; accent from the space or the macOS accent (Settings ▸ General)
   - ⏳ vibrancy
-- ⏳ Shortcuts / App Intents / Spotlight
-- ⏳ Handoff
-- ⏳ Sync via iCloud / CloudKit (no den server; Talos browser does this)
+- 🟡 Shortcuts / App Intents / Spotlight ([notes](docs/research/apple-integration.md))
+  - ✅ Spotlight finds den's open tabs and spaces (den's Core Spotlight index; a pick selects them; off in Settings ▸ General ▸ Continuity)
+  - ✅ App Intents built and tested in-process: open URL, new tab in a space, switch space, find tabs, open tab, current page (title, URL), toggle picture in picture; Siri phrases; `Metadata.appintents` extracted by bundle.sh
+  - ❌ Shortcuts and Siri list den's actions only for a Team ID signature (observed: linkd rejects den's local and ad hoc signatures). Needs the Apple Developer Program
+- 🟡 Handoff: the page in front offered to your other devices, pages from them opened in den (needs den as default browser). ⏳ Verify with an iPhone; a Team ID may be required for den → iPhone
+- 🟡 Sync via iCloud / CloudKit (no den server): researched and designed (records, conflicts, capability check, `Signing.has`); ❌ not buildable before signing (an app without the CloudKit entitlements crashes or is killed at launch, observed). Needs a Developer ID certificate, provisioning profile and container: [steps](docs/research/apple-integration.md#6-what-the-maintainer-must-do-signing)
 
 ## Privacy and security
 

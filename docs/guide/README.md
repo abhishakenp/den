@@ -24,6 +24,7 @@ How to use den, one page per area. Everything here describes what's on `main` to
 - [Privacy & passwords](privacy-and-passwords.md): dark mode for websites, Google sign-in, the Touch ID vault, passkeys
 - [Page tools](page-tools.md): find, zoom, print, save, copy links, Reader and read aloud, translate, capture, Zap
 - [Downloads & uploads](downloads.md): Library ▸ Downloads, pause and resume, the upload picker
+- [den and your Mac](macos.md): Spotlight, Handoff, Shortcuts, website permissions, password manager apps
 
 ## Making den yours
 
