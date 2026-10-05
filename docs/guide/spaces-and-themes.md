@@ -80,3 +80,7 @@ Your last three themes are in the command bar as **Use Recent Theme 1/2/3**. For
 ## Accent color
 
 Buttons, selections and switches take their color from the current space. Prefer the macOS accent color? Settings ▸ General ▸ **Accent color** ▸ **System accent**.
+
+## Translucent window
+
+Settings ▸ General ▸ **Translucent window** lets your desktop show faintly through the space's colors, like macOS sidebars (the theme keeps 72% of its strength, so a space still looks like itself). Off by default, like Arc.

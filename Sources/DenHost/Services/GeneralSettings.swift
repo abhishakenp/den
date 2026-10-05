@@ -40,6 +40,18 @@ enum GeneralSettings {
     rt.host.on("settings.changed") { v in
       if v.str("id") == "general", v.str("key") == "passkeyFallback" { Passkeys.fallbackSetting = v["value"].bool ?? true }
     }
+    // Translucent window (vibrancy): read before the first frame, so the window opens as it was.
+    ThemeBackgroundView.translucency = s.stored("general").first(where: { $0.0 == "translucent" })?.1.bool ?? false
+    if ThemeBackgroundView.translucency { applyTranslucency(rt) }
+    rt.host.on("settings.changed") { [unowned rt] v in
+      guard v.str("id") == "general", v.str("key") == "translucent" else { return }
+      ThemeBackgroundView.translucency = v["value"].bool ?? false
+      applyTranslucency(rt)
+    }
+    rt.windows.each { wc in
+      wc.background.translucent = ThemeBackgroundView.translucency
+      wc.sidebar.backdrop.translucent = ThemeBackgroundView.translucency
+    }
     rt.host.on("settings.changed") { [unowned rt] v in
       guard v.str("id") == "general", v.str("key") == "accent" else { return }
       Palette.accentSource = v["value"].string == "system" ? .system : .theme
@@ -48,6 +60,14 @@ enum GeneralSettings {
     // The system accent changing while it's in use.
     NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main) { [weak rt] _ in
       MainActor.assumeIsolated { if Palette.accentSource == .system { rt?.ui.refreshPalette() } }
+    }
+  }
+
+  /// Every open window's theme views follow the setting (new windows read it when created).
+  static func applyTranslucency(_ rt: DenRuntime) {
+    for wc in rt.windows.all {
+      wc.background.translucent = ThemeBackgroundView.translucency
+      wc.sidebar.backdrop.translucent = ThemeBackgroundView.translucency
     }
   }
 
@@ -71,6 +91,9 @@ enum GeneralSettings {
        "subtitle": "Buttons, selection and toggles take their color from the current space, or from macOS.",
        "options": [["value": "theme", "title": "Space colors"], ["value": "system", "title": "System accent"]], "default": "theme"],
     ]
+    out.append(["key": "translucent", "type": "toggle", "title": "Translucent window",
+                "subtitle": "Your desktop shows faintly through the space's colors, like macOS sidebars. Off by default: it costs the system some graphics work while den is on screen.",
+                "default": false])
     out.append(["key": "passkeyFallback", "type": "toggle", "title": "Skip passkey sign-in, use the password",
                 "subtitle": .string(Passkeys.entitled
                   ? "den can use passkeys, so sites get WebKit's real answer and this has no effect."

@@ -64,6 +64,7 @@ Rows marked **changed** were annoying defaults and have been fixed.
 |---|---|---|
 | Appearance | Automatic (follows macOS) | Arc's global appearance; light at noon, dark at night if macOS does |
 | Accent color | the space's colors | Arc. Settings > General can use the macOS accent instead |
+| Translucent window | off | Arc's window is opaque, and the blur is work for the window server on every frame den is on screen (den's own memory: +32 KB measured; the window server's energy wasn't measurable from a test). Settings > General turns it on |
 | Theme for new spaces | a soft two-color gradient, intensity 0.6, grain 0.3 | Visible but calm; first run seeds Personal, Work and Side Project with different gradients so spaces are told apart at a glance |
 | Surface colors and contrast | derived from the space, WCAG AA or better | Every dialog, bar, card and toast follows the theme, and text is pushed to 7:1 (primary) and 4.5:1 (secondary) so very light or dark themes stay readable (host-api.md, Theming) |
 | Sidebar | shown, 228 pt | Arc's width. ⌘S hides it; the left edge reveals it |
