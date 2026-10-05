@@ -30,7 +30,14 @@ public enum SpaceScenarios {
       return rt.settings.window?.window
     }
     if name.hasPrefix("themeSample:") { return themeSample(name, rt) }
-    if name.hasPrefix("favorites:"), let n = Int(name.dropFirst(10)) { return favorites(n, rt) }
+    if name.hasPrefix("favorites:") {
+      // `favorites:<n>` or `favorites:<n>@<sidebar width>` (the grid reflowing as the sidebar resizes).
+      let parts = name.dropFirst(10).split(separator: "@")
+      if let n = parts.first.flatMap({ Int($0) }) {
+        if parts.count == 2, let w = Double(parts[1]) { rt.call("window", "setSidebar", ["width": .double(w)]) }
+        return favorites(n, rt)
+      }
+    }
     guard names.contains(name) else { return nil }
     let w = rt.window.window
     guard let sid = rt.call("spaces", "current")["id"].string else { return w }

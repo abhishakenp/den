@@ -58,6 +58,50 @@ struct ComponentTests {
     }
   }
 
+  /// The grid follows the sidebar's width: at every width from the 180 pt minimum sidebar up and
+  /// with 1–12 favorites, rows fill the width with equal tiles and even gaps, no tile is narrower
+  /// than `favoriteMinTileWidth` (narrow sidebars reflow to rows of 3, then 2), the icon is
+  /// centred and the speaker badge sits inside the tile's top-right corner.
+  @Test func favoritesGridReflowsWithTheSidebarWidth() {
+    let sp = Tokens.favoriteTileSpacing, h = Tokens.favoriteTileHeight
+    #expect(GridNode.columns(for: 230, max: 4) == 4 && GridNode.columns(for: 200, max: 4) == 4)
+    #expect(GridNode.columns(for: 164, max: 4) == 3 && GridNode.columns(for: 120, max: 4) == 2 && GridNode.columns(for: 30, max: 4) == 1)
+    let rt = Self.runtime()
+    for n in 1...12 {
+      let tiles: [Value] = (0..<n).map { i in
+        ["type": "favoriteTile", "id": .string("f\(i)"), "icon": "sf:play.rectangle.fill", "title": .string("T\(i)"), "audio": .bool(i == 0)]
+      }
+      rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "favs", "children": .array(tiles)]])
+      guard let g = rt.ui.sidebarView.favorites.root as? GridNode else {
+        Issue.record("no grid")
+        return
+      }
+      g.layout()  // a changed set of tiles springs into place once; resizes after it lay out at once
+      for W in stride(from: CGFloat(150), through: 490, by: 17) {
+        let cols = GridNode.columns(for: W, max: 4)
+        g.frame = NSRect(x: 0, y: 0, width: W, height: g.height(for: W))
+        g.layout()
+        let fs = g.kids.map(\.frame)
+        #expect(fs.count == n)
+        let rows = Dictionary(grouping: fs, by: { $0.minY })
+        #expect(rows.count == (n + cols - 1) / cols, "W=\(W) n=\(n)")
+        #expect(g.height(for: W) == fs.map(\.maxY).max(), "the grid's height is its rows (W=\(W) n=\(n))")
+        for (_, row) in rows {
+          let r = row.sorted { $0.minX < $1.minX }
+          #expect(r.count <= cols && r.first!.minX == 0 && r.last!.maxX == W, "W=\(W) n=\(n)")
+          for (a, b) in zip(r, r.dropFirst()) { #expect(b.minX - a.maxX == sp) }
+          #expect(r.map(\.width).max()! - r.map(\.width).min()! <= 1, "equal tiles (W=\(W) n=\(n))")
+          #expect(r.allSatisfy { $0.height == h && ($0.width >= Tokens.favoriteMinTileWidth || cols == 1) }, "W=\(W) n=\(n)")
+        }
+        let t = g.kids[0] as! FavoriteTileNode
+        t.layout()
+        #expect(abs(t.icon.frame.midX - t.bounds.midX) <= 0.5 && abs(t.icon.frame.midY - t.bounds.midY) <= 0.5, "icon centred (W=\(W) n=\(n))")
+        #expect(!t.audio.isHidden && t.bounds.contains(t.audio.frame), "badge inside the tile (W=\(W) n=\(n))")
+        #expect(t.audio.frame.maxX > t.icon.frame.maxX && t.audio.frame.minY < t.icon.frame.minY, "badge at the top-right (W=\(W) n=\(n))")
+      }
+    }
+  }
+
   @Test func themePickerMathRoundTrips() {
     for p in [CGPoint(x: 0.9, y: 0.5), CGPoint(x: 0.3, y: 0.2), CGPoint(x: 0.55, y: 0.85)] {
       let c = ThemePickerMath.color(at: p)

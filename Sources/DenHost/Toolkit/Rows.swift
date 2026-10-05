@@ -350,6 +350,12 @@ final class GridNode: NodeView {
   var columns: Int { max(1, Int(node.num("columns", Double(Tokens.favoriteColumns)))) }
   private var animateNext = false
 
+  /// Tiles per row at `width`: up to `max`, fewer when tiles would be narrower than
+  /// `Tokens.favoriteMinTileWidth` (a narrow sidebar reflows to rows of 3, then 2).
+  static func columns(for width: CGFloat, max: Int, spacing sp: CGFloat = Tokens.favoriteTileSpacing) -> Int {
+    Swift.max(1, Swift.min(max, Int(((width + sp) / (Tokens.favoriteMinTileWidth + sp)).rounded(.down))))
+  }
+
   /// Frames for `count` tiles in `width` (top-left origin). Widths are whole points; the leftover
   /// points go one each to the trailing tiles (so widths in a row differ by at most 1), and the
   /// last tile ends exactly at `width` with no gap.
@@ -385,11 +391,12 @@ final class GridNode: NodeView {
   }
   override func height(for w: CGFloat) -> CGFloat {
     guard !kids.isEmpty else { return 0 }
-    let rows = (kids.count + columns - 1) / columns
+    let cols = Self.columns(for: w, max: columns)
+    let rows = (kids.count + cols - 1) / cols
     return CGFloat(rows) * Tokens.favoriteTileHeight + CGFloat(rows - 1) * Tokens.favoriteTileSpacing
   }
   override func layout() {
-    let fs = Self.frames(count: kids.count, width: bounds.width, columns: columns)
+    let fs = Self.frames(count: kids.count, width: bounds.width, columns: Self.columns(for: bounds.width, max: columns))
     let animate = animateNext && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     animateNext = false
     guard animate else {

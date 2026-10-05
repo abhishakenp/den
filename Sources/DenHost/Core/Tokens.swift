@@ -75,6 +75,9 @@ public enum Tokens {
   public static let favoriteTileCornerRadius: CGFloat = 10  // estimate
   public static let favoriteTileSpacing: CGFloat = 8  // estimate
   public static let favoriteIconSize: CGFloat = 20  // estimate
+  /// Narrowest tile before a row takes one tile fewer: a narrow sidebar gets rows of 3, then 2,
+  /// so the icon and the speaker badge never crowd each other (den's choice).
+  public static let favoriteMinTileWidth: CGFloat = 44
 
   // MARK: Footer / space switcher
   public static let footerHeight: CGFloat = 50  // spec §1: switcher strip 144x50 at y 750 of 800
