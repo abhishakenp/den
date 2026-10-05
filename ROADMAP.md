@@ -152,7 +152,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 
 - ✅ Command bar (`commandbar` plugin: tabs, archive/history, spaces, actions, URLs, web and site search, frecency; [contract](docs/plugin-services.md#commands-plugin-commandbar))
 - ✅ Command bar as a launcher: den's commands, destinations and individual settings, ranked above web search
-- ⏳ "new doc / notion / linear…" creation commands in the command bar
+- ✅ Creation commands in the command bar: New Google Doc / Sheet / Slides / Form / Meet / Keep Note, New Calendar Event, New Notion Page, New Linear Issue, New Figma File, New FigJam Board, New GitHub Repository / Gist, New Spotify Playlist (each site's `.new` URL, in a new tab), and New GitHub Issue in the repository the tab shows
 - ✅ Command bar names the real search engine ("— Search DuckDuckGo"), and a one-time tip suggests a site's keyword when you open the site or search for it by name ("Type yt, then Tab, to search YouTube directly.")
 - ✅ Peek / link preview (⇧/⌥-click any link, links from pinned tabs; Open as Tab, Open in Split View; ⌘Z reopen)
 - ✅ "Open Link in Peek" and "Open Link in Split View" in the link context menu
