@@ -161,6 +161,9 @@ final class TabsCore {
   var iconEditing: String?  // tab or folder whose icon picker is open (TabsIcons.swift)
   /// Other plugins' buttons in the URL pill, per web view and owner (`pillButtons`).
   var pillButtons: [String: [(String, [Value])]] = [:]
+  /// Recent distinct `pillButtons` lists. Shields sends every tab of a site the same shield, so
+  /// hundreds of tabs share a few copies instead of holding one each (docs/perf/baseline.md).
+  var pillPool: [[(String, [Value])]] = []
   /// Tab -> the tab it was ⌘-clicked from, so later links from a group land next to their
   /// opener (Chrome-style, dia-ui-spec §6). Runtime only.
   var opener: [String: String] = [:]
@@ -551,6 +554,19 @@ final class TabsCore {
 
   // MARK: - Service
 
+  /// `list`, or an equal list already held for another web view (one copy shared by both).
+  func sharedPill(_ list: [(String, [Value])]) -> [(String, [Value])] {
+    for p in pillPool where p.count == list.count {
+      var same = true
+      for i in 0..<p.count where p[i].0 != list[i].0 || p[i].1 != list[i].1 { same = false; break }
+      if same { return p }
+    }
+    // A handful of distinct lists (shield states, a pop-up's blocked count) is all there is.
+    if pillPool.count >= 16 { pillPool.removeFirst() }
+    pillPool.append(list)
+    return list
+  }
+
   func handle(_ method: String, _ args: Value) -> Value {
     switch method {
     case "list":
@@ -666,7 +682,7 @@ final class TabsCore {
       var list = pillButtons[w] ?? []
       list.removeAll { $0.0 == owner }
       if !args.a("buttons").isEmpty { list.append((owner, args.a("buttons"))) }
-      pillButtons[w] = list.isEmpty ? nil : list
+      pillButtons[w] = list.isEmpty ? nil : sharedPill(list)
       if w == selectedId { renderHeader() }
     case "addToArchive":
       // A page that was never a tab (an auto-closed Little Arc window) goes into the archive.
