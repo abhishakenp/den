@@ -62,7 +62,7 @@ struct TabsTests {
     #expect(row["drift"] == true)
     h.action(pid, "reset")
     #expect(h.tabs("list")["pinned"][0]["url"] == "https://developer.apple.com/documentation")
-    #expect(h.tree("sidebar.pinned", 0)["children"][0]["drift"] == false)
+    #expect(h.tree("sidebar.pinned", 0)["children"][0]["drift"] != true)  // flags are left out when false
     h.tabs("close", ["id": .string(pid)])
     #expect(h.ids("pinned").contains(pid))
     #expect(await h.waitUnloaded(pid))
@@ -311,7 +311,7 @@ struct TabsTests {
     // A page playing audio: the row shows the speaker.
     h.rt.plugins.emit("webviews.audio", ["id": .string(id), "playing": true])
     var row = h.tree("sidebar.today", 0)["children"].array?.first { $0.s("id") == id } ?? .null
-    #expect(row["audio"] == true && row["muted"] == false)
+    #expect(row["audio"] == true && row["muted"] != true)
     #expect(h.tabs("menu", ["id": .string(id)]).array?.contains { $0.s("id") == "mute" } == true)
     // Clicking the speaker mutes the page through the host; the row and menu follow.
     h.action(id, "mute")

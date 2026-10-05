@@ -1871,11 +1871,16 @@ final class TabsCore {
 
   func row(_ id: String, _ sid: String, box: Box) -> Value {
     let t = tabs[id]!
-    var r: Value = ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(selOf(sid) == id),
-                    "audio": .bool(t.audio), "muted": .bool(t.muted), "drift": .bool(kind(of: box) != "today" && t.drift),
-                    "closeTitle": .string(kind(of: box) == "today" ? "Archive Tab" : "Close Tab"),
-                    "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1",
-                    "hoverIntent": .int(Self.rowCardDelayMs)]
+    // Flags only when set and closeTitle only when not the host's "Close Tab": the host keeps
+    // every row's value (hundreds of tabs), so each key costs per tab.
+    let today = kind(of: box) == "today"
+    var r: Value = ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon),
+                    "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1", "hoverIntent": .int(Self.rowCardDelayMs)]
+    if selOf(sid) == id { r.put("selected", true) }
+    if t.audio { r.put("audio", true) }
+    if t.muted { r.put("muted", true) }
+    if !today && t.drift { r.put("drift", true) }
+    if today { r.put("closeTitle", "Archive Tab") }
     if let m = t.media {
       let acts = m.a("acts")
       r.put("media", ["paused": .bool(m.b("paused")), "next": .bool(acts.contains("nexttrack")), "previous": .bool(acts.contains("previoustrack"))])

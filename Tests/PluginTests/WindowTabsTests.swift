@@ -14,7 +14,7 @@ import Testing
 struct WindowTabsTests {
   func rowSelected(_ h: Harness, window: String, _ id: String) -> Bool? {
     let tree = h.rt.ui.sidebar(of: window)?.slot("sidebar.today", page: 0)?.root?.node ?? .null
-    return tree["children"].array?.first { $0["id"].string == id }?["selected"].bool
+    return tree["children"].array?.first { $0["id"].string == id }.map { $0["selected"].bool ?? false }  // left out when false
   }
 
   @Test func eachWindowKeepsItsOwnPlace() {
