@@ -196,8 +196,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     // The window server reports the window visible -> first frame is on screen. (In the
     // background it may stay covered, so don't wait for that.)
+    //
+    // firstFrame() is never called inline here: it loads every deferred plugin and creates the
+    // restored session's web views, all on the main thread, so running it in this turn meant the
+    // window could not composite until all of it was done. A background relaunch (what an idle den
+    // does when an update lands, which is how this path is reached in normal use) took 15-22 s to
+    // its first window that way, against well under a second once the window is up first. One
+    // main-queue turn is enough for AppKit to present the window; the 1 s fallback above still
+    // bounds the wait if the window server is slow to report occlusion.
     if w.occlusionState.contains(.visible) || background || invisible {
-      firstFrame()
+      DispatchQueue.main.async { [weak self] in self?.firstFrame() }
     } else {
       visibleObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in
         MainActor.assumeIsolated {
