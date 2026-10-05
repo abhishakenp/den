@@ -550,6 +550,40 @@ final class CommandBarCore {
     keyword.isEmpty ? nil : engines.firstIndex { $0.keyword == keyword }
   }
 
+  /// Site-search keywords, taught once (the tips plugin's `siteKeyword` tip): opening a site that
+  /// has a keyword ("youtube.com"), or a web search that starts with its keyword or name ("yt cats",
+  /// "youtube cats"), emits `commands.keywordHint {keyword, name}`; a search through a keyword (Tab)
+  /// emits `commands.keywordSearch {keyword}`.
+  func keywordTip(_ r: Row, scope s: Scope) {
+    if case let .engine(i) = s {
+      env.emit("commands.keywordSearch", ["keyword": .string(engines[i].keyword)])
+      return
+    }
+    guard let i = keywordFor(r) else { return }
+    env.emit("commands.keywordHint", ["keyword": .string(engines[i].keyword), "name": .string(engines[i].name)])
+  }
+
+  /// The site search (not the default engine) that `r` could have used.
+  func keywordFor(_ r: Row) -> Int? {
+    switch r.act {
+    case let .url(u):
+      // A site that shares the default engine's host (Google Maps) isn't "the site" of google.com.
+      let h = URLs.host(u)
+      guard h != URLs.host(defaultEngine.url) else { return nil }
+      return engines.indices.first { $0 > 0 && URLs.host(engines[$0].url) == h }
+    case .search:
+      // The first word, when more follow.
+      let b = Array(Text.lower(trim(r.title)).utf8)
+      guard let sp = b.firstIndex(of: 32), sp > 0 else { return nil }
+      let w = String(decoding: b[..<sp], as: UTF8.self)
+      return engines.indices.first { i in
+        i > 0 && (engines[i].keyword == w || String(decoding: Array(Text.lower(engines[i].name).utf8).filter { $0 != 32 }, as: UTF8.self) == w)
+      }
+    default:
+      return nil
+    }
+  }
+
   // MARK: - Picking
 
   func pick(_ r: Row, shift: Bool) {
@@ -578,6 +612,7 @@ final class CommandBarCore {
     case let .url(u), let .search(u):
       if case .url = r.act { bump("url:" + URLs.normalize(u), title: r.title, url: u) }
       if case .search = r.act { bump("q:" + Text.lower(r.title), title: r.title, url: u) }
+      keywordTip(r, scope: s)
       go(u, peek: peek, scope: s)
     case .reload:
       if let id = selectedTab().sOpt("id") { env.call("webviews", "reload", ["id": .string(id)]) }
