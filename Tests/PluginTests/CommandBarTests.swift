@@ -264,6 +264,41 @@ struct CommandBarTests {
     #expect(hints().count == 3)
   }
 
+  /// Creation commands open each site's new-item URL in a new tab; New GitHub Issue only shows on
+  /// a repository's page, and files in that repository.
+  @Test func creationCommands() {
+    let h = Harness()
+    h.startCommandBar()
+    func urls() -> [String] { (h.tabs("list")["today"].array ?? []).map { $0.s("url") } }
+    for (q, id, url) in [("new sheet", "googleSheet", "https://sheets.new/"), ("new slides", "googleSlides", "https://slides.new/"),
+                         ("new form", "googleForm", "https://forms.new/"), ("new meet", "googleMeet", "https://meet.new/"),
+                         ("calendar event", "calendarEvent", "https://cal.new/"), ("keep note", "keepNote", "https://keep.new/"),
+                         ("new gist", "gist", "https://gist.new/"), ("figma file", "figmaFile", "https://figma.new/"),
+                         ("figjam", "figjamBoard", "https://figjam.new/"), ("new repo", "githubRepo", "https://repo.new/"),
+                         ("spotify", "spotifyPlaylist", "https://playlist.new/")] {
+      h.key("cmd+t")
+      h.type(q)
+      #expect(h.barRowIds.contains("cmd:den.new." + id), "\(q)")
+      h.submit("cmd:den.new." + id)
+      #expect(urls().contains(url), "\(q)")
+    }
+    #expect(!h.rt.ui.commandBarOpen)
+    // Not on a repository page: no New GitHub Issue, while its sibling creation commands still show.
+    h.key("cmd+t")
+    h.type("new github")
+    #expect(!h.barRowIds.contains("cmd:den.new.githubIssue") && h.barRowIds.contains("cmd:den.new.githubRepo"))
+    h.key("cmd+t")  // closes it
+    h.tabs("open", ["url": "https://github.com/abhishakenp/den/pull/12"])
+    h.key("cmd+t")
+    h.type("new issue")
+    #expect(h.barRows.first { $0.str("id") == "cmd:den.new.githubIssue" }?.str("title") == "New GitHub Issue in abhishakenp/den")
+    h.submit("cmd:den.new.githubIssue")
+    #expect(urls().contains("https://github.com/abhishakenp/den/issues/new"))
+    #expect(CommandBarCore.githubRepo("https://github.com/settings/profile") == nil)
+    #expect(CommandBarCore.githubRepo("https://github.com/abhishakenp") == nil)
+    #expect(CommandBarCore.githubRepo("https://gist.github.com/a/b") == nil)
+  }
+
   @Test func tabSwitchesIntoActionsMode() {
     let h = Harness()
     h.startCommandBar()
@@ -281,7 +316,7 @@ struct CommandBarTests {
     #expect(!titles.contains("Edit Theme"))
     #expect(h.bar.list("sections").first?.str("title") == "Actions")
     h.type("side")
-    #expect(h.barRows.map { $0.str("title") } == ["Toggle Sidebar"])
+    #expect(h.barRows.first?.str("title") == "Toggle Sidebar")  // ("New Google Slides" matches "side" loosely, below it)
     #expect(h.barRows.first?.str("shortcut") == "⌘S")
     h.action("commandBar", "tab", ["query": "side"])
     #expect(h.rt.call("commands", "state")["scope"] == "main")
