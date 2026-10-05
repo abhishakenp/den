@@ -489,7 +489,11 @@ struct ExtensionCompatTests {
             print("compat popup \(label): ua=\(await Wait.js(w, "navigator.userAgent") ?? "?") html=\(await Wait.js(w, "document.body ? document.body.innerHTML.slice(0, 300) : ''") ?? "?")")
           }
           popup = "shown \(h.rt.extensions.ui.popupSizeForTesting) \(String(describing: text))"
-          texts[label] = text as? String
+          // What the page holds, rendered or not (innerText is empty for content a transition
+          // hasn't shown yet, which on the CI runner can outlast the wait).
+          if let w = h.rt.extensions.ui.popupWebForTesting {
+            texts[label] = await Wait.js(w, "document.body ? document.body.textContent.replace(/\\s+/g, ' ').slice(0, 2000) : ''") as? String
+          }
         } else {
           popup = "not shown"
         }
