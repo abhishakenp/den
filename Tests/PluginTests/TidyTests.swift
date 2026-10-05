@@ -78,6 +78,34 @@ struct TidyTests {
     #expect(parsed.map(\.name) == ["Travel", "Work"] && parsed.map(\.items) == [[1, 3], [2, 4]])
   }
 
+  /// `ai.respond`: one plain request, answered on `ai.result`; an overflow says so in `reason`.
+  @Test func aiRespondAnswersOnTheResultEvent() async {
+    final class Echo: AIGenerator {
+      var calls: [(String, String)] = []
+      func availability() -> (available: Bool, reason: String?) { (true, nil) }
+      var contextSize: Int { 4096 }
+      func respond(instructions: String, prompt: String) async throws -> String {
+        calls.append((instructions, prompt))
+        if prompt == "too long" { throw AIError.contextOverflow }
+        return "  The page is about Lisbon.\n"
+      }
+      func todo(instructions: String, text: String) async throws -> (actionable: Bool, title: String) { (false, "") }
+    }
+    let h = Harness()
+    let ai = Echo()
+    h.rt.ai.generator = ai
+    // Nothing touched the model while den started.
+    #expect(ai.calls.isEmpty)
+    var results: [Value] = []
+    h.rt.plugins.on("ai.result") { results.append($0) }
+    #expect(h.rt.call("ai", "respond", ["id": "r1", "instructions": "Summarize.", "prompt": "Lisbon page"]) == ["id": "r1"])
+    #expect(h.rt.call("ai", "respond", ["id": "r2", "instructions": "Summarize.", "prompt": "too long"]) == ["id": "r2"])
+    #expect(await until { results.count == 2 })
+    #expect(results[0]["ok"] == true && results[0]["text"] == "The page is about Lisbon." && results[0]["id"] == "r1")
+    #expect(results[1]["ok"] == false && results[1]["reason"] == "contextOverflow")
+    #expect(ai.calls.map(\.0) == ["Summarize.", "Summarize."])
+  }
+
   @Test func offByDefaultAndSaysHowToTurnItOn() {
     let ai = TidyAI()
     let (h, _) = setUp(ai)
@@ -88,6 +116,7 @@ struct TidyTests {
     let schema = tabs?["schema"].array ?? []
     #expect(schema.first { $0.s("key") == "tabs.tidy" }?["value"] == false)
     #expect(schema.first { $0.s("key") == "tabs.tidyAuto" }?["value"] == false)
+    #expect(schema.first { $0.s("key") == "tabs.autoGroup" }?["value"] == false)
     h.key("ctrl+shift+t")
     #expect(toast(h)?.id == "tabs.tidy.off")
     #expect(ai.prompts.isEmpty && folders(h).isEmpty)
@@ -159,6 +188,74 @@ struct TidyTests {
     let plan = TabsCore.tidyPlan([["name": "A", "items": ["x", "y", "gone"]], ["name": "B", "items": ["y", "z"]], ["name": "C", "items": ["z", "w"]]],
                                  loose: ["w", "x", "y", "z"])
     #expect(plan.map(\.0) == ["A", "C"] && plan.map(\.1) == [["x", "y"], ["w", "z"]])
+  }
+
+  // MARK: Auto grouping
+
+  @Test func autoGroupPlanJoinsOneGroupAndNeedsThreeForANewOne() {
+    let loose = ["a", "b", "c", "d", "e"]
+    let groups: [Value] = [
+      ["name": "Trip", "items": ["folder:f1", "a", "b"]],  // b is old: only new tabs join
+      ["name": "Both", "items": ["folder:f1", "folder:f2", "c"]],  // two groups: ignored
+      ["name": "Swift", "items": ["c", "d", "e", "a"]],  // a is taken; c d e, d new
+      ["name": "Gone", "items": ["folder:nope", "x"]],
+    ]
+    let plan = TabsCore.autoGroupPlan(groups, folders: ["f1", "f2"], pending: ["a", "d"], loose: loose)
+    #expect(plan == [.join("f1", ["a"]), .create("Swift", ["c", "d", "e"])])
+    // Without a new tab among them, related old tabs are left alone (that's Tidy's job).
+    #expect(TabsCore.autoGroupPlan([["name": "S", "items": ["c", "d", "e"]]], folders: [], pending: ["a"], loose: loose).isEmpty)
+    #expect(TabsCore.autoGroupPlan([["name": "S", "items": ["c", "d"]]], folders: [], pending: ["c"], loose: loose).isEmpty)
+  }
+
+  @Test func newTabsJoinTheirGroupInOneBatchAndUndo() async {
+    let ai = TidyAI()
+    let (h, core) = setUp(ai)
+    h.rt.call("settings", "set", ["id": "tabs", "key": "tidy", "value": true])
+    h.key("ctrl+shift+t")
+    #expect(await until { folders(h).count == 2 })
+    // Off: opening a tab asks nothing and schedules nothing (it stays loose, and isn't new to the next batch).
+    let timers = h.timers.count
+    h.tabs("open", ["url": "https://www.lisbonlux.com/lisbon-old", "background": true])
+    #expect(ai.prompts.count == 1 && core.autoGroupPending.isEmpty && h.timers.count == timers)
+    h.rt.call("settings", "set", ["id": "tabs", "key": "autoGroup", "value": true])
+    let before = h.ids("today")
+    // Two tabs in quick succession: the first one's timer is superseded, one batch, one request.
+    h.tabs("open", ["url": "https://www.lisbonlux.com/lisbon-hotels", "background": true])
+    let first = h.timers.last?.2
+    h.tabs("open", ["url": "https://example.org/", "background": true])
+    #expect(core.autoGroupPending.values.first?.count == 2)
+    first?()
+    #expect(ai.prompts.count == 1 && core.autoGroupDelayMs == 20_000)
+    h.timers.last?.2()
+    #expect(await until { toast(h)?.text == "Grouped 1 tab. Use ⌃Z to undo." })
+    #expect(ai.prompts.count == 2)
+    let prompt = ai.prompts.last ?? ""
+    #expect(prompt.contains("Group “Lisbon Trip”") && prompt.contains("lisbonlux.com/lisbon-hotels"))
+    let trip = folders(h).first { $0.s("title") == "Lisbon Trip" } ?? .null
+    #expect(trip.list("children").map { $0.s("url") }.contains("https://www.lisbonlux.com/lisbon-hotels"))
+    #expect(h.ids("today").count == before.count + 1)  // example.org stays loose
+    // One ⌃Z takes the batch back.
+    h.key("ctrl+z")
+    #expect(h.ids("today").count == before.count + 2)
+    #expect((folders(h).first { $0.s("title") == "Lisbon Trip" }?.list("children").count ?? 0) == 2)
+  }
+
+  @Test func relatedNewTabsStartAGroup() async {
+    let ai = TidyAI()
+    let (h, core) = setUp(ai, tabs: ["https://example.com/"])
+    h.rt.call("settings", "set", ["id": "tabs", "key": "tidy", "value": true])
+    h.rt.call("settings", "set", ["id": "tabs", "key": "autoGroup", "value": true])
+    for u in ["https://www.swift.org/a", "https://www.swift.org/b"] { h.tabs("open", ["url": .string(u), "background": true]) }
+    h.timers.last?.2()
+    // Two Swift tabs aren't a group yet.
+    #expect(await until { ai.prompts.count == 1 && core.autoGroupAsked.isEmpty })
+    #expect(folders(h).isEmpty)
+    h.tabs("open", ["url": "https://www.swift.org/c", "background": true])
+    h.timers.last?.2()
+    #expect(await until { folders(h).count == 1 })
+    #expect(ai.prompts.count == 2)
+    let f = folders(h)[0]
+    #expect(f.s("title") == "Swift" && f.list("children").count == 3)
   }
 
   @Test func automaticTidyOnlyWhenBothSettingsAreOn() async {

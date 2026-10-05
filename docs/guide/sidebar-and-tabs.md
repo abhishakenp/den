@@ -75,6 +75,7 @@ Today piled up? **Tidy** sorts its loose tabs (the ones not already in a group) 
 - The new groups start collapsed; the tab you're on stays visible under its group's name. Tabs that fit no group stay where they were.
 - **⌃Z**, or **Undo** on the "Tidied 6 tabs into 2 groups" toast, puts every tab back in one step.
 - It never runs on its own unless you also turn on **Tidy automatically**: then, when Today has 8 or more loose tabs, den tidies them for you (at most every 30 minutes).
+- **Group new tabs automatically** (also off until you turn it on, next to Tidy) files tabs as you open them: about 20 seconds after the last new tab, den puts each new loose Today tab into the group it belongs to, or starts a group once 3 related tabs are loose. Tabs that fit nowhere stay put. The model runs only for that one batch, and **⌃Z** (or **Undo** on the "Grouped 2 tabs" toast) puts the whole batch back.
 
 ## Folders
 

@@ -168,7 +168,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | [AI summaries on device](guide/connections-and-briefing.md) | ❌ | ❌ cloud | ❌ | ✅ | Apple Foundation Models, for the briefing and feed only. Works without it (plain counts and lists) |
 | AI chat about pages | ➖ removed | ✅ | ❌ | **Plugin** | No built-in chat or agent. ⏳ a plugin API rich enough for someone to build one |
 | Skills / saved prompts | ❌ | ✅ | ❌ | **Plugin** | |
-| AI tab tidying and renaming | ✅ | ✅ | ❌ | ⏳ (unverified) | On the ROADMAP (on-device, lazy), but the AI principle limits the model to the briefing and feed: decision needed |
+| [AI tab tidying, auto grouping and renaming](guide/sidebar-and-tabs.md#tidy-tabs) | ✅ | ✅ | ❌ | ✅ | On device, off by default: Tidy Tabs (⌃⇧T), "Group new tabs automatically" (new tabs filed into their group in one debounced batch, one ⌃Z), and names for ⌘-click groups |
 | Notes, whiteboards (Easels) | ➖ / ✅ | ➖ | ❌ | **Skip** | |
 
 ## Extensions and blocking

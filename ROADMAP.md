@@ -260,11 +260,13 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 - ✅ Summarize connection data with Apple's Foundation Models framework, on device (`ai` host service; todos through guided generation, one item per request so a todo can't attach to the wrong source)
 - ✅ Fit the model's small context (4,096 tokens on macOS 26, read at runtime): summarize each source separately in chunks, then combine; overflowing chunks are split and retried
-- ⏳ Model loads only while generating a briefing or ranking the feed, then is released (measure it)
+- ✅ Model loads only while generating, then is released: den holds no session between requests and never touches the model at launch; macOS's inference service grew from 246 MB to 578 MB during a request and was back to 246 MB 3 minutes later; den's own process keeps ~5 MB of FoundationModels client state after the first request ([measured](docs/host-api.md#ai))
+  - ⏳ drop that ~5 MB and the FoundationModels link from launch: `ai` as a lazily loaded module (Thin host step 9)
 - ✅ Model output is text and todos only: no tools, cannot click, send or open anything
 - ✅ Every todo and feed item links to its source message, PR or thread (the summary paragraph itself has no links)
 - ✅ Works without the model (plain counts and lists) on Macs without Apple Intelligence
-- ⏳ Auto tab grouping and tidy tabs (on-device, lazy)
+- ✅ Auto tab grouping and tidy tabs (on-device, lazy): Tidy Tabs, plus "Group new tabs automatically" (off by default, needs Tidy on): 20 s after the last new Today tab, one `ai.group` batch files new tabs into their Today group or starts a group of 3+ related tabs; one ⌃Z undoes the batch
+- ✅ `ai.respond {instructions, prompt}`: a plain request with the caller's own prompt, for plugins
 - ⏳ Plugin API is rich enough for someone else to build a chat/AI plugin, gated by user-granted permissions
 
 ## Apple integration

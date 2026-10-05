@@ -168,6 +168,14 @@ final class TabsCore {
   var tidyCommandRegistered = false
   var tidyRegisterAttempts = 0
   var tidyReady = false
+  /// Auto grouping (TabsTidy.swift): new loose Today tabs waiting for the next batch, per space,
+  /// and the batch's debounce stamp.
+  var autoGroup = false
+  var autoGroupPending: [String: [String]] = [:]
+  var autoGroupStamp: Int64 = 0
+  /// Space -> the new tabs of the batch the model is grouping now.
+  var autoGroupAsked: [String: [String]] = [:]
+  var autoGroupDelayMs: UInt64 = TabsCore.autoGroupDefaultDelayMs
   var settingsListening = false
   /// Foreground clock: milliseconds den has been frontmost this session. Idle discard counts
   /// only this time, so tabs don't unload while you work in another app.
@@ -905,6 +913,7 @@ final class TabsCore {
     ensureWebview(id)
     tabs[id]?.url = env.call("webviews", "get", ["id": .string(id)]).sOpt("url") ?? url
     env.emit("tabs.opened", ["id": .string(id)])
+    if kind == "today" { autoGroupNoted(id, space: sid) }
     if background {
       changed(kind == "favorite" ? nil : sid)
     } else {
@@ -1642,6 +1651,7 @@ final class TabsCore {
     applySetting("sameTabInWindows", v["sameTabInWindows"])
     applySetting("tidy", v["tidy"])
     applySetting("tidyAuto", v["tidyAuto"])
+    applySetting("autoGroup", v["autoGroup"])
     env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { applySetting(v.s("key"), v["value"]) } }
     env.on("settings.action") { [self] v in
       guard v.s("id") == Self.ns, v.s("key") == "keepActive", v.s("button") == "remove" else { return }
@@ -1653,7 +1663,7 @@ final class TabsCore {
   }
 
   func applySetting(_ key: String, _ v: Value) {
-    if key == "tidy" || key == "tidyAuto" {
+    if key == "tidy" || key == "tidyAuto" || key == "autoGroup" {
       applyTidySetting(key, v)
       return
     }
@@ -2050,6 +2060,7 @@ final class TabsCore {
     env.on("ai.result") { [self] v in
       nameArrived(v)
       tidyArrived(v)
+      autoGroupArrived(v)
     }
     env.on("tabs.key.undo") { [self] _ in _ = undo() }
     env.on("spaces.library") { [self] _ in openLibrary() }

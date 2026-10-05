@@ -11,7 +11,6 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 - Unloaded tabs that cost close to nothing (today about 80 KB each; the goal is 8 KB), recently used tabs kept loaded, and idle time counted only while den is in front.
 - No white flash on tab switch or load; faster tab close.
 - Tab menus that show shortcuts and ⌥ alternates.
-- Auto tab grouping and tidying with Apple's on-device model.
 - Copy a clean URL with tracking parameters stripped.
 
 ## Connections & briefing

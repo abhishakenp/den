@@ -33,6 +33,9 @@ extension TabsCore {
        "keywords": ["tidy", "organize", "sort", "group", "folders", "ai", "apple intelligence"]],
       ["key": "tidyAuto", "type": "toggle", "title": "Tidy automatically",
        "subtitle": "When Today has 8 or more loose tabs, tidy them without asking. Control-Z still puts them back.", "default": false],
+      ["key": "autoGroup", "type": "toggle", "title": "Group new tabs automatically",
+       "subtitle": "A little after you open tabs, den files each new one into the Today group it belongs to, or starts a group once 3 related tabs are loose. Control-Z puts them back.",
+       "default": false, "keywords": ["auto", "group", "tab groups", "organize", "ai", "apple intelligence"]],
     ]
   }
 
@@ -64,8 +67,14 @@ extension TabsCore {
 
   func applyTidySetting(_ key: String, _ v: Value) {
     guard let b = v.bool else { return }
+    if key == "autoGroup" {
+      autoGroup = b
+      if !b { autoGroupPending = [:] }
+      return
+    }
     let was = tidyEnabled
     if key == "tidy" { tidyEnabled = b } else { tidyAuto = b }
+    if !tidyEnabled { autoGroupPending = [:] }
     if key == "tidy", b, !was, tidyReady { tidyRefreshAvailability() }
     if tidyEnabled != was { renderAll() }
   }
@@ -266,5 +275,171 @@ extension TabsCore {
     let sid = currentSpace
     guard looseToday(sid).count >= Self.tidyAutoAt, env.now() - (tidyLastAuto[sid] ?? 0) >= Self.tidyAutoGapMs else { return }
     tidy(sid, auto: true)
+  }
+}
+
+/// Auto grouping: with Tidy on and "Group new tabs automatically" on, new loose Today tabs are
+/// collected and, a little after the last one opened (one debounced batch, never per tab), the
+/// on-device model files each into the Today group it belongs to, or starts a group once enough
+/// related tabs are loose. One `ai.group` request per batch, so the model runs only then; nothing
+/// is collected while either setting is off. The whole batch is one undo step.
+extension TabsCore {
+  static let autoGroupRequestPrefix = "tabs.group:"
+  static let autoGroupDefaultDelayMs: UInt64 = 20_000
+  /// A new group needs this many related loose tabs, at least one of them new.
+  static let autoGroupMinNew = 3
+  /// Most loose tabs (new ones first) and groups shown to the model per batch.
+  static let autoGroupMaxTabs = 24
+  static let autoGroupMaxGroups = 12
+  static let autoGroupFolderPrefix = "folder:"
+
+  static let autoGroupInstructions =
+    "These are a browser's tab groups (lines with Group) and loose tabs (title, then address), numbered. For each loose tab that clearly belongs to one existing group, answer that group's name with the group's number and the tab numbers. Make a new group only for 3 or more loose tabs on one specific topic or task, named in one to three words in Title Case. Never put two existing groups together. Leave out tabs that fit nowhere."
+
+  enum AutoGroupStep: Equatable {
+    case join(String, [String])  // folder id, new tabs to add
+    case create(String, [String])  // name, loose tabs
+
+    var members: [String] {
+      switch self {
+      case let .join(_, m): return m
+      case let .create(_, m): return m
+      }
+    }
+  }
+
+  /// A new loose Today tab was opened (TabsCore.open). Costs two flag checks while off.
+  func autoGroupNoted(_ id: String, space sid: String) {
+    guard tidyEnabled, autoGroup else { return }
+    var list = autoGroupPending[sid] ?? []
+    if !list.contains(id) { list.append(id) }
+    autoGroupPending[sid] = list
+    autoGroupSchedule()
+  }
+
+  /// (Re)starts the debounce: the batch runs `autoGroupDelayMs` after the newest tab.
+  func autoGroupSchedule() {
+    autoGroupStamp += 1
+    let stamp = autoGroupStamp
+    env.timer(autoGroupDelayMs, false) { [self] in
+      guard stamp == autoGroupStamp else { return }
+      autoGroupFire()
+    }
+  }
+
+  /// The model's line for each item: groups as `Group “Name”: first tabs`, tabs like Tidy's.
+  func autoGroupItems(_ sid: String, pending: [String]) -> [Value] {
+    var items: [Value] = []
+    var groups = 0
+    for fid in today[sid] ?? [] where groups < Self.autoGroupMaxGroups {
+      guard let f = folders[fid], f.live.isEmpty else { continue }
+      var text = "Group “" + f.title + "”"
+      var n = 0
+      for id in tabsIn(folder: fid) where n < 3 {
+        guard let t = tabs[id] else { continue }
+        text += (n == 0 ? ": " : "; ") + t.displayTitle
+        n += 1
+      }
+      items.append(["id": .string(Self.autoGroupFolderPrefix + fid), "text": .string(text)])
+      groups += 1
+    }
+    // New tabs first, then the rest of Today's loose tabs in sidebar order.
+    let loose = looseToday(sid)
+    var order = pending.filter { loose.contains($0) }
+    for id in loose where !order.contains(id) { order.append(id) }
+    for id in order.prefix(Self.autoGroupMaxTabs) {
+      guard let t = tabs[id] else { continue }
+      items.append(["id": .string(id), "text": .string(t.displayTitle + " — " + Self.tidyAddress(t.url))])
+    }
+    return items
+  }
+
+  func autoGroupFire() {
+    guard tidyEnabled, autoGroup else { autoGroupPending = [:]; return }
+    // A Tidy or a rename in flight: try again after it.
+    if tidying != nil || editing != nil || !autoGroupAsked.isEmpty { autoGroupSchedule(); return }
+    guard let sid = autoGroupPending.keys.sorted().first(where: { !(autoGroupPending[$0] ?? []).isEmpty }) else { return }
+    let pending = autoGroupPending[sid] ?? []
+    autoGroupPending[sid] = nil
+    if !autoGroupPending.isEmpty { autoGroupSchedule() }
+    let loose = looseToday(sid)
+    let fresh = pending.filter { loose.contains($0) }
+    guard !fresh.isEmpty else { return }
+    let a = env.call("ai", "availability")
+    guard !a.isErr, a.b("available") else { return }
+    let items = autoGroupItems(sid, pending: fresh)
+    guard items.count >= 2 else { return }
+    let r = env.call("ai", "group", ["id": .string(Self.autoGroupRequestPrefix + sid), "items": .array(items),
+                                     "instructions": .string(Self.autoGroupInstructions), "maxGroups": .int(Int64(Self.autoGroupMaxGroups))])
+    if !r.isErr { autoGroupAsked[sid] = fresh }
+  }
+
+  /// The model's groups -> steps: a group naming exactly one existing group takes the new tabs in
+  /// it; a group naming none becomes a new group when it has `autoGroupMinNew` loose tabs, one of
+  /// them new. Each tab is used once; groups naming two existing groups are ignored.
+  static func autoGroupPlan(_ groups: [Value], folders: [String], pending: [String], loose: [String]) -> [AutoGroupStep] {
+    var used: [String] = []
+    var out: [AutoGroupStep] = []
+    for g in groups {
+      var fids: [String] = []
+      var members: [String] = []
+      for m in g.a("items") {
+        guard let id = m.string else { continue }
+        if Text.hasPrefix(id, autoGroupFolderPrefix) {
+          let fid = Text.dropPrefix(id, autoGroupFolderPrefix)
+          if folders.contains(fid) && !fids.contains(fid) { fids.append(fid) }
+        } else if loose.contains(id), !used.contains(id), !members.contains(id) {
+          members.append(id)
+        }
+      }
+      if fids.count == 1 {
+        let joining = loose.filter { members.contains($0) && pending.contains($0) }
+        guard !joining.isEmpty else { continue }
+        used += joining
+        out.append(.join(fids[0], joining))
+      } else if fids.isEmpty {
+        let group = loose.filter { members.contains($0) }
+        guard group.count >= autoGroupMinNew, group.contains(where: { pending.contains($0) }) else { continue }
+        used += group
+        out.append(.create(g.s("name"), group))
+      }
+    }
+    return out
+  }
+
+  /// `ai.result` for an auto-group batch: applies the plan in one undo step.
+  func autoGroupArrived(_ v: Value) {
+    let rid = v.s("id")
+    guard Text.hasPrefix(rid, Self.autoGroupRequestPrefix) else { return }
+    let sid = Text.dropPrefix(rid, Self.autoGroupRequestPrefix)
+    let pending = autoGroupAsked[sid] ?? []
+    autoGroupAsked[sid] = nil
+    guard v.b("ok"), tidyEnabled, autoGroup, tidying == nil else { return }
+    let loose = looseToday(sid)
+    let groupIds = (today[sid] ?? []).filter { folders[$0].map { $0.live.isEmpty } ?? false }
+    let plan = Self.autoGroupPlan(v.a("groups"), folders: groupIds, pending: pending, loose: loose)
+    guard !plan.isEmpty else { return }
+    checkpoint()
+    tidyUndoDepth = undoStack.count
+    var list = today[sid] ?? []
+    var moved = 0
+    for step in plan {
+      switch step {
+      case let .join(fid, members):
+        folders[fid]?.children += members
+        list.removeAll { members.contains($0) }
+      case let .create(name, members):
+        guard let at = list.firstIndex(where: { members.contains($0) }) else { continue }
+        let fid = newId("folder-")
+        folders[fid] = Folder(id: fid, spaceId: sid, title: Self.cleanName(name) ?? groupName(members), open: false, children: members)
+        list[at] = fid
+        list.removeAll { members.contains($0) }
+      }
+      for m in step.members { opener[m] = nil }
+      moved += step.members.count
+    }
+    setIds(.today(sid), list)
+    changed(sid)
+    tidyToast("Grouped " + String(moved) + (moved == 1 ? " tab" : " tabs") + ". Use ⌃Z to undo.", action: "Undo")
   }
 }
