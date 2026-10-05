@@ -1,0 +1,2 @@
+# Snapshots that differ between two CI renders of the same commit (scripts/golden-diff.sh never
+# fails on these). Measured by diffing two `ci-check.sh --snapshots` runs of one commit.
