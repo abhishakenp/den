@@ -26,6 +26,8 @@ public final class WindowService: HostService {
   weak var ui: UIService?
   weak var content: ContentService?
   let mini: MiniWindows
+  /// The open Little Arc panels, oldest first (snapshots of a Little Arc scenario).
+  public var miniPanels: [NSPanel] { mini.windows.values.sorted { $0.id < $1.id }.map(\.panel) }
 
   public init(windows: WindowSet) {
     self.windows = windows

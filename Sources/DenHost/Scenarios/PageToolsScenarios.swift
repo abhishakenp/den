@@ -88,6 +88,10 @@ public enum PageToolsScenarios {
       }
       open(rt, sticky) { _ in run("pagetools.capture.full") }
     case "zap":
+      // The snapshot waits for the element to be hidden, then for the panel to finish fading in.
+      var zapped = false
+      SnapshotGate.settle = 1
+      SnapshotGate.ready = { zapped }
       open(rt, sticky) { w in
         run("pagetools.zap")
         rt.plugins.on("webviews.message") { v in
@@ -95,6 +99,7 @@ public enum PageToolsScenarios {
         }
         after(rt, 1.5) {
           _ = rt.call("webviews", "inject", ["id": .string(w), "plugin": "pagetools", "script": "return window.__denZap.hide('.main-page-content > section:nth-of-type(2)') || window.__denZap.hide('main h2')"])
+          zapped = true
         }
       }
     case "unstick":

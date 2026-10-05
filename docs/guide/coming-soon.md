@@ -32,7 +32,6 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 - Crash recovery; a "Page crashed · Reload" view and protection against endless alerts.
 - Web apps (PWA).
 - Non-US keyboard layouts for shortcuts, and CJK input in the command bar.
-- Resizing split panes by dragging.
 
 ## Import, sync, passwords
 

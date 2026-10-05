@@ -82,9 +82,26 @@ final class TabsCore {
     var id: String
     var layout: String  // horizontal | vertical | grid
     var children: [String]
+    /// Pane sizes from dragging the gaps (`content.ratios`), kept only for the panes and layout
+    /// they were made for: adding, removing or reordering a pane, or a new layout, makes them equal.
+    var ratios: [Double] = []
+    var ratiosKey = ""
+
+    var key: String {
+      var k = layout
+      for c in children { k += "|" + c }
+      return k
+    }
+    /// The sizes `content.show` takes, or [] (equal panes).
+    var showRatios: [Value] { ratiosKey == key ? ratios.map { .double($0) } : [] }
 
     var value: Value {
-      ["id": .string(id), "layout": .string(layout), "children": .array(children.map { .string($0) })]
+      var v: Value = ["id": .string(id), "layout": .string(layout), "children": .array(children.map { .string($0) })]
+      if !showRatios.isEmpty {
+        v.put("ratios", .array(showRatios))
+        v.put("ratiosKey", .string(ratiosKey))
+      }
+      return v
     }
   }
 
@@ -318,7 +335,8 @@ final class TabsCore {
     }
     for sp in v.a("splits") {
       guard let id = sp["id"].string else { continue }
-      splits[id] = Split(id: id, layout: sp.sOpt("layout") ?? "horizontal", children: sp.a("children").compactMap { $0.string })
+      splits[id] = Split(id: id, layout: sp.sOpt("layout") ?? "horizontal", children: sp.a("children").compactMap { $0.string },
+                         ratios: sp.a("ratios").compactMap { $0.double }, ratiosKey: sp.s("ratiosKey"))
     }
     favorites = v.a("favorites").compactMap { $0.string }
     for s in v.a("spaces") {
@@ -1740,7 +1758,7 @@ final class TabsCore {
     var show: Value
     var title: Value
     if let id, let sid = splitOf(id), let sp = splits[sid] {
-      show = ["panes": .array(sp.children.map { .string($0) }), "orientation": .string(sp.layout), "focus": .string(id)]
+      show = ["panes": .array(sp.children.map { .string($0) }), "orientation": .string(sp.layout), "ratios": .array(sp.showRatios), "focus": .string(id)]
       title = ["title": .string(tabs[id]?.displayTitle ?? "den")]
     } else if let id {
       show = ["panes": [.string(id)]]
@@ -2026,6 +2044,7 @@ final class TabsCore {
     subscribeWindows()
     env.on("spaces.changed") { [self] v in spacesChanged(v.a("spaces")) }
     env.on("content.focus") { [self] v in splitFocused(v.s("id")) }
+    env.on("content.ratios") { [self] v in splitResized(v) }
     env.on("tabs.key.close") { [self] _ in closeFromKey() }
     env.on("tabs.key.reopen") { [self] _ in
       // A window closed after the last tab comes back first (then ⇧⌘T goes on with tabs).
@@ -2138,6 +2157,17 @@ final class TabsCore {
 
   /// A click in (or Ctrl-Shift-N to) another pane of the shown split selects that pane's tab,
   /// without re-laying out the content.
+  /// A split's gap was dragged (or double-clicked back to equal): keep the sizes with the split,
+  /// for its panes in this order and layout. Every window showing it uses them.
+  func splitResized(_ v: Value) {
+    let panes = v.a("panes").compactMap { $0.string }
+    guard let first = panes.first, let sid = splitOf(first), var sp = splits[sid], sp.children == panes, sp.layout == v.s("orientation") else { return }
+    sp.ratios = v.a("ratios").compactMap { $0.double }
+    sp.ratiosKey = sp.ratios.isEmpty ? "" : sp.key
+    splits[sid] = sp
+    saveSoon()
+  }
+
   func splitFocused(_ id: String) {
     guard tabs[id] != nil, let sid = splitOf(id), splitOf(shown) == sid, selectedId != id else { return }
     let space = spaceOf(id) ?? currentSpace

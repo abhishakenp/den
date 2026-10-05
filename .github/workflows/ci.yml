@@ -18,6 +18,10 @@ on:
         type: choice
         options: [dark, all]
         default: dark
+      snapshot_only:
+        description: Only these snapshots (space-separated globs of output names, e.g. "favorites-* vault-*"); empty renders all
+        type: string
+        default: ""
       lldb:
         description: Run the test bundle under lldb and print all native backtraces on a crash
         type: boolean
@@ -214,6 +218,7 @@ jobs:
 
       - name: Render snapshot scenarios (scripts/snapshots.sh)
         env:
+          SNAPSHOT_ONLY: ${{ inputs.snapshot_only }}
           SNAPSHOT_APPEARANCE: ${{ inputs.snapshot_appearance == 'all' && '' || 'dark' }}
           # The runner has a GUI session: native menus and the docked Web Inspector render too.
           MENUS: "1"

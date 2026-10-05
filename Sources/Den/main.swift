@@ -242,15 +242,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     if let path = arg("--snapshot") {
       let delay = Double(arg("--snapshot-delay") ?? "4") ?? 4
       DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+        MainActor.assumeIsolated { SnapshotGate.wait {
         Task { @MainActor in
           // Scenarios that open a Little Arc snapshot that panel instead of the main window.
-          if self.snapMini, let p = NSApp.windows.first(where: { $0 is NSPanel && $0.isVisible }) { snapWindow = p }
+          if self.snapMini, let p = self.runtime.windowService.miniPanels.first ?? NSApp.windows.first(where: { $0 is NSPanel && $0.isVisible }) { snapWindow = p }
           // Window scenarios snapshot the window in front (a new or private window).
           if self.snapActive { snapWindow = self.runtime.window.window }
           let ok = await Snapshotter.write(snapWindow, to: path)
           print(ok ? "snapshot: \(path)" : "snapshot: FAILED")
           exit(ok ? 0 : 1)
         }
+        } }
       }
     }
   }
@@ -362,13 +364,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     case "littleArcLink":
       // A link from another app, as macOS delivers it: the peek plugin opens it in Little Arc.
       snapMini = true
+      // Snapshot once the panel is up and its page has loaded (a slow runner takes seconds).
+      SnapshotGate.settle = 1.5
+      SnapshotGate.ready = {
+        guard let m = rt.call("window", "listMini").array?.first, let w = rt.webviews.record(m.str("webview"))?.webView else { return false }
+        return !w.isLoading && w.url != nil
+      }
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { rt.app.open([URL(string: "https://www.swift.org/blog/")!]) }
     case "littleArcCmdO":
       // A link from another app opens Little Arc; with its panel the key window, a real Cmd-O key
       // event goes through AppKit's dispatch (NSApp.sendEvent) and moves the page into a today tab.
+      // Snapshot: the page in its today tab, the panel gone.
+      var moved = false
+      SnapshotGate.settle = 1
+      SnapshotGate.ready = { moved }
       rt.app.open([URL(string: "https://www.swift.org/")!])
       DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-        guard let panel = NSApp.windows.first(where: { $0 is NSPanel && $0.isVisible }) else { print("scenario.cmdO no panel"); exit(1) }
+        guard let panel = rt.windowService.miniPanels.first ?? NSApp.windows.first(where: { $0 is NSPanel && $0.isVisible }) else { print("scenario.cmdO no panel"); exit(1) }
         let web = rt.call("window", "listMini")[0]["webview"].string ?? ""
         Presentation.activate()
         Presentation.show(panel)
@@ -383,7 +395,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let first = rt.call("tabs", "list").list("today").first?["id"].string ?? ""
             let ok = wasKey && first == web && rt.call("tabs", "selected")["id"].string == web && rt.call("window", "listMini").array?.isEmpty == true
             print("scenario.cmdO key=\(wasKey) web=\(web) today0=\(first) minis=\(rt.call("window", "listMini").array?.count ?? -1) ok=\(ok)")
-            exit(ok ? 0 : 1)
+            moved = first == web && rt.call("window", "listMini").array?.isEmpty == true
+            // With --snapshot, the snapshot ends the run (once the page is in its tab).
+            if self.arg("--snapshot") == nil { exit(ok ? 0 : 1) }
           }
         }
       }

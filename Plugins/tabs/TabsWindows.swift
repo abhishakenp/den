@@ -99,7 +99,7 @@ extension TabsCore {
     var title = spaceName(places[w]?.space ?? currentSpace)
     if let t = tab, tabs[t] != nil {
       if let s = splitOf(t), let sp = splits[s] {
-        a = ["window": .string(w), "panes": .array(sp.children.map { .string($0) }), "orientation": .string(sp.layout), "focus": .string(t)]
+        a = ["window": .string(w), "panes": .array(sp.children.map { .string($0) }), "orientation": .string(sp.layout), "ratios": .array(sp.showRatios), "focus": .string(t)]
       } else {
         a.put("panes", [.string(t)])
       }

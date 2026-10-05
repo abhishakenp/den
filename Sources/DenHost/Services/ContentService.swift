@@ -21,6 +21,9 @@ import WebKit
 /// or its "Show Here" is clicked).
 /// Events: content.focus {id}   content.peekAction {action: close|expand|split, webview}
 ///         content.paneAction {id, action: close|separate}   (split pane hover controls)
+///         content.ratios {window, panes, orientation, ratios}   a split resized by dragging the gap
+///           between panes (fractions adding up to 1; per column for a 3–4 pane grid; [] after a
+///           double-click made them equal). Pass them back as `show`'s `ratios` to keep the sizes.
 @MainActor
 public final class ContentService: HostService {
   public let name = "content"
@@ -192,6 +195,8 @@ final class WindowContent {
   private(set) var held: String?
   /// Panes whose page another window has on screen right now ("Open in another window").
   private var elsewhere: [String: ElsewhereView] = [:]
+  /// Drag handles in the gaps between split panes (none for a single page).
+  private(set) var dividers: [SplitDividerView] = []
 
   init(svc: ContentService, wc: DenWindowController) {
     self.svc = svc
@@ -430,7 +435,51 @@ final class WindowContent {
       cards[id]?.frame = f
       cards[id]?.needsLayout = true
     }
+    layoutDividers(b)
     layoutPeek()
+  }
+
+  /// One drag handle per gap between panes, above the cards (they reach a few points over each
+  /// pane's edge, so the gap is easy to grab).
+  func layoutDividers(_ b: NSRect) {
+    let gaps = panes.count > 1 ? SplitLayout.dividers(count: panes.count, orientation: orientation, in: b, gap: Tokens.splitGap, ratios: ratios) : []
+    while dividers.count > gaps.count { dividers.removeLast().removeFromSuperview() }
+    while dividers.count < gaps.count {
+      let i = dividers.count, d = SplitDividerView()
+      d.onDrag = { [weak self] p in self?.dragDivider(i, to: p) }
+      d.onDragEnd = { [weak self] in self?.ratiosChanged() }
+      d.onDoubleClick = { [weak self] in
+        guard let self else { return }
+        self.ratios = []
+        self.layout()
+        self.ratiosChanged()
+      }
+      dividers.append(d)
+    }
+    guard !dividers.isEmpty else { return }
+    let area = wc.contentArea
+    // Cards added after a divider would cover it: keep the dividers on top of every card.
+    let lastCard = area.subviews.lastIndex { $0 is CardView } ?? -1
+    let slop = Tokens.splitDividerSlop
+    for (d, g) in zip(dividers, gaps) {
+      d.alongX = g.alongX
+      d.frame = g.alongX ? g.rect.insetBy(dx: -slop, dy: 0) : g.rect.insetBy(dx: 0, dy: -slop)
+      if d.superview !== area || (area.subviews.firstIndex(of: d) ?? -1) < lastCard { area.addSubview(d, positioned: .above, relativeTo: nil) }
+    }
+  }
+
+  /// A divider dragged to `p` (content-area coordinates): the panes beside it resize live.
+  func dragDivider(_ i: Int, to p: CGPoint) {
+    let b = sideSplit(wc.contentArea.bounds).panes
+    ratios = SplitLayout.dragged(count: panes.count, orientation: orientation, in: b, gap: Tokens.splitGap, ratios: ratios,
+                                 divider: i, to: p, minPane: Tokens.splitMinPane)
+    layout()
+  }
+
+  /// A resize ended (or was reset): whoever owns the split keeps the sizes.
+  func ratiosChanged() {
+    host.emit("content.ratios", ["window": .string(wc.id), "panes": .array(panes.map { .string($0) }),
+                                 "orientation": .string(orientation.rawValue), "ratios": .array(ratios.map { .double(Double($0)) })])
   }
 
   func setFocus(_ id: String?, makeFirstResponder: Bool) {

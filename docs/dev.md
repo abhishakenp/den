@@ -35,6 +35,8 @@ the `macos-26` arm64 runner (a 3-core M1 VM with a logged-in GUI session):
 - With `--snapshots` (dispatch input `snapshots`): `scripts/snapshots.sh` on a second runner with
   `SNAPSHOT_APPEARANCE=dark`, so every scenario renders as `<name>-dark.png`; `--light` renders
   the script's own light and dark set. The PNGs are the `snapshots` artifact, ready to commit.
+  `--only "favorites-* vault-*"` (dispatch input `snapshot_only`, `SNAPSHOT_ONLY` for the script)
+  renders just the shots whose output names match, in minutes instead of the whole set.
 - Dispatch input `pip`: a scenario build runs `--scenario pip` in a visible den on a second runner
   (WebKit's native picture in picture through every trigger, the PiP window's buttons, and a
   full-screen video whose Space is switched away from); log and PiP-window captures are the

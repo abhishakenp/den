@@ -215,10 +215,54 @@ public enum SplitLayout {
     case .vertical: return split(bounds, n, horizontal: false, ratios)
     case .grid:
       if n == 2 { return split(bounds, 2, horizontal: true, ratios) }
-      let cols = split(bounds, 2, horizontal: true, [])
+      // 3–4 panes: `ratios` (two of them) size the columns.
+      let cols = split(bounds, 2, horizontal: true, ratios.count == 2 ? ratios : [])
       let left = n == 4 ? split(cols[0], 2, horizontal: false, []) : [cols[0]]
       let right = split(cols[1], 2, horizontal: false, [])
       return left + right
     }
+  }
+
+  /// The gaps a drag can resize: one between each pair of neighbouring panes (side by side or top
+  /// and bottom), or the one between the two columns of a grid. `alongX`: the divider moves left
+  /// and right (a vertical line between panes side by side).
+  public static func dividers(count: Int, orientation: SplitOrientation, in bounds: CGRect, gap: CGFloat, ratios: [CGFloat] = []) -> [(rect: CGRect, alongX: Bool)] {
+    let n = max(1, min(count, 4))
+    guard n > 1 else { return [] }
+    let f = frames(count: n, orientation: orientation, in: bounds, gap: gap, ratios: ratios)
+    if orientation == .grid || orientation == .horizontal {
+      if orientation == .grid && n > 2 {
+        return [(rect: CGRect(x: f[0].maxX, y: bounds.minY, width: gap, height: bounds.height), alongX: true)]
+      }
+      return (0..<(n - 1)).map { (rect: CGRect(x: f[$0].maxX, y: bounds.minY, width: f[$0 + 1].minX - f[$0].maxX, height: bounds.height), alongX: true) }
+    }
+    return (0..<(n - 1)).map { (rect: CGRect(x: bounds.minX, y: f[$0].maxY, width: bounds.width, height: f[$0 + 1].minY - f[$0].maxY), alongX: false) }
+  }
+
+  /// New relative sizes after dragging divider `index` to `point`: the two panes beside it share
+  /// their combined size, neither below `minPane` (or half of it when there isn't room). Returns
+  /// fractions that add up to 1, one per pane (one per column for a grid of 3–4).
+  public static func dragged(count: Int, orientation: SplitOrientation, in bounds: CGRect, gap: CGFloat, ratios: [CGFloat],
+                             divider index: Int, to point: CGPoint, minPane: CGFloat) -> [CGFloat] {
+    let n = max(1, min(count, 4))
+    guard n > 1 else { return ratios }
+    let f = frames(count: n, orientation: orientation, in: bounds, gap: gap, ratios: ratios)
+    let alongX = orientation != .vertical
+    var sizes: [CGFloat]
+    if orientation == .grid && n > 2 {
+      sizes = [f[0].width, bounds.width - gap - f[0].width]
+    } else {
+      sizes = f.map { alongX ? $0.width : $0.height }
+    }
+    guard index >= 0, index < sizes.count - 1 else { return ratios }
+    let before = sizes[..<index].reduce(0, +) + CGFloat(index) * gap
+    let pair = sizes[index] + sizes[index + 1]
+    let lo = min(minPane, pair / 2)
+    let pos = (alongX ? point.x - bounds.minX : point.y - bounds.minY) - before - gap / 2
+    sizes[index] = min(max(pos, lo), pair - lo).rounded()
+    sizes[index + 1] = pair - sizes[index]
+    let total = sizes.reduce(0, +)
+    guard total > 0 else { return ratios }
+    return sizes.map { $0 / total }
   }
 }
