@@ -232,4 +232,46 @@ struct NowPlayingTests {
     row.hovering = false
     #expect(row.playPause.isHidden)
   }
+
+  /// A favorite tile with `media`: hovered, play/pause takes the icon's place; a wide tile (one
+  /// favorite fills the row) also gets previous / next, a narrow one (four in a row) doesn't.
+  @Test func favoriteTileHoverPlayback() throws {
+    let rt = ServiceTests.runtime()
+    var actions: [Value] = []
+    let obs = rt.host.on("ui.action") { v in actions.append(v) }
+    defer { rt.host.off(obs) }
+    let tile: (String) -> Value = { id in
+      ["type": "favoriteTile", "id": .string(id), "icon": "sf:music.note", "title": "Music", "audio": true,
+       "media": ["paused": true, "next": true, "previous": true]]
+    }
+    func tiles() -> [FavoriteTileNode] {
+      func walk(_ v: NSView) -> [FavoriteTileNode] { (v as? FavoriteTileNode).map { [$0] } ?? v.subviews.flatMap(walk) }
+      return walk(rt.ui.sidebarView)
+    }
+    _ = rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "g", "children": [tile("f1")]]])
+    rt.ui.sidebarView.layoutSubtreeIfNeeded()
+    let wide = try #require(tiles().first)
+    #expect(wide.media.playPause.isHidden && !wide.icon.isHidden, "hidden until hovered")
+    wide.hovering = true
+    wide.layoutSubtreeIfNeeded()
+    #expect(!wide.media.playPause.isHidden && !wide.media.next.isHidden && !wide.media.previous.isHidden && wide.icon.isHidden)
+    #expect(wide.media.playPause.icon.spec == "sf:play.fill" && wide.media.playPause.toolTip == "Play")
+    #expect(wide.media.previous.frame.maxX <= wide.media.playPause.frame.minX && wide.media.playPause.frame.maxX <= wide.media.next.frame.minX)
+    #expect(abs(wide.media.playPause.frame.midX - wide.bounds.midX) < 1)
+    wide.media.playPause.action()
+    wide.media.next.action()
+    let media = actions.filter { $0.str("id") == "f1" && $0.str("action") == "media" }.map { $0["value"].str("action") }
+    #expect(media == ["toggle", "next"])
+    wide.hovering = false
+    #expect(wide.media.playPause.isHidden && !wide.icon.isHidden)
+
+    _ = rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "g", "children": .array(["a", "b", "c", "d"].map(tile))]])
+    rt.ui.sidebarView.layoutSubtreeIfNeeded()
+    let narrow = try #require(tiles().first { $0.node.str("id") == "a" })
+    #expect(narrow.bounds.width < FavoriteTileNode.skipsWidth)
+    narrow.hovering = true
+    narrow.layoutSubtreeIfNeeded()
+    #expect(!narrow.media.playPause.isHidden && narrow.media.next.isHidden && narrow.media.previous.isHidden)
+    #expect(narrow.bounds.contains(narrow.media.playPause.frame))
+  }
 }

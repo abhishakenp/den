@@ -417,13 +417,53 @@ final class GridNode: NodeView {
   }
 }
 
-/// {type:"favoriteTile", id, icon, title, selected, audio, muted?, suspended?, badge?}  actions: click, doubleClick, reorder, mute (speaker badge)
+/// Hover playback buttons for a tab playing (or paused) media: previous, play/pause, next. Shared
+/// by tab rows and favorite tiles; `media` is the node's `{paused, next, previous}`.
+@MainActor
+final class MediaButtons {
+  let previous: IconButton, playPause: IconButton, next: IconButton
+  var all: [IconButton] { [previous, playPause, next] }
+  init(_ emit: @escaping (String) -> Void) {
+    previous = IconButton(symbol: "backward.fill", size: 22) { emit("previous") }
+    playPause = IconButton(symbol: "pause.fill", size: 22) { emit("toggle") }
+    next = IconButton(symbol: "forward.fill", size: 22) { emit("next") }
+    previous.toolTip = "Previous Track"
+    next.toolTip = "Next Track"
+    all.forEach { $0.isHidden = true }
+  }
+  /// `skips`: room for previous / next too (a narrow favorite tile shows play/pause alone).
+  func update(_ m: Value, show: Bool, skips: Bool = true) {
+    let show = show && !m.isNull
+    let paused = m.flag("paused")
+    playPause.icon.spec = paused ? "sf:play.fill" : "sf:pause.fill"
+    playPause.toolTip = paused ? "Play" : "Pause"
+    playPause.isHidden = !show
+    previous.isHidden = !show || !skips || !m.flag("previous")
+    next.isHidden = !show || !skips || !m.flag("next")
+  }
+  func apply(_ p: Palette) {
+    for b in all {
+      b.apply(p)
+      b.hoverFill = p.controlHoverFill
+    }
+  }
+  var visible: [IconButton] { all.filter { !$0.isHidden } }
+}
+
+/// {type:"favoriteTile", id, icon, title, selected, audio, muted?, suspended?, badge?, media?: {paused, next, previous}}
+/// actions: click, doubleClick, reorder, mute (speaker badge), media {action: toggle|next|previous}
 /// `badge`: a short text chip at the bottom of the tile ("in 8m": a plugin's countdown).
 /// `suspended`: the page was discarded; the icon dims until the page comes back.
+/// `media`: while hovered, play/pause (and previous / next when the tile is wide enough) take the
+/// icon's place, like a tab row's.
 final class FavoriteTileNode: HoverNode {
   let icon = IconView()
   lazy var audio = SpeakerBadge { [weak self] in self?.emit("mute") }
   let chip = TextChip()
+  lazy var media = MediaButtons { [weak self] a in self?.emit("media", ["action": .string(a)]) }
+  /// Shown while hovered (or `forceMedia`, for snapshots) when the tab has media.
+  var forceMedia = false { didSet { updateMedia(); needsLayout = true } }
+  static let skipsWidth: CGFloat = 3 * 22 + 8
   override var cornerRadius: CGFloat { Tokens.favoriteTileCornerRadius }
   override var baseFill: NSColor? { palette.tileFill }
   override var draggable: Bool { true }
@@ -432,8 +472,14 @@ final class FavoriteTileNode: HoverNode {
     addSubview(icon)
     addSubview(audio)
     addSubview(chip)
+    media.all.forEach { addSubview($0) }
   }
   required init?(coder: NSCoder) { fatalError() }
+  override func hoverChanged() { updateMedia(); needsLayout = true }
+  func updateMedia() {
+    media.update(node["media"], show: hovering || forceMedia, skips: bounds.width >= Self.skipsWidth)
+    icon.isHidden = !media.playPause.isHidden
+  }
   override func update(_ v: Value) {
     super.update(v)
     icon.spec = v.str("icon")
@@ -443,19 +489,27 @@ final class FavoriteTileNode: HoverNode {
     chip.text = v.str("badge")
     chip.isHidden = chip.text.isEmpty
     setAccessibilityValue(chip.text.isEmpty ? nil : chip.text)
-    apply(r.palette)
+    updateMedia()
     needsLayout = true
   }
   override func apply(_ p: Palette) {
     icon.tint = p.text
     icon.alphaValue = node.flag("suspended") ? 0.45 : 1  // a discarded tab's icon dims
-    audio.apply(p); chip.apply(p); needsDisplay = true
+    audio.apply(p); chip.apply(p)
+    media.apply(p)
+    needsDisplay = true
   }
   override func layout() {
+    // The tile's width decides whether previous / next fit (it changes with the grid's columns).
+    updateMedia()
     let s = Tokens.favoriteIconSize
     // With a chip, the icon moves up a little so both fit the tile.
     let lift: CGFloat = chip.isHidden ? 0 : 5
     icon.frame = NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2 - lift, width: s, height: s)
+    // The playback buttons, centered where the icon is.
+    let shown = media.visible
+    var bx = (bounds.width - CGFloat(shown.count) * 22) / 2
+    for b in shown { b.frame = NSRect(x: bx, y: icon.frame.midY - 11, width: 22, height: 22); bx += 22 }
     // A small round badge in the top-right corner, clear of the icon (den's estimate).
     audio.frame = NSRect(x: bounds.width - 21, y: 3, width: 18, height: 18)
     if !chip.isHidden {
@@ -961,10 +1015,11 @@ final class TabRowNode: HoverNode {
   lazy var audio = SpeakerBadge(badge: false) { [weak self] in self?.emit("mute") }
   lazy var close = IconButton(symbol: "xmark", size: 22) { [weak self] in self?.emit("close") }
   // Hover playback buttons for a tab with media (`media`): previous, play/pause, next.
-  lazy var previous = IconButton(symbol: "backward.fill", size: 22) { [weak self] in self?.emit("media", ["action": "previous"]) }
-  lazy var playPause = IconButton(symbol: "pause.fill", size: 22) { [weak self] in self?.emit("media", ["action": "toggle"]) }
-  lazy var next = IconButton(symbol: "forward.fill", size: 22) { [weak self] in self?.emit("media", ["action": "next"]) }
-  var mediaButtons: [IconButton] { [previous, playPause, next] }
+  lazy var media = MediaButtons { [weak self] a in self?.emit("media", ["action": .string(a)]) }
+  var previous: IconButton { media.previous }
+  var playPause: IconButton { media.playPause }
+  var next: IconButton { media.next }
+  var mediaButtons: [IconButton] { media.all }
   lazy var rename = RenameSupport(owner: self, label: label)
   let dot = UnreadDot()
   override var draggable: Bool { node.flag("draggable", true) && !rename.active }
@@ -975,7 +1030,6 @@ final class TabRowNode: HoverNode {
     [icon, drift, label, audio, dot, previous, playPause, next, close].forEach { addSubview($0) }
     close.isHidden = true
     dot.isHidden = true
-    mediaButtons.forEach { $0.isHidden = true }
   }
   required init?(coder: NSCoder) { fatalError() }
   var indent: CGFloat { CGFloat(node.num("indent", 0)) * Tokens.folderIndent }
@@ -987,18 +1041,7 @@ final class TabRowNode: HoverNode {
   }
   /// Shown while the row is hovered (or `forceMedia`, for snapshots) and the tab has media.
   var forceMedia = false { didSet { updateMediaButtons(); needsLayout = true } }
-  func updateMediaButtons() {
-    let m = node["media"]
-    let show = (hovering || forceMedia) && !m.isNull && !rename.active
-    let paused = m.flag("paused")
-    playPause.icon.spec = paused ? "sf:play.fill" : "sf:pause.fill"
-    playPause.toolTip = paused ? "Play" : "Pause"
-    previous.toolTip = "Previous Track"
-    next.toolTip = "Next Track"
-    playPause.isHidden = !show
-    previous.isHidden = !show || !m.flag("previous")
-    next.isHidden = !show || !m.flag("next")
-  }
+  func updateMediaButtons() { media.update(node["media"], show: (hovering || forceMedia) && !rename.active) }
   override func update(_ v: Value) {
     super.update(v)
     label.stringValue = v.str("title", "Untitled")
@@ -1025,10 +1068,7 @@ final class TabRowNode: HoverNode {
     dot.apply(p)
     close.apply(p)
     close.hoverFill = p.controlHoverFill
-    for b in mediaButtons {
-      b.apply(p)
-      b.hoverFill = p.controlHoverFill
-    }
+    media.apply(p)
     needsDisplay = true
   }
   override func height(for w: CGFloat) -> CGFloat { Tokens.tabRowHeight }
