@@ -20,7 +20,7 @@ public enum ExtensionShim {
   /// Marks the background context, where the shim records visits and closed tabs.
   static let backgroundFlag = "__den/background.js"
   /// Bumped when `source` changes, so installed copies get the new one on their next load.
-  static let version = 5
+  static let version = 6
 
   /// Adds the shim to an unpacked extension. Idempotent; returns whether anything changed.
   /// `validPattern` says whether WebKit takes a match pattern: content script entries lose the
@@ -170,6 +170,23 @@ public enum ExtensionShim {
         }, true);
         return;
       }
+      // Extensions that pick a Safari or a Chrome code path from the user agent alone. Bitwarden's
+      // Chrome Web Store build, told it runs in Safari, sends Safari app-extension messages that
+      // no desktop app answers (no biometric unlock) and waits on Safari-only calls. In its own
+      // pages and background (never in web pages) it's told it runs in Chrome, which it does: the
+      // Chrome build, the chrome.* API, Chrome's native messaging host.
+      // By store id, or by name for a copy installed from a file (its id is den's own).
+      const chromeIdentity = ['nngceckbapebfimnlniiiahkandclblb', 'hccnnhgbibccigepcmlgppchkpfdophk'];
+      try {
+        const nav = g.navigator;
+        if (nav && (chromeIdentity.includes(api.runtime.id) || /^Bitwarden\b/.test(String(api.runtime.getManifest().name))) && !/ Chrome\//.test(nav.userAgent)) {
+          const ua = nav.userAgent.replace(/ Version\/[\d.]+ Safari\/[\d.]+$/, '') + ' Chrome/140.0.0.0 Safari/537.36';
+          const proto = Object.getPrototypeOf(nav);
+          Object.defineProperty(proto, 'userAgent', {get: () => ua, configurable: true});
+          Object.defineProperty(proto, 'appVersion', {get: () => ua.replace(/^Mozilla\//, ''), configurable: true});
+          Object.defineProperty(proto, 'vendor', {get: () => 'Google Inc.', configurable: true});
+        }
+      } catch (e) {}
       const inBackground = g.__denBackground === true;
       if (inBackground && api.runtime.onConnect && api.tabs && api.tabs.create) {
         api.runtime.onConnect.addListener((port) => {

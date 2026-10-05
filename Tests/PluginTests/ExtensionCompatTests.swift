@@ -462,7 +462,10 @@ struct ExtensionCompatTests {
   }
 
   /// Installs each, then reports: installed, loaded, background, popup (opens and renders).
-  func survey(_ h: Harness, _ list: [(String, String, String)]) async {
+  /// Returns each installed one's popup text (title | body text), by label.
+  @discardableResult
+  func survey(_ h: Harness, _ list: [(String, String, String)]) async -> [String: String] {
+    var texts: [String: String] = [:]
     for (source, id, label) in list {
       print("compat === \(label)")
       guard let ext = await install(h, source: source, id: id) else { print("compat summary \(label): install=false"); continue }
@@ -478,6 +481,7 @@ struct ExtensionCompatTests {
             text = await Wait.js(w, "document.title + ' | ' + (document.body ? document.body.innerText.replace(/[\\s]+/g, ' ').slice(0, 120) : '')")
           }
           popup = "shown \(h.rt.extensions.ui.popupSizeForTesting) \(String(describing: text))"
+          texts[label] = text as? String
         } else {
           popup = "not shown"
         }
@@ -486,13 +490,17 @@ struct ExtensionCompatTests {
       let bgFailed = h.rt.extensions.contexts[ext]?.errors.contains { $0.localizedDescription.contains("background content failed") } ?? true
       print("compat summary \(label): install=true loaded=\(d["loaded"]) background=\(d["background"]) backgroundFailed=\(bgFailed) popup=\(popup) unsupported=\(d["unsupported"]) errors=\(d["errors"])")
     }
+    return texts
   }
 
   @Test func passwordManagers() async throws {
     let h = Harness()
     h.startTabs()
     h.record(["webext.installed", "webext.failed"])
-    await survey(h, [("chrome", "nngceckbapebfimnlniiiahkandclblb", "Bitwarden"), ("chrome", "aeblfdkhhhdcdjpifhhbdiojplfjncoa", "1Password")])
+    let texts = await survey(h, [("chrome", "nngceckbapebfimnlniiiahkandclblb", "Bitwarden"), ("chrome", "aeblfdkhhhdcdjpifhhbdiojplfjncoa", "1Password")])
+    // Bitwarden's popup was a spinner forever while it was told it runs in Safari (ExtensionShim:
+    // its own pages and background see a Chrome user agent). Only checked when the store answered.
+    if let bw = texts["Bitwarden"] { #expect(bw.contains("Log in"), "Bitwarden's popup: \(bw)") }
   }
 
   @Test func youTubeAndWriting() async throws {
