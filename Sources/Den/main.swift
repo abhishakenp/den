@@ -109,6 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       case let .applyFailed(id, reason): print("plugin \(id) failed to apply: \(reason)")
       case let .applied(id):
         trace("applied \(id)")
+        // A plugin that provides `commands` has a new registry: re-register lazy plugins' commands.
+        self.loader?.pluginApplied(id)
       case let .reloaded(id, hash): print("plugin \(id) reloaded (build \(hash))")
       case let .reloadFailed(path, reason):
         print("plugin reload failed \(path): \(reason)")

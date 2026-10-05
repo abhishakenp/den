@@ -276,6 +276,18 @@ public final class LivePlugins {
       log.write("deferred \(id): \(why)")
       return
     }
+    // A lazy plugin waiting for its first trigger: stays waiting, or follows the new file.
+    if current == nil, let loader = PluginLoader.of(plugins), loader.armed[id] != nil {
+      if loader.refreshArmed(name, target: options.first) {
+        log.write("lazy \(id): \(options.first.map { Self.tilde($0.path) } ?? "none")")
+        return
+      }
+      if let t = options.first {
+        loader.load(t, watch: false)
+        log.write("loaded \(id) from \(Self.tilde(t.path))")
+      }
+      return
+    }
     switch Self.plan(current: current?.path, target: options.first?.path) {
     case .none: return
     case .unload:

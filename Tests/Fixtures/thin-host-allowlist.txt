@@ -59,6 +59,8 @@ call	Sources/DenHost/Intents/DenIntents.swift	tabs
 call	Sources/DenHost/Intents/DenIntents.swift	tabs
 call	Sources/DenHost/Intents/DenIntents.swift	tabs
 call	Sources/DenHost/Intents/DenIntents.swift	tabs
+call	Sources/DenHost/Plugins/LazyPlugins.swift	commands
+call	Sources/DenHost/Plugins/LazyPlugins.swift	commands
 call	Sources/DenHost/Services/MenuActions.swift	commands
 call	Sources/DenHost/Services/MenuActions.swift	commands
 call	Sources/DenHost/Services/MenuActions.swift	tabs
