@@ -123,6 +123,20 @@ struct TipsTests {
     #expect(TipsCore.filled("{a} and {a}{b}", [("a", "{a}x"), ("b", "y")]) == "{a}x and {a}xy")
   }
 
+  /// Settings opened with ⌘, (the menu): a tip that the bar finds settings too; a setting picked
+  /// in the bar retires it, and an open from anywhere else doesn't count.
+  @Test func settingsInBarTip() {
+    let h = Harness()
+    _ = start(h)
+    settle(h)
+    h.rt.plugins.emit("settings.opened", ["section": "general", "via": ""])
+    #expect(toastTexts(h).isEmpty)
+    h.rt.plugins.emit("settings.opened", ["section": "general", "via": "menu"])
+    #expect(toastTexts(h) == ["You can also type a setting's name in the command bar."])
+    h.rt.plugins.emit("commands.settingPicked", ["key": "general.tips"])
+    #expect(toastTexts(h).isEmpty && h.storage("tips", "retired.settingsInBar") == true)
+  }
+
   @Test func aRetiredTipNeverShows() {
     let h = Harness()
     _ = start(h)

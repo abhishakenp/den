@@ -52,6 +52,7 @@ final class TipsCore {
     Tip(key: "copyMarkdown", text: "⌥⇧⌘C copies the link as Markdown."),
     Tip(key: "briefingKey", text: "⇧⌘B opens your briefing any time."),
     // `{keyword}` and `{name}`: the site search the command bar matched (`commands.keywordHint`).
+    Tip(key: "settingsInBar", text: "You can also type a setting's name in the command bar."),
     Tip(key: "siteKeyword", text: "Type {keyword}, then Tab, to search {name} directly."),
   ]
 
@@ -483,6 +484,8 @@ final class TipsCore {
       bump("siteKeyword", fill: [("keyword", v.s("keyword")), ("name", v.s("name"))])
     }
     env.on("commands.keywordSearch") { [self] _ in retire("siteKeyword") }
+    env.on("settings.opened") { [self] v in if v.s("via") == "menu" { bump("settingsInBar") } }
+    env.on("commands.settingPicked") { [self] _ in retire("settingsInBar") }
   }
 
   func action(_ id: String, _ action: String, _ value: Value) {

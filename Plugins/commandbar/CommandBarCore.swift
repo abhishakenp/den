@@ -633,6 +633,7 @@ final class CommandBarCore {
       pickSetting(key)
     case let .pane(id):
       bump("pane:" + id, title: "", url: "")
+      env.emit("commands.settingPicked", ["pane": .string(id)])
       env.call("settings", "open", ["id": .string(id)])
     case let .option(key, i):
       pickOption(key, i)

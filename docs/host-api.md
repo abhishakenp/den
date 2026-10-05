@@ -521,7 +521,7 @@ The Settings window (⌘,, "Settings…" in the den menu). Plugins contribute se
 | `open` | `section?` (or `id`, and `key?` a dotted setting key whose section opens) | ok. Shows the window at that section |
 | `close`, `state` | – | ok / `{open, section}` |
 
-Events: `settings.changed {id, key, value}`; `settings.action {id, key, item?, button?, value?}` (list and button rows, and `submit` text fields); `settings.opened {section}`.
+Events: `settings.changed {id, key, value}`; `settings.action {id, key, item?, button?, value?}` (list and button rows, and `submit` text fields); `settings.opened {section, via}` (`via`: "menu" for Settings… / ⌘,, else "").
 
 Controls are `{key, type, title, subtitle?, default?}`:
 
