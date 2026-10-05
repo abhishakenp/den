@@ -475,10 +475,18 @@ struct ExtensionCompatTests {
       if d["hasPopup"] == true {
         h.rt.call("webext", "action", ["id": .string(ext)])
         if await wait(30, { h.rt.extensions.ui.popupFor == ext }) {
+          // At least 3 s; then until it shows some text (a big app on a slow runner), 20 s at most.
           try? await Task.sleep(for: .seconds(3))
           var text: Any? = nil
-          if let w = h.rt.extensions.ui.popupWebForTesting {
+          let until = Date().addingTimeInterval(20)
+          while let w = h.rt.extensions.ui.popupWebForTesting {
             text = await Wait.js(w, "document.title + ' | ' + (document.body ? document.body.innerText.replace(/[\\s]+/g, ' ').slice(0, 120) : '')")
+            if let t = text as? String, !t.hasSuffix(" | "), !t.hasSuffix("| ") { break }
+            if Date() > until { break }
+            try? await Task.sleep(for: .milliseconds(500))
+          }
+          if let w = h.rt.extensions.ui.popupWebForTesting {
+            print("compat popup \(label): ua=\(await Wait.js(w, "navigator.userAgent") ?? "?") html=\(await Wait.js(w, "document.body ? document.body.innerHTML.slice(0, 300) : ''") ?? "?")")
           }
           popup = "shown \(h.rt.extensions.ui.popupSizeForTesting) \(String(describing: text))"
           texts[label] = text as? String

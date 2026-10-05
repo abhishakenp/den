@@ -44,6 +44,10 @@ public final class DenRuntime {
   // On-device text to speech and translation (the `pagetools` plugin's reader and translation).
   public let speech: SpeechService
   public let translate: TranslateService
+  /// den's items in the system's Spotlight, and Handoff of the page in front (the `continuity`
+  /// plugin decides what goes there).
+  public let spotlight: SpotlightService
+  public let handoff: HandoffService
   /// Lets `PluginLoader` (built by the app from `plugins` alone) grant sidecar permissions.
   static var permissionsByHost: [ObjectIdentifier: Permissions] = [:]
   static func permissions(for plugins: PluginHost) -> Permissions? { permissionsByHost[ObjectIdentifier(plugins)] }
@@ -100,6 +104,11 @@ public final class DenRuntime {
     settings = SettingsService(host: host, storage: storage)
     speech = SpeechService(host: host)
     translate = TranslateService(host: host)
+    // The real profile's Spotlight items live in den's index; any other storage root (tests,
+    // --demo) gets one of its own, so it never touches them.
+    spotlight = SpotlightService(host: host, indexName: isDefault ? "den" : "den-" + String(UInt(bitPattern: storageRoot.standardizedFileURL.path.hashValue), radix: 36))
+    handoff = HandoffService(host: host)
+    handoff.open = { [weak app] urls in app?.open(urls, source: "handoff") }
     translate.window = { [weak windows] in windows?.active.window }
     Self.permissionsByHost[ObjectIdentifier(plugins)] = permissions
     // `webviews.eval` reads a live page only for a plugin with `session:<that page's host>`.
@@ -123,7 +132,7 @@ public final class DenRuntime {
     sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
     sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
     sitePolicy.resource = { [permissions] p, f in permissions.resource(p, f) }
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, nowPlaying, speech, translate] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, SuggestService(host: host), session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, nowPlaying, speech, translate, spotlight, handoff] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

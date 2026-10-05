@@ -462,10 +462,13 @@ public final class AppService: HostService {
     return false
   }
 
-  public func open(_ urls: [URL]) {
+  /// Links from other apps; `source: "handoff"` for a page another device handed over.
+  public func open(_ urls: [URL], source: String? = nil) {
     let list = urls.map(\.absoluteString)
     if host.hasListeners("app.openURL") {
-      host.emit("app.openURL", ["urls": .array(list.map { .string($0) })])
+      var v: Value = ["urls": .array(list.map { .string($0) })]
+      if let source { v = v.with("source", .string(source)) }
+      host.emit("app.openURL", v)
     } else {
       buffered += list
     }
