@@ -890,7 +890,7 @@ Every call except `availability` returns `{id}` at once (pass your own `id`, or 
 | 5 s to 120 s after | 179 MB + 105 MB | 7.9 MB |
 | 180 s after | 160 MB + 86 MB | 7.9 MB |
 
-The caller's ~5 MB is FoundationModels' client state, paid once on the first request and flat after (1.8 → 6.8 → 7.5 → 7.5 → 7.6 MB over four requests; warm requests took 2.9–3.7 s against 10–13 s cold). Linking FoundationModels at all costs a small binary 0.2 MB and 221 more dyld images at launch; moving `ai` into a lazily loaded module is thin host step 9 ([plan](architecture/thin-host.md#5-separately-loadable-native-modules)).
+Reproduce with `xcrun swiftc -O scripts/perf/ai-memory.swift -o /tmp/ai-memory && /tmp/ai-memory` (one request, then samples to +180 s) and `scripts/perf/ai-memory-repeat.swift` (four requests, text and guided). The caller's ~5 MB is FoundationModels' client state, paid once on the first request and flat after (1.8 → 6.8 → 7.5 → 7.5 → 7.6 MB over four requests; warm requests took 2.9–3.7 s against 10–13 s cold). Linking FoundationModels at all costs a small binary 0.2 MB and 221 more dyld images at launch; moving `ai` into a lazily loaded module is thin host step 9 ([plan](architecture/thin-host.md#5-separately-loadable-native-modules)).
 
 ### schedule
 
