@@ -68,3 +68,40 @@ public enum Snapshotter {
     return v.subviews.flatMap(allWebViews)
   }
 }
+
+/// When a `--snapshot` is taken: after `--snapshot-delay`, then as soon as the scenario says its
+/// state is on screen (`ready`), held for `settle` so an entrance animation finishes. A scenario
+/// whose state depends on something slow (a sign-in, a page load, a panel opening) sets `ready`
+/// instead of guessing a longer delay; nothing set means "now".
+@MainActor
+public enum SnapshotGate {
+  public static var ready: (() -> Bool)?
+  public static var settle: TimeInterval = 0.5
+  /// Longest the snapshot waits past its delay for `ready`; then it's taken as is (and says so).
+  public static var timeout: TimeInterval = 30
+  static var since: Date?
+
+  /// True once `ready` has held for `settle` (always true without a `ready`).
+  public static func isReady(now: Date = Date()) -> Bool {
+    guard let ready else { return true }
+    guard ready() else { since = nil; return false }
+    let start = since ?? now
+    since = start
+    return now.timeIntervalSince(start) >= settle
+  }
+
+  /// Calls `body` when the state is ready, polling every 0.1 s, or at `timeout` at the latest.
+  public static func wait(_ body: @escaping @MainActor () -> Void) {
+    let deadline = Date().addingTimeInterval(timeout)
+    func poll() {
+      if isReady() { body(); return }
+      if Date() >= deadline {
+        print("snapshot: the scenario wasn't ready after \(Int(timeout)) s; taking it as is")
+        body()
+        return
+      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { MainActor.assumeIsolated { poll() } }
+    }
+    poll()
+  }
+}

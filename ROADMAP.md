@@ -134,7 +134,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ Faster tab close: the next tab goes on screen first, one render, one snapshot
 - ✅ Tab menu shows shortcuts and ⌥ alternates (Copy Link as Markdown, Close Other Tabs, Close Tabs Above), Close Tabs Below
 - ✅ Split modifiers: ⇧⌥-click a link → right split; ⌥-click New Tab → new tab in a split
-- ⏳ Resize split panes by dragging
+- ✅ Resize split panes by dragging the gap between them (double-click: equal sizes); the split keeps its sizes
 
 ### Spaces and themes
 

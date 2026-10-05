@@ -55,6 +55,8 @@ enum PromptScenarios {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
           guard let panel = win.attachedSheet as? NSOpenPanel else { print("scenario.fileUpload ok=false (no sheet)"); exit(1) }
           let multiple = panel.allowsMultipleSelection, dirs = panel.canChooseDirectories
+          // DEN_HOLD_SHEET: leave the panel up for a screen capture (scripts/snapshots.sh); it's killed.
+          if ProcessInfo.processInfo.environment["DEN_HOLD_SHEET"] != nil { print("scenario.fileUpload sheet=true multiple=\(multiple) held"); return }
           panel.cancel(nil)
           DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             let ok = multiple && !dirs && web.title == "cancelled" && win.attachedSheet == nil

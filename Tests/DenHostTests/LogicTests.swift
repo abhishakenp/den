@@ -57,6 +57,38 @@ struct LogicTests {
     let g3 = SplitLayout.frames(count: 3, orientation: .grid, in: b, gap: 10)
     #expect(g3[0].height == 600 && g3[1].height == 295)
     #expect(SplitLayout.frames(count: 1, orientation: .grid, in: b, gap: 10) == [b])
+    // A 3–4 pane grid takes two column ratios.
+    let gr = SplitLayout.frames(count: 3, orientation: .grid, in: b, gap: 10, ratios: [0.3, 0.7])
+    #expect(gr[0].width == 297 && gr[1].minX == 307 && gr[1].maxX == 1000)
+  }
+
+  /// Dragging the gap between split panes: one divider per gap (the column gap for a grid), the
+  /// two panes beside it share their size, neither below the minimum.
+  @Test func splitDividersResizeTheirNeighbours() {
+    let b = CGRect(x: 0, y: 0, width: 1000, height: 600)
+    let d2 = SplitLayout.dividers(count: 2, orientation: .horizontal, in: b, gap: 10)
+    #expect(d2.count == 1 && d2[0].alongX && d2[0].rect == CGRect(x: 495, y: 0, width: 10, height: 600))
+    let dv = SplitLayout.dividers(count: 3, orientation: .vertical, in: b, gap: 10)
+    #expect(dv.count == 2 && !dv[0].alongX && dv[0].rect.width == 1000 && dv[0].rect.height == 10)
+    #expect(SplitLayout.dividers(count: 4, orientation: .grid, in: b, gap: 10).count == 1)
+    #expect(SplitLayout.dividers(count: 1, orientation: .horizontal, in: b, gap: 10).isEmpty)
+    // Drag the middle of two halves to x = 300 (the gap's centre): the left pane is 295 wide.
+    let r = SplitLayout.dragged(count: 2, orientation: .horizontal, in: b, gap: 10, ratios: [], divider: 0, to: CGPoint(x: 300, y: 50), minPane: 200)
+    let f = SplitLayout.frames(count: 2, orientation: .horizontal, in: b, gap: 10, ratios: r)
+    #expect(abs(r.reduce(0, +) - 1) < 0.0001)
+    #expect(f[0].width == 295 && f[1].minX == 305)
+    // Never below the minimum, on either side.
+    let lo = SplitLayout.dragged(count: 2, orientation: .horizontal, in: b, gap: 10, ratios: [], divider: 0, to: CGPoint(x: 5, y: 0), minPane: 200)
+    #expect(SplitLayout.frames(count: 2, orientation: .horizontal, in: b, gap: 10, ratios: lo)[0].width == 200)
+    let hi = SplitLayout.dragged(count: 2, orientation: .horizontal, in: b, gap: 10, ratios: [], divider: 0, to: CGPoint(x: 990, y: 0), minPane: 200)
+    #expect(SplitLayout.frames(count: 2, orientation: .horizontal, in: b, gap: 10, ratios: hi)[1].width == 200)
+    // Three panes top to bottom: the second gap moves only the second and third panes.
+    let v = SplitLayout.dragged(count: 3, orientation: .vertical, in: b, gap: 0, ratios: [], divider: 1, to: CGPoint(x: 0, y: 500), minPane: 50)
+    let fv = SplitLayout.frames(count: 3, orientation: .vertical, in: b, gap: 0, ratios: v)
+    #expect(fv[0].height == 200 && fv[1].height == 300 && fv[2].height == 100)
+    // A grid resizes its columns.
+    let g = SplitLayout.dragged(count: 4, orientation: .grid, in: b, gap: 10, ratios: [], divider: 0, to: CGPoint(x: 705, y: 0), minPane: 200)
+    #expect(g.count == 2 && SplitLayout.frames(count: 4, orientation: .grid, in: b, gap: 10, ratios: g)[0].width == 700)
   }
 
   @Test func siteTileDerivesFromTheDomain() {

@@ -21,13 +21,23 @@ dark_only=0
 [[ ${SNAPSHOT_APPEARANCE:-} == dark ]] && dark_only=1
 typeset -A rendered
 made=()
-# Sets _n (output name) and _ap (appearance) for a call; returns 1 when dark mode already rendered it.
+# SNAPSHOT_ONLY="<glob> …" (output names without .png, e.g. "favorites-* vault-*"): render only
+# those shots (CI: `scripts/ci-check.sh --snapshots --only "…"`).
+wanted() { # name
+  [[ -z ${SNAPSHOT_ONLY:-} ]] && return 0
+  local p
+  for p in ${=SNAPSHOT_ONLY}; do [[ $1 == ${~p} ]] && return 0; done
+  return 1
+}
+# Sets _n (output name) and _ap (appearance) for a call; returns 1 when dark mode already rendered
+# it, or when SNAPSHOT_ONLY leaves it out.
 resolve() { # name appearance
   _n=$1 _ap=$2
-  (( dark_only )) || return 0
+  if (( ! dark_only )); then wanted $_n; return; fi
   _n=${_n%-light}
   [[ $_n == *-dark ]] || _n=$_n-dark
   _ap=dark
+  wanted $_n || return 1
   [[ -z ${rendered[$_n]:-} ]] || return 1
   rendered[$_n]=1
   made+=("$out/$_n.png")
@@ -117,6 +127,7 @@ host theme-picker-empty-dark themePickerEmpty dark
 host peek-card peekCard light
 host peek-card-dark peekCard dark
 host split-view-chrome splitView light
+host split-resize-dark splitResize dark
 host drop-indicator-dark dropIndicator dark
 host drop-on-tab dropOnTab light
 host drop-on-tab-dark dropOnTab dark
@@ -193,12 +204,22 @@ for v in Save Suggest Fill Generate Sheet; do
   soft shot vault-${(L)v} vault$v light 6
   soft shot vault-${(L)v}-dark vault$v dark 6
 done
-# Page prompts: fileUpload is a self-check that opens the real file panel as a sheet and exits
-# after ~4 s, so it is captured while the sheet is up.
+# Page prompts. fileUpload opens the real file panel as a sheet; the panel is drawn by another
+# process, so --snapshot can't see it: with DEN_HOLD_SHEET the sheet stays up and the window's
+# area of the screen is captured (window on screen, so MENUS=1 like the menus).
 soft host js-confirm jsConfirm light
 soft host js-confirm-dark jsConfirm dark
-soft host file-upload fileUpload light 2.5
-soft host file-upload-dark fileUpload dark 2.5
+sheetshot() { # name appearance scenario
+  [[ -n ${MENUS:-} ]] || return 0
+  resolve "$1" "$2" || return 0
+  DEN_HOLD_SHEET=1 build/den.app/Contents/MacOS/den --no-den-home --storage "$(mktemp -d)" --appearance "$_ap" --scenario "$3" --exit-after 25 &
+  local pid=$!; sleep 10
+  local r=$(swift -e 'import CoreGraphics; let p = Int32(CommandLine.arguments[1])!; var best = (0.0, ""); for x in CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as! [[String: Any]] where x[kCGWindowOwnerPID as String] as? Int32 == p && x[kCGWindowLayer as String] as? Int == 0 { let b = x[kCGWindowBounds as String] as! [String: Any]; let a = (b["Width"] as! Double) * (b["Height"] as! Double); if a > best.0 { best = (a, "\(Int(b["X"] as! Double)),\(Int(b["Y"] as! Double)),\(Int(b["Width"] as! Double)),\(Int(b["Height"] as! Double))") } }; print(best.1)' $pid | head -1)
+  if [[ -n $r ]]; then screencapture -o -x -R$r "$out/$_n.png" || print -u2 "warning: screencapture failed for $_n"; else print -u2 "warning: no window to capture for $_n"; fi
+  kill -9 $pid 2>/dev/null || true; wait $pid 2>/dev/null || true
+}
+sheetshot file-upload light fileUpload
+sheetshot file-upload-dark dark fileUpload
 # The command bar with den's real settings, a site keyword and the shortcuts row.
 if [[ -f build/den.app/Contents/PlugIns/commandbar.dylib ]]; then
   for q in "search suggestions:settings" "yt:keyword" "keyboard shortcuts:shortcuts" "/System/Applications/:files"; do
@@ -245,7 +266,7 @@ exts() { # appearance
     if (( dark_only )); then made+=("$out/$n.png"); fi
   done
 }
-if [[ -f build/den.app/Contents/PlugIns/extensions.dylib ]]; then
+if [[ -f build/den.app/Contents/PlugIns/extensions.dylib ]] && wanted extensions-dark; then
   (( dark_only )) || exts light
   exts dark
 fi
@@ -317,6 +338,7 @@ tdir=$(mktemp -d)
 cells=()
 aps=(light dark) grid=theming-grid
 (( dark_only )) && aps=(dark) grid=theming-grid-dark
+wanted $grid || aps=()
 tshot() { # name scenario appearance delay — the cells, named as is in either mode
   $den --no-den-home --storage "$(mktemp -d)" --appearance "$3" --scenario "$2" --snapshot "$out/$1.png" --snapshot-delay "$4"
 }
@@ -337,8 +359,10 @@ for t in sandy purple nearBlack pastel; do
     done
   done
 done
-swift scripts/lib/grid.swift "$out/$grid.png" 6 300 190 "${cells[@]}"
-(( dark_only )) && made+=("$out/$grid.png")
+if (( ${#cells} )); then
+  swift scripts/lib/grid.swift "$out/$grid.png" 6 300 190 "${cells[@]}"
+  (( dark_only )) && made+=("$out/$grid.png")
+fi
 # Store at 1x (1280 pt wide) to keep the repo small.
 files=($out/*.png)
 [[ -n ${ONLY:-} ]] && files=($out/space-*.png $out/settings*.png $out/theming-grid.png)

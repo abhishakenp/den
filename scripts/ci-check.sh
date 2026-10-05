@@ -1,21 +1,23 @@
 #!/bin/zsh
 # Remote build mode (docs/dev.md): builds and tests HEAD on GitHub Actions instead of this Mac.
-#   scripts/ci-check.sh [--snapshots [--light]] [--name <branch-suffix>]
+#   scripts/ci-check.sh [--snapshots [--light] [--only "<globs>"]] [--name <branch-suffix>]
 # Pushes HEAD to the scratch branch ci/<name> (default: the current branch or worktree name),
 # waits for the CI run on that exact commit, prints the job summary and the failed tests, and
 # downloads every artifact to .ci-artifacts/<run-id>/. Exits non-zero unless the run is green.
 # --snapshots also renders scripts/snapshots.sh on a second runner, every scenario dark as
 # <name>-dark.png (--light: the script's own light and dark set); PNGs in the snapshots artifact.
+# --only "favorites-* vault-*": just the snapshots whose output names match (SNAPSHOT_ONLY).
 # Only ci/** branches are ever force-pushed; ci/** branches are pruned 7 days after their last commit.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-snapshots=0 appearance=dark name=""
+snapshots=0 appearance=dark name="" only=""
 while (( $# )); do
   case $1 in
     --snapshots) snapshots=1 ;;
     --light) appearance=all ;;
+    --only) only=${2:?}; snapshots=1; shift ;;
     --name) name=${2:?}; shift ;;
-    -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
   shift
@@ -49,7 +51,7 @@ fi
 if [[ -z $run ]] && { (( snapshots )) || [[ $remote_sha == "$sha" ]]; }; then
   event=workflow_dispatch
   gh workflow run ci.yml --ref "$branch" -f snapshots=$( (( snapshots )) && echo true || echo false) \
-    -f snapshot_appearance=$appearance >/dev/null
+    -f snapshot_appearance=$appearance -f snapshot_only="$only" >/dev/null
   echo "dispatched ci.yml on $branch (snapshots: $( (( snapshots )) && echo $appearance || echo off))"
 fi
 

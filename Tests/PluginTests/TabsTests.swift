@@ -376,6 +376,52 @@ struct TabsTests {
     #expect(!h.ids("today", s0).contains(today[1]))
   }
 
+  /// Dragging the gap between split panes resizes them live; the split keeps the sizes (a tab
+  /// switch and back, a relaunch), a double-click makes them equal again, and a new pane resets them.
+  @Test func dragTheGapToResizeASplit() throws {
+    let h = Harness()
+    let core = h.startTabs()
+    let s0 = h.spaceIds[0]
+    let today = h.ids("today", s0)
+    h.action(today[2], "reorder", ["source": .string(today[2]), "target": .string(today[0]), "position": "into"])
+    let wc = h.rt.content.current
+    #expect(wc.panes == [today[0], today[2]])
+    let d = try #require(wc.dividers.first)
+    #expect(wc.dividers.count == 1 && d.alongX && d.superview === h.rt.window.contentArea)
+    // Above both cards, so the gap takes the drag.
+    let area = h.rt.window.contentArea
+    let cardIndex = area.subviews.lastIndex { $0 is CardView } ?? -1
+    #expect((area.subviews.firstIndex(of: d) ?? -1) > cardIndex)
+    let left = try #require(wc.cards[today[0]]), right = try #require(wc.cards[today[2]])
+    let total = left.frame.width + right.frame.width
+    let x = left.frame.minX + 300 + Tokens.splitGap / 2
+    let drag = try #require(NSEvent.mouseEvent(with: .leftMouseDragged, location: area.convert(NSPoint(x: x, y: 100), to: nil), modifierFlags: [], timestamp: 0,
+                                               windowNumber: h.rt.window.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+    h.record(["content.ratios"])
+    var queue = [drag]
+    d.track(next: { _ in queue.isEmpty ? nil : queue.removeFirst() }, buttonDown: { false })
+    #expect(left.frame.width == 300 && left.frame.width + right.frame.width == total)
+    #expect(h.events.filter { $0.0 == "content.ratios" }.count == 1)
+    // The split keeps it: switch away and back.
+    h.tabs("select", ["id": .string(today[1])])
+    h.tabs("select", ["id": .string(today[2])])
+    #expect(h.rt.content.current.cards[today[0]]?.frame.width == 300)
+    // And across a relaunch (plugin storage).
+    core.save()
+    let state = h.storage("tabs", "state")
+    let saved = state["splits"].array?.first { $0["children"] == [.string(today[0]), .string(today[2])] } ?? .null
+    #expect(saved["ratios"].array?.count == 2)
+    // Double-click: equal again.
+    let dbl = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                              windowNumber: h.rt.window.window.windowNumber, context: nil, eventNumber: 0, clickCount: 2, pressure: 1))
+    d.mouseDown(with: dbl)
+    #expect(abs(left.frame.width - right.frame.width) <= 1)
+    h.tabs("select", ["id": .string(today[1])])
+    h.tabs("select", ["id": .string(today[0])])
+    let l2 = try #require(h.rt.content.current.cards[today[0]]), r2 = try #require(h.rt.content.current.cards[today[2]])
+    #expect(abs(l2.frame.width - r2.frame.width) <= 1)
+  }
+
   @Test func pipReturnButtonSelectsTheTab() {
     let h = Harness()
     h.startTabs()

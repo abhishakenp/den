@@ -100,7 +100,7 @@ den saves logins to your Mac's Keychain and fills them after Touch ID.
   <img src="../screenshots/vault-fill-dark.png" alt="Saved logins listed under the password field" width="400">
 </p>
 <p align="center">
-  <img src="../screenshots/vault-generate-dark.png" alt="Use Strong Password on a sign-up form" width="400">
+  <img src="../screenshots/vault-suggest-dark.png" alt="Use Strong Password on a sign-up form" width="400">
   <img src="../screenshots/vault-sheet-dark.png" alt="The Passwords list with Copy and Delete" width="400">
 </p>
 

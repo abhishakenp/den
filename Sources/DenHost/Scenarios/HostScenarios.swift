@@ -10,7 +10,7 @@ import WebKit
 @MainActor
 public enum HostScenarios {
   /// Names handled here; anything else falls through to the app's own scenarios.
-  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "dialogQuitSandy", "dialogPassword", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard", "briefingSheet", "connectionsSheet", "findBar", "dropOnTab", "tabAudio", "iconFallbacks"]
+  public static let names: [String] = ["themePicker", "themePickerEmpty", "contextMenu", "dialogQuit", "dialogDeleteSpace", "dialogDeleteFolder", "dialogClearArchive", "dialogQuitSandy", "dialogPassword", "littleArc", "library", "libraryClear", "splitView", "dropIndicator", "peekCard", "briefingSheet", "connectionsSheet", "findBar", "dropOnTab", "tabAudio", "iconFallbacks", "splitResize"]
 
   /// Applies scenario `name`. Returns the window to snapshot, or nil if the name is unknown.
   public static func apply(_ name: String, runtime rt: DenRuntime, appearance: String) -> NSWindow? {
@@ -69,6 +69,14 @@ public enum HostScenarios {
       rt.call("content", "show", ["panes": [.string(a), .string(b)], "orientation": "horizontal", "focus": .string(b)])
       rt.window.contentArea.layoutSubtreeIfNeeded()
       rt.content.card(b)?.setControlsVisible(true)
+    case "splitResize":
+      // A split mid-resize: the gap dragged left of centre, its grip showing.
+      seedSidebar(rt, appearance: appearance)
+      let a = page(rt, id: "t1", title: "Example Domain", body: "Drag the gap between panes to resize them. Double-click it to make them equal.")
+      let b = page(rt, id: "t2", title: "Release notes", body: "The split keeps its sizes.", tint: "#fff6f0")
+      rt.call("content", "show", ["panes": [.string(a), .string(b)], "orientation": "horizontal", "ratios": [0.38, 0.62], "focus": .string(a)])
+      rt.window.contentArea.layoutSubtreeIfNeeded()
+      rt.content.current.dividers.first?.setHovering(true, animated: false)
     case "dropOnTab":
       // Drag "Design review" onto the middle of "Example Domain": the row rings, with the split hint.
       seedSidebar(rt, appearance: appearance)

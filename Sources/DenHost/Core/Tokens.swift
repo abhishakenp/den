@@ -20,6 +20,10 @@ public enum Tokens {
   public static let splitFocusRingOutset: CGFloat = 2  // estimate: ring drawn in the gap, outside the card
   public static let splitControlsHeight: CGFloat = 30  // estimate
   public static let splitControlsTop: CGFloat = 8  // estimate
+  public static let splitMinPane: CGFloat = 200  // estimate: narrowest a drag leaves a split pane
+  public static let splitDividerSlop: CGFloat = 3  // estimate: the drag area reaches this far over each pane's edge
+  public static let splitHandleLength: CGFloat = 36  // estimate: the grip shown in the gap on hover
+  public static let splitHandleThickness: CGFloat = 4  // estimate
   public static let dropZoneFillAlpha: CGFloat = 0.18  // estimate: theme-tinted drop indicator over the content
   public static let dropZoneBorderWidth: CGFloat = 2  // estimate
 

@@ -10,9 +10,10 @@ import WebKit
 /// prompt needs a person). The page is driven by script in the page itself, like a user typing.
 ///
 /// - `vaultSave`: type a login and submit: the "Save password?" dialog.
-/// - `vaultSuggest`: a saved login, then focus the password field: the suggestion list.
-/// - `vaultFill`: pick the suggestion: Touch ID (scripted) and the filled form.
-/// - `vaultGenerate`: a sign-up form's password field: the strong-password suggestion.
+/// - `vaultSuggest`: a sign-up form's password field: "Use Strong Password".
+/// - `vaultFill`: a saved login: focus the password field, pick the suggestion: Touch ID (scripted)
+///   and the filled form.
+/// - `vaultGenerate`: "Use Strong Password" chosen on the sign-up form: the generated password filled in.
 /// - `vaultSheet`: the Passwords sheet after Touch ID (scripted).
 // thin-host: feature-specific, migrate to plugin (dev scenarios for the passwords plugin)
 @MainActor
@@ -35,7 +36,7 @@ public enum VaultScenarios {
     rt.vault.store = store
     rt.vault.auth = ApproveAuth()
     let origin = "http://127.0.0.1:\(m.port)"
-    if name != "vaultSave" {
+    if !["vaultSave", "vaultSuggest", "vaultGenerate"].contains(name) {
       _ = store.save(origin: origin, username: "ada@example.com", password: Data("correct-horse-battery".utf8))
       _ = store.save(origin: "https://news.ycombinator.com", username: "ada", password: Data("x".utf8))
     }
@@ -43,7 +44,8 @@ public enum VaultScenarios {
       rt.plugins.emit("commands.run", ["id": "passwords.open"])
       return
     }
-    let path = name == "vaultGenerate" ? "/vault/signup" : "/vault/login"
+    let signUp = name == "vaultGenerate" || name == "vaultSuggest"
+    let path = signUp ? "/vault/signup" : "/vault/login"
     let id = rt.call("tabs", "open", ["url": .string(m.base + path)])["id"]
     rt.call("tabs", "select", ["id": id])
     let wid = id.string ?? ""
@@ -52,8 +54,13 @@ public enum VaultScenarios {
       switch name {
       case "vaultSave":
         js("document.getElementById('u').value='ada@example.com';document.getElementById('p').value='correct-horse-battery';document.getElementById('go').click()")
+      case "vaultSuggest":
+        js("document.getElementById('p1').focus()")
       case "vaultGenerate":
         js("document.getElementById('p1').focus()")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+          rt.plugins.emit("vault.suggestion", ["webview": .string(wid), "item": "generate"])
+        }
       default:
         js("document.getElementById('p').focus()")
         if name == "vaultFill" {

@@ -48,6 +48,7 @@ Up to four pages side by side, saved as one row in the sidebar.
 |---|---|
 | Click a pane, or ⌃⇧1…⌃⇧4 | focus it (it gets an accent ring) |
 | Hover a pane | shows **×** (close the pane) and **Separate Page from Split View** |
+| Drag the gap between two panes | resize them (a grip shows when you point at the gap). Double-click the gap to make them equal again |
 | ⌃⇧- | close the focused pane. A Today tab is archived; a pinned tab just leaves the split |
 | Click a segment of the split's sidebar row | focus that pane |
 | Right-click the split's row | **Side by Side**, **Top and Bottom**, **Grid** (3+ panes), **Separate All Tabs** |
@@ -56,7 +57,9 @@ Grid with three panes is one tall pane on the left and two stacked on the right;
 
 <p align="center"><img src="../screenshots/split-grid-dark.png" alt="Three panes in a grid" width="720"></p>
 
-Panes can't be resized by dragging yet.
+A split keeps the sizes you drag it to, across tab switches and relaunches. Adding or removing a pane, or picking another layout, makes the panes equal again. In a grid, the gap between the two columns resizes them.
+
+<p align="center"><img src="../screenshots/split-resize-dark.png" alt="A split resized by dragging the gap between its panes" width="720"></p>
 
 ## Little Arc: a mini window for links from other apps
 

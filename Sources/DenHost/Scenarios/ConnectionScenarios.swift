@@ -42,6 +42,11 @@ public enum ConnectionScenarios {
     let space = rt.call("spaces", "current").str("id")
     rt.call("spaces", "update", ["id": .string(space), "profile": "private"])
 
+    if name == "connectToast" {
+      // The snapshot waits for the sign-in to be detected (the "Slack connected" toast).
+      SnapshotGate.settle = 0.6
+      SnapshotGate.ready = { rt.call("connections", "get", ["id": "slack"]).flag("connected") }
+    }
     whenProviders(rt) {
       switch name {
       case "briefingEmpty":
