@@ -297,7 +297,8 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ⏳ Clean "Copy Link" from a page's context menu
 - ✅ Skip bounce-tracking redirects (den's own list of click trackers; security redirectors left alone)
 - ✅ Hide cookie banners (EasyList Cookie List)
-- ⏳ Answer consent dialogs with the most private choice (DuckDuckGo's autoconsent measured; not shipped)
+- ✅ Answer consent dialogs with the most private choice (Shields, on by default, per site): OneTrust, Didomi, Quantcast/InMobi, Sourcepoint, TrustArc, Cookiebot (reject all / necessary only / object to legitimate interest, never accept; pay-or-accept walls left alone). Detection is content rules (`notify`): no script on pages without a consent platform; the Shields panel says what was answered ([guide](docs/guide/privacy-and-passwords.md#cookie-banners))
+  - ⏳ Didomi without a Disagree button (US mode); checks from an EU address
 - ✅ HTTPS-first, with den's page when a site has no HTTPS
 - ✅ Readable international domain names (spoofable ones stay in Punycode), with lookalike-domain warnings
 - 🟡 Per-site permissions UI

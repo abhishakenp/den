@@ -59,7 +59,7 @@ den checks store-installed extensions once a day (only if you have some). An upd
 
 ## What works on WebKit, and what doesn't
 
-Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatTests.swift`, and `--scenario extensionsVerify`):
+Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatTests.swift`, and `--scenario extensionsVerify`; the extensions using den's own APIs with `--scenario extensionAPIs`):
 
 | Extension | Works? | What we checked |
 |---|---|---|
@@ -70,13 +70,17 @@ Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatT
 | 1Password | Partial | Installs, starts, popup opens; sign in inside the extension. Unlocking with the 1Password app doesn't work yet: the app only talks to browsers signed by an Apple developer account (den isn't yet) |
 | SponsorBlock | Works | Starts; popup opens ("No YouTube video found" off YouTube) |
 | Return YouTube Dislike | Works | Starts; popup opens |
-| Grammarly | Partial | Starts; popup opens. Signing in (`identity`) isn't available |
+| Grammarly | Partial | Starts; popup opens; sees `identity` (`launchWebAuthFlow`, its `chromiumapp.org` redirect) and its side panel. Signing in to a real account isn't checked |
 | LanguageTool | Works | Starts; popup opens |
 | Raindrop.io | Works | Starts; popup opens |
 | Vimium (Chrome Web Store) | Works | Link hints (`f` follows a link, `F` opens it in a new tab, `Esc`), scrolling (`j`, `d`, `G`, `gg`), the Vomnibar (`o`), find (`/`), next tab (`K`). Not in den: bookmarks (the Vomnibar finds none), history from before you installed it |
 | Vimium (Firefox Add-ons) | Works | Same as above; its toolbar icon shows an error, because that build lacks the icons Vimium asks for outside Firefox. Prefer the Chrome Web Store build |
 | ColorPick Eyedropper | Partial | The popup opens; its background doesn't start, so picking colors doesn't work |
 | Bitwarden | Partial | Installs, starts, and its popup shows Log in. Signing in, filling and unlocking with the desktop app aren't checked yet (they need a real account) |
+| Bookmark Sidebar | Partial | Installs; its background starts and reads den's bookmarks (`bookmarks.getTree`: Favorites and pinned tabs); its side panel opens in den's panel column but draws nothing yet (its page waits on its background, which WebKit reports has no listener) |
+| History Trends Unlimited | Works | Starts; `history.search` finds a page a tab just visited |
+| Chrono Download Manager | Partial | Starts; sees den's downloads (`downloads.search`); its popup's list stays empty |
+| Image Downloader | Works | Its side panel opens in den's panel column; `downloads.download` saves the file |
 
 **Keyboard shortcuts.** An extension's shortcuts work wherever you are in den, even while a page or a text field has focus (Dark Reader's ⌥⇧D turns it off). The **Extensions** menu in the menu bar lists every extension's shortcuts with their keys, and the ones without a key, which you can run from there. den's own shortcuts come first: if an extension asks for a key den already uses (Raindrop.io asks for ⌘⇧S, den's Save Page As…), den keeps it and the extension's command is listed without a key.
 

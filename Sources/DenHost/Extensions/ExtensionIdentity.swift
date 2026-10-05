@@ -20,7 +20,7 @@ import WebKit
 @MainActor
 final class ExtensionIdentity {
   /// `https://<id>.chromiumapp.org/` for Chrome extensions; Firefox's form for AMO installs.
-  static func redirectBase(id: String, geckoId: String?) -> String {
+  nonisolated static func redirectBase(id: String, geckoId: String?) -> String {
     if let g = geckoId, !g.isEmpty {
       let hex = Insecure.SHA1.hash(data: Data(g.utf8)).map { String(format: "%02x", $0) }.joined()
       return "https://\(hex).extensions.allizom.org/"
@@ -29,7 +29,7 @@ final class ExtensionIdentity {
   }
 
   /// Both redirect forms den accepts for an extension (an extension may use either).
-  static func matches(_ url: URL, id: String, geckoId: String?) -> Bool {
+  nonisolated static func matches(_ url: URL, id: String, geckoId: String?) -> Bool {
     guard url.scheme == "https", let host = url.host?.lowercased() else { return false }
     if host == "\(id.lowercased()).chromiumapp.org" { return true }
     if let base = URL(string: redirectBase(id: id, geckoId: geckoId)), host == base.host { return true }
