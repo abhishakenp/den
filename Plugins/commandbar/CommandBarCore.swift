@@ -51,6 +51,8 @@ final class CommandBarCore {
     case option(String, Int)  // setting key, option index
     case window(String)  // Little Arc window id
     case shortcut(String)  // key chord: runs its binding
+    case folder(String)  // a local folder's path: shows it in Finder (CommandFiles.swift)
+    case complete(String)  // puts this text in the field (a folder's path while completing)
   }
 
   struct Row {
@@ -67,6 +69,7 @@ final class CommandBarCore {
     var shortcut = ""  // drawn as keycaps ("⇧⌘C", menu order ⌃⌥⇧⌘)
     var toggle: Bool? = nil  // a switch showing a setting's state
     var drill = false  // Tab / → opens its options or settings in the bar
+    var completion = ""  // Tab puts this in the field (file rows)
   }
 
   enum Scope: Equatable {
@@ -153,6 +156,7 @@ final class CommandBarCore {
   var tabsCache: [Value]? = nil
   var selectedCache: Value? = nil
   var windowsCache: [Value]? = nil
+  var fileCache: (String, Value?)? = nil  // the last typed path and its `app.fileInfo` (nil: no such file)
   /// Settings > Search > "Search suggestions" (on): typed searches are sent to the search engine's
   /// suggestion service as you type. Off: nothing leaves den until you press Return.
   var suggestionsOn = true
@@ -353,6 +357,18 @@ final class CommandBarCore {
       // it is one, else as a search with the default engine; `mode: edit` in the selected tab.
       let text = trim(args.s("text"))
       guard !text.isEmpty else { return .err("commands: paste needs text") }
+      if let f = localFile(text) {
+        if f.b("folder") {
+          env.call("app", "openPath", ["path": .string(f.s("path"))])
+          return ["kind": "folder", "url": .string(f.s("url"))]
+        }
+        bump("url:" + URLs.normalize(f.s("url")), title: text, url: f.s("url"))
+        let was = mode
+        mode = args.s("mode") == "edit" ? "edit" : "new"
+        go(f.s("url"), peek: false, scope: .main)
+        mode = was
+        return ["kind": "file", "url": .string(f.s("url"))]
+      }
       let u = Self.url(from: text)
       let target = u ?? Self.searchURL(defaultEngine, text)
       if u != nil { bump("url:" + URLs.normalize(target), title: text, url: target) } else { bump("q:" + Text.lower(text), title: text, url: target) }
@@ -468,7 +484,7 @@ final class CommandBarCore {
       if let r = row { pick(r, shift: mods.contains("shift")) }
     case "tab":
       if let q = value["query"].string { query = q }
-      if !drillSelected() { tabKey() }
+      if !completeSelected(), !drillSelected() { tabKey() }
     case "right":
       // → at the end of the text: drills into the selected settings row (otherwise nothing).
       if let q = value["query"].string { query = q }
@@ -518,6 +534,9 @@ final class CommandBarCore {
     case let .pane(id) where !available("settings"):
       drill(pane: id)
       return
+    case let .complete(text):
+      setScope(scope, query: text)  // into a folder, still typing
+      return
     default:
       break
     }
@@ -556,7 +575,9 @@ final class CommandBarCore {
       env.call("window", "focusMini", ["id": .string(id)])
     case let .shortcut(chord):
       runShortcut(chord)
-    case .scope:
+    case let .folder(path):
+      env.call("app", "openPath", ["path": .string(path)])
+    case .scope, .complete:
       break
     }
   }
@@ -768,6 +789,7 @@ final class CommandBarCore {
     tabsCache = nil
     selectedCache = nil
     windowsCache = nil
+    fileCache = nil
     indexValid = false
   }
 
@@ -1008,6 +1030,11 @@ final class CommandBarCore {
       // Cmd-L then Enter reloads (Arc).
       top.append(Row(id: "reload", icon: "sf:arrow.clockwise", title: URLs.display(q), subtitle: "— Reload", act: .reload))
     }
+    // An existing local file or folder: open it (never a web search for a path on this Mac).
+    if !unchanged, let f = localFile(q) {
+      top.append(fileRow(q, f))
+      return top
+    }
     let u = Self.url(from: q)
     if let u, !unchanged {
       top.append(Row(id: "go", icon: URLs.favicon(u), title: q, subtitle: mode == "edit" ? "— Go to URL" : "— Open URL", act: .url(u), key: "url:" + URLs.normalize(u)))
@@ -1059,6 +1086,13 @@ final class CommandBarCore {
     let reserve = suggestible(q) ? Self.headerCost + min(Self.reservedSuggestions, Self.maxSuggestions) * Self.rowCost : 0
     var left = Self.maxRows * Self.rowCost - go.count * Self.rowCost
     var out: [(String, [Row])] = [("", go)]
+    // A path: its folder's matching files right below (Finder-style completion).
+    let files = fileRows(q, limit: 5)
+    if !files.isEmpty {
+      // A partial path that names no file yet: its first match is the first row (Enter opens it).
+      if localFile(q) == nil { out.insert(("Files", files), at: 0) } else { out.append(("Files", files)) }
+      left -= Self.headerCost + files.count * Self.rowCost
+    }
     /// Adds up to `rows` to section `title` (merged into an earlier one of the same name) while
     /// `limit` points last; a new header costs `headerCost`.
     func add(_ title: String, _ rows: [Row], _ limit: inout Int) {
@@ -1093,7 +1127,8 @@ final class CommandBarCore {
 
   /// Suggestions only make sense for a typed search in the main scope (not a full URL).
   func suggestible(_ q: String) -> Bool {
-    suggestionsOn && scope == .main && !q.isEmpty && !Text.contains(q, "://") && !(mode == "edit" && q == editURL)
+    // Never a local path: it stays on this Mac.
+    suggestionsOn && scope == .main && !q.isEmpty && !Text.contains(q, "://") && !(mode == "edit" && q == editURL) && !Self.pathLike(q)
   }
 
   /// Asks the host for suggestions. A cached answer comes back at once; otherwise the host
@@ -1378,7 +1413,7 @@ final class CommandBarCore {
         // Section headers (den, Settings, Tabs, Suggestions…); the go/search rows have none.
         "headers": true,
         // Caret and selection color follow the mode (Go for URL-shaped input, else Search).
-        "inputMode": .string(Self.url(from: trim(query)) != nil ? "go" : "search"),
+        "inputMode": .string(Self.url(from: trim(query)) != nil || localFile(trim(query)) != nil ? "go" : "search"),
       ],
     ])
   }

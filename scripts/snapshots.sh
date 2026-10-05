@@ -201,7 +201,7 @@ soft host file-upload fileUpload light 2.5
 soft host file-upload-dark fileUpload dark 2.5
 # The command bar with den's real settings, a site keyword and the shortcuts row.
 if [[ -f build/den.app/Contents/PlugIns/commandbar.dylib ]]; then
-  for q in "search suggestions:settings" "yt:keyword" "keyboard shortcuts:shortcuts"; do
+  for q in "search suggestions:settings" "yt:keyword" "keyboard shortcuts:shortcuts" "/System/Applications/:files"; do
     soft shot command-bar-${q##*:} "commandBar:${q%:*}" light 3
     soft shot command-bar-${q##*:}-dark "commandBar:${q%:*}" dark 3
   done

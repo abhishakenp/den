@@ -21,6 +21,8 @@ enum PasteText {
   /// `CommandBarCore.url(from:)` (the plugin can't be called from here); `PasteTests` checks both
   /// agree on the same inputs.
   nonisolated static func isURL(_ s: String) -> Bool {
+    // An existing local file or folder (the bar asks `app.fileInfo` for the same answer).
+    if LocalFiles.looksLikePath(s), LocalFiles.existing(s) != nil { return true }
     if s.isEmpty || s.contains(" ") { return false }
     // ASCII lowercasing, like the plugin's `Text.lower`: byte offsets stay those of `s`.
     let lb = s.utf8.map { $0 >= 65 && $0 <= 90 ? $0 + 32 : $0 }

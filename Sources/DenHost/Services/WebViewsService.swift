@@ -886,6 +886,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   public nonisolated static func normalize(_ s: String) -> URL? {
     let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
     if t.isEmpty { return nil }
+    // A local path that exists (`/…`, `~/…`, `file://…` with spaces): a file URL (LocalFiles).
+    if LocalFiles.looksLikePath(t), let f = LocalFiles.existing(t) { return f.url }
     if let u = URL(string: t), let scheme = u.scheme, ["http", "https", "about", "file", "data", "webkit-extension"].contains(scheme.lowercased()) { return u }
     if !t.contains(" "), t.contains(".") || t.hasPrefix("localhost") { return URL(string: "https://" + t) }
     return nil

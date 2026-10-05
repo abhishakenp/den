@@ -160,7 +160,7 @@ extension CommandBarCore {
   /// The row that goes above "Search Google": the better of the best command and best setting,
   /// when its title or an alias starts with a query of two or more characters.
   func topHit(_ q: String, _ a: Row?, _ b: Row?) -> Row? {
-    guard q.utf8.count >= 2, Self.url(from: q) == nil else { return nil }
+    guard q.utf8.count >= 2, Self.url(from: q) == nil, !Self.pathLike(q) else { return nil }
     var best: Row?
     for r in [a, b] {
       guard let r, r.strength >= Self.topHitMatch else { continue }

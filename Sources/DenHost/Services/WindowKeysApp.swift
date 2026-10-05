@@ -435,6 +435,8 @@ public final class AppService: HostService {
       relaunchHandler?(args.flag("background"))
     case "pasteboard", "share", "qrCode", "copyImage", "saveFile":
       return share.handle(method, args)
+    case "fileInfo", "completePath", "openPath":
+      return LocalFiles.handle(method, args)
     case "setAbout":
       AboutPanel.shared.credits = args.str("credits")
     case "showAbout":

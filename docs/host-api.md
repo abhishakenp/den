@@ -60,7 +60,7 @@ Events: `window.sidebarResized {width, by: drag|reset|set}` (a drag when it ends
 |---|---|---|
 | `create` | `id?`, `url?`, `profile?` (`default`, `private`, or any name, which maps to a stable `WKWebsiteDataStore(forIdentifier:)`), `userAgent?` (`mobile`: Safari on an iPhone, for web panels; or any string) | `{id}` (lazy: no `WKWebView` until shown) |
 | `mediaControl` | `id`, `action: play\|pause\|toggle\|next\|previous\|seek\|skip\|stop`, `value?` (s) | ok, or an error when the page plays nothing (or has no next track). Acts on the page's now-playing media, in the frame that reported it. `next` / `previous` run the page's own Media Session handlers (`previous` without one restarts the track); `stop` pauses and drops it from now playing until it plays again |
-| `navigate` | `id`, `url` | ok |
+| `navigate` | `id`, `url` (an http(s), about:, data: or file: URL; an existing local path such as `/Users/me/a.html` or `~/a.pdf` becomes a file URL) | ok. A local file loads with read access to the home folder when it's inside it (so `../assets` load, as in Safari), else to its own folder |
 | `back`, `forward`, `reload`, `stop`, `close` | `id` (optional except for `close`), `fromOrigin?` (`reload`: ⇧⌘R, skips the cache) | ok |
 | `zoom` | `id?`, `action: in\|out\|reset` | `{zoom}`. Safari's steps, 50–300% (`Tokens.zoomSteps`). Remembered per site (host without `www.`, storage ns `_zoom`; 100% is not stored) and re-applied whenever a page's host changes. Emits `webviews.zoom {id, zoom}` |
 | `find` | `id?`, `action: show\|next\|previous\|selection\|hide`, `query?` | `{visible, query, index, count}`. The find bar (below). `selection` (⌘E) searches for the page's selected text |
@@ -630,6 +630,9 @@ Lets a plugin hide features whose provider isn't loaded.
 | `qrCode` | `text` | `{path, modules}`. A QR code PNG (CoreImage `CIQRCodeGenerator`, correction M): black modules on white, a 4-module quiet zone, at least 8 px a module and about 512 px in all, drawn without interpolation so edges stay sharp. Written to a per-process temporary folder, one file per text |
 | `copyImage` | `path` | ok. The image on the clipboard (PNG and TIFF) |
 | `saveFile` | `path`, `name?`, `request?` | `{pending}`. A save panel (a sheet on den's window), then a copy of the file; emits `app.saved {request, path}` (`""` when cancelled) |
+| `fileInfo` | `path` | `{exists: true, folder, path, url, display}` or `{exists: false}`. A typed local path: `/…`, `~/…`, `file://…` (spaces allowed), Terminal-escaped (`My\ File.pdf`) or quoted. `folder` is false for a package (`.app`); `display` abbreviates the home folder to `~` |
+| `completePath` | `path`, `limit?` (6) | `{items: [{path, url, name, folder, display}]}`: entries of the typed path's folder whose name starts with its last component (case-insensitive), in Finder's order; hidden ones only when that starts with a dot; the typed path itself left out |
+| `openPath` | `path` | ok. Shows a folder in Finder (a package is selected in Finder; a file opens in its app). An error when nothing is there |
 
 Events: `app.quitRequested`, `app.closeRequested`, `app.openURL {urls}`, `app.defaultBrowser`, `app.folder`, `app.saved`, `app.active {active}` (den became or stopped being the frontmost app), `app.power {battery, lowPower}` (the power source or Low Power Mode changed; IOKit's power-source notification and `NSProcessInfoPowerStateDidChange`, no polling).
 

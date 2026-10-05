@@ -66,9 +66,10 @@ final class DenWebView: WKWebView {
 }
 
 extension WKWebView {
-  /// Loads a web URL, or a local file with read access to its folder (dropped files, file:// tabs).
+  /// Loads a web URL, or a local file (dropped files, typed paths, file:// tabs) with read access to
+  /// the home folder when it's inside it, else its own folder, so relative assets load.
   func open(_ u: URL) {
-    if u.isFileURL { loadFileURL(u, allowingReadAccessTo: u.deletingLastPathComponent()) } else { load(URLRequest(url: u)) }
+    if u.isFileURL { loadFileURL(u, allowingReadAccessTo: LocalFiles.readAccess(for: u)) } else { load(URLRequest(url: u)) }
   }
 }
 
