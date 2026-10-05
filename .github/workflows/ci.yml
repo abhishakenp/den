@@ -201,6 +201,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.snapshots
     runs-on: macos-26
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read  # the golden run's snapshots (pixel diff below)
     steps:
       - uses: actions/checkout@v5
         with:
@@ -244,4 +247,35 @@ jobs:
           name: snapshots
           path: build/snapshots/*.png
           if-no-files-found: ignore
+          retention-days: 14
+
+      # Thin-host parity (docs/architecture/thin-host.md §6): pixel-diff against the golden run named
+      # in scripts/thin-host/golden-run. Report only: a UI change on purpose is not a failure here.
+      - name: Pixel diff against the thin-host goldens (report only)
+        if: always() && hashFiles('scripts/thin-host/golden-run') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          golden=$(head -1 scripts/thin-host/golden-run | cut -d' ' -f1)
+          mkdir -p build/golden build/golden-diff
+          if gh run download "$golden" -n snapshots -D build/golden; then
+            swiftc -O scripts/pixel-diff.swift -o build/pixel-diff
+            build/pixel-diff build/golden build/snapshots --out build/golden-diff --noise scripts/thin-host/snapshot-noise.txt > build/golden-diff/report.txt || true
+            {
+              echo "### Pixel diff against golden run $golden"
+              tail -1 build/golden-diff/report.txt
+              echo '```'
+              grep -v '^same ' build/golden-diff/report.txt || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "golden run $golden has no snapshots artifact (expired?)" | tee build/golden-diff/report.txt >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload golden diff
+        if: always() && hashFiles('build/golden-diff/report.txt') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-diff
+          path: build/golden-diff
           retention-days: 14
