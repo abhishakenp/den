@@ -32,6 +32,12 @@ struct CoreTests {
     let s = StorageService(root: dir)
     let value: Value = ["spaces": ["Work", "Home"], "n": 3]
     #expect(s.handle(method: "set", args: ["ns": "spaces", "key": "state", "value": value]) == .ok)
+    #expect(s.handle(method: "set", args: ["ns": "spaces", "key": "n", "value": 7]) == .ok)
+    // The cache keeps encoded values; the file is still the one Codec object.
+    let file = try Data(contentsOf: dir.appendingPathComponent("spaces.cvalue"))
+    #expect([UInt8](file) == Codec.encode(["state": value, "n": 7]))
+    #expect(s.handle(method: "get", args: ["ns": "spaces", "key": "n"]) == 7)
+    _ = s.handle(method: "delete", args: ["ns": "spaces", "key": "n"])
     // A fresh instance reads from disk.
     let s2 = StorageService(root: dir)
     #expect(s2.handle(method: "get", args: ["ns": "spaces", "key": "state"]) == value)
