@@ -148,6 +148,26 @@ final class ExtensionsUI {
 
   private var panelAnchor: NSRect = .zero
 
+  // MARK: Right-click on an extension's button
+
+  /// Right-click on an extension's button (URL pill, puzzle menu row), like Chrome's toolbar menu:
+  /// the extension's own items (`contextMenus` with `contexts: ["action"]`), then Options,
+  /// Pin / Unpin and Manage Extensions. nil for den's own buttons.
+  func actionMenu(_ id: String) -> NSMenu? {
+    guard let svc, let e = svc.registry.item(id) else { return nil }
+    let m = NSMenu(title: e.name)
+    let ctx = svc.contexts[id]
+    let own = ctx?.action(for: svc.selectedTabId().map { svc.tab($0) })?.menuItems ?? []
+    own.forEach(m.addItem)
+    if !own.isEmpty { m.addItem(.separator()) }
+    if ctx?.optionsPageURL != nil {
+      m.addItem(ClosureMenuItem("Options") { [weak svc] in _ = svc?.handle(method: "openOptions", args: ["id": .string(id)]) })
+    }
+    m.addItem(ClosureMenuItem(e.pinned ? "Unpin from URL Bar" : "Pin to URL Bar") { [weak svc] in _ = svc?.setPinned(id, !e.pinned) })
+    m.addItem(ClosureMenuItem("Manage Extensions") { [weak svc] in svc?.host.emit("webext.openPage", .null) })
+    return m
+  }
+
   private func present(_ v: NSView) {
     TestMode.keepActive(v)  // tests: the invisible window mustn't throttle the popup's page
     panel.setContent(v)
@@ -380,10 +400,12 @@ final class ExtensionMenuRow: FlippedView, Themable {
   private let badge = ExtensionBadge()
   private lazy var pin = IconButton(symbol: "sf:pin", size: 24) { [weak self] in self?.onPin?() }
   private var pinned: Bool?
+  private var rowId = ""
   private var hovering = false { didSet { needsDisplay = true; updatePin() } }
   private var palette: Palette?
 
   func configure(id: String, title t: String, image img: NSImage?, symbol: String, badge b: String, pinned p: Bool?) {
+    rowId = id
     [icon, image, title, badge].forEach { if $0.superview == nil { addSubview($0) } }
     image.image = img
     image.imageScaling = .scaleProportionallyUpOrDown
@@ -452,6 +474,8 @@ final class ExtensionMenuRow: FlippedView, Themable {
     if !pin.isHidden, pin.superview != nil, pin.frame.contains(p) { return }  // the pin button handles its own click
     onClick?()
   }
+  /// An extension's row (not the footer's): its right-click menu.
+  override func menu(for event: NSEvent) -> NSMenu? { pinned == nil ? nil : ExtensionsUI.of(window)?.actionMenu(rowId) }
   override var mouseDownCanMoveWindow: Bool { false }
 }
 
@@ -530,4 +554,31 @@ final class PillExtensionButton: NSView {
   override func mouseUp(with event: NSEvent) {
     if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?(self) }
   }
+  override func menu(for event: NSEvent) -> NSMenu? { ExtensionsUI.of(window)?.actionMenu(id) }
+}
+
+/// Where den's windows and sidebar reach the extensions: their keyboard shortcuts (`commands`),
+/// asked first by every den window's key presses (`DenNSWindow`, `DenNSPanel`), and their items
+/// in a tab's right-click menu (tab rows, favorites). Nothing to do while no extension is loaded.
+@MainActor
+enum ExtensionHooks {
+  static weak var service: ExtensionsService?
+  static func route(_ e: NSEvent) -> Bool { service?.performCommand(for: e) ?? false }
+  /// A sidebar node's right-click menu: a tab's (row or favorite) gets the extensions' items for it.
+  static func nodeMenu(_ n: NodeView, _ menu: NSMenu) {
+    guard let service, ["tabRow", "favoriteTile"].contains(n.node.str("type")) else { return }
+    service.tabMenu(n.nodeId, menu)
+  }
+}
+
+/// A menu item that runs a closure (den's own items in an extension button's right-click menu).
+final class ClosureMenuItem: NSMenuItem {
+  let run: () -> Void
+  init(_ title: String, _ run: @escaping () -> Void) {
+    self.run = run
+    super.init(title: title, action: #selector(fire), keyEquivalent: "")
+    target = self
+  }
+  required init(coder: NSCoder) { fatalError() }
+  @objc func fire() { run() }
 }

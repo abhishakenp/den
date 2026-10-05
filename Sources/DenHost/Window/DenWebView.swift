@@ -25,8 +25,8 @@ final class DenWebView: WKWebView {
     Self.customize(menu, hit: context, env: menuEnv, target: self)
     // Plugins' items (`webviews.setMenu`, e.g. "Copy Link to Highlight", "Translate Page").
     service?.contextMenu?(self, menu)
-    // Extensions' items (`contextMenus` / `menus`).
-    service?.extensionHooks?.contextMenu(self, menu)
+    // Extensions' items (`contextMenus` / `menus`) are already in: WebKit adds them for what was
+    // clicked (ExtensionsService.tabMenu has the tab's own).
     // Inspect Element last; no stray separators.
     Self.finish(menu)
     Self.menuOpened?(self, menu)

@@ -20,6 +20,10 @@ public enum HostScenarios {
       ExtensionScenarios.apply(name, runtime: rt)
       return rt.window.window
     }
+    if ExtensionMenuScenarios.names.contains(name) {
+      ExtensionMenuScenarios.apply(name, runtime: rt)
+      return rt.window.window
+    }
     if ConnectionScenarios.names.contains(name) {
       ConnectionScenarios.apply(name, runtime: rt)
       return rt.window.window

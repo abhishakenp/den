@@ -260,10 +260,12 @@ public final class ExtensionsService: NSObject, HostService {
   }
 
   // thin-host: feature-specific, migrate to plugin
-  /// A page's right-click menu: each loaded extension's items for that tab (`contextMenus`),
-  /// after den's own, behind a separator. Nothing while no extension is loaded.
-  func contextMenu(_ w: WKWebView, _ menu: NSMenu) {
-    guard !contexts.isEmpty, let id = webviews.id(of: w) else { return }
+  /// A tab's right-click menu in the sidebar: each loaded extension's items for the tab
+  /// (`contextMenus` / `menus` with `contexts: ["tab"]`, and WebKit counts `all` in), behind a
+  /// separator. A page's own right-click menu needs nothing from den: WebKit adds the extensions'
+  /// items for what was clicked (page, link, image, selection, editable, frame…) itself.
+  func tabMenu(_ id: String, _ menu: NSMenu) {
+    guard !contexts.isEmpty, tabIds().contains(id) else { return }
     let t = tab(id)
     let items = contexts.keys.sorted().compactMap { contexts[$0] }.flatMap { $0.menuItems(for: t) }
     guard !items.isEmpty else { return }
@@ -275,19 +277,41 @@ public final class ExtensionsService: NSObject, HostService {
   // MARK: Keyboard shortcuts (`commands`)
 
   /// The "Extensions" menu in the menu bar: every loaded extension's keyboard shortcuts (its
-  /// `commands` with a key), where macOS finds key equivalents while a page has focus, shown with
-  /// their keys. No menu while no extension has a shortcut.
+  /// `commands`), where macOS finds key equivalents wherever focus is, shown with their keys.
+  /// A command without a key is listed without one. den's own shortcuts win: a key den's menus
+  /// already use (or an earlier extension took) is left off. No menu while no extension has commands.
   var commandsMenu: NSMenu?
+  var conflictsLogged: Set<String> = []
 
   func syncCommands() {
+    ExtensionHooks.service = self
     guard let main = NSApp.mainMenu else { return }
+    var taken = Set<String>()
+    func collect(_ m: NSMenu) {
+      for i in m.items {
+        if let k = Self.chord(i) { taken.insert(k) }
+        if let s = i.submenu, s !== commandsMenu { collect(s) }
+      }
+    }
+    collect(main)
     var items: [NSMenuItem] = []
     for id in contexts.keys.sorted() {
       guard let ctx = contexts[id] else { continue }
       let name = ctx.webExtension.displayShortName ?? ctx.webExtension.displayName ?? id
-      for c in ctx.commands where !(c.activationKey ?? "").isEmpty {
+      for c in ctx.commands {
         let mi = c.menuItem
-        mi.title = "\(name): \(c.title)"
+        // `_execute_action`'s title is the button's tooltip, which can run to several lines
+        // (Google Translate's "…\n\nLeft click to translate."): its first line.
+        mi.title = "\(name): \(c.title.split(whereSeparator: \.isNewline).first.map(String.init) ?? c.title)"
+        if let k = Self.chord(mi) {
+          if taken.contains(k) {
+            if conflictsLogged.insert("\(id) \(c.id)").inserted { record("command \(id) \(c.id): its key \(k) is den's or another extension's, left off") }
+            mi.keyEquivalent = ""
+            mi.keyEquivalentModifierMask = []
+          } else {
+            taken.insert(k)
+          }
+        }
         items.append(mi)
       }
     }
@@ -300,6 +324,56 @@ public final class ExtensionsService: NSObject, HostService {
     commandsMenu = m
     m.removeAllItems()
     items.forEach(m.addItem)
+  }
+
+  /// Every key press in a den window, first (`DenNSWindow` via `ExtensionHooks`): an extension's
+  /// shortcut runs before the focused page or field sees the key, as in Chrome, unless den's own
+  /// menus use that key. This is WebKit's integration point for `commands`
+  /// (`performCommand(for:)` from `sendEvent`). The Extensions menu's key equivalents alone weren't
+  /// enough (macOS 26.6, --scenario extensionMenus): the menu bar never matched ⌥⇧Y to WebKit's
+  /// item, and a page that handles the keydown keeps the key from it anyway. Cheap: only key
+  /// presses with ⌘, ⌥ or ⌃ while an extension is loaded get looked at.
+  func performCommand(for event: NSEvent) -> Bool {
+    guard event.type == .keyDown, !event.isARepeat, !contexts.isEmpty, !event.modifierFlags.intersection([.command, .option, .control]).isEmpty else { return false }
+    for id in contexts.keys.sorted() {
+      guard let ctx = contexts[id], let c = ctx.command(for: event) else { continue }
+      if denOwns(event) { return false }
+      if ["_execute_action", "_execute_browser_action", "_execute_page_action"].contains(c.id) {
+        _ = performAction(id, anchor: nil)
+      } else {
+        ctx.performCommand(c)
+      }
+      return true
+    }
+    return false
+  }
+
+  /// True when one of den's menu items (not the Extensions menu) has this key press's shortcut.
+  func denOwns(_ event: NSEvent) -> Bool {
+    guard let main = NSApp.mainMenu, let k = Self.chord(event) else { return false }
+    func search(_ m: NSMenu) -> Bool {
+      m.items.contains { Self.chord($0) == k || ($0.submenu.map { $0 !== commandsMenu && search($0) } ?? false) }
+    }
+    return search(main)
+  }
+
+  /// A menu item's key equivalent as one comparable string ("cmd+shift+y"), or nil without one.
+  static func chord(_ i: NSMenuItem) -> String? {
+    guard !i.keyEquivalent.isEmpty else { return nil }
+    return chord(key: i.keyEquivalent, i.keyEquivalentModifierMask)
+  }
+
+  static func chord(_ e: NSEvent) -> String? {
+    guard let k = e.charactersIgnoringModifiers, !k.isEmpty else { return nil }
+    return chord(key: k, e.modifierFlags)
+  }
+
+  static func chord(key: String, _ flags: NSEvent.ModifierFlags) -> String {
+    var k = key
+    var mods = flags.intersection([.command, .option, .control, .shift])
+    if k != k.lowercased() { mods.insert(.shift); k = k.lowercased() }
+    let names: [(NSEvent.ModifierFlags, String)] = [(.command, "cmd"), (.option, "opt"), (.control, "ctrl"), (.shift, "shift")]
+    return (names.filter { mods.contains($0.0) }.map(\.1) + [k]).joined(separator: "+")
   }
 
   static func failure(_ s: String) -> NSError { NSError(domain: "den.extensions", code: 1, userInfo: [NSLocalizedDescriptionKey: s]) }

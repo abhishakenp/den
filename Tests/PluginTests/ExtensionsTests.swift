@@ -159,16 +159,17 @@ struct ExtensionsTests {
     do { try await ctx.loadBackgroundContent() } catch { print("loadBackgroundContent:", error) }
     #expect(await wait { h.rt.extensions.menuItems().first?.badge == "7" })
 
-    // Its right-click item is in the page's context menu, after den's own.
-    let pageMenu = NSMenu()
+    // Its right-click item (`contexts: ["all"]`) is in the tab's menu in the sidebar. (A page's
+    // own menu gets it from WebKit: ExtensionMenusTests, --scenario extensionMenus.)
+    let tabMenu = NSMenu()
     var lookUp: NSMenuItem?
     _ = await wait(15) {
-      pageMenu.removeAllItems()
-      h.rt.extensions.contextMenu(w, pageMenu)
-      lookUp = pageMenu.items.first { $0.title == "Look Up in Den Test" }
+      tabMenu.removeAllItems()
+      h.rt.extensions.tabMenu(tab, tabMenu)
+      lookUp = tabMenu.items.first { $0.title == "Look Up in Den Test" }
       return lookUp != nil
     }
-    print("ext context menu items=\(pageMenu.items.map(\.title))")
+    print("ext tab menu items=\(tabMenu.items.map(\.title))")
     #expect(lookUp != nil)
 
     // Its keyboard shortcut is in the menu bar's Extensions menu, with its key; choosing it

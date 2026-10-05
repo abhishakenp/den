@@ -246,6 +246,7 @@ public final class UIService: HostService {
   func showMenu(_ id: String, _ items: [Value]) -> Value {
     guard !items.isEmpty, let n = Self.node(id, in: sidebarView) else { return .error("ui: no node '\(id)'") }
     let m = ContextMenu.build(items, target: n, action: #selector(NodeView.menuPicked(_:)))
+    ExtensionHooks.nodeMenu(n, m)
     lastMenu = m
     DispatchQueue.main.async { [weak n] in
       guard let n, let w = n.window, !TestMode.active else { return }

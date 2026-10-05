@@ -78,7 +78,9 @@ Tested in CI through the real store install (`Tests/PluginTests/ExtensionCompatT
 | ColorPick Eyedropper | Partial | The popup opens; its background doesn't start, so picking colors doesn't work |
 | Bitwarden | Partial | Installs, starts, and its popup shows Log in. Signing in, filling and unlocking with the desktop app aren't checked yet (they need a real account) |
 
-An extension's keyboard shortcuts work: they're listed, with their keys, in the **Extensions** menu in the menu bar. Its right-click items show at the end of a page's right-click menu.
+**Keyboard shortcuts.** An extension's shortcuts work wherever you are in den, even while a page or a text field has focus (Dark Reader's ⌥⇧D turns it off). The **Extensions** menu in the menu bar lists every extension's shortcuts with their keys, and the ones without a key, which you can run from there. den's own shortcuts come first: if an extension asks for a key den already uses (Raindrop.io asks for ⌘⇧S, den's Save Page As…), den keeps it and the extension's command is listed without a key.
+
+**Right-click items.** An extension's items show in a page's right-click menu, for what you clicked (a link, an image, selected text, a text field, a frame or the page), like Raindrop.io's "Save link in Raindrop.io". Right-click an extension's button in the URL pill (or in the puzzle menu) for its own items, its options, Pin / Unpin and Manage Extensions.
 
 den fills some gaps itself, in its own copy of each extension, so an extension that touches a missing API keeps running instead of stopping silently: events WebKit leaves out (such as `webNavigation.onHistoryStateUpdated`, which stopped Vimium), an empty `bookmarks`, a `history` of pages visited since the extension was added, `sessions` for tabs closed since then, and `search`. Folders in `~/.den/extensions` are left exactly as they are.
 

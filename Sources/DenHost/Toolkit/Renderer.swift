@@ -45,7 +45,9 @@ public class NodeView: FlippedView, Themable {
   public override func menu(for event: NSEvent) -> NSMenu? {
     let items = node.list("menu")
     guard !items.isEmpty else { return nil }
-    return ContextMenu.build(items, target: self, action: #selector(menuPicked(_:)))
+    let m = ContextMenu.build(items, target: self, action: #selector(menuPicked(_:)))
+    ExtensionHooks.nodeMenu(self, m)
+    return m
   }
   @objc func menuPicked(_ sender: NSMenuItem) { emit("menu", .string(sender.representedObject as? String ?? "")) }
 }

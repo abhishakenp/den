@@ -85,14 +85,20 @@ public final class DenNSWindow: NSWindow {
   }
 
   // Key-downs pass `ModalFocus` first: an open dialog / sheet / popover takes focus back from a
-  // page that grabbed it, so Esc and Return reach it.
+  // page that grabbed it, so Esc and Return reach it. Then extensions' shortcuts (`ExtensionHooks`).
   public override func sendEvent(_ event: NSEvent) {
-    if event.type == .keyDown { ModalFocus.route(event, in: self) }
+    if event.type == .keyDown {
+      ModalFocus.route(event, in: self)
+      if ExtensionHooks.route(event) { return }
+    }
     super.sendEvent(event)
   }
 
   public override func performKeyEquivalent(with event: NSEvent) -> Bool {
-    if event.type == .keyDown { ModalFocus.route(event, in: self) }
+    if event.type == .keyDown {
+      ModalFocus.route(event, in: self)
+      if ExtensionHooks.route(event) { return true }
+    }
     return super.performKeyEquivalent(with: event)
   }
 }
@@ -114,12 +120,18 @@ public final class DenNSPanel: NSPanel {
   }
 
   public override func sendEvent(_ event: NSEvent) {
-    if event.type == .keyDown { ModalFocus.route(event, in: self) }
+    if event.type == .keyDown {
+      ModalFocus.route(event, in: self)
+      if ExtensionHooks.route(event) { return }
+    }
     super.sendEvent(event)
   }
 
   public override func performKeyEquivalent(with event: NSEvent) -> Bool {
-    if event.type == .keyDown { ModalFocus.route(event, in: self) }
+    if event.type == .keyDown {
+      ModalFocus.route(event, in: self)
+      if ExtensionHooks.route(event) { return true }
+    }
     return super.performKeyEquivalent(with: event)
   }
 }
