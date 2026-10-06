@@ -5,7 +5,7 @@ import Security
 /// Apple developer account (a Team ID) or holding a managed entitlement: App Intents (Shortcuts,
 /// Siri, Spotlight actions), CloudKit, browser passkeys, 1Password's browser check. den is signed
 /// with a self-signed local identity or ad hoc today; these let features turn themselves on once
-/// it isn't (docs/research/apple-integration.md).
+/// it isn't (docs/research/apple-platform.md).
 public enum Signing {
   /// The Team ID of den's signature, or nil (ad hoc, self-signed, unsigned).
   public static let teamIdentifier: String? = {

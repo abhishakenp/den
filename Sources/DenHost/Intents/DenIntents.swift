@@ -11,7 +11,7 @@ import Foundation
 // accepts apps signed with a Team ID (an Apple developer account): with den's self-signed or ad
 // hoc signature, linkd rejects it ("requiresValidatedBundle") and Shortcuts doesn't show den's
 // actions. Everything here works and is tested in-process; it reaches Shortcuts once den is
-// signed with a Team ID (docs/research/apple-integration.md).
+// signed with a Team ID (docs/research/apple-platform.md).
 
 /// The runtime the actions act on (the app sets it at launch).
 @MainActor

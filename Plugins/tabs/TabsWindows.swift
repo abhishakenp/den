@@ -1,5 +1,5 @@
 // Windows for the `tabs` plugin: every normal window shows the same spaces and tabs and keeps its
-// own place (Arc: "Cmd-N opens another window on the same Spaces and tabs", research/arc.md §1);
+// own place (Arc: "Cmd-N opens another window on the same Spaces and tabs", docs/research/arc.md §1);
 // private windows (⇧⌘N) have tabs of their own that are never saved; closed windows can be
 // reopened (⇧⌘T right after a window close, File ▸ Reopen Closed Window); open windows come back
 // after a relaunch. The host's `window` service owns the windows; this file decides what they show.
