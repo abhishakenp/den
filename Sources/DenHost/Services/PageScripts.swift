@@ -10,11 +10,13 @@ import WebKit
 ///                              in picture (WebKit's), v = the frame's main playing video,
 ///                              n = now playing: the last media element that played audibly, with
 ///                              the page's Media Session info {title, artist, album, art, paused,
-///                              dur, video, acts} (acts = the page's Media Session action handlers)
+///                              dur, video, acts, vol, rate} (acts = the page's Media Session
+///                              action handlers, vol/rate = the element's volume and playback rate)
 /// and exposes `window.__denMedia` (in the `den` world only) for the host: `act(action, value)`
-/// (the now-playing element), `pip()` / `exitPip()` (the standard picture-in-picture API, which
-/// WebKit implements with the system PiP window), `probe()`, `refresh()` (a report now, changed
-/// or not). A video's `resize` (its track's size known or changed) is a change too.
+/// (the now-playing element), `setPlayback(vol, rate)` (the tab's volume and playback speed, on
+/// every media element of the frame), `pip()` / `exitPip()` (the standard picture-in-picture API,
+/// which WebKit implements with the system PiP window), `probe()`, `refresh()` (a report now,
+/// changed or not). A video's `resize` (its track's size known or changed) is a change too.
 ///
 /// `sessionHook` is the only page-world part: it remembers the page's Media Session action
 /// handlers (WebKit has no way to call them from outside) and tells the den world when they or
@@ -50,7 +52,8 @@ enum PageScripts {
     try { md = navigator.mediaSession && navigator.mediaSession.metadata; } catch (e) {}
     const str = (x, n) => String(x || '').slice(0, n);
     return { title: str(md && md.title || document.title, 200), artist: str(md && md.artist, 200), album: str(md && md.album, 200),
-             art: md ? artwork(md) : '', paused: m.paused || m.ended, dur: fin(m.duration), video: m.tagName === 'VIDEO', acts };
+             art: md ? artwork(md) : '', paused: m.paused || m.ended, dur: fin(m.duration), video: m.tagName === 'VIDEO', acts,
+             vol: m.volume, rate: m.playbackRate };
   };
   const best = () => {
     let b = null, ba = 0;
@@ -146,6 +149,16 @@ enum PageScripts {
         case 'skip': if (isFinite(m.duration)) m.currentTime = Math.max(0, Math.min(m.currentTime + x, m.duration)); break;
         case 'stop': if (has('stop')) fire('stop'); m.pause(); stopped = m; break;
         default: return false;
+      }
+      soon();
+      return true;
+    },
+    // The tab's volume and playback speed, as den's dock set them (`setVolume` / `setRate`):
+    // every media element of this frame that exists now. null leaves the element's own value.
+    setPlayback(v, r) {
+      for (const m of document.querySelectorAll('video,audio')) {
+        if (v != null) m.volume = Math.max(0, Math.min(1, v));
+        if (r != null) m.playbackRate = r;
       }
       soon();
       return true;
