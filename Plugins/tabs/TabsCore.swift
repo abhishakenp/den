@@ -22,6 +22,9 @@ final class TabsCore {
     var media: Value?
     /// An icon the user chose (an emoji or `sf:` symbol, TabsIcons.swift); it replaces the favicon.
     var customIcon: String?
+    /// The page was discarded (its WebContent process exited; the host kept the URL, history and
+    /// a snapshot). Runtime only, like `audio`: the row dims the icon until the page comes back.
+    var suspended = false
 
     var displayTitle: String {
       if let c = customTitle, !c.isEmpty { return c }
@@ -916,6 +919,7 @@ final class TabsCore {
         if !st.s("favicon").isEmpty { tabs[id]?.favicon = st.s("favicon") }
         tabs[id]?.audio = st.b("audio")
         tabs[id]?.muted = st.b("muted")
+        tabs[id]?.suspended = st.b("suspended")
       }
     }
   }
@@ -956,6 +960,7 @@ final class TabsCore {
     let now = env.now()
     if let p = previous { tabs[p]?.lastActive = now; fgLastUse[p] = fgNow() }
     tabs[id]?.lastActive = now
+    tabs[id]?.suspended = false  // showing the tab materializes its web view again
     fgLastUse[id] = fgNow()
     mru.removeAll { $0 == id }
     mru.insert(id, at: 0)
@@ -1062,6 +1067,7 @@ final class TabsCore {
   func focusQuietly(_ id: String, in sid: String) {
     let now = env.now()
     tabs[id]?.lastActive = now
+    tabs[id]?.suspended = false  // it's about to be shown (showSelected follows)
     fgLastUse[id] = fgNow()
     mru.removeAll { $0 == id }
     mru.insert(id, at: 0)
@@ -1182,6 +1188,7 @@ final class TabsCore {
     var copy = t
     copy.id = nid
     copy.lastActive = env.now()
+    copy.suspended = false  // the copy gets a fresh, live web view
     tabs[nid] = copy
     if let (b, i) = locate(id) {
       var list = ids(b)
@@ -1816,7 +1823,7 @@ final class TabsCore {
       let id = splits[fid]?.children.first ?? fid
       guard let t = tabs[id] else { return nil }
       var tile: Value = ["type": "favoriteTile", "id": .string(id), "icon": .string(t.icon), "title": .string(t.displayTitle), "selected": .bool(id == sel),
-                         "audio": .bool(t.audio), "muted": .bool(t.muted), "dropInto": true,
+                         "audio": .bool(t.audio), "muted": .bool(t.muted), "suspended": .bool(t.suspended), "dropInto": true,
                          "hoverIntent": .int(Self.tileCardDelayMs)]
       if !badges.isEmpty, let b = badges[URLs.host(t.url)] { tile.put("badge", .string(b)) }
       return tile
@@ -1826,7 +1833,8 @@ final class TabsCore {
   func row(_ id: String, _ sid: String, box: Box) -> Value {
     let t = tabs[id]!
     var r: Value = ["type": "tabRow", "id": .string(id), "title": .string(t.displayTitle), "icon": .string(t.icon), "selected": .bool(selOf(sid) == id),
-                    "audio": .bool(t.audio), "muted": .bool(t.muted), "drift": .bool(kind(of: box) != "today" && t.drift),
+                    "audio": .bool(t.audio), "muted": .bool(t.muted), "suspended": .bool(t.suspended),
+                    "drift": .bool(kind(of: box) != "today" && t.drift),
                     "closeTitle": .string(kind(of: box) == "today" ? "Archive Tab" : "Close Tab"),
                     "dropInto": true, "dropIntoIcon": "sf:rectangle.split.2x1",
                     "hoverIntent": .int(Self.rowCardDelayMs)]
@@ -2110,6 +2118,8 @@ final class TabsCore {
     for e in ["webviews.title", "webviews.url", "webviews.favicon", "webviews.progress", "webviews.state", "webviews.audio", "webviews.muted"] {
       env.on(e) { [self] v in webEvent(e, v) }
     }
+    // A discarded tab (idle unload, ⌘W on a pinned tab or favorite, Unload Space): dim its icon.
+    env.on("webviews.suspended") { [self] v in setSuspended(v.s("id"), true) }
     // Now-playing media: the row's hover playback buttons.
     env.on("webviews.nowPlaying") { [self] v in
       let id = v.s("id")
@@ -2332,6 +2342,8 @@ final class TabsCore {
     let id = v.s("id")
     if ptabs[id] != nil { return privateWebEvent(e, v) }
     guard tabs[id] != nil else { return }
+    // Any event from the page means its discarded web view is live again.
+    if tabs[id]?.suspended == true { setSuspended(id, false) }
     let isSelected = id == selectedId || isShownElsewhere(id)
     switch e {
     case "webviews.title":
@@ -2353,6 +2365,15 @@ final class TabsCore {
     saveSoon()
     if favorites.contains(id) { renderFavorites() } else if let sid = spaceOf(id) { renderPage(sid) }
     if isSelected && e == "webviews.url" { renderHeader() }
+  }
+
+  /// The page was discarded (or came back): its row or tile re-renders with the icon dimmed, or
+  /// bright again. Any live page event clears it too (webEvent); selecting the tab clears it
+  /// before the sidebar renders, since showing it materializes the web view at once.
+  func setSuspended(_ id: String, _ on: Bool) {
+    guard tabs[id] != nil, tabs[id]?.suspended != on else { return }
+    tabs[id]?.suspended = on
+    if favorites.contains(id) { renderFavorites() } else if let sid = spaceOf(id) { renderPage(sid) }
   }
 
   func handleReorder(_ value: Value) {
