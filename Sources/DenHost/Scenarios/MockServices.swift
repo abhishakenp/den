@@ -16,6 +16,13 @@ import Network
 ///   the form body **and** the `d` cookie, like the real web client; otherwise `invalid_auth`.
 /// - `GET /search?q=…&type=…`: github.com's search JSON (`payload.blackbirdSearchRoute`), shaped
 ///   like a real response captured on 2026-09-27; `logged_in: false` without `user_session`.
+/// - `GET /linear/signin` + `POST /graphql`: Linear's web session (an HttpOnly cookie; the name is
+///   a stand-in — the plugin gates on any cookie) and the GraphQL endpoint its web app uses:
+///   `viewer`, and `assignedIssues` for the refresh. Without the cookie, the real 401 shape
+///   (`errors[].extensions.code == "AUTHENTICATION_ERROR"`).
+/// - `GET /jira/signin` + `GET /rest/api/3/myself|search`: Jira Cloud's web session
+///   (`cloud.session.token`, HttpOnly) and the documented REST shapes den reads. 401 without the
+///   cookie.
 public final class MockServices: @unchecked Sendable {
   public private(set) var port: UInt16 = 0
   public var base: String { "http://127.0.0.1:\(port)" }
@@ -29,6 +36,12 @@ public final class MockServices: @unchecked Sendable {
   public static let dCookie = "xoxd-mock-session"
   public static let tokens = ["T01ACME": "xoxc-mock-acme", "T02DEN": "xoxc-mock-den"]
   public static let me = "U01ME"
+  /// Stand-in name: the Linear plugin gates on any linear.app cookie, not on a name it can't verify.
+  public static let linearCookieName = "linear-session"
+  public static let linearCookie = "mock-linear-session"
+  /// The observed Atlassian Cloud web-session cookie (not officially documented).
+  public static let jiraCookieName = "cloud.session.token"
+  public static let jiraCookie = "mock-jira-session"
   /// Static files by path (the media scenarios' test page and video), with byte ranges:
   /// WebKit's media loader asks for `Range: bytes=…` and needs 206 answers.
   public var files: [String: (type: String, data: Data)] {
@@ -182,6 +195,17 @@ public final class MockServices: @unchecked Sendable {
     case ("GET", "/vault/login"), ("GET", "/vault/signup"):
       return (200, [("Content-Type", "text/html; charset=utf-8")], Data(Self.vaultPage(signup: r.path.hasSuffix("signup")).utf8))
     case ("GET", "/search"): return githubSearch(r)
+    case ("GET", "/linear/signin"):
+      return (200, [("Content-Type", "text/html; charset=utf-8"),
+                    ("Set-Cookie", "\(Self.linearCookieName)=\(Self.linearCookie); Path=/; HttpOnly; SameSite=Lax")],
+              Data("<!doctype html><title>Linear</title><body style='font:15px -apple-system;padding:40px'><h2>Signed in as Riley</h2></body>".utf8))
+    case ("POST", "/graphql"): return linearGraphQL(r)
+    case ("GET", "/jira/signin"):
+      return (200, [("Content-Type", "text/html; charset=utf-8"),
+                    ("Set-Cookie", "\(Self.jiraCookieName)=\(Self.jiraCookie); Path=/; HttpOnly; SameSite=Lax")],
+              Data("<!doctype html><title>Jira</title><body style='font:15px -apple-system;padding:40px'><h2>Signed in as Riley Chen</h2></body>".utf8))
+    case ("GET", "/rest/api/3/myself"): return jiraMyself(r)
+    case ("GET", "/rest/api/3/search"): return jiraSearch(r)
     case ("GET", "/redirect-out"): return (302, [("Location", "http://example.invalid/")], Data())
     case ("GET", "/big"): return (200, [("Content-Type", "text/plain")], Data(repeating: 65, count: 300_000))
     case ("GET", "/basic-auth"):
@@ -326,6 +350,74 @@ public final class MockServices: @unchecked Sendable {
                                 "page_count": results.isEmpty ? 0 : 1, "elapsed_millis": 7, "errors": [], "result_count": results.count,
                                 "facets": [], "protected_org_logins": [], "topics": NSNull(), "query_id": "", "logged_in": loggedIn]
     return json(["meta": ["title": "Search results"], "payload": ["blackbirdSearchRoute": route]])
+  }
+
+  // MARK: Linear
+
+  /// `POST /graphql`: the viewer probe and the assigned-issues refresh, the shapes the real
+  /// endpoint returns. The 401 is the real unauthenticated shape (checked 2026-10-06).
+  func linearGraphQL(_ r: Request) -> (Int, [(String, String)], Data) {
+    guard r.cookies[Self.linearCookieName] == Self.linearCookie else {
+      return (401, [("Content-Type", "application/json; charset=utf-8")],
+              Data(#"{"errors":[{"message":"Authentication required, not authenticated","extensions":{"type":"authentication error","code":"AUTHENTICATION_ERROR","statusCode":401,"userError":true}}]}"#.utf8))
+    }
+    let body = String(decoding: r.body, as: UTF8.self)
+    guard body.contains("assignedIssues") else {
+      return json(["data": ["viewer": ["id": "u-riley", "name": "Riley Chen", "displayName": "Riley", "email": "riley@acme.test"]]])
+    }
+    let issues: [[String: Any]] = [
+      linearIssue("lin-1", "ENG-123", "Checkout: retry card load on Safari", "In Progress", "Maya Chen", "ENG", "Engineering", 40),
+      linearIssue("lin-2", "DES-7", "Icon set v3: which glyph for Archive?", "Todo", "Jon", "DES", "Design", 320),
+    ]
+    return json(["data": ["viewer": ["assignedIssues": ["nodes": issues]]]])
+  }
+
+  func linearIssue(_ id: String, _ key: String, _ title: String, _ state: String, _ creator: String, _ team: String, _ teamName: String, _ minutesAgo: Double) -> [String: Any] {
+    let slug = title.lowercased().replacingOccurrences(of: " ", with: "-").filter { $0.isLetter || $0.isNumber || $0 == "-" }
+    return ["id": id, "identifier": key, "title": title, "url": base + "/acme/issue/" + key + "/" + slug, "updatedAt": iso(minutesAgo),
+            "state": ["name": state], "creator": ["displayName": creator], "team": ["key": team, "name": teamName]]
+  }
+
+  // MARK: Jira
+
+  /// Jira Cloud writes ISO times with a "+0000" offset (no colon), not "Z".
+  func jiraIso(_ minutesAgo: Double) -> String {
+    var s = iso(minutesAgo)
+    if s.hasSuffix("Z") { s = String(s.dropLast()) + "+0000" }
+    return s
+  }
+
+  /// `GET /rest/api/3/myself`: the documented shape; 401 without the session cookie.
+  func jiraMyself(_ r: Request) -> (Int, [(String, String)], Data) {
+    guard r.cookies[Self.jiraCookieName] == Self.jiraCookie else { return jiraUnauthorized() }
+    return json(["self": base + "/rest/api/3/user?accountId=712020:mock-riley", "accountId": "712020:mock-riley", "accountType": "atlassian",
+                 "displayName": "Riley Chen", "emailAddress": "riley@acme.test", "locale": "en_US", "active": true])
+  }
+
+  /// `GET /rest/api/3/search?jql=…`: the documented shape; only the assigned-to-you JQL is served.
+  func jiraSearch(_ r: Request) -> (Int, [(String, String)], Data) {
+    guard r.cookies[Self.jiraCookieName] == Self.jiraCookie else { return jiraUnauthorized() }
+    guard (r.query["jql"] ?? "").contains("assignee = currentUser()") else {
+      return json(["issues": [], "startAt": 0, "maxResults": 25, "total": 0])
+    }
+    let issues: [[String: Any]] = [
+      jiraIssue("ENG-101", "Offline mode drops queued replies", "In Progress", "Bug", "High", "Maya Chen", "ENG", "Engineering", 30),
+      jiraIssue("DES-7", "Icon set v3: archive glyph states", "To Do", "Task", "Medium", "Jon", "DES", "Design", 300),
+    ]
+    return json(["expand": "names,schema", "issues": issues, "startAt": 0, "maxResults": 25, "total": issues.count])
+  }
+
+  func jiraIssue(_ key: String, _ summary: String, _ status: String, _ type: String, _ priority: String, _ reporter: String, _ project: String, _ projectName: String, _ minutesAgo: Double) -> [String: Any] {
+    ["id": "10" + String(key.filter(\.isNumber)), "key": key, "self": base + "/rest/api/3/issue/10" + String(key.filter(\.isNumber)),
+     "fields": ["summary": summary, "status": ["name": status, "statusCategory": ["key": "indeterminate"]],
+                "issuetype": ["name": type], "priority": ["name": priority], "updated": jiraIso(minutesAgo),
+                "reporter": ["accountId": "712020:mock-" + reporter.lowercased().replacingOccurrences(of: " ", with: "-"), "displayName": reporter],
+                "project": ["key": project, "name": projectName]]]
+  }
+
+  func jiraUnauthorized() -> (Int, [(String, String)], Data) {
+    (401, [("Content-Type", "application/json; charset=utf-8")],
+     Data(#"{"errorMessages":["You are not authenticated. Authentication required to perform this operation."],"errors":{}}"#.utf8))
   }
 }
 #endif

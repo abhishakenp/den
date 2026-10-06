@@ -50,13 +50,19 @@ struct ConnectionsTests {
   }
 
   /// Points the plugins at the mock and grants them its host (the real sidecars say slack.com /
-  /// github.com).
+  /// github.com / linear.app / atlassian.net).
   func configure(_ h: Harness, _ m: MockServices) {
     h.rt.call("storage", "set", ["ns": "slack", "key": "endpoints", "value": [
       "api": .string(m.base + "/api/"), "origin": .string(m.base), "domain": "127.0.0.1", "signIn": .string(m.base + "/slack/signin")]])
     h.rt.call("storage", "set", ["ns": "github", "key": "base", "value": .string(m.base)])
+    h.rt.call("storage", "set", ["ns": "linear", "key": "endpoints", "value": [
+      "api": .string(m.base + "/graphql"), "web": .string(m.base), "domain": "127.0.0.1", "signIn": .string(m.base + "/linear/signin")]])
+    h.rt.call("storage", "set", ["ns": "jira", "key": "endpoints", "value": [
+      "origin": .string(m.base), "domain": "127.0.0.1", "signIn": .string(m.base + "/jira/signin")]])
     h.rt.permissions.grant("slack", ["session:127.0.0.1"])
     h.rt.permissions.grant("github", ["session:127.0.0.1"])
+    h.rt.permissions.grant("linear", ["session:127.0.0.1"])
+    h.rt.permissions.grant("jira", ["session:127.0.0.1"])
   }
 
   func events(_ h: Harness, _ name: String) -> [Value] { h.events.filter { $0.0 == name }.map(\.1) }
@@ -489,6 +495,225 @@ struct ConnectionsTests {
     h.rt.plugins.emit("session.cookiesChanged", ["domain": "gh.example", "profile": .string(Self.profile)])
     #expect(await until { !h.rt.call("connections", "get", ["id": "github"]).b("connected") })
     #expect(tabs.toasts.last?.hasPrefix("Signed out of GitHub") == true)
+  }
+
+  // MARK: Linear and Jira
+
+  /// Starts connections + linear + jira against the mock, with the same fake tabs/spaces as startAll.
+  func startTrackers(_ h: Harness, _ m: MockServices, tabs: Tabs) -> (ConnectionsCore, LinearCore, JiraCore) {
+    configure(h, m)
+    h.clock = Int64(m.now.timeIntervalSince1970 * 1000)
+    h.rt.plugins.provide("tabs") { method, a in
+      if method == "open" { tabs.opened.append(a.s("url")); return ["id": .string("tab-\(tabs.opened.count)")] }
+      return ["ok": true]
+    }
+    h.rt.plugins.provide("spaces") { method, _ in
+      method == "current" ? ["id": "s1"] : [["id": "s1", "name": "Personal", "profile": .string(Self.profile)]]
+    }
+    let c = ConnectionsCore(env: env(h, tabs))
+    h.rt.plugins.provide("connections") { a, b in c.handle(a, b) }
+    c.start()
+    let l = LinearCore(env: h.env)
+    l.start()
+    let j = JiraCore(env: h.env)
+    j.start()
+    return (c, l, j)
+  }
+
+  @Test func linearConnectsAndFeedsAssignedIssues() async throws {
+    let m = try mock()
+    defer { m.stop() }
+    let h = Harness()
+    let tabs = Tabs()
+    let (c, l, _) = startTrackers(h, m, tabs: tabs)
+    h.record(["feed.items"])
+    #expect(c.providers.map(\.id).sorted() == ["jira", "linear"])
+    #expect(!h.rt.call("connections", "get", ["id": "linear"]).b("connected"))
+
+    // Not signed in yet: the sign-in page opens in a tab.
+    h.rt.call("connections", "connect", ["id": "linear"])
+    #expect(await until { tabs.opened == [m.base + "/linear/signin"] })
+
+    // The user signs in; the next probe sees a cookie and confirms the session with the viewer query.
+    #expect(await signIn(h, m.base + "/linear/signin"))
+    h.fireTimers()
+    #expect(await until(45) { h.rt.call("connections", "get", ["id": "linear"]).b("connected") })
+    #expect(h.rt.call("connections", "get", ["id": "linear"]).s("account") == "Riley")
+    #expect(tabs.toasts == ["Linear connected"])
+    // No session token is ever stored.
+    let stored = ValueJSON.string(h.storage("connections", "accounts"))
+    #expect(stored.contains("linear") && !stored.contains(MockServices.linearCookie))
+
+    // A refresh emits the open assigned issues as feed items.
+    h.rt.plugins.emit("feed.refresh")
+    #expect(await until { events(h, "feed.items").contains { $0.s("source") == "linear" } })
+    let items = events(h, "feed.items").first { $0.s("source") == "linear" }!.a("items")
+    #expect(items.map { $0.s("title") } == ["Checkout: retry card load on Safari", "Icon set v3: which glyph for Archive?"])
+    let first = items[0]
+    #expect(first.s("kind") == "assigned" && first.s("badge") == "Assigned")
+    #expect(first.s("detail") == "ENG-123 · Engineering · In Progress · from Maya Chen")
+    #expect(first.s("url") == m.base + "/acme/issue/ENG-123/checkout-retry-card-load-on-safari")
+    #expect(first.s("importantKey") == "linear:ENG" && first.s("importantTitle") == "Engineering (ENG)")
+    #expect(first.i("ts") > 0)
+    #expect(!l.refreshing)
+  }
+
+  @Test func jiraConnectsAndFeedsAssignedIssues() async throws {
+    let m = try mock()
+    defer { m.stop() }
+    let h = Harness()
+    let tabs = Tabs()
+    let (_, j, _) = startTrackers(h, m, tabs: tabs)
+    _ = j
+    h.record(["feed.items"])
+
+    // Already signed in: Connect finds the session (cookie + myself) without opening a tab.
+    #expect(await signIn(h, m.base + "/jira/signin"))
+    h.rt.call("connections", "connect", ["id": "jira"])
+    #expect(await until(45) { h.rt.call("connections", "get", ["id": "jira"]).b("connected") })
+    #expect(tabs.opened.isEmpty)
+    let jira = h.rt.call("connections", "get", ["id": "jira"])
+    #expect(jira.s("account") == "Riley Chen")
+    // The signed-in site is the connection's single team ("sites"); its id is the cookie's host.
+    #expect(jira.a("teams").map { $0.s("id") } == ["127.0.0.1"])
+    #expect(tabs.toasts == ["Jira connected"])
+    // No session token is ever stored.
+    let stored = ValueJSON.string(h.storage("connections", "accounts"))
+    #expect(stored.contains("jira") && !stored.contains(MockServices.jiraCookie))
+
+    // A refresh emits the open assigned issues as feed items.
+    h.rt.plugins.emit("feed.refresh")
+    #expect(await until { events(h, "feed.items").contains { $0.s("source") == "jira" } })
+    let items = events(h, "feed.items").first { $0.s("source") == "jira" }!.a("items")
+    #expect(items.map { $0.s("title") } == ["Offline mode drops queued replies", "Icon set v3: archive glyph states"])
+    let first = items[0]
+    #expect(first.s("kind") == "assigned" && first.s("badge") == "Assigned")
+    #expect(first.s("detail") == "ENG-101 · Engineering · In Progress · from Maya Chen")
+    #expect(first.s("url") == m.base + "/browse/ENG-101")
+    #expect(first.s("importantKey") == "jira:127.0.0.1:ENG" && first.s("importantTitle") == "Engineering")
+    // Jira's "+0000" offset parses to the mock's clock (30 minutes ago, a millisecond of rounding).
+    let expected = Int64((m.now.addingTimeInterval(-30 * 60).timeIntervalSince1970 * 1000).rounded())
+    #expect(abs(first.i("ts") - expected) < 1000)
+  }
+
+  @Test func linearAndJiraReportSignedOutSessions() async throws {
+    let m = try mock()
+    defer { m.stop() }
+    let h = Harness()
+    let tabs = Tabs()
+    let _ = startTrackers(h, m, tabs: tabs)
+    h.record(["feed.items"])
+    #expect(await signIn(h, m.base + "/linear/signin"))
+    #expect(await signIn(h, m.base + "/jira/signin"))
+    h.rt.call("connections", "connect", ["id": "linear"])
+    h.rt.call("connections", "connect", ["id": "jira"])
+    #expect(await until(45) {
+      h.rt.call("connections", "get", ["id": "linear"]).b("connected") && h.rt.call("connections", "get", ["id": "jira"]).b("connected")
+    })
+
+    // The sessions end (signed out of both sites): the cookies go away.
+    let store = h.rt.webviews.store(for: Self.profile)
+    let cookies: [HTTPCookie]? = await Wait.callback("cookies") { done in store.httpCookieStore.getAllCookies { done($0) } }
+    for c in cookies ?? [] where c.name == MockServices.linearCookieName || c.name == MockServices.jiraCookieName {
+      _ = await Wait.callback("delete cookie") { (done: @escaping @Sendable (Bool) -> Void) in store.httpCookieStore.delete(c) { done(true) } }
+    }
+    h.rt.plugins.emit("feed.refresh")
+    #expect(await until(20) {
+      !h.rt.call("connections", "get", ["id": "linear"]).b("connected") && !h.rt.call("connections", "get", ["id": "jira"]).b("connected")
+    })
+    #expect(events(h, "feed.items").contains { $0.s("source") == "linear" && $0.s("error") == "signed out" })
+    #expect(events(h, "feed.items").contains { $0.s("source") == "jira" && $0.s("error") == "signed out" })
+    #expect(tabs.toasts.contains { $0.hasPrefix("Signed out of Linear") })
+    #expect(tabs.toasts.contains { $0.hasPrefix("Signed out of Jira") })
+  }
+
+  /// An unknown cookie set is worth one automatic probe; when it says "no session", the same set
+  /// isn't probed again (every page load on the site is a cookie change). A new set probes again.
+  @Test func linearProbesAnUnknownCookieSetOnce() async throws {
+    let m = try mock()
+    defer { m.stop() }
+    let h = Harness()
+    let tabs = Tabs()
+    configure(h, m)
+    h.rt.plugins.provide("tabs") { method, a in
+      if method == "open" { tabs.opened.append(a.s("url")); return ["id": .string("tab-\(tabs.opened.count)")] }
+      return ["ok": true]
+    }
+    h.rt.plugins.provide("spaces") { method, _ in
+      method == "current" ? ["id": "s1"] : [["id": "s1", "name": "Personal", "profile": .string(Self.profile)]]
+    }
+    let c = ConnectionsCore(env: env(h, tabs))
+    h.rt.plugins.provide("connections") { a, b in c.handle(a, b) }
+    c.start()
+    LinearCore(env: h.env).start()
+    let store = h.rt.webviews.store(for: Self.profile).httpCookieStore
+    func setCookie(_ name: String, _ value: String) async {
+      await store.setCookie(HTTPCookie(properties: [.domain: "127.0.0.1", .path: "/", .name: name, .value: value, .expires: Date().addingTimeInterval(3600)])!)
+    }
+
+    // An anonymous cookie probes once: no session, and the same cookie set doesn't probe again.
+    await setCookie("anon", "1")
+    h.rt.plugins.emit("session.cookiesChanged", ["domain": "127.0.0.1", "profile": .string(Self.profile)])
+    #expect(await until { m.log.contains("POST /graphql") })
+    #expect(!h.rt.call("connections", "get", ["id": "linear"]).b("connected"))
+    h.rt.plugins.emit("session.cookiesChanged", ["domain": "127.0.0.1", "profile": .string(Self.profile)])
+    try? await Task.sleep(for: .milliseconds(600))
+    #expect(m.log.filter { $0 == "POST /graphql" }.count == 1)
+
+    // The sign-in changes the cookie set: probed again, and Linear connects by itself, with Undo.
+    await setCookie(MockServices.linearCookieName, MockServices.linearCookie)
+    h.rt.plugins.emit("session.cookiesChanged", ["domain": "127.0.0.1", "profile": .string(Self.profile)])
+    #expect(await until { h.rt.call("connections", "get", ["id": "linear"]).b("connected") })
+    #expect(h.rt.call("connections", "get", ["id": "linear"]).s("account") == "Riley")
+    #expect(tabs.toasts == ["Linear connected"])
+    #expect(tabs.toastTrees.last?.s("action") == "Undo")
+    #expect(tabs.toastTrees.last?.s("id") == "connections.undo:linear")
+    #expect(tabs.opened.isEmpty)
+  }
+
+  @Test func linearParsesTheGraphQLShapes() {
+    let viewer = ValueJSON.parse(#"{"data":{"viewer":{"id":"u1","name":"Riley Chen","displayName":"Riley","email":"r@x.test"}}}"#)!
+    #expect(LinearCore.account(viewer["data"]["viewer"]) == "Riley")
+    #expect(LinearCore.account(ValueJSON.parse(#"{"id":"u1","name":"","displayName":"","email":"r@x.test"}"#)!) == "r@x.test")
+    // The real unauthenticated answer (checked 2026-10-06), and 401/403, mean the session ended.
+    let denied = ValueJSON.parse(#"{"errors":[{"message":"Authentication required, not authenticated","extensions":{"code":"AUTHENTICATION_ERROR"}}]}"#)!
+    #expect(LinearCore.authGone(denied, 200))
+    #expect(LinearCore.authGone(.null, 401) && LinearCore.authGone(.null, 403))
+    #expect(!LinearCore.authGone(viewer, 200))
+    let node = ValueJSON.parse(#"{"id":"lin-1","identifier":"ENG-123","title":"Checkout: retry card load","url":"https://linear.app/acme/issue/ENG-123/x","updatedAt":"2026-10-06T04:41:12.000Z","state":{"name":"In Progress"},"creator":{"displayName":"Maya Chen"},"team":{"key":"ENG","name":"Engineering"}}"#)!
+    let it = LinearCore.item(node)
+    #expect(it.s("id") == "linear:lin-1" && it.s("kind") == "assigned")
+    #expect(it.s("detail") == "ENG-123 · Engineering · In Progress · from Maya Chen")
+    #expect(it.i("ts") == Web.isoMs("2026-10-06T04:41:12.000Z"))
+    #expect(it.s("importantKey") == "linear:ENG" && it.s("importantTitle") == "Engineering (ENG)")
+    #expect(LinearCore.fingerprint([["name": "b", "value": "2"], ["name": "a", "value": "1"]]) == "a=1\nb=2")
+  }
+
+  @Test func jiraDerivesSitesFromCookiesAndParsesIssues() {
+    let cookies: [Value] = [
+      ["name": "cloud.session.token", "value": "t1", "domain": ".acme.atlassian.net"],
+      ["name": "cloud.session.token", "value": "t2", "domain": "other.atlassian.net"],
+      ["name": "cloud.session.token", "value": "", "domain": "empty.atlassian.net"],
+      ["name": "atlassian.xsrf.token", "value": "x", "domain": "acme.atlassian.net"],
+    ]
+    #expect(JiraCore.siteHosts(cookies) == ["acme.atlassian.net", "other.atlassian.net"])
+    #expect(JiraCore.siteName("acme.atlassian.net") == "acme")
+    #expect(JiraCore.siteName("127.0.0.1") == "127.0.0.1")
+    let site = JiraCore.Site(host: "acme.atlassian.net", base: "https://acme.atlassian.net", account: "Riley")
+    let issue = ValueJSON.parse(#"{"key":"ENG-101","fields":{"summary":"Offline mode drops queued replies","status":{"name":"In Progress"},"updated":"2026-10-06T04:41:12.250+0000","reporter":{"displayName":"Maya Chen"},"project":{"key":"ENG","name":"Engineering"}}}"#)!
+    let it = JiraCore.item(issue, site: site, multi: false)
+    #expect(it.s("id") == "jira:acme.atlassian.net:ENG-101")
+    #expect(it.s("kind") == "assigned" && it.s("title") == "Offline mode drops queued replies")
+    #expect(it.s("detail") == "ENG-101 · Engineering · In Progress · from Maya Chen")
+    #expect(it.s("url") == "https://acme.atlassian.net/browse/ENG-101")
+    // Jira's "+0000" offset reads the same instant as "Z".
+    #expect(it.i("ts") == Web.isoMs("2026-10-06T04:41:12.250Z"))
+    #expect(it.s("importantKey") == "jira:acme.atlassian.net:ENG" && it.s("importantTitle") == "Engineering")
+    // With several sites, the detail and the important title name the site.
+    let multi = JiraCore.item(issue, site: site, multi: true)
+    #expect(multi.s("detail").hasSuffix(" · acme.atlassian.net"))
+    #expect(multi.s("importantTitle") == "Engineering · acme.atlassian.net")
+    #expect(JiraCore.authGone(401) && JiraCore.authGone(403) && JiraCore.authGone(302) && !JiraCore.authGone(200))
   }
 
   // MARK: Important channels and repos
