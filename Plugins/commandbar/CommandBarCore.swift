@@ -198,6 +198,11 @@ final class CommandBarCore {
       }
     }
     env.on("window.miniClosed") { [self] _ in windowsCache = nil }
+    env.on("connections.changed") { [self] _ in
+      // A connect or disconnect surfaces or hides the new-document commands.
+      indexValid = false
+      if isOpen { render() }
+    }
     env.on("settings.changed") { [self] _ in
       indexValid = false
       if isOpen { render() }
@@ -629,12 +634,26 @@ final class CommandBarCore {
     var needsTab: Bool
     var service: String?  // hidden unless this service exists
     var listener: String?  // hidden unless someone listens to this event
+    var connections: [String] = []  // hidden unless one of these connection ids is connected
     var aliases: [String] = []
     var method: String? = nil  // a destination: picking it calls `service.method`
+    var url: String? = nil  // a creation URL: picking it opens this URL in a new tab
   }
 
   static let builtins: [Builtin] = [
     Builtin(id: "den.newSpace", title: "New Space", icon: "sf:plus.square.on.square", keywords: ["create", "space"], shortcut: "", needsTab: false, service: "spaces"),
+    // Create-new-document commands: gated on a connected account (any id in `connections`), since
+    // the account is what makes the service's creation URL usable. The provider's plugin registers
+    // the connection, so a connection also means its service is there.
+    Builtin(id: "den.newNotionPage", title: "New Notion Page", icon: "https://www.notion.so/images/favicon.ico",
+            keywords: ["create", "page", "note", "blank", "write"], shortcut: "", needsTab: false, connections: ["notion"],
+            url: "https://www.notion.so/new"),
+    Builtin(id: "den.newGoogleDoc", title: "New Google Doc", icon: "https://docs.google.com/favicon.ico",
+            keywords: ["create", "document", "docs", "word", "write", "blank", "google"], shortcut: "", needsTab: false,
+            connections: ["gmail", "calendar"], url: "https://docs.google.com/document/create"),
+    Builtin(id: "den.newLinearIssue", title: "New Linear Issue", icon: "https://linear.app/favicon.ico",
+            keywords: ["create", "ticket", "task", "bug", "triage"], shortcut: "", needsTab: false, connections: ["linear"],
+            url: "https://linear.app/new"),
     Builtin(id: "den.renameTab", title: "Rename Tab", icon: "sf:pencil", keywords: ["title"], shortcut: "", needsTab: true, service: "tabs"),
     Builtin(id: "den.pinTab", title: "Pin Tab", icon: "sf:pin", keywords: ["unpin", "pinned"], shortcut: "⌘D", needsTab: true, service: "tabs"),
     Builtin(id: "den.duplicateTab", title: "Duplicate Tab", icon: "sf:plus.rectangle.on.rectangle", keywords: ["copy", "clone"], shortcut: "", needsTab: true, service: "tabs"),
@@ -679,11 +698,15 @@ final class CommandBarCore {
     let services = info.a("services").compactMap { $0.string }
     let active = info.a("plugins").filter { $0.b("active") }.map { $0.s("id") }
     let tab = selectedTab()
+    // Connected connection ids, read once when a built-in needs one (no `connections`: none).
+    let connected = Self.builtins.contains { !$0.connections.isEmpty }
+      ? (env.call("connections", "list").array ?? []).filter { $0.b("connected") }.map { $0.s("id") } : []
     var out: [Command] = []
     for b in Self.builtins {
       if b.needsTab && tab.isNull { continue }
       if let s = b.service, known ? !services.contains(s) : !available(s) { continue }
       if let l = b.listener, !env.call("plugins", "listening", ["event": .string(l)]).b("listening") { continue }
+      if !b.connections.isEmpty, !b.connections.contains(where: { connected.contains($0) }) { continue }
       var c = Command(id: b.id, title: b.title, icon: b.icon, keywords: b.keywords, shortcut: b.shortcut, owner: nil, aliases: b.aliases)
       if b.id == "den.pinTab", tab.s("kind") != "today" {
         c.title = "Unpin Tab"
@@ -777,7 +800,10 @@ final class CommandBarCore {
     case "den.about":
       showAbout()
     default:
-      if let b = builtin(id), let s = b.service, let m = b.method { env.call(s, m) }
+      if let b = builtin(id) {
+        if let u = b.url { env.call("tabs", "open", ["url": .string(u)]); return }
+        if let s = b.service, let m = b.method { env.call(s, m) }
+      }
     }
   }
 

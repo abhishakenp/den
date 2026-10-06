@@ -57,6 +57,12 @@ public final class WebRecord {
   public var snapshotPath: String?
   /// Muted by the user (`setMuted`); survives discards while the tab lives.
   public var muted = false
+  /// Volume set by the user (`setVolume`, 0…1; nil = the page's own); survives discards.
+  public var volume: Double?
+  /// Playback speed set by the user (`setRate`); survives discards.
+  public var rate: Double?
+  /// The page's first media report since its last navigation has re-applied `volume`/`rate`.
+  fileprivate var playbackApplied = false
   /// Media and form state per frame ("main", or the subframe's URL), and the frame it came from.
   public fileprivate(set) var frames: [String: (frame: WKFrameInfo, media: PageMedia)] = [:]
   /// WebKit says a video of this page is in picture in picture (`_webView:hasVideoInPictureInPictureDidChange:`).
@@ -152,6 +158,10 @@ public final class WebRecord {
 ///                                                 media, is in picture in picture, uses the camera/mic or holds
 ///                                                 unsaved form input: {suspended: false, reason}
 ///   setMuted {id, muted}                       -> mutes the page (all frames, WebAudio too); kept across discards
+///   setVolume {id, volume}                     -> the tab's media volume (0…1) and playback speed (`setRate`), on the
+///                                                 media elements of the main frame, now and again after each load
+///                                                 (no WebKit page SPI for these); kept across discards like `setMuted`
+///   setRate {id, rate}                         -> playback speed (0.25…4); see setVolume
 ///   pauseMedia {id}                            -> pauses every video and audio element of a page that is not on screen
 ///                                                 (no window, no PiP): {paused: true} or {paused: false, reason}
 ///   setAutoplay {allowed}                      -> all web views: whether media may start without a click. Applies to
@@ -161,7 +171,7 @@ public final class WebRecord {
 ///   eval {id, plugin, script, request?, timeoutMs?} -> {request}; later webviews.evalResult {request, webview, ok, value | error}
 ///                                                 reads a live page; needs `allowScript(plugin, host)` (session:<host>)
 ///   get {id}                                   -> {id, url, title, favicon, loading, progress, canGoBack, canGoForward, audio, muted,
-///                                                 media: {playing, pip, dirty, video?}, suspended, live, snapshot,
+///                                                 volume, rate, media: {playing, pip, dirty, video?}, suspended, live, snapshot,
 ///                                                 opener, popupWindow, blockedPopups: [url]}
 ///   openBlocked {id}                           -> opens the pop-ups the page tried without a click: {opened}
 ///   list                                       -> [id]
@@ -176,8 +186,9 @@ public final class WebRecord {
 ///   webviews.progress {id,progress,loading}  webviews.state {id,canGoBack,canGoForward}
 ///   webviews.audio {id,playing}  webviews.newWindow {id,url,background?,webview?}  webviews.crashed {id}
 ///   webviews.popup {id,opener,url}  webviews.popupBlocked {id,url,count}  webviews.closeRequested {id,opener}  (Popups.swift)
-///   webviews.suspended {id}  webviews.snapshot {id,path,ok}  webviews.muted {id,muted}  webviews.media {id, playing, pip, dirty}
-///   webviews.nowPlaying {id, now: {title, artist, album, art, paused, dur, video, acts} | null, muted}
+///   webviews.suspended {id}  webviews.snapshot {id,path,ok}  webviews.muted {id,muted}  webviews.volume {id,volume}
+///   webviews.rate {id,rate}  webviews.media {id, playing, pip, dirty}
+///   webviews.nowPlaying {id, now: {title, artist, album, art, paused, dur, video, acts, vol, rate} | null, muted}
 ///   + any event named by a link rule: {id,url,source}
 @MainActor
 public final class WebViewsService: NSObject, HostService, WKNavigationDelegate, WKUIDelegate {
@@ -282,6 +293,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     case "close": close(r)
     case "suspend": return suspend(r, force: args.flag("force"))
     case "setMuted": setMuted(r, args.flag("muted"))
+    case "setVolume": return setVolume(r, args)
+    case "setRate": return setRate(r, args)
     case "pauseMedia": return pauseMedia(r)
     case "mediaControl": return mediaControl(r, args.str("action"), args.num("value"))
     case "snapshot":
@@ -475,6 +488,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       "loading": .bool(r.loading), "progress": .double(r.progress),
       "canGoBack": .bool(r.webView?.canGoBack ?? false), "canGoForward": .bool(r.webView?.canGoForward ?? false),
       "audio": .bool(r.audio), "muted": .bool(r.muted), "suspended": .bool(r.isSuspended), "live": .bool(r.webView != nil),
+      "volume": r.volume.map { .double($0) } ?? .null, "rate": r.rate.map { .double($0) } ?? .null,
       "profile": .string(r.profile), "snapshot": r.snapshotPath.map { .string($0) } ?? .null, "media": mediaValue(r.media),
       "zoom": .double(Double(r.webView?.pageZoom ?? 1)),
       "opener": r.opener.map { .string($0) } ?? .null, "popupWindow": r.popupWindow.map { .string($0) } ?? .null,
@@ -691,7 +705,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
   }
 
-  // MARK: Mute
+  // MARK: Mute, volume, rate
 
   /// Mutes the whole page with WebKit's page mute (`_setPageMuted:`, the mechanism behind Safari's
   /// tab mute): every frame, <audio>/<video> and WebAudio, without touching the page's own `muted`
@@ -711,6 +725,39 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
     w.callAsyncJavaScript("document.querySelectorAll('video,audio').forEach(m => m.muted = muted)", arguments: ["muted": muted], in: nil, in: PageScripts.world)
     return false
+  }
+
+  /// `setVolume {id, volume}`: the tab's media volume, 0…1, on every media element of the main
+  /// frame that exists now (WebKit has no page SPI for volume), again after each load from the
+  /// page's first media report. Kept across discards like `setMuted`; the page's own element
+  /// volumes are left alone until then.
+  func setVolume(_ r: WebRecord, _ args: Value) -> Value {
+    guard let v = args["volume"].double, v >= 0, v <= 1 else { return .error("webviews: volume must be 0…1") }
+    guard r.volume != v else { return .ok }
+    r.volume = v
+    if let w = r.webView { Self.applyPlayback(w, volume: v, rate: r.rate) }
+    host.emit("webviews.volume", ["id": .string(r.id), "volume": .double(v)])
+    return .ok
+  }
+
+  /// `setRate {id, rate}`: the tab's media playback speed, 0.25…4, applied like `setVolume`.
+  func setRate(_ r: WebRecord, _ args: Value) -> Value {
+    guard let rate = args["rate"].double, rate >= 0.25, rate <= 4 else { return .error("webviews: rate must be 0.25…4") }
+    guard r.rate != rate else { return .ok }
+    r.rate = rate
+    if let w = r.webView { Self.applyPlayback(w, volume: r.volume, rate: rate) }
+    host.emit("webviews.rate", ["id": .string(r.id), "rate": .double(rate)])
+    return .ok
+  }
+
+  /// The page-side half of `setVolume` / `setRate`: `__denMedia.setPlayback(v, r)` on the media
+  /// elements of the main frame (null = leave the element's own value). Nothing to do while both
+  /// are unset; before the page exists the first media report applies them.
+  static func applyPlayback(_ w: WKWebView, volume: Double?, rate: Double?) {
+    guard volume != nil || rate != nil else { return }
+    w.callAsyncJavaScript("return window.__denMedia && window.__denMedia.setPlayback(v, r)",
+                          arguments: ["v": volume.map { $0 as Any } ?? NSNull(), "r": rate.map { $0 as Any } ?? NSNull()],
+                          in: nil, in: PageScripts.world)
   }
 
   /// WebKit's page mute state (`_mediaMutedState` & audio), for tests. nil without the SPI.
@@ -911,6 +958,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   func decide(_ webView: WKWebView, _ action: WKNavigationAction, _ preferences: WKWebpagePreferences, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
     guard let r = recordFor(webView), let target = action.request.url else { return decisionHandler(.allow) }
     let mainFrame = action.targetFrame?.isMainFrame ?? true
+    // A new document: the tab's volume and playback speed get re-applied on its first media report.
+    if mainFrame { r.playbackApplied = false }
     // mailto:, tel:, zoommtg:… open in their app (ExternalLinks.swift), never as an error page.
     if ExternalLinks.isExternal(target) {
       decisionHandler(.cancel)
@@ -1188,6 +1237,14 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     guard body.str("k") == "s" else { return }
     let key = msg.frameInfo.isMainFrame ? "main" : (msg.frameInfo.request.url?.absoluteString ?? "frame")
     let media = PageMedia(body)
+    // The main frame's first media report since its last navigation: media elements exist now, so
+    // the tab's volume and playback speed (`setVolume` / `setRate`, kept across discards) can go
+    // in. A report with no media yet (input alone) doesn't count.
+    if msg.frameInfo.isMainFrame, !r.playbackApplied, r.volume != nil || r.rate != nil,
+       media.playing || media.video != nil || media.now != nil {
+      r.playbackApplied = true
+      Self.applyPlayback(w, volume: r.volume, rate: r.rate)
+    }
     if !msg.frameInfo.isMainFrame && !media.playing && !media.dirty && !media.pip && media.video == nil && media.now.map({ _ in true }) != true {
       r.frames[key] = nil
     } else {
