@@ -12,6 +12,24 @@ final class FakeBrowsers: @unchecked Sendable {
   var sets: [(URL, String)] = []
 }
 
+/// A fake `connections` service: connected providers, enough for the command bar's
+/// new-document commands (no real sign-ins).
+final class FakeConnections: @unchecked Sendable {
+  var connected: [String] = []
+
+  func handle(_ m: String, _ a: Value) -> Value {
+    switch m {
+    case "list":
+      return .array(connected.map { ["id": .string($0), "title": .string($0), "connected": true] })
+    case "get":
+      let id = a.s("id")
+      return connected.contains(id) ? ["id": .string(id), "connected": true] : ["id": .string(id), "connected": false]
+    default:
+      return ["ok": true]
+    }
+  }
+}
+
 /// Web-suggestion requests a test hasn't answered yet, per harness.
 @MainActor var fakeBrowsers: [ObjectIdentifier: FakeBrowsers] = [:]
 @MainActor var pendingSuggest: [ObjectIdentifier: [(String, @Sendable ([String]?) -> Void)]] = [:]
@@ -299,6 +317,59 @@ struct CommandBarTests {
     #expect((h.rt.call("commands", "list").array ?? []).contains { $0.s("id") == "den.theme" })
     h.rt.call("commands", "run", ["id": "den.theme"])
     #expect(h.events.contains { $0.0 == "spaces.editTheme" && $0.1.s("id") == h.spaceIds[0] })
+  }
+
+  @Test func newDocumentCommandsNeedTheirConnectionAndOpenTheCreationURL() {
+    let h = Harness()
+    h.startCommandBar()
+    h.key("cmd+t")
+    h.action("commandBar", "tab", ["query": ""])  // actions mode: every available command
+    func titles() -> [String] { h.barRows.map { $0.str("title") } }
+    // Nothing connected (and no connections service yet): the creation commands stay hidden.
+    #expect(!titles().contains("New Notion Page"))
+    #expect(!titles().contains("New Google Doc"))
+    #expect(!titles().contains("New Linear Issue"))
+    // Their ids are built-ins: registering over one is refused.
+    #expect(!h.rt.call("commands", "register", ["id": "den.newNotionPage", "title": "x"]).isNull)
+
+    // Notion and Gmail connected: their commands surface once the bar re-reads the services.
+    let fake = FakeConnections()
+    h.rt.plugins.provide("connections") { m, a in fake.handle(m, a) }
+    fake.connected = ["notion", "gmail"]
+    h.key("cmd+t")  // reopen: the index rebuilds
+    h.action("commandBar", "tab", ["query": ""])
+    #expect(titles().contains("New Notion Page"))
+    #expect(titles().contains("New Google Doc"))
+    #expect(!titles().contains("New Linear Issue"))  // no Linear connection yet
+    let list = (h.rt.call("commands", "list").array ?? []).map { $0.s("id") }
+    #expect(list.contains("den.newNotionPage") && list.contains("den.newGoogleDoc"))
+    #expect(h.barRows.first { $0.str("id") == "cmd:den.newNotionPage" }?.str("icon") == "https://www.notion.so/images/favicon.ico")
+
+    // A Linear connection appears: its command surfaces without reopening the bar.
+    fake.connected.append("linear")
+    h.rt.plugins.emit("connections.changed", ["connections": fake.handle("list", .null)])
+    #expect(titles().contains("New Linear Issue"))
+
+    // Picking a row opens the service's creation URL in a new tab.
+    h.submit("cmd:den.newNotionPage")
+    #expect(!h.rt.ui.commandBarOpen)
+    #expect(h.tabs("list")["today"].array?.contains { $0.s("url") == "https://www.notion.so/new" } == true)
+    for (row, url) in [("cmd:den.newGoogleDoc", "https://docs.google.com/document/create"),
+                       ("cmd:den.newLinearIssue", "https://linear.app/new")] {
+      h.key("cmd+t")
+      h.action("commandBar", "tab", ["query": ""])
+      #expect(h.barRows.contains { $0.str("id") == row })
+      h.submit(row)
+      #expect(!h.rt.ui.commandBarOpen)
+      #expect(h.tabs("list")["today"].array?.contains { $0.s("url") == url } == true)
+    }
+
+    // Google Docs accepts any Google account: Calendar alone is enough; Notion is not.
+    fake.connected = ["calendar"]
+    h.key("cmd+t")
+    h.action("commandBar", "tab", ["query": ""])
+    #expect(titles().contains("New Google Doc"))
+    #expect(!titles().contains("New Notion Page") && !titles().contains("New Linear Issue"))
   }
 
   @Test func peekServiceEnablesSplitAndShiftEnter() {
