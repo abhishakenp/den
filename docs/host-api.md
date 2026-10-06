@@ -721,6 +721,7 @@ Per-site web policy for every web view (the `shields` plugin's host half, [plugi
 | `interstitial` | `id`, `url`, `page: {kind, icon: lock\|warn\|shield\|…, title, message, detail?, url?, buttons: [{id, title, style: primary\|secondary, key?: return\|escape}]}` | ok. A full-page warning in den's error-page look (the space's palette), loaded for `url` |
 | `forget` | `host`, `profile?` | `{pending}`, then `sitepolicy.forgotten {host, removed}`. Removes every website data record (cookies, storage, caches, service workers…) of the host's registrable domain, and its camera/microphone answers |
 | `permissions` / `resetPermissions` | `host` | `[{origin, kind: camera\|microphone, allowed}]` / ok |
+| `setPermission` | `host`, `origin`, `kind` (`camera`\|`microphone`), `allowed?` | ok. Changes one remembered answer for a request from `origin` (the site's or a subdomain's); without `allowed` the answer is forgotten, so the site asks again |
 | `unsaved` | `id`, `request?` | `{request}`, then `sitepolicy.unsaved {request, id, unsaved}`: edited form fields, or text in a focused editor, in the main frame |
 | `support` | – | `{autoplay, popups, blockedCounts}`: which WebKit SPI is present |
 

@@ -56,9 +56,13 @@ Only tick an item after checking it against the code and tests on `origin/main`.
 Moving feature code out of `DenHost` so the host holds only platform capabilities ([plan](docs/architecture/thin-host.md)).
 
 - ✅ Audit: every host file classified, feature-specific code marked `thin-host:` in the source
-- ⏳ 0. Baseline: snapshot goldens, pixel-diff script, launch/memory noise bands, signposts
-- ⏳ 1. Guardrail test against new host strings, overlay slots and host → plugin calls
-- ⏳ 2. Move logic with no UI to plugins (suggestions, config appliers, AI prompts, theme picker math)
+- 🟡 0. Baseline
+  - ✅ snapshot goldens (`scripts/thin-host/golden-run`), pixel-diff scripts (`scripts/pixel-diff.swift`, `scripts/golden-diff.sh`) and `ui` signposts (the `OSSignposter` on `ui.set` / `ui.card` in `UIService`) (2026-10-06)
+  - ⏳ launch/memory noise bands (`scripts/thin-host/snapshot-noise.txt` is still an empty template)
+- ✅ 1. Guardrail test against new host strings, overlay slots and host → plugin calls (2026-10-06): `Tests/DenHostTests/ThinHostGuardrailTests.swift` with the shrinking allowlist `Tests/Fixtures/thin-host-allowlist.txt`
+- 🟡 2. Move logic with no UI to plugins
+  - ✅ suggestions, config appliers, AI prompts, the session log and plugin notices moved to plugins (2026-10-06)
+  - ⏳ theme picker math (`Sources/DenHost/Core/ThemePickerMath.swift` is still host code)
 - ✅ 3. `DenDev` split: scenarios and mock services are behind the `Scenarios` package trait; release bundles leave them out and no longer link Network.framework (the snapshotter stays: `--snapshot` works in release)
 - ⏳ 4. `ui.layer`, `ui.styles`, `ui.palette` alongside the old slots
 - ⏳ 5. New generic nodes and behaviors, each with a golden test
@@ -80,8 +84,8 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
   - ✅ every open window comes back after a relaunch, on its own space and tab (private windows don't)
   - ✅ a "This page crashed · Reload" view when a page's web process dies (never reloads by itself)
   - ⏳ crash recovery of den itself
-- ⏳ Apple Pay exception: skip den's injected scripts on checkout pages, since any injection disables Apple Pay
-- ⏳ Web push notifications: not supported in `WKWebView`; decide on a workaround or skip
+- ✅ Apple Pay: no exception needed (2026-10-06) — WebKit removed the "script injection disables Apple Pay" rule in 2022, so den deliberately does not skip checkout pages ([research](docs/research/dark-mode.md#apple-pay); a real Apple Pay sheet is untested end to end)
+- ⏳ Web push notifications — blocked: no public `WKWebView` web-notification API; also a product decision (workaround or skip)
 - ✅ Downloads: `WKDownload` into ~/Downloads (quarantined, Finder-style names), Library ▸ Downloads (⌥⌘L) with pause/resume (kept across relaunch), cancel, retry, open, reveal and drag out, a sidebar progress ring, auto-archive after 1 day (Settings ▸ Tabs) ([guide](docs/guide/downloads.md))
 - ✅ Find in page (find bar, ⌘F/⌘G/⇧⌘G/⌘E)
 - 🟡 Printing and PDF viewing
@@ -89,7 +93,7 @@ Details and sources: [Apple platform notes](docs/research/apple-platform.md).
   - ⏳ PDF viewing verified
 - 🟡 Permissions
   - ✅ camera and microphone prompts, HTTP sign-in, file panels, JS alert/confirm/prompt
-  - ⏳ location, notifications
+  - ⏳ location, notifications (notifications blocked: no public `WKWebView` web-notification API; also a product decision)
 - 🟡 Picture-in-picture and media controls (see Media)
   - ✅ picture in picture: WebKit's own (the system PiP window Safari uses); automatic when you leave a playing video's tab or den, ⌥⌘P by hand
   - ✅ tab mute from the sidebar speaker (WebKit page mute)
@@ -125,12 +129,12 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
   - ✅ a collapsed folder keeps its active tab visible; its hover card switches to a tab and has "New Tab"
   - ✅ folder shortcuts: ⌃⌘N folder from selection (⌘/⇧-click to pick), ⌥⌘T new tab in folder, drag onto folder, rename on create, undo
 - ✅ ⌘-click grouping (Dia): background tab grouped with its source in Today, named after the sites (a better name from the on-device model when available); later ⌘-clicks join in opener order; dissolves at one tab; ⌃Z ungroups; a setting turns it off
-- 🟡 Icon and title fallbacks: never "data:" or blank
+- ✅ Icon and title fallbacks: never "data:" or blank
   - ✅ sharp letter/globe fallback favicons
-  - 🟡 title fallbacks and the rest of the sweep
-- 🟡 Tab mute: click the speaker icon, badge on favorites, "Mute Tab" in the menu
+  - ✅ title fallbacks (2026-10-06): a blank or URL-shaped title falls back to the host name, the file name, "Image"/"Untitled" or "New Tab" (`Plugins/Shared/Env.swift` `pageTitle`/`title`; `URLsTests`, `FaviconFallbackTests`)
+- ✅ Tab mute: click the speaker icon, badge on favorites, "Mute Tab" in the menu
   - ✅ speaker icon on tabs and favorites playing audio
-  - 🟡 muting
+  - ✅ muting (2026-10-06): the tabs plugin's `toggleMute` calls `webviews.setMuted`; rows, favorite tiles and the menu ("Mute Tab" / "Unmute Tab") carry the muted state (`TabsTests`)
 - ✅ Faster tab close: the next tab goes on screen first, one render, one snapshot
 - ✅ Tab menu shows shortcuts and ⌥ alternates (Copy Link as Markdown, Close Other Tabs, Close Tabs Above), Close Tabs Below
 - ✅ Split modifiers: ⇧⌥-click a link → right split; ⌥-click New Tab → new tab in a split
@@ -153,7 +157,9 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ Command bar (`commandbar` plugin: tabs, archive/history, spaces, actions, URLs, web and site search, frecency; [contract](docs/plugin-services.md#commands-plugin-commandbar))
 - ✅ Command bar as a launcher: den's commands, destinations and individual settings, ranked above web search
 - ⏳ "new doc / notion / linear…" creation commands in the command bar
-- ⏳ Command bar names the real search engine, and suggests site-search keywords with a toast
+- 🟡 Command bar and the search engine
+  - ✅ the bar names the real search engine (2026-10-06): search rows read "— Search Google" / "— Search YouTube" etc. (`CommandBarTests`)
+  - ⏳ suggests site-search keywords with a toast
 - ✅ Peek / link preview (⇧/⌥-click any link, links from pinned tabs; Open as Tab, Open in Split View; ⌘Z reopen)
 - ✅ "Open Link in Peek" and "Open Link in Split View" in the link context menu
 - ✅ Split view, including drag-to-split, 2–4 panes, side by side, top and bottom, grid
@@ -176,7 +182,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ Cards for GitHub issues, Google Calendar (Join button), Gmail, Slack, and a page snapshot for anything else
 - ✅ Inline "Connect GitHub" button on cards that need a connection (private repos), filling in live
 - ✅ ⇧-hover link previews on any page: an OpenGraph card from the target's `<head>`, cached, zero cost until a deliberate hover; rich providers reused; Open in Peek / Split / Copy Link; stays out of the way where a site has its own previews; plain hover as an option
-- ⏳ Hover play/pause/skip for any tab playing audio
+- ✅ Hover play/pause/skip for any tab playing audio (2026-10-06): the tabs plugin puts the page's `media` state on the row and `Rows.swift` shows previous / play-pause / next while hovered (`NowPlayingTests`, `MediaDockTests`; the same feature as ticked under Media)
 
 ### Getting around
 
@@ -196,18 +202,19 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ User guide ([docs/guide](docs/guide/)), with Tips & hidden gems
 - 🟡 Detail audit: every interaction compared with Arc/Dia (hover states, click targets, tooltips, context menus, animations, empty states, error pages, keyboard coverage) and fixed, plus Dia's micro-interactions
   - ✅ first pass (2026-09-28): tooltips and VoiceOver names on every icon button, an empty space shows Arc's "Open a tab." card with a ⌘T keycap, the Little Arc "Open in" button drops its duplicate tooltip, command bar glyph order, consistent "Title  ⌘X" tooltips
-  - ⏳ Favorites empty-state card ("Drag to add Favorites"), toast hover-to-keep, Dia's micro-interactions
+  - ✅ toast hover-to-keep (2026-10-06): a toast's dismiss timer re-arms while the pointer is inside it (`UIService.scheduleDismiss(hold:)`; tips toasts set `hold`)
+  - ⏳ Favorites empty-state card ("Drag to add Favorites"), Dia's micro-interactions
 
 ## Media
 
 - ✅ Picture in picture is the system's (WebKit's native PiP, the window Safari uses: on top of every app, every Space and full-screen apps, stash, resize, the system's play/pause, skip, close and return-to-tab). den's custom mini player is gone. ⌥⌘P / View ▸ Picture in Picture / the command bar toggle it; the now-playing dock, the tab speaker, ⌃⌘P, media keys and Control Center control the video while it floats ([guide](docs/guide/media.md#picture-in-picture))
 - ⏳ Around the native window: per-tab volume and playback speed from den (the system window has neither)
-- ✅ Now-playing dock at the bottom of the sidebar, Control Center and media keys ([guide](docs/guide/media.md#now-playing-at-the-bottom-of-the-sidebar)). ⏳ Verify on a real Mac how macOS picks between den's Now Playing entry and WebKit's own (CI has no media keys)
+- ✅ Now-playing dock at the bottom of the sidebar, Control Center and media keys ([guide](docs/guide/media.md#now-playing-at-the-bottom-of-the-sidebar)). ⏳ Verify on a real Mac how macOS picks between den's Now Playing entry and WebKit's own — blocked: needs a real Mac with media keys (CI has none)
 - ✅ Hover play/pause/skip on the row of any tab playing (or paused) media
 - ✅ Web panels (optional `panels` plugin, ⌃⌘S; [guide](docs/guide/media.md#web-panels)). ⏳ Drag to resize a panel
 - ✅ AutoPiP like Safari's video viewer, on by default: leaving a playing video's tab or space, or minimizing, hiding or covering den (or a full-screen video's Space switched away) puts it in native picture in picture; coming back takes it out
 - ✅ Tabs playing audio are never archived or unloaded, and updates never relaunch during playback
-- ⏳ Camera, mic and screen-share badges on tabs, click to turn off
+- ⏳ Camera, mic and screen-share badges on tabs, click to turn off (screen share blocked: WebKit's display-capture state is private SPI, no public API — [research](docs/research/dia-shortlist.md))
 - ✅ Meeting reminder card with Join, View and Dismiss (window's top-right corner, 2 minutes before by default), plus an "in 8m" countdown on the Calendar favorite
 - ⏳ Reminder card you can drag and that snaps to corners; Meeting Tab Groups on join
 
@@ -219,11 +226,11 @@ Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 - ✅ One-click install from Chrome Web Store / addons.mozilla.org ("Add to den"), with daily update checks. Terms researched (CWS ToS says "for use in connection with Google Chrome"); get counsel before a commercial release
 - ✅ Unpacked extensions from `~/.den/extensions`, and installs from `.crx` / `.xpi` / `.zip`
 - ⏳ Fill in APIs Apple leaves out where feasible: `bookmarks`, `sidePanel`, `downloads`, `history`, `identity`
-- ⏳ Extension keyboard `commands` and context-menu items in den's menus
+- ✅ Extension keyboard `commands` and context-menu items in den's menus (2026-10-06): `ExtensionsService.syncCommands` builds the Extensions menu from each extension's `commands`, and `contextMenu` adds the extension's items to the page menu (`ExtensionsTests`)
 - 🟡 Native messaging bridge (password managers) ([notes](docs/research/password-managers.md))
   - ✅ `runtime.connectNative` / `sendNativeMessage` to desktop apps' hosts through Chrome's and Firefox's manifests and protocol (`NativeMessagingTests` with a real extension and host)
   - ✅ Bitwarden's popup renders (it's told it runs in Chrome; with Safari's user agent it hung on a spinner)
-  - ⏳ Bitwarden desktop unlock checked on a real account
+  - ⏳ Bitwarden desktop unlock checked on a real account — blocked: needs a real Bitwarden account and the desktop app to verify against
   - ❌ 1Password desktop unlock: the 1Password app accepts only browsers with an Apple-issued signature (Team ID; Developer ID + notarization in every confirmed case). Needs Developer ID signing
 - ✅ Built-in ad/tracker blocker: EasyList, EasyPrivacy and the EasyList Cookie List compiled to WebKit content rules at release time with `adblock-rust`, including element hiding ([Shields](docs/plugin-services.md#shields-plugin-shields)); offers to step aside when uBlock Origin Lite is installed
 - ✅ Scriptlets for YouTube ads (pre-roll, mid-roll, feed and search promotions, the anti-adblock dialog): uBlock Origin's YouTube rules as data, run by den's own engine in the page's world; the data refreshes daily without a release ([Shields](docs/plugin-services.md#shields-plugin-shields))
@@ -250,7 +257,7 @@ How it connects (user decision, see [auth research](docs/research/integrations-a
 - ⏳ Choose which calendars show; Calendar data without an open tab or pasted address (no verified session route yet)
 - ⏳ More connections as plugins: Linear and Jira/Confluence, then Outlook's calendar from a loaded tab. Skipped: Teams, SharePoint, Zoom, Figma, YouTube, LinkedIn, Sheets
 - ✅ No tokens stored: session tokens are read on demand and kept in memory only; connections run locally
-- ⏳ Official OAuth option (Slack PKCE / GitHub device flow) for users who don't want session reuse
+- ⏳ Official OAuth option (Slack PKCE / GitHub device flow) for users who don't want session reuse — blocked: needs registered OAuth apps and a legal/product decision
 - ✅ Daily briefing (Slack + GitHub) summarized with a todo list, prepared at a set time (8:00 by default, catches up after sleep or launch)
 - ✅ Briefing sources beyond Slack and GitHub: today's calendar (a Today section), emails awaiting a reply, Notion mentions and comments
 - ✅ Settings ▸ Connections: every connection with its status, account and workspace pickers, Important…, Disconnect
@@ -277,15 +284,17 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 
 - 🟡 Passkeys for all sites
   - ✅ researched: WebKit does WebAuthn itself, but only with Apple's browser passkey entitlement, which ad-hoc signing can't carry ([notes](docs/research/passkeys.md))
-  - ⏳ apply for the entitlement; sign with a real identity
+  - ⏳ apply for the entitlement; sign with a real identity — blocked: needs Apple's managed WebAuthn browser entitlement (Account Holder request, Apple approval, a provisioning profile) and a non-ad-hoc signing identity; an ad-hoc-signed app claiming that key is SIGKILLed by AMFI ([notes](docs/research/passkeys.md))
 - ✅ Passwords: den ships its own vault in the Keychain, filled after Touch ID; save, fill, strong-password suggestions, "Passwords…" list with copy (clipboard cleared after 60 s) and delete. No API reads iCloud Keychain / the Passwords app
 - ✅ "Save password?" prompt on form submit
 - 🟡 Native look: vibrancy, SF Symbols, system accent colors
   - ✅ SF Symbols throughout; accent from the space or the macOS accent (Settings ▸ General)
   - ⏳ vibrancy
-- ⏳ Shortcuts / App Intents / Spotlight
-- ⏳ Handoff
-- ⏳ Sync via iCloud / CloudKit (no den server; Talos browser does this)
+- 🟡 Shortcuts / App Intents / Spotlight
+  - ✅ implemented and tested in-process (2026-10-06): App Intents in `Sources/DenHost/Intents/DenIntents.swift`, Spotlight indexing in the host `spotlight` service + `continuity` plugin (`IntentsTests`, `ContinuityTests`)
+  - ⏳ system visibility (Shortcuts/Siri/Spotlight actually listing den's actions) — blocked: the system only accepts apps signed with a Team ID (linkd rejects den's self-signed/ad-hoc bundle; the `DenIntents.swift` header)
+- ✅ Handoff (2026-10-06): the host `handoff` service and `continuity` plugin offer the selected tab's page (never a private one) as an `NSUserActivityTypeBrowsingWeb` activity, and continue one handed to den (`ContinuityTests`)
+- ⏳ Sync via iCloud / CloudKit (no den server; Talos browser does this) — blocked: needs the iCloud entitlement and an Apple Developer account
 
 ## Privacy and security
 
@@ -293,7 +302,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ Shields: one per-site panel from the URL pill (⌥⌘S): blocker and cookie banners on/off, autoplay, pop-ups, zoom, camera/mic, real blocked counts, "Forget This Site"; offers a reload after a change and warns about unsaved input
 - ✅ Tracker blocking
 - ✅ Strip tracking parameters on every navigation (den's own list), so copied tab URLs are clean too
-- ⏳ Clean "Copy Link" from a page's context menu
+- ✅ Clean "Copy Link" from a page's context menu (2026-10-06): `PageContextMenu` routes the link through the shields plugin's `cleanLink`, so it copies without tracking parameters (`ContextMenuTests`)
 - ✅ Skip bounce-tracking redirects (den's own list of click trackers; security redirectors left alone)
 - ✅ Hide cookie banners (EasyList Cookie List)
 - ⏳ Answer consent dialogs with the most private choice (DuckDuckGo's autoconsent measured; not shipped)
@@ -341,19 +350,19 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ⏳ Per-tab memory view
 - ✅ Never keep the Mac awake while idle: den holds no power assertion (`pmset -g assertions` with a page open, idle); media you can't see or hear pauses after 5 min without input
 - ✅ Blank new tabs close when you switch apps
-- 🟡 Dark mode memory: on the CI runner (1x) the sheet costs +3.9 MB 2.5 s after load and +17 MB at the scroll peak on a 300-image page, nothing once settled; the root filter itself costs nothing, the media re-invert does. No cheaper variant found yet (near-viewport re-invert, compositing layers: same or worse); the +136 MB was measured at 2x on a loaded Mac
+- 🟡 Dark mode memory: on the CI runner (1x) the sheet costs +3.9 MB 2.5 s after load and +17 MB at the scroll peak on a 300-image page, nothing once settled; the root filter itself costs nothing, the media re-invert does. No cheaper variant found yet (near-viewport re-invert, compositing layers: same or worse); the +136 MB was measured at 2x on a loaded Mac. Blocked: no cheaper variant was found — an open measurement, not queueable work
 - ✅ Content rule list compiles no longer leave memory behind: a launch that compiles the Shields lists 74.3 → 18.6 MB, a page with uBlock Origin Lite 99.1 → 36.1 MB in den's process (`MallocLargeCache=0`)
 
 ## Performance
 
 - 🟡 Memory and energy budgets
   - ✅ den-wide budgets in [`docs/perf/budgets.json`](docs/perf/budgets.json) (launch, idle memory, one page, idle CPU and wakeups, per-discarded-tab), checked by `scripts/perf.sh`
-  - ⏳ per-feature budgets; energy (needs `powermetrics`)
-  - ⏳ enforce the budgets on every change; meet the aspirational ones (idle CPU, 8 KB per discarded tab)
+  - ⏳ per-feature budgets; energy — blocked: energy measurement needs `powermetrics`, which needs root
+  - ⏳ enforce the budgets on every change; meet the aspirational ones (idle CPU, 8 KB per discarded tab) — blocked: CI enforcement needs budgets calibrated to the runner; the aspirational ones need a quiet machine
   - ✅ perf lab on the CI runner: repeated memory medians per scenario, heap/vmmap of the live app, A/B across refs ([docs/dev.md](docs/dev.md#perf-lab-memory-ab-and-bisection))
 - 🟡 Benchmarks against Safari, Arc, Dia, Zen (measured, published). WebKit alone isn't proof of efficiency: the one careful independent test found Chrome used less battery than Safari
   - ✅ launch, memory and idle CPU against Arc and Dia ([baseline](docs/perf/baseline.md)), measured on a loaded machine
-  - ⏳ re-run on a quiet machine; add Safari and Zen
+  - ⏳ re-run on a quiet machine; add Safari and Zen — blocked: needs a quiet machine with Safari and Zen installed
 - ✅ Startup time budget (launch median/p90 in `budgets.json`)
 
 ## Import
@@ -367,7 +376,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ App skeleton that builds (`scripts/bundle.sh`)
 - 🟡 Signed and notarized `.dmg` on GitHub Releases
   - ✅ `scripts/release.sh`: zip + dmg, per-plugin assets, `plugins.json`, EdDSA signatures; pre-release 0.1.0-alpha.1 published
-  - ⏳ Developer ID signing and notarization
+  - ⏳ Developer ID signing and notarization — blocked: needs an Apple Developer account, a Developer ID certificate and notarytool credentials
 - ✅ Auto-update (OTA): Sparkle for the app, signed hot-swapped plugins, `stable` / `prerelease` / `follow-main` channels, relaunch only when you won't notice ([docs](docs/updates.md))
 - ✅ Stable signing identity: `scripts/make-signing-identity.sh` creates "den Local Signing" in the login keychain once; `scripts/bundle.sh` signs with it (designated requirement = certificate, not cdhash), ad-hoc when absent
 - ✅ CI builds on every PR: build, full test suite, report-only perf on the macos-26 runner; `scripts/ci-check.sh` for remote builds (docs/dev.md)

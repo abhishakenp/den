@@ -256,6 +256,53 @@ struct ShieldsTests {
     #expect(h.rt.call("ui", "get")["overlays"].array?.contains("popover") == false)
   }
 
+  /// The panel's camera/microphone rows: one per remembered answer, each changed on its own
+  /// (Allow / Block / Ask First, which forgets it, so the site asks again) through
+  /// `sitepolicy.setPermission`; the summary row still resets them all.
+  @Test func panelPermissionRowsChangeOneAnswerAtATime() async throws {
+    let h = Harness()
+    let tabs = h.startTabs()
+    let core = start(h)
+    let id = h.rt.call("tabs", "open", ["url": "https://example.com/"])["id"]
+    h.rt.call("tabs", "select", ["id": id])
+    let w = h.rt.webviews.materialize(id.string!)!
+    w.loadHTMLString("<p>cam</p>", baseURL: URL(string: "https://example.com/"))
+    #expect(try await until { !w.isLoading && w.url?.host == "example.com" })
+
+    // The page answered Allow for the camera and Block for the microphone: both remembered.
+    let p = try #require(h.rt.webviews.prompts)
+    p.setMedia("https://example.com camera", true)
+    p.setMedia("https://example.com microphone", false)
+
+    h.action("shields.pill", "click", ["webview": id])
+    #expect(core.panelOpen)
+    func rows() -> [Value] {
+      (core.panelTree()["children"].array ?? []).flatMap { $0["children"].array ?? [] }.filter { $0.str("id").hasPrefix("shields.permission.") }
+    }
+    func row(_ device: String) -> Value? { rows().first { $0["title"] == .string(device + " · https://example.com") } }
+    #expect(rows().count == 2)
+    #expect(row("Camera")?["selected"] == "allow")
+    #expect(row("Microphone")?["selected"] == "block")
+    #expect((row("Camera")?["options"].array ?? []).map { $0.str("id") } == ["allow", "block", "ask"])
+
+    // Ask First forgets the camera's answer: its row goes, the microphone's stays.
+    h.action("shields.permission.0", "select", ["option": "ask"])
+    #expect(rows().count == 1 && rows().first?["title"] == .string("Microphone · https://example.com"))
+    #expect(h.rt.call("sitepolicy", "permissions", ["host": "example.com"]).array?.map { $0.str("kind") } == ["microphone"])
+    // Block the microphone, then Allow it: the remembered answer follows each choice.
+    h.action("shields.permission.0", "select", ["option": "block"])
+    #expect(h.rt.call("sitepolicy", "permissions", ["host": "example.com"]).array?.first?["allowed"] == false)
+    h.action("shields.permission.0", "select", ["option": "allow"])
+    #expect(h.rt.call("sitepolicy", "permissions", ["host": "example.com"]).array?.first?["allowed"] == true)
+    let summary = (core.panelTree()["children"].array ?? []).flatMap { $0["children"].array ?? [] }.first { $0["id"] == "shields.permissions" }
+    #expect(summary?["value"] == "Allowed")
+    // The reset button still clears every answer.
+    h.action("shields.permissions", "click")
+    #expect(h.rt.call("sitepolicy", "permissions", ["host": "example.com"]).array?.isEmpty == true)
+    #expect(rows().isEmpty)
+    core.stop()
+  }
+
   @Test func offersToStepAsideForUBlockOriginLite() {
     let h = Harness()
     let core = start(h)

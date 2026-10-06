@@ -130,6 +130,55 @@ struct WebPromptsTests {
     #expect(answers.last == .deny && !p.visible)
   }
 
+  /// The shields panel's per-site rows: each remembered camera/microphone answer changes on its own
+  /// (`sitepolicy.setPermission`), "Ask First" forgets it, and the next page request follows it.
+  @Test func rememberedPermissionAnswersChangeIndividuallyPerSite() async throws {
+    let rt = runtime()
+    let (_, web) = page(rt)
+    let p = try #require(rt.webviews.prompts)
+    web.loadHTMLString("<p>cam</p>", baseURL: URL(string: "https://meet.example/"))
+    #expect(await wait { !web.isLoading && web.url?.host == "meet.example" })
+    let origin = try #require(await frameOrigin(web))
+    var answers: [WKPermissionDecision] = []
+    // Asked for both devices and answered Allow once: both are remembered.
+    p.media(origin, type: .cameraAndMicrophone, webView: web) { answers.append($0) }
+    p.press("allow")
+    #expect(answers == [.grant])
+    let perms = rt.call("sitepolicy", "permissions", ["host": "meet.example"]).array ?? []
+    #expect(perms.count == 2 && perms.allSatisfy { $0.flag("allowed") })
+
+    // The panel changes just the microphone to Block.
+    let set = rt.call("sitepolicy", "setPermission", ["host": "meet.example", "origin": "https://meet.example", "kind": "microphone", "allowed": false])
+    #expect(set.isError == false)
+    let changed = rt.call("sitepolicy", "permissions", ["host": "meet.example"]).array ?? []
+    #expect(changed.first { $0.str("kind") == "microphone" }?["allowed"] == false)
+    #expect(changed.first { $0.str("kind") == "camera" }?["allowed"] == true)
+    // The next requests follow the remembered answers: camera granted, microphone denied, no dialog.
+    p.media(origin, type: .camera, webView: web) { answers.append($0) }
+    p.media(origin, type: .microphone, webView: web) { answers.append($0) }
+    #expect(answers == [.grant, .grant, .deny] && !p.visible)
+
+    // "Ask First" (no `allowed`) forgets the camera's answer: the next request asks again.
+    let ask = rt.call("sitepolicy", "setPermission", ["host": "meet.example", "origin": "https://meet.example", "kind": "camera"])
+    #expect(ask.isError == false)
+    let left = rt.call("sitepolicy", "permissions", ["host": "meet.example"]).array ?? []
+    #expect(left.map { $0.str("kind") } == ["microphone"])
+    p.media(origin, type: .camera, webView: web) { answers.append($0) }
+    #expect(p.current?.tree["title"] == "Allow meet.example to use your camera?")
+    p.press("deny")
+    #expect(answers.last == .deny)
+
+    // A subdomain's origin counts as the site's.
+    #expect(rt.call("sitepolicy", "setPermission", ["host": "meet.example", "origin": "https://sub.meet.example", "kind": "camera", "allowed": true]).isError == false)
+    let sub = rt.call("sitepolicy", "permissions", ["host": "meet.example"]).array ?? []
+    #expect(sub.contains { $0.str("origin") == "https://sub.meet.example" && $0.flag("allowed") })
+
+    // Guardrails: a different site's origin, an unknown kind, and an empty host are refused.
+    #expect(rt.call("sitepolicy", "setPermission", ["host": "meet.example", "origin": "https://other.test", "kind": "camera", "allowed": true]).isError)
+    #expect(rt.call("sitepolicy", "setPermission", ["host": "meet.example", "origin": "https://meet.example", "kind": "location", "allowed": true]).isError)
+    #expect(rt.call("sitepolicy", "setPermission", ["host": "", "origin": "https://meet.example", "kind": "camera"]).isError)
+  }
+
   /// The main frame's security origin, captured from a real script message.
   func frameOrigin(_ web: WKWebView) async -> WKSecurityOrigin? {
     final class Catch: NSObject, WKScriptMessageHandler {
