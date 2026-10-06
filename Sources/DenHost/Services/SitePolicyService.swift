@@ -243,6 +243,19 @@ public final class SitePolicyService: HostService {
       let h = PageStyleService.key(args.str("host"))
       for (k, _) in mediaKeys(h) { prompts?.forgetMedia(k) }
       return .ok
+    case "setPermission":
+      // The shields panel's per-site rows: one remembered answer, changed (or, without `allowed`,
+      // forgotten, so the site asks again). The origin must be the site's or a subdomain's.
+      let h = PageStyleService.key(args.str("host"))
+      guard !h.isEmpty else { return .error("sitepolicy: setPermission needs a host") }
+      let kind = args.str("kind")
+      guard kind == "camera" || kind == "microphone" else { return .error("sitepolicy: setPermission needs kind camera or microphone") }
+      let origin = args.str("origin")
+      let oh = PageStyleService.host(of: URL(string: origin))
+      guard oh == h || oh.hasSuffix("." + h) else { return .error("sitepolicy: setPermission origin '\(origin)' is not on \(h)") }
+      let key = origin + " " + kind
+      if let allowed = args["allowed"].bool { prompts?.setMedia(key, allowed) } else { prompts?.forgetMedia(key) }
+      return .ok
     case "unsaved": return unsaved(args)
     case "support":
       return ["autoplay": .bool(Self.canSetPolicy("_setAutoplayPolicy:")), "popups": .bool(Self.canSetPolicy("_setPopUpPolicy:")),

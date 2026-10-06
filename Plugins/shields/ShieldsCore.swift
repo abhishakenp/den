@@ -17,6 +17,8 @@ final class ShieldsCore {
   static let pillId = "tabs.url"
   static let autoplayOptions: [(String, String)] = [("sound", "Block Sound"), ("allow", "Allow"), ("none", "Block All")]
   static let popupOptions: [(String, String)] = [("block", "Block"), ("allow", "Allow")]
+  /// The panel's per-answer camera/microphone rows; `ask` forgets the answer, so the site asks again.
+  static let permissionOptions: [(String, String)] = [("allow", "Allow"), ("block", "Block"), ("ask", "Ask First")]
   static let globals: [(String, Bool)] = [("blocker", true), ("cookies", true), ("params", true), ("bounce", true), ("https", true), ("lookalike", true)]
 
   struct Site: Equatable {
@@ -43,6 +45,8 @@ final class ShieldsCore {
   var panelOpen = false
   var panelWebview = ""
   var panelHost = ""
+  /// The remembered answers the panel's `shields.permission.<n>` rows were built from (in order).
+  var panelPerms: [(origin: String, kind: String)] = []
   var pendingReload = false
   var unsavedRequest = ""
   var unsaved = false
@@ -627,6 +631,18 @@ final class ShieldsCore {
     var permRow: Value = ["type": "valueRow", "id": "shields.permissions", "title": "Camera and microphone", "value": .string(permText)]
     if !perms.isEmpty { permRow.put("buttons", [["id": "reset", "icon": "sf:arrow.counterclockwise"]]) }
     privacy.append(permRow)
+    // One row per remembered answer: Allow / Block it, or Ask First (forgets it, the site asks
+    // again). A change is instant; the next request from the page follows it.
+    panelPerms = []
+    for p in perms {
+      let origin = p.s("origin"), kind = p.s("kind")
+      guard !origin.isEmpty, kind == "camera" || kind == "microphone" else { continue }
+      privacy.append(["type": "choiceRow", "id": .string("shields.permission.\(panelPerms.count)"),
+                      "title": .string((kind == "microphone" ? "Microphone" : "Camera") + " · " + origin),
+                      "selected": .string(p.b("allowed") ? "allow" : "block"),
+                      "options": .array(Self.permissionOptions.map { ["id": .string($0.0), "title": .string($0.1)] })])
+      panelPerms.append((origin, kind))
+    }
     children.append(["type": "section", "id": "shields.privacy", "title": "On this page", "children": .array(privacy)])
 
     if uboInstalled && on("blocker") {
@@ -680,7 +696,14 @@ final class ShieldsCore {
       closePanel()
       env.call("settings", "open", ["section": .string(Self.ns)])
     case "shields.ubo": useUBO()
-    default: break
+    default:
+      if Text.hasPrefix(id, "shields.permission."), action == "select" {
+        guard let n = Int(id.dropFirst("shields.permission.".count)), n >= 0, n < panelPerms.count else { return }
+        var args: Value = ["host": .string(h), "origin": .string(panelPerms[n].origin), "kind": .string(panelPerms[n].kind)]
+        if value.s("option") != "ask" { args.put("allowed", .bool(value.s("option") == "allow")) }
+        env.call("sitepolicy", "setPermission", args)
+        renderPanel()
+      }
     }
   }
 
