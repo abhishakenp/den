@@ -49,6 +49,12 @@ appintents_extract "$BINDIR" io.github.abhishakenp.den "$APP/Contents/Resources"
 # Every Plugins/<id>/ becomes Contents/PlugIns/<id>.dylib (Embedded Swift, via cordis-build).
 # Plugins/Shared/ is compiled into each plugin. Builds run in parallel.
 CORDIS_BUILD=.build/checkouts/cordis-swift/Scripts/cordis-build
+# The swift.org toolchain's embedded stdlib doesn't include __swift_stdlib_strtod_clocale,
+# which the compiler emits for Double.init<String> references. Allow it to be undefined at
+# link time; it's resolved at runtime from the host app's libswiftCore.dylib.
+grep -q 'strtod_clocale' "$CORDIS_BUILD" || sed -i '' '/-Wl,-dead_strip/a\
+  -Xlinker -U -Xlinker __swift_stdlib_strtod_clocale \
+' "$CORDIS_BUILD"
 mkdir -p "$APP/Contents/PlugIns"
 pids=()
 for dir in Plugins/*/; do
