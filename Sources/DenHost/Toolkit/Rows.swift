@@ -417,8 +417,9 @@ final class GridNode: NodeView {
   }
 }
 
-/// {type:"favoriteTile", id, icon, title, selected, audio, muted?, badge?}  actions: click, doubleClick, reorder, mute (speaker badge)
+/// {type:"favoriteTile", id, icon, title, selected, audio, muted?, suspended?, badge?}  actions: click, doubleClick, reorder, mute (speaker badge)
 /// `badge`: a short text chip at the bottom of the tile ("in 8m": a plugin's countdown).
+/// `suspended`: the page was discarded; the icon dims until the page comes back.
 final class FavoriteTileNode: HoverNode {
   let icon = IconView()
   lazy var audio = SpeakerBadge { [weak self] in self?.emit("mute") }
@@ -442,9 +443,14 @@ final class FavoriteTileNode: HoverNode {
     chip.text = v.str("badge")
     chip.isHidden = chip.text.isEmpty
     setAccessibilityValue(chip.text.isEmpty ? nil : chip.text)
+    apply(r.palette)
     needsLayout = true
   }
-  override func apply(_ p: Palette) { icon.tint = p.text; audio.apply(p); chip.apply(p); needsDisplay = true }
+  override func apply(_ p: Palette) {
+    icon.tint = p.text
+    icon.alphaValue = node.flag("suspended") ? 0.45 : 1  // a discarded tab's icon dims
+    audio.apply(p); chip.apply(p); needsDisplay = true
+  }
   override func layout() {
     let s = Tokens.favoriteIconSize
     // With a chip, the icon moves up a little so both fit the tile.
@@ -939,9 +945,11 @@ final class RenameSupport {
 
 // MARK: - Tabs
 
-/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, editing?, editText?, unread?,
+/// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, suspended?, editing?, editText?, unread?,
 ///  media?: {paused, next, previous}}
 /// `unread`: an accent dot on the right (a live folder's new item).
+/// `suspended`: the page was discarded (its WebContent process exited); the icon dims until the
+/// page comes back.
 /// actions: click {modifiers?}, doubleClick, close, reset (favicon click while drifted), mute, contextMenu/menu, reorder,
 /// dropOnContent, rename {title} / renameCancel (while `editing`), media {action: toggle|next|previous} (the hover
 /// playback buttons of a tab with `media`)
@@ -1012,6 +1020,7 @@ final class TabRowNode: HoverNode {
     rename.editor?.textColor = p.text
     drift.textColor = p.tertiaryText
     icon.tint = p.text
+    icon.alphaValue = node.flag("suspended") ? 0.45 : 1  // a discarded tab's icon dims
     audio.apply(p)
     dot.apply(p)
     close.apply(p)
