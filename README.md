@@ -76,7 +76,7 @@ Each item is covered by `swift test` or a `--scenario` run of the real app. The 
 - **[Page tools](docs/guide/page-tools.md):** Reader with read aloud, on-device translation, capture (⇧⌘2), Zap and "Remove Sticky Headers", Copy Link to Highlight, find, per-site zoom, print, save, copy as Markdown, readable error pages
 - **[Keyboard shortcuts](docs/guide/shortcuts.md):** Arc's, all in the menu bar, all remappable
 - **Settings** (⌘,) with sections contributed by plugins; every default and why is in [docs/defaults.md](docs/defaults.md). Every dialog, bar, card and toast follows the space's colors with legible contrast
-- **Plugins:** the features are Embedded Swift plugins (`spaces`, `tabs`, `commandbar`, `peek`, `previews`, `theme`, `quit`, `darkmode`, `passwords`, `extensions`, `pagetools`, `connections`, `slack`, `github`, `briefing`, `updates`) loaded from `den.app/Contents/PlugIns`
+- **Plugins:** the features are Embedded Swift plugins (`spaces`, `tabs`, `commandbar`, `peek`, `previews`, `theme`, `quit`, `darkmode`, `passwords`, `extensions`, `pagetools`, `pwa`, `connections`, `slack`, `github`, `briefing`, `updates`) loaded from `den.app/Contents/PlugIns`
 - **[`~/.den`](docs/guide/den-home.md):** your plugins (even plain `.swift` files), themes and `config.toml`, applied live
 - **[Updates](docs/guide/updates.md)** that hot-swap plugins, and **[performance](docs/guide/performance.md)** measured, not claimed: 20 MB idle, about 210 ms to first window (on a loaded machine)
 
