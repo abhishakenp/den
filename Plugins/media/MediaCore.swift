@@ -8,7 +8,9 @@
 /// Every tab whose page played something with sound, most recent first, from the host's
 /// `webviews.nowPlaying` events (the page's own media events and Media Session metadata; no
 /// polling). The dock shows them in the `sidebar.dock` slot: artwork, title, artist, and
-/// previous / play-pause / next / mute / stop; a click on the artwork or title goes to the tab.
+/// previous / play-pause / next / mute / stop, plus the tab's volume and playback speed (the
+/// host's `webviews.setVolume` / `setRate`, kept across discards); a click on the artwork or
+/// title goes to the tab.
 /// The tab on screen isn't listed (its controls are right there), like Arc; a tab whose video is
 /// in picture in picture is, with a button that brings it back (den's controls around the system
 /// PiP window, which den never draws over). With more than one, only the newest shows until
@@ -32,6 +34,9 @@ final class MediaCore {
     var artist: String { now.s("artist") }
     var acts: [String] { now.a("acts").compactMap { $0.string } }
     var hasNext: Bool { acts.contains("nexttrack") }
+    /// The now-playing element's volume and playback speed, as the page reports them.
+    var vol: Double { now["vol"].double ?? 1 }
+    var rate: Double { now["rate"].double ?? 1 }
   }
 
   static let slot = "sidebar.dock"
@@ -58,6 +63,20 @@ final class MediaCore {
     env.on("webviews.muted") { [self] v in
       guard entries[v.s("id")] != nil else { return }
       entries[v.s("id")]?.muted = v.b("muted")
+      render()
+    }
+    env.on("webviews.volume") { [self] v in
+      guard let e = entries[v.s("id")], !e.now.isNull else { return }
+      var n = e.now
+      n.put("vol", .double(v["volume"].double ?? 0))
+      entries[v.s("id")]?.now = n
+      render()
+    }
+    env.on("webviews.rate") { [self] v in
+      guard let e = entries[v.s("id")], !e.now.isNull else { return }
+      var n = e.now
+      n.put("rate", .double(v["rate"].double ?? 1))
+      entries[v.s("id")]?.now = n
       render()
     }
     env.on("webviews.closed") { [self] v in remove(v.s("id")) }
@@ -135,7 +154,7 @@ final class MediaCore {
 
   // MARK: Actions
 
-  func control(_ id: String, _ command: String) {
+  func control(_ id: String, _ command: String, _ value: Value = .null) {
     guard let e = entries[id] else { return }
     switch command {
     case "mute": env.call("webviews", "setMuted", ["id": .string(id), "muted": .bool(!e.muted)])
@@ -144,14 +163,31 @@ final class MediaCore {
     case "next": if e.hasNext { env.call("webviews", "mediaControl", ["id": .string(id), "action": "next"]) }
     case "play", "pause", "toggle", "previous", "stop":
       env.call("webviews", "mediaControl", ["id": .string(id), "action": .string(command)])
+    case "voldown", "volup":
+      // One-hundredth steps, so any page value lands on round numbers; the host keeps it across
+      // discards and the page reports the change back through nowPlaying.
+      let v = min(1, max(0, ((e.vol * 100).rounded() + (command == "volup" ? 10 : -10)) / 100))
+      var n = e.now
+      n.put("vol", .double(v))
+      entries[id]?.now = n
+      render()
+      env.call("webviews", "setVolume", ["id": .string(id), "volume": .double(v)])
+    case "rate":
+      guard let r = Double(value.string ?? ""), r >= 0.25, r <= 4 else { break }
+      var n = e.now
+      n.put("rate", .double(r))
+      entries[id]?.now = n
+      render()
+      env.call("webviews", "setRate", ["id": .string(id), "rate": .double(r)])
     default: break
     }
   }
 
   /// Node ids: `media.<command>:<webview>` for the buttons, `media.jump:<webview>` for the
-  /// artwork and title, `media.more` for the expand / collapse row.
+  /// artwork and title, `media.more` for the expand / collapse row. The speed button's menu
+  /// items arrive as `action: "menu"` with the rate as the value.
   func action(_ nodeId: String, _ action: String, _ value: Value) {
-    guard Text.hasPrefix(nodeId, "media."), action == "click" else { return }
+    guard Text.hasPrefix(nodeId, "media."), action == "click" || action == "menu" else { return }
     if nodeId == "media.more" {
       expanded = !expanded
       render()
@@ -161,7 +197,7 @@ final class MediaCore {
     guard let colon = rest.firstIndex(of: 58) else { return }  // ":"
     let command = String(decoding: rest[..<colon], as: UTF8.self)
     let id = String(decoding: rest[(colon + 1)...], as: UTF8.self)
-    control(id, command)
+    control(id, command, action == "menu" ? value : .null)
   }
 
   // MARK: Rendering
@@ -219,8 +255,37 @@ final class MediaCore {
     let controls: Value = ["type": "stack", "axis": "h", "distribute": "equal", "spacing": 2, "children": .array(buttons)]
 
     return ["type": "stack", "id": .string("media.card:" + id), "axis": "v", "fill": "panel", "radius": 10, "padding": [6, 6, 2, 6], "spacing": 2,
-            "children": [head, controls]]
+            "children": [head, controls, playback(e)]]
   }
+
+  /// The tab's volume and playback speed: step buttons around a volume meter and its percent,
+  /// and a speed pill whose menu picks the rate. Both go to the host (`webviews.setVolume` /
+  /// `setRate`), which keeps them across discards; the page reports the new values back.
+  func playback(_ e: Entry) -> Value {
+    let vol = min(1, max(0, e.vol))
+    func step(_ command: String, _ icon: String, _ tip: String) -> Value {
+      ["type": "action", "id": .string("media." + command + ":" + e.id), "icon": .string(icon), "tooltip": .string(tip),
+       "height": 22, "iconSize": 10]
+    }
+    let speed: Value = ["type": "action", "id": .string("media.rate:" + e.id), "title": .string(Self.rateText(e.rate)), "variant": "pill",
+                        "tooltip": .string("Playback Speed"), "height": 22,
+                        "menu": .array(Self.rates.map {
+                          ["id": .string(Self.rateId($0)), "title": .string(Self.rateText($0)), "checked": .bool(abs(e.rate - $0) < 0.01)]
+                        })]
+    return ["type": "stack", "axis": "h", "spacing": 4, "align": "center", "children": [
+      step("voldown", "sf:speaker.minus.fill", "Quieter"),
+      ["type": "meter", "segments": [["value": .double(vol), "tone": "accent"]], "total": 1, "height": 4],
+      step("volup", "sf:speaker.plus.fill", "Louder"),
+      ["type": "label", "text": .string("\(Int((vol * 100).rounded()))%"), "size": 10, "tone": "secondary", "align": "center", "width": 26],
+      speed,
+    ]]
+  }
+
+  /// The dock's playback speeds, and how one is shown ("1×", "1.25×") and identified in the
+  /// menu ("1", "1.25": what `control` parses back).
+  static let rates: [Double] = [0.5, 0.75, 1, 1.25, 1.5, 2]
+  static func rateText(_ r: Double) -> String { r == r.rounded() ? "\(Int(r))×" : "\(r)×" }
+  static func rateId(_ r: Double) -> String { r == r.rounded() ? String(Int(r)) : String(r) }
 
   /// Control Center's Now Playing follows the newest entry (listed or not: the tab on screen
   /// is still what the media keys should drive).
