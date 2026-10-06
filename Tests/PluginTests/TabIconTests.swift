@@ -126,6 +126,49 @@ struct TabIconTests {
     #expect(pinnedNode(h, folder)["icon"] == "📖" && pinnedNode(h, folder)["title"] == "Books")
   }
 
+  /// The row's `suspended` follows the host's events: a discard dims the icon, any live page
+  /// event (a new title) brightens it again.
+  @Test func suspendedFlagFollowsWebviewsEvents() {
+    let h = Harness()
+    h.startTabs()
+    let t = h.ids("pinned")[0]
+    #expect(pinnedNode(h, t)["suspended"] == false)
+    h.rt.plugins.emit("webviews.suspended", ["id": .string(t)])
+    #expect(pinnedNode(h, t)["suspended"] == true)
+    h.rt.plugins.emit("webviews.title", ["id": .string(t), "title": "Back again"])
+    #expect(pinnedNode(h, t)["suspended"] == false && pinnedNode(h, t)["title"] == "Back again")
+  }
+
+  /// Closing a pinned tab or favorite only discards its page: the row/tile stays with a dimmed
+  /// icon until the tab is picked again.
+  @Test func discardedTabsDimTheIcon() async throws {
+    let h = Harness()
+    h.startTabs()
+    let t = h.ids("pinned")[0]
+    h.tabs("select", ["id": .string(t)])  // the page loads; ⌘W below discards it
+    h.tabs("close", ["id": .string(t)])
+    #expect(h.ids("pinned").contains(t))
+    #expect(await h.waitUnloaded(t))
+    #expect(await Wait.until("the row dims", seconds: 5) { pinnedNode(h, t)["suspended"] == true })
+    let row = try #require(HostScenarios.find(t, in: h.rt.ui.sidebarView) as? TabRowNode)
+    #expect(row.icon.alphaValue < 1)
+    // Picking it materializes the page again: the icon is bright once more.
+    h.tabs("select", ["id": .string(t)])
+    #expect(pinnedNode(h, t)["suspended"] == false)
+    #expect(row.icon.alphaValue == 1)
+    // A favorite's tile dims the same way.
+    let f = h.ids("favorites")[0]
+    h.tabs("select", ["id": .string(f)])
+    h.tabs("close", ["id": .string(f)])
+    #expect(h.ids("favorites").contains(f))
+    #expect(await h.waitUnloaded(f))
+    #expect(await Wait.until("the tile dims", seconds: 5) { h.tree("sidebar.favorites", 0)["children"].array?.first { $0.s("id") == f }?["suspended"] == true })
+    let tile = try #require(HostScenarios.find(f, in: h.rt.ui.sidebarView) as? FavoriteTileNode)
+    #expect(tile.icon.alphaValue < 1)
+    h.tabs("select", ["id": .string(f)])
+    #expect(tile.icon.alphaValue == 1)
+  }
+
   @Test func iconsSurviveRestart() {
     let h = Harness()
     let core = h.startTabs()

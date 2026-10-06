@@ -40,6 +40,9 @@ public final class WebPrompts {
   public private(set) var mediaDecisions: [String: Bool] = [:]
   /// Drops one remembered camera/microphone answer (`"<origin> <device>"`), e.g. "forget this site".
   func forgetMedia(_ key: String) { mediaDecisions[key] = nil }
+  /// Changes one remembered camera/microphone answer (`"<origin> <device>"`), e.g. the shields
+  /// panel's per-site permission rows. The next request from that origin follows it at once.
+  func setMedia(_ key: String, _ allowed: Bool) { mediaDecisions[key] = allowed }
   /// JavaScript dialogs per page load, and pages the user stopped from showing more (Dia 1.15):
   /// from the fourth dialog on, the dialog offers "Stop this page from showing dialogs". Both
   /// reset when the page navigates.
