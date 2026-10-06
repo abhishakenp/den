@@ -345,7 +345,7 @@ These are the defaults, read from the live menus (MENU) and the nib (NIB); the t
 | Settings | ⌘, |
 | Quit | ⌘Q (shows the dialog in §5 while "Warn before quitting" is on) |
 
-- **⌘1…9 (tab N, Favorites first)** is bound in code, not in the menus. Its key set is UNVERIFIED from resources; see `arc.md` §15.
+- **⌘1…9 (tab N, Favorites first)** is bound in code, not in the menus. Its key set is UNVERIFIED from resources; see `docs/research/arc.md` §15.
 - The Window menu's Fill (⌃F), Centre (⌃C) and Move & Resize (⌃arrows) items are **macOS 26 system items**, not Arc's.
 
 ## 10. Sounds and haptics

@@ -135,7 +135,7 @@ public enum Tokens {
   public static let toastRightInset: CGFloat = 20  // estimate
   public static let toastDefaultDurationMs = 2200  // estimate
 
-  // MARK: Link status pill (Arc: the hovered link's address, bottom of the page; arc.md "Status pill")
+  // MARK: Link status pill (Arc: the hovered link's address, bottom of the page; docs/research/arc.md "Status pill")
   public static let statusPillHeight: CGFloat = 22  // estimate
   public static let statusPillCornerRadius: CGFloat = 7  // estimate
   public static let statusPillInset: CGFloat = 6  // estimate: from the page's bottom-left (or bottom-right) corner
