@@ -52,9 +52,12 @@ CORDIS_BUILD=.build/checkouts/cordis-swift/Scripts/cordis-build
 # The swift.org toolchain's embedded stdlib doesn't include __swift_stdlib_strtod_clocale,
 # which the compiler emits for Double.init<String> references. Allow it to be undefined at
 # link time; it's resolved at runtime from the host app's libswiftCore.dylib.
-grep -q 'strtod_clocale' "$CORDIS_BUILD" || sed -i '' '/-Wl,-dead_strip/a\
-  -Xlinker -U -Xlinker __swift_stdlib_strtod_clocale \
-' "$CORDIS_BUILD"
+grep -q 'strtod_clocale' "$CORDIS_BUILD" || python3 -c "
+p = '$CORDIS_BUILD'
+s = open(p).read()
+s = s.replace('-Wl,-dead_strip', '-Wl,-dead_strip -Xlinker -U -Xlinker __swift_stdlib_strtod_clocale')
+open(p, 'w').write(s)
+"
 mkdir -p "$APP/Contents/PlugIns"
 pids=()
 for dir in Plugins/*/; do
