@@ -62,7 +62,9 @@ struct Plugin: CordisPlugin {
 }
 ```
 
-This is `Plugins/theme/ThemePlugin.swift` with the names changed. What matters:
+This is the same shape as `Plugins/tips/TipsPlugin.swift` — the same `inject` list, with the
+names changed (`Plugins/quit/QuitPlugin.swift` is the same pattern with fewer services). What
+matters:
 
 - The type must be named `Plugin` and conform to `CordisPlugin` (cordis `Plugin.swift`).
 - `inject` lists services that must exist before `apply` runs; the plugin is disposed if one
