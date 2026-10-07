@@ -285,7 +285,7 @@ public final class PageNotifications: NSObject, HostService, WKScriptMessageHand
     for o in decisions.keys where Self.hostOf(o) == h || Self.hostOf(o).hasSuffix("." + h) { set(o, nil) }
   }
 
-  static func hostOf(_ origin: String) -> String { PageStyleService.host(of: URL(string: origin)) }
+  static func hostOf(_ origin: String) -> String { PageStyleService.pageHost(of: URL(string: origin)) }
 
   /// The script and its handler, for every web page den shows (not extension pages).
   func configure(_ r: WebRecord, _ c: WKWebViewConfiguration) {

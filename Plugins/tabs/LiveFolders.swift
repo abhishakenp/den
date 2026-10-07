@@ -25,7 +25,10 @@ final class LiveFolders {
     var icon: String
   }
 
-  static let sources = [Source(id: "github", title: "GitHub", icon: "https://github.com/favicon.ico")]
+  static let sources: [Source] = [
+    Source(id: "github", title: "GitHub", icon: "https://github.com/favicon.ico"),
+    Source(id: "rss", title: "RSS", icon: "sf:antenna.radiowaves.left.and.right"),
+  ]
   static let maxDone = 20
   static let doneKeepMs: Int64 = 7 * 86_400_000
   static let maxSeen = 300
@@ -74,7 +77,105 @@ final class LiveFolders {
     state[fid] = s
   }
 
-  func connected(_ source: String) -> Bool { env.call("connections", "get", ["id": .string(source)]).b("connected") }
+  func connected(_ source: String) -> Bool {
+    guard source != "rss" else { return rssFeeds.count > 0 }
+    return env.call("connections", "get", ["id": .string(source)]).b("connected")
+  }
+
+  // MARK: RSS feeds
+
+  var rssFeeds: [String] {
+    get {
+      if case .object(let d) = env.call("storage", "get", ["ns": .string(TabsCore.ns), "key": .string("rss")]),
+         let f = d["feeds"] {
+        return f.a.compactMap { $0.string }
+      }
+      return []
+    }
+    set {
+      env.call("storage", "set", ["ns": .string(TabsCore.ns), "key": .string("rss"), "value": ["feeds": .array(newValue.map { .string($0) })]])
+    }
+  }
+
+  func addRssFeed(_ url: String) {
+    let normalized = URLs.normalize(url)
+    guard !normalized.isEmpty else { return }
+    let feeds = rssFeeds
+    guard !feeds.contains(normalized) else {
+      env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Feed already added", "icon": "sf:exclamationmark.triangle"]])
+      return
+    }
+    var newFeeds = feeds
+    newFeeds.append(normalized)
+    rssFeeds = newFeeds
+    fetchRss()
+    env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Added RSS feed", "icon": "sf:rss"]])
+  }
+
+  func removeRssFeed(_ url: String) {
+    rssFeeds = rssFeeds.filter { $0 != URLs.normalize(url) }
+    env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Removed RSS feed", "icon": "sf:trash"]])
+  }
+
+  func fetchRss() {
+    let urls = rssFeeds
+    guard !urls.isEmpty else { return }
+    var rssResults: [(url: String, items: [Rss.Item])] = []
+    var pending = urls.count
+    func whenDone() {
+      guard pending == 0 else { return }
+      var seen: [String: Rss.Item] = [:]
+      for (_, items) in rssResults.reversed() {
+        for item in items { seen[item.id] = item }
+      }
+      var allItems = seen.values.sorted { $0.date > $1.date }
+      allItems = Array(allItems.prefix(50))
+      let values = allItems.map { item in
+        ["id": .string(item.id), "title": .string(item.title), "url": .string(item.url),
+         "icon": .string(item.icon), "kind": .string("rss")]
+      }
+      LiveFolders.items["rss"] = values
+      rerender()
+    }
+    for url in urls {
+      let reqId = "rss-fetch-" + String(urls.index(of: url)!) + "-" + String(pending)
+      env.call("net", "fetch", ["url": .string(url), "id": .string(reqId)]) { [self] v in
+        let status = v.s("status")
+        let body = v.sOpt("body") ?? ""
+        if status == "200" || status == "200 OK" || status == "ok" {
+          let parsed = Rss.parse(body, url: url)
+          rssResults.append((url: url, items: parsed))
+        }
+        pending -= 1
+        whenDone()
+      }
+    }
+  }
+
+  func rssRows(_ fid: String, _ seen: [String]) -> [Value] {
+    guard let rssItems = LiveFolders.items["rss"] else {
+      return [["type": "tabRow", "id": .string("live:" + fid + ":loading"), "title": "Loading RSS...", "icon": "sf:hourglass",
+               "selected": false, "closable": false, "draggable": false]]
+    }
+    let dismissed = strings(fid, "dismissed")
+    let list = rssItems.filter { !dismissed.contains($0.s("id")) }
+    if list.isEmpty {
+      return [["type": "tabRow", "id": .string("live:" + fid + ":empty"), "title": "No unread items", "icon": "sf:checkmark.circle",
+               "selected": false, "closable": false, "draggable": false]]
+    }
+    var out: [Value] = []
+    for it in list {
+      let k = it.s("id")
+      let iconVal = it.sOpt("icon").map { $0.isEmpty ? "sf:rss" : $0 } ?? "sf:rss"
+      var v: Value = ["type": "tabRow", "id": .string("live:" + fid + ":" + k), "title": .string(it.s("title")), "icon": .string(iconVal),
+                      "selected": false, "closable": true, "closeTitle": "Mark as Done", "draggable": false, "hoverIntent": .int(TabsCore.rowCardDelayMs),
+                      "menu": [["id": "open", "title": "Open", "icon": "sf:arrow.up.right.square"], ["id": "copy", "title": "Copy Link", "icon": "sf:link"],
+                               ["separator": true], ["id": "done", "title": "Mark as Done", "icon": "sf:checkmark"]]]
+      if !seen.contains(k) { v.put("unread", true) }
+      out.append(v)
+    }
+    return out
+  }
 
   // MARK: Feed
 
@@ -145,7 +246,10 @@ final class LiveFolders {
     }
   }
 
-  func icon(_ it: Value) -> String { Self.kindIcon(it.s("kind")) }
+  func icon(_ it: Value) -> String {
+    if it.s("kind") == "rss", let i = it.sOpt("icon"), !i.isEmpty { return i }
+    return Self.kindIcon(it.s("kind"))
+  }
 
   func visible(_ fid: String, _ source: String) -> [Value] {
     let dismissed = strings(fid, "dismissed")
@@ -176,8 +280,16 @@ final class LiveFolders {
   func rows(_ f: TabsCore.Folder) -> [Value] {
     let title = Self.source(f.live)?.title ?? f.live
     if !connected(f.live) {
+      if f.live == "rss" {
+        return [["type": "tabRow", "id": .string("live:" + f.id + ":connect"), "title": .string("Add an RSS feed to fill this folder"),
+                 "icon": "sf:exclamationmark.triangle", "selected": false, "closable": false, "draggable": false]]
+      }
       return [["type": "tabRow", "id": .string("live:" + f.id + ":connect"), "title": .string("Sign in to " + title + " to fill this folder"),
                "icon": "sf:exclamationmark.triangle", "selected": false, "closable": false, "draggable": false]]
+    }
+    if f.live == "rss" {
+      let seen = strings(f.id, "seen")
+      return rssRows(f.id, seen)
     }
     guard items[f.live] != nil else {
       return [["type": "tabRow", "id": .string("live:" + f.id + ":loading"), "title": "Loading…", "icon": "sf:hourglass",
@@ -277,7 +389,13 @@ final class LiveFolders {
     if Text.hasPrefix(id, "live:") {
       guard let (fid, key) = split(Text.dropPrefix(id, "live:")), let f = core.folders[fid] else { return true }
       if key == "connect" {
-        if action == "click" { env.call("connections", "connect", ["id": .string(f.live)]) }
+        if action == "click" {
+          if f.live == "rss" {
+            env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "text": "Add feeds via the command bar", "icon": "sf:rss"]])
+          } else {
+            env.call("connections", "connect", ["id": .string(f.live)])
+          }
+        }
         return true
       }
       guard let it = (items[f.live] ?? []).first(where: { $0.s("id") == key }) else { return true }
@@ -444,14 +562,18 @@ final class LiveFolders {
     core.changed(sid)
     env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "icon": "sf:bolt.fill",
                                                    "text": .string(src.title + " live folder: review requests, your pull requests, failing CI and mentions show up here and update on their own.")]])
-    if items[source] == nil { refresh() }
+    if items[source] == nil && source != "rss" { refresh() }
     return fid
   }
 
   /// "New GitHub Live Folder" while that source is connected. `commands` may load later.
   func registerCommands() {
     var want: [(String, String, String)] = []
-    for s in Self.sources where connected(s.id) { want.append(("tabs.liveNew:" + s.id, "New " + s.title + " Live Folder", s.icon)) }
+    for s in Self.sources {
+      let isConnected = s.id == "rss" ? rssFeeds.count > 0 : connected(s.id)
+      guard isConnected else { continue }
+      want.append(("tabs.liveNew:" + s.id, "New " + s.title + " Live Folder", s.icon))
+    }
     for id in registered where !want.contains(where: { $0.0 == id }) { env.call("commands", "unregister", ["id": .string(id)]) }
     registered.removeAll { id in !want.contains { $0.0 == id } }
     for w in want where !registered.contains(w.0) {
