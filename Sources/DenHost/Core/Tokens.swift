@@ -270,4 +270,15 @@ public enum Tokens {
   /// "Open in another window" in a pane whose page another window shows.
   public static let elsewhereWidth: CGFloat = 360  // den's own
   public static let elsewhereButtonHeight: CGFloat = 30  // den's own: dialog buttons' height class
+  // MARK: Draggable reminder card (den's own: the meeting reminder that snaps to corners)
+  public static let reminderCornerRadius: CGFloat = 14  // estimate
+  public static let reminderShadowRadius: CGFloat = 16  // estimate
+  public static let reminderShadowOpacity: Float = 0.25  // estimate
+  public static let reminderDragHandleHeight: CGFloat = 8  // estimate: thin grab bar at the top
+  public static let reminderCloseButtonSize: CGFloat = 20  // estimate
+  public static let reminderMinWidth: CGFloat = 200  // estimate: narrowest usable card
+  public static let reminderMinHeight: CGFloat = 60  // estimate
+  public static let reminderDragThreshold: CGFloat = 4  // estimate: drag starts after this movement
+  public static let reminderCornerInset: CGFloat = 16  // estimate: snap offset from screen edges
+  public static let reminderSnapDuration: TimeInterval = 0.35  // estimate
 }
