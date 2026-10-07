@@ -67,7 +67,7 @@ final class GitHubCore {
 
   func start() {
     env.on("connections.probe") { [self] v in
-      if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default") }
+      if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default", auto: v.s("reason") == "register") }
     }
     env.on("feed.refresh") { [self] _ in refresh() }
     // Auto-connect: signing in to github.com in den (now or later) connects GitHub. The host

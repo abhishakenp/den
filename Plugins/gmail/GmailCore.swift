@@ -48,7 +48,7 @@ final class GmailCore {
 
   func start() {
     env.on("connections.probe") { [self] v in
-      if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default", auto: false) }
+      if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default", auto: v.s("reason") == "register") }
     }
     env.on("feed.refresh") { [self] _ in refresh() }
     env.on("session.cookiesChanged") { [self] v in
