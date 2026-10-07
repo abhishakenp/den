@@ -156,7 +156,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 
 - ✅ Command bar (`commandbar` plugin: tabs, archive/history, spaces, actions, URLs, web and site search, frecency; [contract](docs/plugin-services.md#commands-plugin-commandbar))
 - ✅ Command bar as a launcher: den's commands, destinations and individual settings, ranked above web search
-- ⏳ "new doc / notion / linear…" creation commands in the command bar
+- ✅ "new doc / notion / linear…" creation commands in the command bar (New Notion Page, New Google Doc, New Linear Issue — 2026-10-06)
 - 🟡 Command bar and the search engine
   - ✅ the bar names the real search engine (2026-10-06): search rows read "— Search Google" / "— Search YouTube" etc. (`CommandBarTests`)
   - ⏳ suggests site-search keywords with a toast
@@ -170,7 +170,9 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 - ✅ Reopen a closed window with its space and tab (⇧⌘T right after the close, File ▸ Reopen Closed Window)
 - ⏳ Link routing rules (Arc's Air Traffic Control)
 - ⏳ Boosts: per-site CSS/JS customization
-- ⏳ Web apps (PWA) support, and web apps in the Dock
+- 🟡 Web apps (PWA) support, and web apps in the Dock
+  - ✅ a page's manifest is detected (context menu, command), and an installed app opens in a standalone window with its own website data (2026-10-06)
+  - ⏳ web apps in the Dock
 - ✅ Keyboard shortcuts, fully remappable, Arc defaults (`[shortcuts]` in `config.toml`)
 - ✅ Non-US keyboard layouts for shortcuts (US-position fallback for keys a layout can't type); Chinese/Japanese/Korean input in the command bar
 
@@ -208,7 +210,7 @@ Details and sources: [Arc notes](docs/research/arc.md), [Zen notes](docs/researc
 ## Media
 
 - ✅ Picture in picture is the system's (WebKit's native PiP, the window Safari uses: on top of every app, every Space and full-screen apps, stash, resize, the system's play/pause, skip, close and return-to-tab). den's custom mini player is gone. ⌥⌘P / View ▸ Picture in Picture / the command bar toggle it; the now-playing dock, the tab speaker, ⌃⌘P, media keys and Control Center control the video while it floats ([guide](docs/guide/media.md#picture-in-picture))
-- ⏳ Around the native window: per-tab volume and playback speed from den (the system window has neither)
+- ✅ Around the native window: per-tab volume and playback speed from den's now-playing dock (the system window has neither; 2026-10-06)
 - ✅ Now-playing dock at the bottom of the sidebar, Control Center and media keys ([guide](docs/guide/media.md#now-playing-at-the-bottom-of-the-sidebar)). ⏳ Verify on a real Mac how macOS picks between den's Now Playing entry and WebKit's own — blocked: needs a real Mac with media keys (CI has none)
 - ✅ Hover play/pause/skip on the row of any tab playing (or paused) media
 - ✅ Web panels (optional `panels` plugin, ⌃⌘S; [guide](docs/guide/media.md#web-panels)). ⏳ Drag to resize a panel
@@ -245,7 +247,7 @@ Details and sources: [extension notes](docs/research/extensions-on-webkit.md).
 
 Details and sources: [Dia notes](docs/research/dia.md), [Dia shortlist](docs/research/dia-shortlist.md).
 
-How it connects (user decision, see [auth research](docs/research/integrations-auth.md)): no OAuth apps. You sign in to slack.com, github.com, Google or Notion inside den like any site, and den reuses that session from its own WebKit data store (`session` + `net` host services, gated per plugin by declared `session:<domain>` permissions). Shipped items are verified end to end against local fakes of all five services (`MockServices`); a first real sign-in has not been verified.
+How it connects (user decision, see [auth research](docs/research/integrations-auth.md)): no OAuth apps. You sign in to slack.com, github.com, Google or Notion inside den like any site, and den reuses that session from its own WebKit data store (`session` + `net` host services, gated per plugin by declared `session:<domain>` permissions). Shipped items are verified end to end against local fakes of all five services (`MockServices`). A first real Slack sign-in (2026-10-07) found that a workspace sign-in boots Slack's web client on the **workspace** origin (`<workspace>.slack.com`), where its config lives — the probe now reads every candidate origin, not just app.slack.com.
 
 - ✅ Connection plugins: Slack (unread DMs, mentions, threads awaiting your reply; workspace picker) and GitHub (review requests, mentions, assigned issues, failing CI on your PRs)
 - ✅ Multiple Slack workspaces at once, each switchable in Settings ▸ Connections
@@ -255,7 +257,9 @@ How it connects (user decision, see [auth research](docs/research/integrations-a
 - ✅ Gmail (every signed-in account, switchable; unread mail, "waiting for your reply" from people, Google Docs activity from its notification mail) and Google Calendar (today's events read from the open Calendar page, no requests; the secret iCal address as a documented fallback), each its own lazy plugin with auto-connect. Risks: [auth research §11](docs/research/integrations-auth.md#11-session-reuse-for-gmail-google-calendar-and-notion-2026-09-28)
 - ✅ Notion (mentions, comments, pages shared with you, per workspace) through its internal web API. Its terms forbid automated access: decide before a release whether it stays, becomes connect-only, or waits for an official API
 - ⏳ Choose which calendars show; Calendar data without an open tab or pasted address (no verified session route yet)
-- ⏳ More connections as plugins: Linear and Jira/Confluence, then Outlook's calendar from a loaded tab. Skipped: Teams, SharePoint, Zoom, Figma, YouTube, LinkedIn, Sheets
+- 🟡 More connections as plugins
+  - ✅ Linear and Jira, session reuse through the sites' own sign-in (assigned issues in the briefing; 2026-10-06)
+  - ⏳ Confluence, then Outlook's calendar from a loaded tab. Skipped: Teams, SharePoint, Zoom, Figma, YouTube, LinkedIn, Sheets
 - ✅ No tokens stored: session tokens are read on demand and kept in memory only; connections run locally
 - ⏳ Official OAuth option (Slack PKCE / GitHub device flow) for users who don't want session reuse — blocked: needs registered OAuth apps and a legal/product decision
 - ✅ Daily briefing (Slack + GitHub) summarized with a todo list, prepared at a set time (8:00 by default, catches up after sleep or launch)
@@ -310,7 +314,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ Readable international domain names (spoofable ones stay in Punycode), with lookalike-domain warnings
 - 🟡 Per-site permissions UI
   - ✅ camera/mic answers remembered per site until quit
-  - ⏳ a UI to review and change them
+  - ✅ a UI to review and change them (the Shields panel's per-answer camera/mic rows; "Ask" forgets an answer — 2026-10-06)
 - 🟡 Sandboxed plugins
   - ✅ plugins can reach only the sites they declare (`session:` / `net:`)
   - ⏳ process-level sandboxing
@@ -343,7 +347,7 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ Protect recently used tabs from discard (the last 5); idle time counts only while den is frontmost
 - ✅ Battery saver: on battery or in Low Power Mode, idle tabs unload after 1 minute, background video pauses, new pages don't autoplay (Settings ▸ Tabs, on by default)
 - ✅ Never discard tabs with unsaved input, camera/mic in use, or on an "always keep active" list ("Keep Site Active" in the tab menu)
-- ⏳ Dimmed icon on discarded tabs
+- ✅ Dimmed icon on discarded tabs (2026-10-06)
 - 🟡 Unload a whole space or profile, by hand or automatically
   - ✅ Unload Space (⌃⌘U, the space's menu)
   - ⏳ a profile; automatically
@@ -380,10 +384,10 @@ AI in den is Apple's on-device model, used only for the daily briefing and the p
 - ✅ Auto-update (OTA): Sparkle for the app, signed hot-swapped plugins, `stable` / `prerelease` / `follow-main` channels, relaunch only when you won't notice ([docs](docs/updates.md))
 - ✅ Stable signing identity: `scripts/make-signing-identity.sh` creates "den Local Signing" in the login keychain once; `scripts/bundle.sh` signs with it (designated requirement = certificate, not cdhash), ad-hoc when absent
 - ✅ CI builds on every PR: build, full test suite, report-only perf on the macos-26 runner; `scripts/ci-check.sh` for remote builds (docs/dev.md)
-- ⏳ Contributing guide
+- ✅ Contributing guide ([CONTRIBUTING.md](CONTRIBUTING.md))
 - 🟡 Plugin author docs
   - ✅ [host API](docs/host-api.md), [plugin services](docs/plugin-services.md), [`~/.den` plugins](docs/den-home.md#plugins)
-  - ⏳ a step-by-step guide for plugin authors
+  - ✅ a step-by-step guide for plugin authors ([docs/plugin-author-guide.md](docs/plugin-author-guide.md))
 - ✅ Performance tooling: `scripts/perf.sh`, `scripts/perf/compare.sh`, `perfprobe`, `scripts/measure-memory.sh`
 
 ### Test reliability
