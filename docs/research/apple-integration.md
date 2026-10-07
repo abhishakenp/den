@@ -97,7 +97,7 @@
 - `SecTaskCopyValueForEntitlement(…, "com.apple.developer.icloud-services")` returns nil when absent, so it is a safe gate. den's is `Signing.has("com.apple.developer.icloud-services", "CloudKit")`.
 
 **den's design (the `sync` plugin; host `cloud` service).**
-- The host's `cloud` service exists only when the entitlement check passes. Otherwise `cloud.state` says `{available: false, reason: "signing"}` and nothing CloudKit is linked or called.
+- The host's `cloud` service is only the gate: it never links or calls CloudKit. `cloud.state` says `{available: false, reason: "signing"}` until the entitlement check passes.
 - When available, it wraps one `CKSyncEngine` over the private database, zone `den`. Its methods are `put {type, id, fields}`, `delete {type, id}` and `state`, plus the events `cloud.changed {type, id, fields | deleted}` and `cloud.account {status}`.
 - The plugin owns what syncs and how conflicts resolve. It listens to `spaces.changed` / `tabs.changed` / `settings.changed`, writes records, and applies incoming ones through `spaces` / `tabs` / `settings`.
 - Data model (one CKRecord type each; ids are den's own):

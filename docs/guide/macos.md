@@ -32,5 +32,5 @@ Extensions such as Bitwarden can unlock through their desktop app; see [Extensio
 
 ## Not yet
 
-- **iCloud sync** of spaces, pinned tabs and settings: designed, waiting for the developer account (CloudKit needs it).
+- **iCloud sync** of spaces, pinned tabs and settings: not built yet, and CloudKit needs den signed with a developer account to run at all. Until then den's `cloud` service reports sync as off (`reason: "signing"`) rather than pretending.
 - **Passkeys:** need Apple's browser passkey approval; see [Privacy & passwords](privacy-and-passwords.md#passkeys).
