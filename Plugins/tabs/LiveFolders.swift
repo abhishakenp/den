@@ -25,7 +25,12 @@ final class LiveFolders {
     var icon: String
   }
 
-  static let sources = [Source(id: "github", title: "GitHub", icon: "https://github.com/favicon.ico")]
+  static var sources: [Source] = [Source(id: "github", title: "GitHub", icon: "https://github.com/favicon.ico")]
+  /// Called by other plugins to register additional live folder sources at runtime.
+  static func registerSource(_ source: Source) {
+    for s in sources where s.id == source.id { return }
+    sources.append(source)
+  }
   static let maxDone = 20
   static let doneKeepMs: Int64 = 7 * 86_400_000
   static let maxSeen = 300
@@ -216,11 +221,21 @@ final class LiveFolders {
 
   func row(_ fid: String, _ it: Value, seen: [String]) -> Value {
     let k = it.s("id")
+    let kind = it.s("kind")
     var v: Value = ["type": "tabRow", "id": .string("live:" + fid + ":" + k), "title": .string(it.s("title")), "icon": .string(icon(it)),
                     "selected": false, "closable": true, "closeTitle": "Mark as Done", "draggable": false, "hoverIntent": .int(TabsCore.rowCardDelayMs),
                     "menu": [["id": "open", "title": "Open", "icon": "sf:arrow.up.right.square"], ["id": "copy", "title": "Copy Link", "icon": "sf:link"],
                              ["separator": true], ["id": "done", "title": "Mark as Done", "icon": "sf:checkmark"]]]
     if !seen.contains(k) { v.put("unread", true) }
+    // PR peek on live rows: pass the item's kind so the preview system knows this is a feed item
+    // (not a tab), and pass summary/badge so the PR peek card can surface CI status, description
+    // preview, and quick-action buttons (merge/close/star) directly on hover.
+    var preview: Value = ["kind": .string(kind)]
+    if let summary = it.sOpt("summary"), !summary.isEmpty { preview.put("summary", it["summary"]) }
+    if let badge = it.sOpt("badge"), !badge.isEmpty { preview.put("badge", .string(it.s("badge"))) }
+    if let detail = it.sOpt("detail"), !detail.isEmpty { preview.put("detail", it["detail"]) }
+    v.put("kind", .string(kind))
+    v.put("preview", preview)
     return v
   }
 
@@ -286,7 +301,7 @@ final class LiveFolders {
       case "close": markDone(fid, it)
       case "hover":
         env.call("previews", "show", ["anchor": .string(id), "url": it["url"], "title": it["title"], "icon": .string(icon(it)),
-                                      "kind": "live", "place": "trailing"])
+                                      "kind": "live"])
       case "menu":
         switch value.string ?? "" {
         case "open": open(fid, it)
