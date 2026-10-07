@@ -307,9 +307,21 @@ struct MediaTests {
     var lines: [String] = []
     rt.media.log = { lines.append($0) }
     defer { rt.media.log = nil }
-    _ = await Wait.asyncJS(web, "const v = document.querySelector('video'); v.style.width = '120px'; v.muted = false; await v.play(); return true")
+    _ = await Wait.asyncJS(web, """
+      const v = document.querySelector('video');
+      v.style.width = '120px'; v.muted = false;
+      // Wait for playback to actually begin: a `playing` event landing after the enlargement
+      // below would post a fresh report and the stale premise would be gone.
+      const playing = new Promise(r => { if (!v.paused && v.readyState >= 3) return r(true); v.addEventListener('playing', () => r(true), { once: true }); });
+      await v.play();
+      await playing;
+      return true
+      """)
     #expect(await wait { rt.media.eligibility(id).why.hasPrefix("small") })
-    _ = await Wait.asyncJS(web, "document.querySelector('video').style.width = '640px'; return true")
+    // Scale rather than resize: the layout box is untouched, so WebKit fires no resize event for
+    // the page to report (the same enlargement a user sees), while the rect the report reads is
+    // the new one — what the last report knows is stale, exactly as the test says.
+    _ = await Wait.asyncJS(web, "document.querySelector('video').style.transform = 'scale(5.34)'; return true")
     try await Task.sleep(for: .milliseconds(300))
     #expect(rt.media.eligibility(id).why.hasPrefix("small"), "nothing told den about the new size")
     rt.media.appActiveChanged(false)
