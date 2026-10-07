@@ -484,4 +484,4 @@ final class LiveFolders {
       registered.append(w.0)
     }
   }
-}
+#endif
