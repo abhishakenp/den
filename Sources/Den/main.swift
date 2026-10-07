@@ -308,9 +308,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     home.ensureLayout()
     config.start()
     live.start()
-    // Load ATC (Air Traffic Control) rules from `[atc]` in config.toml.
-    let atcV = config.lookup(config.config, "atc")
-    if let atc = ATC(atcV), !atc.rules.isEmpty { runtime.webviews.atc = atc }
     let firstWindowEpochMs = processStartDate().timeIntervalSince1970 * 1000 + firstWindowMs
     sessionLog?.write(String(format: "launch pid=%d firstWindowEpochMs=%.0f firstWindowMs=%.1f", getpid(), firstWindowEpochMs, firstWindowMs))
     // The tabs plugin logs the restorable session (`session launch spaces=… sig=…`).
