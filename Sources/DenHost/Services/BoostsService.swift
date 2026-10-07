@@ -138,8 +138,8 @@ public final class BoostsService: HostService {
         "description": .string(b.description), "version": .string(b.version),
         "hosts": .array(b.hosts.map { .string($0) }),
       ]
-      if !b.css.isEmpty { v.put("css", .string(b.css)) }
-      if !b.js.isEmpty  { v.put("js", .string(b.js)) }
+      if !b.css.isEmpty { v = v.with("css", .string(b.css)) }
+      if !b.js.isEmpty  { v = v.with("js", .string(b.js)) }
       return v
     })
   }

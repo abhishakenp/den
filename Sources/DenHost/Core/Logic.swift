@@ -261,7 +261,7 @@ public struct ATC: Sendable {
   public init?(_ v: Value?) {
     guard let pairs = v?.object else { return nil }
     func ruleList(k: String) -> [ATCRule] {
-      m[k].flatMap { case .array(let a) in a.compactMap(ATCRule.init) } ?? []
+      pairs.first { $0.0 == k }?.1.array?.compactMap(ATCRule.init) ?? []
     }
     rules = ruleList(k: "rules")
     if let da = pairs.first(where: { $0.0 == "default_action" })?.1.string,
