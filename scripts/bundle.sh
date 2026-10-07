@@ -63,8 +63,10 @@ pids=()
 for dir in Plugins/*/; do
   id="$(basename "$dir")"
   [[ "$id" == Shared ]] && continue
-  # Declared permissions (session:<domain>, net:<domain>) ride next to the dylib as <id>.json.
-  [[ -f "${dir}permissions.json" ]] && cp "${dir}permissions.json" "$APP/Contents/PlugIns/$id.json"
+  # The sidecar (Plugins/<id>/plugin.json: permissions, launch, activation) rides next to the
+  # dylib as <id>.json. permissions.json is the old name.
+  if [[ -f "${dir}plugin.json" ]]; then cp "${dir}plugin.json" "$APP/Contents/PlugIns/$id.json"
+  elif [[ -f "${dir}permissions.json" ]]; then cp "${dir}permissions.json" "$APP/Contents/PlugIns/$id.json"; fi
   # Files the plugin injects into pages (webviews.inject), read only when a feature is used.
   # (Under Resources: codesign --deep would take a folder in PlugIns for a nested bundle.)
   [[ -d "${dir}resources" ]] && mkdir -p "$APP/Contents/Resources/plugin-resources" && cp -R "${dir}resources" "$APP/Contents/Resources/plugin-resources/$id"

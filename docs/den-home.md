@@ -53,6 +53,36 @@ struct Plugin: CordisPlugin {
 - You need a Swift toolchain with the Embedded Swift stdlib, which Xcode's toolchain lacks. Get one from swift.org, or use `swiftly`. den looks in the same places as `cordis-build`: `$CORDIS_TOOLCHAIN`, then `~/.swiftly/toolchains`, then `~/Library/Developer/Toolchains` (newest first), then `/Library/Developer/Toolchains/swift-latest.xctoolchain`. Without one, den shows a single message and skips source folders.
 - A failed build shows a toast with the first error. The full output is in `~/.den/logs/build-<id>.log`. The previous build keeps running.
 
+### The sidecar: `plugin.json`
+
+Next to a plugin's code goes one JSON file that den reads without loading the plugin: `~/.den/plugins/<id>/plugin.json` for a source folder (den doesn't copy it next to the build yet, so a source plugin loads deferred), `<id>.json` next to a `<id>.dylib`, and `Plugins/<id>/plugin.json` for den's own plugins. Every key is optional.
+
+```json
+{
+  "permissions": ["net:api.example.com"],
+  "launch": "lazy",
+  "activation": {
+    "services": ["hello"],
+    "events": ["hello.key.wave", {"event": "schedule.fire", "match": {"id": "hello.*"}}],
+    "commands": [{"id": "hello.wave", "title": "Wave", "icon": "sf:hand.wave", "keywords": ["hi"]}],
+    "keys": [{"chord": "cmd+shift+h", "event": "hello.key.wave", "title": "Wave", "menu": "View"}],
+    "settings": [{"id": "hello", "title": "Hello", "icon": "sf:hand.wave", "controls": [{"key": "loud", "type": "toggle", "title": "Loud", "default": false}]}]
+  }
+}
+```
+
+- `permissions`: what the plugin may reach ([host-api.md](host-api.md#permissions)).
+- `launch`: `firstFrame` loads it before the first window (only for plugins that paint it); `deferred` (the default) loads it right after the first window; `lazy` loads it the first time it's needed, which may be never.
+- `activation`, for a `lazy` plugin: what den registers on its behalf at launch, without loading it. Each entry is also what wakes it. The plugin loads, then the trigger goes through, so nothing looks different the first time.
+  - `services`: a call to one of them loads the plugin and is answered by it.
+  - `events`: an event name, or `{event, match}` where each `match` value must equal the payload's (`*` at the end matches a prefix). After loading, den emits the event again, so pick events whose listeners check an id.
+  - `commands`: the `commands.register` arguments of each command. They're in the command bar from launch; running one loads the plugin.
+  - `keys`: the `keys.bind` arguments of each shortcut. The chord and its menu item exist from launch; pressing it loads the plugin.
+  - `settings`: the `settings.register` arguments of each section. It shows in Settings (den stores the values); opening it, changing a value or pressing one of its buttons loads the plugin.
+- When it loads, the plugin registers the same things itself, with the same ids, and they replace den's copies.
+- A lazy plugin that doesn't load (a broken build, permissions not allowed yet) keeps its registrations, so the next trigger tries again; every attempt is logged.
+- A `lazy` sidecar without any `activation` entry is loaded like `deferred`, because nothing could ever wake it.
+
 ## Themes
 
 Each file in `~/.den/themes` is one preset. The theme plugin offers every preset in the command bar as **Theme: \<name\>**, and picking one applies it to the current space.

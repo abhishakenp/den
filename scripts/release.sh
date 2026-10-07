@@ -64,9 +64,18 @@ for f in $APP/Contents/PlugIns/*.dylib; do
   cp $f $DIST/$id.dylib
   sha=$(shasum -a 256 $f | cut -d' ' -f1)
   sig=$($BIN/sign_update --account den -p $f)
-  perms='[]'
-  [[ -f Plugins/$id/permissions.json ]] && perms=$(plutil -extract permissions json -o - Plugins/$id/permissions.json)
-  plugins+=("{\"id\":\"$id\",\"version\":\"$VERSION\",\"abi\":$ABI,\"hostAPI\":$HOSTAPI,\"sha256\":\"$sha\",\"signature\":\"$sig\",\"url\":\"$URLBASE/$id.dylib\",\"permissions\":$perms}")
+  perms='[]' extra=''
+  side=Plugins/$id/plugin.json
+  [[ -f $side ]] || side=Plugins/$id/permissions.json
+  if [[ -f $side ]]; then
+    perms=$(plutil -extract permissions json -o - $side 2>/dev/null || print '[]')
+    # Lazy loading (LazyPlugins.swift) travels with the plugin.
+    l=$(plutil -extract launch raw -o - $side 2>/dev/null || true)
+    [[ -n $l ]] && extra+=",\"launch\":\"$l\""
+    a=$(plutil -extract activation json -o - $side 2>/dev/null || true)
+    [[ -n $a ]] && extra+=",\"activation\":$a"
+  fi
+  plugins+=("{\"id\":\"$id\",\"version\":\"$VERSION\",\"abi\":$ABI,\"hostAPI\":$HOSTAPI,\"sha256\":\"$sha\",\"signature\":\"$sig\",\"url\":\"$URLBASE/$id.dylib\",\"permissions\":$perms$extra}")
 done
 CHANNEL=stable; (( PRE )) && CHANNEL=prerelease
 ENTRY="{\"version\":\"$VERSION\",\"tag\":\"$TAG\",\"build\":$BUILD,\"hostAPI\":$HOSTAPI,\"commit\":\"$COMMIT\",\"plugins\":[${(j:,:)plugins}]}"

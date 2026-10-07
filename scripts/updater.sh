@@ -210,9 +210,16 @@ deploy_plugins() { # sha ids...
   mkdir -p $MANAGED
   for id in "$@"; do
     if [[ ! -d $SRC/Plugins/$id ]]; then rm -f $MANAGED/$id.dylib $MANAGED/$id.json; log "removed $id"; continue; fi
-    local perms='[]'
-    [[ -f $SRC/Plugins/$id/permissions.json ]] && perms=$(plutil -extract permissions json -o - $SRC/Plugins/$id/permissions.json 2>/dev/null || print '[]')
-    print -r -- "{\"id\":\"$id\",\"version\":\"$(short $sha)\",\"commit\":\"$sha\",\"hostAPI\":$gen,\"source\":\"follow-main\",\"permissions\":$perms}" > $MANAGED/.$id.json.tmp
+    local perms='[]' extra='' side=$SRC/Plugins/$id/plugin.json l a
+    [[ -f $side ]] || side=$SRC/Plugins/$id/permissions.json
+    if [[ -f $side ]]; then
+      perms=$(plutil -extract permissions json -o - $side 2>/dev/null || print '[]')
+      l=$(plutil -extract launch raw -o - $side 2>/dev/null || true)
+      [[ -n $l ]] && extra+=",\"launch\":\"$l\""
+      a=$(plutil -extract activation json -o - $side 2>/dev/null || true)
+      [[ -n $a ]] && extra+=",\"activation\":$a"
+    fi
+    print -r -- "{\"id\":\"$id\",\"version\":\"$(short $sha)\",\"commit\":\"$sha\",\"hostAPI\":$gen,\"source\":\"follow-main\",\"permissions\":$perms$extra}" > $MANAGED/.$id.json.tmp
     mv -f $MANAGED/.$id.json.tmp $MANAGED/$id.json
     # Same volume: rename is atomic, den sees one complete new file.
     cp $STAGE/$id.dylib $MANAGED/.$id.dylib.tmp && mv -f $MANAGED/.$id.dylib.tmp $MANAGED/$id.dylib
