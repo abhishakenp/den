@@ -123,8 +123,15 @@ Observed output (verbatim):
 
 ---
 
+## Update 2026-10-05: Developer ID confirmed, organization required
+
+- **Developer ID works (observed).** Chrome 154 from Google's dmg (`Developer ID Application: Google LLC (EQHXZ8M8AV)`, notarized) carries `com.apple.developer.web-browser.public-key-credential = true`, authorized by an embedded **Developer ID** provisioning profile (`ProvisionsAllDevices`, platform OSX), whose entitlements also list `com.apple.application-identifier`, `com.apple.developer.team-identifier`, `associated-domains.applinks.read-write` and `keychain-access-groups`. Chrome also declares `NSWebBrowserPublicKeyCredentialUsageDescription` (in `en.lproj/InfoPlist.strings`). So step 4 above is the right route, and step 5 should add `com.apple.application-identifier` and `com.apple.developer.team-identifier` too.
+- **Organization only.** The entitlement doc says the requester "must hold the Account Holder role for an organization's Apple Developer account" ([doc JSON](https://developer.apple.com/tutorials/data/documentation/bundleresources/entitlements/com.apple.developer.web-browser.public-key-credential.json)). An individual membership doesn't qualify; enrolling as an organization needs a D-U-N-S number.
+- **Add to Info.plist** once entitled: `NSWebBrowserPublicKeyCredentialUsageDescription` (the text macOS shows when den asks to use your passkeys).
+- The full signing checklist, shared with CloudKit, App Intents and 1Password: [apple-integration.md §6](apple-integration.md#6-what-the-maintainer-must-do-signing).
+
 ## Open questions
 - Exact ASC check behind `getCanCurrentProcessAccessPasskeysForRelyingParty` (entitlement only, or also `.authorized` state?).
 - Whether WebKit prompts for passkey authorization itself.
-- Developer ID profile + managed capability confirmation (inspect a shipping Chrome/Brave with `codesign -d --entitlements - --xml`).
+- ~~Developer ID profile + managed capability confirmation~~ Confirmed with Chrome 154 (above).
 - Behavior of the modal `get`/`create` path in a focused window without the entitlement (expected `NotAllowedError`, untested).

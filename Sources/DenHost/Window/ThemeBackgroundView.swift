@@ -14,6 +14,37 @@ public final class ThemeBackgroundView: NSView {
   private let gradient = CAGradientLayer()
   private let grain = CALayer()
 
+  /// Settings ▸ General ▸ Translucent window: the desktop shows through the theme (macOS's
+  /// behind-window material under a see-through gradient). Off by default: nothing is created
+  /// until it's turned on. Every theme view follows `ThemeBackgroundView.translucency`.
+  public static var translucency = false
+  /// How much of the theme covers the material when translucent: enough that the space's colors
+  /// stay the space's colors, little enough that the blur reads as glass.
+  public static let translucentOpacity: Float = 0.72
+  public private(set) var material: NSVisualEffectView?
+  public var translucent = false {
+    didSet { if translucent != oldValue { applyTranslucent() } }
+  }
+
+  private func applyTranslucent() {
+      if translucent, material == nil {
+        let m = NSVisualEffectView(frame: bounds)
+        m.wantsLayer = true
+        m.material = .underWindowBackground
+        m.blendingMode = .behindWindow
+        m.state = .followsWindowActiveState
+        m.autoresizingMask = [.width, .height]
+        addSubview(m, positioned: .below, relativeTo: nil)
+        // Under the theme's own layers (the gradient and grain are sublayers of this view's).
+        if let ml = m.layer { layer?.insertSublayer(ml, at: 0) }
+        material = m
+      } else if !translucent {
+        material?.removeFromSuperview()
+        material = nil
+      }
+      applyTheme()
+  }
+
   public override var isFlipped: Bool { true }
   public override var mouseDownCanMoveWindow: Bool { true }
   public override var wantsUpdateLayer: Bool { true }
@@ -25,6 +56,8 @@ public final class ThemeBackgroundView: NSView {
     layer?.addSublayer(grain)
     gradient.startPoint = CGPoint(x: 0, y: 0)
     gradient.endPoint = CGPoint(x: 0.9, y: 1)
+    translucent = Self.translucency
+    if translucent { applyTranslucent() }  // (no didSet inside init)
     applyTheme()
   }
   required init?(coder: NSCoder) { fatalError() }
@@ -53,6 +86,7 @@ public final class ThemeBackgroundView: NSView {
     let stops = theme.stops(dark: dark)
     gradient.colors = stops.map(\.cg)
     gradient.locations = stops.count == 2 ? [0, 1] : [0, 0.5, 1]
+    gradient.opacity = translucent ? Self.translucentOpacity : 1
     let tile = dark ? Self.noiseLight : Self.noise
     grain.backgroundColor = tile.map { NSColor(patternImage: NSImage(cgImage: $0, size: NSSize(width: Tokens.grainTileSize, height: Tokens.grainTileSize))).cgColor }
     grain.opacity = Float(min(1, theme.grain * Tokens.grainMaxAlpha * 2))
