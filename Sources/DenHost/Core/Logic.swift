@@ -233,15 +233,15 @@ public struct ATCRule: Sendable {
 
   /// Parse a single rule from a Value (TOML table).
   public init?(_ v: Value?) {
-    guard case .map(let m) = v?.root else { return nil }
+    guard let pairs = v?.object else { return nil }
     func str(k: String) -> String? {
-      m[k].flatMap { case .string(let s) in s }
+      pairs.first { $0.0 == k }?.1.string
     }
     func strList(k: String) -> [String] {
-      m[k].flatMap { case .array(let a) in a.compactMap { case .string(let s) in s } } ?? []
+      pairs.first { $0.0 == k }?.1.array?.compactMap { $0.string } ?? []
     }
     func modList(k: String) -> [ATCMod] {
-      m[k].flatMap { case .array(let a) in a.compactMap { case .string(let s) in ATCMod(rawValue: s) } } ?? []
+      pairs.first { $0.0 == k }?.1.array?.compactMap { $0.string.flatMap(ATCMod.init) } ?? []
     }
     hosts = strList(k: "hosts"); urlPattern = str(k: "url_pattern") ?? str(k: "urlPattern") ?? ""
     modifiers = modList(k: "modifiers"); action = LinkAction(rawValue: str(k: "action") ?? "newTab") ?? .newTab
@@ -259,12 +259,12 @@ public struct ATC: Sendable {
 
   /// Parse ATC from a TOML `[atc]` value.
   public init?(_ v: Value?) {
-    guard case .map(let m) = v?.root else { return nil }
+    guard let pairs = v?.object else { return nil }
     func ruleList(k: String) -> [ATCRule] {
       m[k].flatMap { case .array(let a) in a.compactMap(ATCRule.init) } ?? []
     }
     rules = ruleList(k: "rules")
-    if let da = m["default_action"].flatMap({ case .string(let s) in s }),
+    if let da = pairs.first(where: { $0.0 == "default_action" })?.1.string,
        let act = LinkAction(rawValue: da) { defaultAction = act }
   }
 

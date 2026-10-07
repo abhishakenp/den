@@ -104,7 +104,7 @@ public final class BoostsService: HostService {
     guard let r = webviews.record(id) else {
       return .error("boosts: no webview '\(id)'")
     }
-    let h = PageStyleService.host(of: r.webView?.url ?? URL(string: r.url))
+    let h = PageStyleService.pageHost(of: r.webView?.url ?? URL(string: r.url))
     let rule = rule(for: h)
     return [
       "host": .string(h),
@@ -138,8 +138,8 @@ public final class BoostsService: HostService {
         "description": .string(b.description), "version": .string(b.version),
         "hosts": .array(b.hosts.map { .string($0) }),
       ]
-      if !b.css.isEmpty { v["css"] = .string(b.css) }
-      if !b.js.isEmpty  { v["js"]  = .string(b.js) }
+      if !b.css.isEmpty { v.put("css", .string(b.css)) }
+      if !b.js.isEmpty  { v.put("js", .string(b.js)) }
       return v
     })
   }
@@ -197,7 +197,7 @@ public final class BoostsService: HostService {
     active = true
     webviews.configureHooks.append { [weak self] r, config in self?.configure(r, config) }
     webviews.navigatingHooks.append { [weak self] r, w, url in
-      if let self, let h = PageStyleService.host(of: url) {
+      if let self, let h = PageStyleService.pageHost(of: url) {
         self.apply(r, w, host: h)
       }
     }
@@ -272,7 +272,7 @@ public final class BoostsService: HostService {
   func reapplyAll() {
     for r in webviews.records.values {
       guard let w = r.webView else { continue }
-      let h = PageStyleService.host(of: w.url ?? URL(string: r.url))
+      let h = PageStyleService.pageHost(of: w.url ?? URL(string: r.url))
       apply(r, w, host: h)
     }
   }
