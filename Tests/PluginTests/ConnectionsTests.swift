@@ -95,11 +95,12 @@ struct ConnectionsTests {
     #expect(p.allowsSession("slack", host: "acme.slack.com"))
     #expect(!p.allowsSession("slack", host: "api.example.com"))
     #expect(p.allowsNet("slack", host: "api.example.com"))
-    // The real sidecars in the repo.
+    // The real sidecars in the repo. slack still ships the old name (`permissions.json`) while its
+    // own PR is in flight; `bundle.sh` copies either name to `<id>.json` next to the dylib.
     let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     let q = Permissions()
     #expect(q.loadSidecar(plugin: "slack", dylib: repo.appendingPathComponent("Plugins/slack/permissions.dylib")) == ["session:slack.com"])
-    #expect(q.loadSidecar(plugin: "github", dylib: repo.appendingPathComponent("Plugins/github/permissions.dylib")) == ["session:github.com"])
+    #expect(q.loadSidecar(plugin: "github", dylib: repo.appendingPathComponent("Plugins/github/plugin.dylib")) == ["session:github.com"])
   }
 
   @Test func sessionReadsCookiesAndSiteStorageAfterSignIn() async throws {

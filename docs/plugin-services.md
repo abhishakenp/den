@@ -280,7 +280,7 @@ Injects `ui`, `storage`, `keys`, `schedule`, `ai`; calls `connections`, `tabs` a
 
 ## `previews` (plugin `previews`)
 
-Injects: `ui`, `webviews`, `storage`. It also calls `net`, `session`, `tabs`, `peek`, `connections` and `settings` when they exist. Permissions (`permissions.json`): `net:api.github.com`, `net:*` (link heads, never with cookies), and `session:` for `github.com`, `calendar.google.com`, `mail.google.com` and `slack.com`.
+Injects: `ui`, `webviews`, `storage`. It also calls `net`, `session`, `tabs`, `peek`, `connections` and `settings` when they exist. Permissions (`plugin.json`): `net:api.github.com`, `net:*` (link heads, never with cookies), and `session:` for `github.com`, `calendar.google.com`, `mail.google.com` and `slack.com`.
 
 Dia-style hover cards for sidebar tabs, the GitHub PR peek, and ⇧-hover link cards on any page, all composed from the host's generic nodes and shown with `ui.card` (cards `previews.tab` and `previews.link`). It's a plugin of its own rather than part of `tabs`: `tabs` only says what is hovered, and everything site-specific (providers, permissions, caches) lives here, so it can be left out or replaced, and other plugins can add providers without touching `tabs`.
 
