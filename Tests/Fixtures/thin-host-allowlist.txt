@@ -164,6 +164,7 @@ string	Sources/DenHost/Services/AIService.swift	True only if the user has to do 
 string	Sources/DenHost/Services/ContentService.swift	Open as Tab
 string	Sources/DenHost/Services/ContentService.swift	Open in Split View
 string	Sources/DenHost/Services/ContentService.swift	Open in another window
+string	Sources/DenHost/Services/ContentService.swift	Resize Web Panel
 string	Sources/DenHost/Services/ContentService.swift	Show Here
 string	Sources/DenHost/Services/DevTools.swift	Firefox — macOS
 string	Sources/DenHost/Services/DevTools.swift	Google Chrome — Android
@@ -339,6 +340,7 @@ string	Sources/DenHost/Toolkit/Library.swift	Untitled
 string	Sources/DenHost/Toolkit/Rows.swift	Add to den
 string	Sources/DenHost/Toolkit/Rows.swift	Add to den
 string	Sources/DenHost/Toolkit/Rows.swift	Adding…
+string	Sources/DenHost/Toolkit/Rows.swift	Camera and Microphone
 string	Sources/DenHost/Toolkit/Rows.swift	Close Tab
 string	Sources/DenHost/Toolkit/Rows.swift	Copy Link
 string	Sources/DenHost/Toolkit/Rows.swift	Folder
