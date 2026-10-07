@@ -739,7 +739,7 @@ Per-site web policy for every web view (the `shields` plugin's host half, [plugi
 | `forget` | `host`, `profile?` | `{pending}`, then `sitepolicy.forgotten {host, removed}`. Removes every website data record (cookies, storage, caches, service workers…) of the host's registrable domain, and its camera, microphone, location and notification answers |
 | `permissions` / `resetPermissions` | `host` | `[{origin, kind: camera\|microphone\|location\|notifications, allowed, kept}]` (`kept`: remembered across launches; the others until quit) / ok |
 | `allPermissions` | – | the same, for every site |
-| `setPermission` | `host?`, `origin`, `kind`, `allowed?` | ok. With `host` (the shields panel's per-site rows): camera and microphone only, and `origin` must be the site's or a subdomain's. Without `host` (Settings ▸ Shields' list): any kind. Without `allowed` the answer is forgotten, so the site asks again. Emits `sitepolicy.permissionsChanged` |
+| `setPermission` | `host?`, `origin`, `kind`, `allowed?` | ok. With `host` (the shields panel's per-site rows): camera and microphone only, and `origin` must be the site's or a subdomain's. Without `host` (Settings ▸ Shields' list): any kind. Without `allowed` the answer is forgotten, so the site asks again. Camera, microphone and location changes emit `sitepolicy.permissionsChanged`; notification changes emit `notifications.changed` |
 | `unsaved` | `id`, `request?` | `{request}`, then `sitepolicy.unsaved {request, id, unsaved}`: edited form fields, or text in a focused editor, in the main frame |
 | `support` | – | `{autoplay, popups, blockedCounts}`: which WebKit SPI is present |
 

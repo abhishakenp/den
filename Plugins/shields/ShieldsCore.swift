@@ -623,7 +623,11 @@ final class ShieldsCore {
     }
     privacy.append(["type": "valueRow", "id": "shields.connection", "title": "Connection", "value": .string(conn.0), "tone": .string(conn.1)])
     let perms = env.call("sitepolicy", "permissions", ["host": .string(h)]).array ?? []
-    let permText = perms.isEmpty ? "Asks first" : Self.describePermissions(perms)
+    var permText = "Asks first"
+    if !perms.isEmpty {
+      let allowed = perms.filter { $0.b("allowed") }.count
+      permText = allowed == perms.count ? "Allowed" : (allowed == 0 ? "Blocked" : Self.describePermissions(perms))
+    }
     var permRow: Value = ["type": "valueRow", "id": "shields.permissions", "title": "Permissions", "value": .string(permText)]
     if !perms.isEmpty { permRow.put("buttons", [["id": "reset", "icon": "sf:arrow.counterclockwise"]]) }
     privacy.append(permRow)
