@@ -668,13 +668,6 @@ final class TabsCore {
     case "newLiveFolder":
       guard let fid = liveFolders.create(args.s("source"), space: args.sOpt("spaceId")) else { return .err("tabs: no live source '" + args.s("source") + "'") }
       return ["id": .string(fid)]
-    case "addRssFeed":
-      let url = args.s("url")
-      let normalized = URLs.normalize(url)
-      guard !normalized.isEmpty else { return .err("tabs: invalid RSS URL") }
-      liveFolders.addRssFeed(normalized)
-    case "removeRssFeed":
-      liveFolders.removeRssFeed(args.s("url"))
     case "pillButtons":
       // Another plugin's buttons in the URL pill while `webview` is selected: [{id, icon, tooltip?, active?}].
       // A click emits ui.action {id: <button id>, action: click, value: {webview}}.
