@@ -328,6 +328,9 @@ struct NowPlayingTests {
     #expect(wide.media.playPause.isHidden && !wide.icon.isHidden)
 
     _ = rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "g", "children": .array(["a", "b", "c", "d"].map(tile))]])
+    // The tiles that stay animate into their new frames (GridNode's reorder spring), so let it
+    // run before reading geometry.
+    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
     rt.ui.sidebarView.layoutSubtreeIfNeeded()
     let narrow = try #require(tiles().first { $0.node.str("id") == "a" })
     #expect(narrow.bounds.width < FavoriteTileNode.skipsWidth)

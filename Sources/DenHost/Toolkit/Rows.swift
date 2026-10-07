@@ -523,6 +523,7 @@ final class FavoriteTileNode: HoverNode {
     chip.text = v.str("badge")
     chip.isHidden = chip.text.isEmpty
     setAccessibilityValue(chip.text.isEmpty ? nil : chip.text)
+    apply(r.palette)
     updateMedia()
     needsLayout = true
   }
