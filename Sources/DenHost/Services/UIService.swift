@@ -53,6 +53,8 @@ public final class UIService: HostService {
   var popoverOpen = false
   var commandBarOpen = false
   var dialogOpen = false
+  var reminderOpen = false
+  lazy var reminderCard = DraggableReminderCard(renderer: renderer, emit: { [weak self] in self?.emit($0, $1, $2) })
   /// `overlay.briefing`, `overlay.connections`, `overlay.passwords` and `overlay.extensions`: one `SheetView` each (in that order, bottom to top).
   // thin-host: feature-specific, migrate to plugin (`overlay.passwords` is a feature-named slot; a generic sheet slot per plugin would do)
   static let sheetSlots = ["overlay.briefing", "overlay.connections", "overlay.passwords", "overlay.extensions"]
@@ -166,6 +168,7 @@ public final class UIService: HostService {
     cards.overlays = wc.overlays
     drag.root = sidebarView
     if commandBarOpen { emit("commandBar", "dismiss", .null) }
+    if reminderOpen { reminderCard.hide() }
     refreshPalette()
     HoverTracker.setNeedsRefresh(wc.window)
   }
@@ -237,6 +240,7 @@ public final class UIService: HostService {
       if dialogOpen { overlays.append("dialog") }
       if popoverOpen { overlays.append("popover") }
       if libraryOpen { overlays.append("overlay.library") }
+      if reminderOpen { overlays.append("overlay.reminder") }
       if statusPill.showing { overlays.append("status") }
       for s in Self.sheetSlots where sheets[s] != nil { overlays.append(.string(s)) }
       let shown = cards.cards.filter { $0.value.superview != nil && !$0.value.leaving }.map(\.key).sorted().map { Value.string($0) }
@@ -251,6 +255,8 @@ public final class UIService: HostService {
       return r
     case "hoverIntent":
       if let b = args["redwell"].bool { cards.intent.redwell = b }
+    case "setReminder":
+      setReminder(args)
     case "menu":
       return showMenu(args.str("id"), args.list("items"))
     default:
@@ -282,7 +288,9 @@ public final class UIService: HostService {
 
   func set(_ slot: String, _ tree: Value, page: Int?, window: String? = nil) -> Value {
     // Anything modal (command bar, dialogs, sheets, popovers) closes the hover card.
-    if !tree.isNull, slot.hasPrefix("overlay.") || slot == "dialog" || slot == "popover" { cards.hideAll(); statusPill.hide() }
+    if !tree.isNull, slot.hasPrefix("overlay.") || slot == "dialog" || slot == "popover" {
+      cards.hideAll(); statusPill.hide(); reminderCard.hide()
+    }
     switch slot {
     case "status":
       // Nothing modal is covered by a link address.
@@ -349,6 +357,7 @@ public final class UIService: HostService {
     wc.overlays.applyPaletteRecursively(renderer.palette)
     content?.sideIfLoaded?.header.applyPaletteRecursively(renderer.palette)
     cards.applyPalette(renderer.palette)
+    if reminderOpen { reminderCard.apply(renderer.palette) }
     onPalette?(renderer.palette)
   }
 
@@ -475,6 +484,33 @@ public final class UIService: HostService {
   static func pointerInside(_ v: NSView) -> Bool {
     guard let w = v.window, v.superview != nil else { return false }
     return v.bounds.contains(v.convert(w.mouseLocationOutsideOfEventStream, from: nil))
+  }
+
+  /// `overlay.reminder`: the draggable reminder card overlay.
+  /// {items: [{id, text, done}], visible: true, position?: {x, y}}
+  /// `visible: false` or tree null hides the card.
+  func setReminder(_ args: Value) {
+    let show = args.flag("visible", true)
+    if !show || args.isNull {
+      guard reminderOpen else { return }
+      reminderOpen = false
+      reminderCard.onDismiss = nil
+      reminderCard.hide()
+      return
+    }
+    if !reminderOpen {
+      reminderOpen = true
+      reminderCard.onDismiss = { [weak self] in
+        self?.emit("reminder", "dismiss", .null)
+        self?.reminderOpen = false
+        self?.reminderCard.hide()
+      }
+      // Add to overlays
+      wc.overlays.addSubview(reminderCard)
+      reminderCard.frame = NSRect(x: 32, y: 32, width: 260, height: 100)
+    }
+    reminderCard.update(args, palette: renderer.palette)
+    reminderCard.show()
   }
 
   /// `overlay.library` slot: the Archive / Library sheet over the content area.
