@@ -378,8 +378,8 @@ final class Keycap: NSView {
 
 // MARK: - Toast
 
-/// {type:"toast", id?, text, icon?, duration?: ms, action?: "Restart", dismiss?}. Theme-tinted
-/// pill; auto-dismisses. With `action`, a button at the end emits `ui.action {id, action: "toast"}`
+/// {type:"toast", id?, text, icon?, duration?: ms, action?: "Restart", dismiss?, hold?=true}. Theme-tinted
+/// pill; auto-dismisses, but not while the pointer is on it (`hold: false` opts out). With `action`, a button at the end emits `ui.action {id, action: "toast"}`
 /// and closes the toast; `duration: 0` keeps it until then. A new toast with the same `id`
 /// replaces it; `dismiss: true` removes it.
 @MainActor

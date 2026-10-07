@@ -176,9 +176,10 @@ public final class SettingsService: HostService {
 
   // MARK: Window
 
-  public func open(section: String? = nil) {
+  /// `via`: what opened it ("menu": Settings… / ⌘,; "" from a service call). In `settings.opened`.
+  public func open(section: String? = nil, via: String = "") {
     if window == nil { window = SettingsWindowController(service: self) }
     window!.show(section: section)
-    host.emit("settings.opened", ["section": .string(window!.section)])
+    host.emit("settings.opened", ["section": .string(window!.section), "via": .string(via)])
   }
 }

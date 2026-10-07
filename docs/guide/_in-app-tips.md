@@ -112,8 +112,8 @@ Each entry: **key** · trigger · text · retired by (the event that means you a
 
 | Key | Trigger | Text | Retired by |
 |---|---|---|---|
-| `siteKeyword` | first web search that starts with a word matching a site keyword (e.g. "yt cats") | "Type yt, then Tab, to search YouTube directly." | a keyword search via Tab |
-| `settingsInBar` | first time Settings is opened with ⌘, | "You can also type a setting's name in the command bar." | a Settings result chosen in the bar |
+| ✅ `siteKeyword` | first time the command bar opens a site that has a keyword ("youtube.com") or runs a web search starting with a site's keyword or name ("yt cats", "wikipedia otters") | "Type yt, then Tab, to search YouTube directly." (that site's keyword and name) | a keyword search via Tab |
+| ✅ `settingsInBar` | first time Settings is opened with ⌘, | "You can also type a setting's name in the command bar." | a Settings result chosen in the bar |
 | ✅ `editUrl` | first click on the URL pill | "⌘L edits the address from anywhere." | ⌘L used |
 | ✅ `copyMarkdown` | 3rd ⇧⌘C | "⌥⇧⌘C copies the link as Markdown." | ⌥⇧⌘C used |
 

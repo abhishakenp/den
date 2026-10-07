@@ -20,7 +20,7 @@ When a tab you've left is playing music or a video with sound, a small player si
 
 ## Hover controls on a tab
 
-Point at a tab that's playing (or paused) something and its row shows **play/pause** and, when the site has them, **previous** and **next** buttons, next to the speaker.
+Point at a tab that's playing (or paused) something and its row shows **play/pause** and, when the site has them, **previous** and **next** buttons, next to the speaker. A favorite does the same: pointing at its tile swaps the icon for **play/pause**, with **previous** and **next** too when the tile is wide enough (fewer favorites in its row, or a wider sidebar).
 
 ## Tab audio and mute
 
@@ -44,6 +44,10 @@ den uses the Mac's own picture in picture, the same floating video window Safari
 - **While it floats,** den's own controls still reach it: its row in the [now-playing dock](#now-playing-at-the-bottom-of-the-sidebar) (play/pause, mute, stop, and a picture-in-picture button), the tab's speaker to mute it, **⌃⌘P** to play or pause, and your keyboard's media keys and Control Center.
 - Turn the automatic part off by typing "picture in picture" in the [command bar](command-bar.md#settings-from-the-bar): **Picture in Picture when you leave a playing video** (on by default).
 
+## Camera and microphone
+
+A tab that's using your camera or microphone shows a red camera or mic icon on its row (on a favorite, in the tile's corner), slashed while the site has paused it. Click it to turn the camera and microphone off for that page.
+
 ## Web panels
 
 <p align="center"><img src="../screenshots/web-panel-dark.png" alt="A chat site docked as a web panel beside the page" width="620"></p>
@@ -53,6 +57,7 @@ A web panel keeps a site you use all day, like Slack, WhatsApp, Discord, Claude 
 - **⌃⌘S** shows or hides the panel (View ▸ Toggle Web Panel, or "web panel" in the command bar).
 - **Add one:** in the panel's header, **+** ▸ **Add This Tab**, or pick Claude, Gemini, ChatGPT, WhatsApp, Slack or Discord. From anywhere: the command bar's **Add This Tab as a Web Panel**, or **Settings ▸ Web Panels**, where you type an address such as `claude.ai`.
 - **Switch** with the site icons in the header. The **…** menu opens the panel's page as a tab, reloads it, turns on **Phone Layout** (the site gets an iPhone's browser name, for sites that only go narrow on a phone), or removes the panel.
+- **Resize** by dragging the gap between the panel and the page; den keeps the width. Double-click the gap for the default width again.
 - Panels are narrow, so most sites show their phone-sized layout anyway. Some sites (WhatsApp, Slack) ask you to install their app when they think you're on a phone, so Phone Layout is off unless you turn it on.
 - **Hidden panels sleep.** Half a minute after a panel leaves the screen, den unloads it like an unused tab, so it costs nothing until you show it again. One that's playing sound keeps playing.
 - You stay signed in: a panel shares cookies with your tabs.

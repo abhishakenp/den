@@ -184,6 +184,37 @@ struct NowPlayingTests {
     #expect(rt.call("content", "side", ["webview": "nope"]).str("error").contains("no webview"))
   }
 
+  /// The gap right of a web panel is a drag handle: dragging resizes the panel live (within
+  /// `sideWidths`), and the end of a drag or a double-click tells the panel's owner.
+  @Test func sideColumnDragResize() async throws {
+    let rt = ServiceTests.runtime()
+    var got: [Value] = []
+    let obs = rt.host.on("content.sideWidth") { got.append($0) }
+    defer { rt.host.off(obs) }
+    _ = rt.call("webviews", "create", ["id": "tab"])
+    _ = rt.call("webviews", "create", ["id": "panel"])
+    _ = rt.call("content", "show", ["panes": ["tab"]])
+    _ = rt.call("content", "side", ["webview": "panel", "width": 360])
+    rt.window.window.contentView?.layoutSubtreeIfNeeded()
+    let side = try #require(rt.content.sideIfLoaded)
+    #expect(await wait(5, "the column open") { side.frame.width == 360 })
+    let wc = rt.content.current
+    let d = try #require(wc.sideDivider)
+    #expect(!d.isHidden && d.superview === rt.window.contentArea && d.frame.minX < side.frame.maxX && d.frame.maxX > side.frame.maxX)
+    wc.dragSide(to: CGPoint(x: 450, y: 100))
+    #expect(abs(side.frame.width - (450 - Tokens.splitGap / 2)) < 1 && (rt.content.card("tab")?.frame.minX ?? 0) > side.frame.maxX)
+    wc.dragSide(to: CGPoint(x: 5, y: 100))
+    #expect(side.frame.width == ContentService.sideWidths.lowerBound)
+    wc.dragSide(to: CGPoint(x: 400, y: 100))
+    d.onDragEnd?()
+    #expect(got.last?["webview"] == "panel" && abs((got.last?["width"].double ?? 0) - Double(400 - Tokens.splitGap / 2)) < 1 && got.last?["reset"] == false)
+    d.onDoubleClick?()
+    #expect(got.last?["reset"] == true)
+    // Hidden with the panel.
+    _ = rt.call("content", "side")
+    #expect(await wait(5, "the column closed") { rt.content.sideId == nil && d.isHidden })
+  }
+
   /// `sidebar.dock`: above the footer, sized by its tree, the pager above it.
   @Test func sidebarDockSlot() throws {
     let rt = ServiceTests.runtime()
@@ -231,5 +262,81 @@ struct NowPlayingTests {
     #expect(media == ["toggle", "next"])
     row.hovering = false
     #expect(row.playPause.isHidden)
+  }
+
+  /// A row or tile whose page uses the camera / microphone shows a red button (always, not only
+  /// on hover) that emits `stopCapture`; `webviews.get` reports both states.
+  @Test func captureBadge() throws {
+    let rt = ServiceTests.runtime()
+    var actions: [Value] = []
+    let obs = rt.host.on("ui.action") { v in actions.append(v) }
+    defer { rt.host.off(obs) }
+    _ = rt.call("ui", "set", ["slot": "sidebar.today", "tree": ["type": "list", "id": "l", "children": [
+      ["type": "tabRow", "id": "call", "title": "Meet", "icon": "sf:video", "selected": false, "capture": ["camera": "active", "microphone": "muted"]],
+      ["type": "tabRow", "id": "quiet", "title": "Docs", "icon": "sf:doc", "selected": false],
+    ]]])
+    _ = rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "g", "children": [
+      ["type": "favoriteTile", "id": "mic", "icon": "sf:mic", "title": "Voice", "capture": ["camera": "none", "microphone": "active"]],
+    ]]])
+    rt.ui.sidebarView.layoutSubtreeIfNeeded()
+    func all<T: NSView>(_ v: NSView, _ t: T.Type) -> [T] { ((v as? T).map { [$0] } ?? []) + v.subviews.flatMap { all($0, t) } }
+    let rows = all(rt.ui.sidebarView, TabRowNode.self)
+    let call = try #require(rows.first { $0.node.str("id") == "call" }), quiet = try #require(rows.first { $0.node.str("id") == "quiet" })
+    #expect(!call.capture.button.isHidden && quiet.capture.button.isHidden)
+    #expect(call.capture.button.icon.spec == "sf:video.fill" && call.capture.button.toolTip == "Turn Off Camera and Microphone")
+    #expect(call.label.frame.maxX <= call.capture.button.frame.minX)
+    let tile = try #require(all(rt.ui.sidebarView, FavoriteTileNode.self).first)
+    #expect(!tile.capture.button.isHidden && tile.capture.button.icon.spec == "sf:mic.fill" && tile.capture.button.toolTip == "Turn Off Microphone")
+    call.capture.button.action()
+    tile.capture.button.action()
+    #expect(actions.filter { $0.str("action") == "stopCapture" }.map { $0.str("id") } == ["call", "mic"])
+    #expect(WebViewsService.captureName(.muted) == "muted" && WebViewsService.captureName(.none) == "none")
+    _ = rt.call("webviews", "create", ["id": "page"])
+    #expect(rt.call("webviews", "get", ["id": "page"])["camera"] == "none" && rt.call("webviews", "stopCapture", ["id": "page"]) == .ok)
+  }
+
+  /// A favorite tile with `media`: hovered, play/pause takes the icon's place; a wide tile (one
+  /// favorite fills the row) also gets previous / next, a narrow one (four in a row) doesn't.
+  @Test func favoriteTileHoverPlayback() throws {
+    let rt = ServiceTests.runtime()
+    var actions: [Value] = []
+    let obs = rt.host.on("ui.action") { v in actions.append(v) }
+    defer { rt.host.off(obs) }
+    let tile: (String) -> Value = { id in
+      ["type": "favoriteTile", "id": .string(id), "icon": "sf:music.note", "title": "Music", "audio": true,
+       "media": ["paused": true, "next": true, "previous": true]]
+    }
+    func tiles() -> [FavoriteTileNode] {
+      func walk(_ v: NSView) -> [FavoriteTileNode] { (v as? FavoriteTileNode).map { [$0] } ?? v.subviews.flatMap(walk) }
+      return walk(rt.ui.sidebarView)
+    }
+    _ = rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "g", "children": [tile("f1")]]])
+    rt.ui.sidebarView.layoutSubtreeIfNeeded()
+    let wide = try #require(tiles().first)
+    #expect(wide.media.playPause.isHidden && !wide.icon.isHidden, "hidden until hovered")
+    wide.hovering = true
+    wide.layoutSubtreeIfNeeded()
+    #expect(!wide.media.playPause.isHidden && !wide.media.next.isHidden && !wide.media.previous.isHidden && wide.icon.isHidden)
+    #expect(wide.media.playPause.icon.spec == "sf:play.fill" && wide.media.playPause.toolTip == "Play")
+    #expect(wide.media.previous.frame.maxX <= wide.media.playPause.frame.minX && wide.media.playPause.frame.maxX <= wide.media.next.frame.minX)
+    #expect(abs(wide.media.playPause.frame.midX - wide.bounds.midX) < 1)
+    wide.media.playPause.action()
+    wide.media.next.action()
+    let media = actions.filter { $0.str("id") == "f1" && $0.str("action") == "media" }.map { $0["value"].str("action") }
+    #expect(media == ["toggle", "next"])
+    wide.hovering = false
+    #expect(wide.media.playPause.isHidden && !wide.icon.isHidden)
+
+    _ = rt.call("ui", "set", ["slot": "sidebar.favorites", "tree": ["type": "grid", "id": "g", "children": .array(["a", "b", "c", "d"].map(tile))]])
+    // The tiles that stay animate into their new frames (GridNode's reorder spring), so let it
+    // run before reading geometry.
+    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+    rt.ui.sidebarView.layoutSubtreeIfNeeded()
+    let narrow = try #require(tiles().first { $0.node.str("id") == "a" })
+    #expect(narrow.bounds.width < FavoriteTileNode.skipsWidth)
+    narrow.hovering = true
+    narrow.layoutSubtreeIfNeeded()
+    #expect(!narrow.media.playPause.isHidden && narrow.media.next.isHidden && narrow.media.previous.isHidden)
+    #expect(narrow.bounds.contains(narrow.media.playPause.frame))
   }
 }

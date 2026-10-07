@@ -240,6 +240,83 @@ struct CommandBarTests {
     #expect(h2.barRows.first?.str("subtitle") == "— Search DuckDuckGo")
   }
 
+  /// Opening a site that has a keyword, or a web search starting with its keyword or name, hints
+  /// at the keyword (the tips plugin shows it once); a search through the keyword says so.
+  @Test func siteKeywordHints() {
+    let h = Harness()
+    h.startCommandBar()
+    h.record(["commands.keywordHint", "commands.keywordSearch"])
+    func hints() -> [String] { h.events.filter { $0.0 == "commands.keywordHint" }.map { $0.1.s("keyword") + " " + $0.1.s("name") } }
+    for q in ["youtube.com", "yt cats", "wikipedia otters", "hello world", "google.com", "youtube"] {
+      h.key("cmd+t")
+      h.type(q)
+      h.submit()
+    }
+    // youtube.com, "yt cats", "wikipedia otters"; not a plain search, the default engine's site, or one word.
+    #expect(hints() == ["yt YouTube", "yt YouTube", "w Wikipedia"])
+    #expect(h.events.allSatisfy { $0.0 != "commands.keywordSearch" })
+    h.key("cmd+t")
+    h.type("yt")
+    h.action("commandBar", "tab", ["query": "yt"])
+    h.type("lofi")
+    h.submit()
+    #expect(h.events.filter { $0.0 == "commands.keywordSearch" }.map { $0.1.s("keyword") } == ["yt"])
+    #expect(hints().count == 3)
+  }
+
+  /// Creation commands open each site's new-item URL in a new tab; New GitHub Issue only shows on
+  /// a repository's page, and files in that repository.
+  @Test func creationCommands() {
+    let h = Harness()
+    h.startCommandBar()
+    func urls() -> [String] { (h.tabs("list")["today"].array ?? []).map { $0.s("url") } }
+    for (q, id, url) in [("new sheet", "googleSheet", "https://sheets.new/"), ("new slides", "googleSlides", "https://slides.new/"),
+                         ("new form", "googleForm", "https://forms.new/"), ("new meet", "googleMeet", "https://meet.new/"),
+                         ("calendar event", "calendarEvent", "https://cal.new/"), ("keep note", "keepNote", "https://keep.new/"),
+                         ("new gist", "gist", "https://gist.new/"), ("figma file", "figmaFile", "https://figma.new/"),
+                         ("figjam", "figjamBoard", "https://figjam.new/"), ("new repo", "githubRepo", "https://repo.new/"),
+                         ("spotify", "spotifyPlaylist", "https://playlist.new/")] {
+      h.key("cmd+t")
+      h.type(q)
+      #expect(h.barRowIds.contains("cmd:den.new." + id), "\(q)")
+      h.submit("cmd:den.new." + id)
+      #expect(urls().contains(url), "\(q)")
+    }
+    #expect(!h.rt.ui.commandBarOpen)
+    // Not on a repository page: no New GitHub Issue, while its sibling creation commands still show.
+    h.key("cmd+t")
+    h.type("new github")
+    #expect(!h.barRowIds.contains("cmd:den.new.githubIssue") && h.barRowIds.contains("cmd:den.new.githubRepo"))
+    h.key("cmd+t")  // closes it
+    h.tabs("open", ["url": "https://github.com/abhishakenp/den/pull/12"])
+    h.key("cmd+t")
+    h.type("new issue")
+    #expect(h.barRows.first { $0.str("id") == "cmd:den.new.githubIssue" }?.str("title") == "New GitHub Issue in abhishakenp/den")
+    h.submit("cmd:den.new.githubIssue")
+    #expect(urls().contains("https://github.com/abhishakenp/den/issues/new"))
+    #expect(CommandBarCore.githubRepo("https://github.com/settings/profile") == nil)
+    #expect(CommandBarCore.githubRepo("https://github.com/abhishakenp") == nil)
+    #expect(CommandBarCore.githubRepo("https://gist.github.com/a/b") == nil)
+  }
+
+  /// "Mute Tab" mutes the current tab; then the same command reads "Unmute Tab".
+  @Test func muteTabCommand() {
+    let h = Harness()
+    h.startCommandBar()
+    guard let id = h.selected else { Issue.record("no selected tab"); return }
+    h.key("cmd+t")
+    h.type("mute tab")
+    #expect(h.barRows.first { $0.str("id") == "cmd:den.muteTab" }?.str("title") == "Mute Tab")
+    h.submit("cmd:den.muteTab")
+    #expect(h.rt.call("webviews", "get", ["id": .string(id)])["muted"] == true)
+    #expect((h.tabs("list")["today"].array ?? []).first { $0.s("id") == id }?["muted"] == true)
+    h.key("cmd+t")
+    h.type("unmute")
+    #expect(h.barRows.first { $0.str("id") == "cmd:den.muteTab" }?.str("title") == "Unmute Tab")
+    h.submit("cmd:den.muteTab")
+    #expect(h.rt.call("webviews", "get", ["id": .string(id)])["muted"] == false)
+  }
+
   @Test func tabSwitchesIntoActionsMode() {
     let h = Harness()
     h.startCommandBar()
@@ -257,7 +334,7 @@ struct CommandBarTests {
     #expect(!titles.contains("Edit Theme"))
     #expect(h.bar.list("sections").first?.str("title") == "Actions")
     h.type("side")
-    #expect(h.barRows.map { $0.str("title") } == ["Toggle Sidebar"])
+    #expect(h.barRows.first?.str("title") == "Toggle Sidebar")  // ("New Google Slides" matches "side" loosely, below it)
     #expect(h.barRows.first?.str("shortcut") == "⌘S")
     h.action("commandBar", "tab", ["query": "side"])
     #expect(h.rt.call("commands", "state")["scope"] == "main")

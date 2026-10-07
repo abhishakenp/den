@@ -204,6 +204,7 @@ extension CommandBarCore {
   func pickSetting(_ key: String) {
     guard let e = entry(.setting, key) else { return }
     bump(e.usageKey, title: "", url: "")
+    env.emit("commands.settingPicked", ["key": .string(key)])
     if e.type == "toggle" {
       let on = !(e.value.bool ?? false)
       if setSetting(e, .bool(on)) { toast(e.title + (on ? ": On" : ": Off"), e.icon) }
@@ -215,6 +216,7 @@ extension CommandBarCore {
   func pickOption(_ key: String, _ i: Int) {
     guard let e = entry(.setting, key), i < e.options.count else { return }
     bump(e.usageKey, title: "", url: "")
+    env.emit("commands.settingPicked", ["key": .string(key)])
     if setSetting(e, e.options[i].0) { toast(e.title + ": " + e.options[i].1, e.icon) }
   }
 

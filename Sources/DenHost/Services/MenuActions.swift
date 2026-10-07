@@ -47,7 +47,7 @@ enum MenuActions {
     let id: Value = focusedWebView(rt).map { .string($0) } ?? .null
     switch a {
     case "app.about": AboutPanel.shared.show(nil)  // the app service keeps its credits (`app.about`)
-    case "app.settings": rt.settings.open()
+    case "app.settings": rt.settings.open(via: "menu")
     case "app.defaultBrowser": rt.call("app", "setDefaultBrowser")
     // Windows are host capabilities; what they show is up to the tabs plugin (window.opened).
     case "window.new": rt.call("window", "new")

@@ -550,6 +550,40 @@ final class CommandBarCore {
     keyword.isEmpty ? nil : engines.firstIndex { $0.keyword == keyword }
   }
 
+  /// Site-search keywords, taught once (the tips plugin's `siteKeyword` tip): opening a site that
+  /// has a keyword ("youtube.com"), or a web search that starts with its keyword or name ("yt cats",
+  /// "youtube cats"), emits `commands.keywordHint {keyword, name}`; a search through a keyword (Tab)
+  /// emits `commands.keywordSearch {keyword}`.
+  func keywordTip(_ r: Row, scope s: Scope) {
+    if case let .engine(i) = s {
+      env.emit("commands.keywordSearch", ["keyword": .string(engines[i].keyword)])
+      return
+    }
+    guard let i = keywordFor(r) else { return }
+    env.emit("commands.keywordHint", ["keyword": .string(engines[i].keyword), "name": .string(engines[i].name)])
+  }
+
+  /// The site search (not the default engine) that `r` could have used.
+  func keywordFor(_ r: Row) -> Int? {
+    switch r.act {
+    case let .url(u):
+      // A site that shares the default engine's host (Google Maps) isn't "the site" of google.com.
+      let h = URLs.host(u)
+      guard h != URLs.host(defaultEngine.url) else { return nil }
+      return engines.indices.first { $0 > 0 && URLs.host(engines[$0].url) == h }
+    case .search:
+      // The first word, when more follow.
+      let b = Array(Text.lower(trim(r.title)).utf8)
+      guard let sp = b.firstIndex(of: 32), sp > 0 else { return nil }
+      let w = String(decoding: b[..<sp], as: UTF8.self)
+      return engines.indices.first { i in
+        i > 0 && (engines[i].keyword == w || String(decoding: Array(Text.lower(engines[i].name).utf8).filter { $0 != 32 }, as: UTF8.self) == w)
+      }
+    default:
+      return nil
+    }
+  }
+
   // MARK: - Picking
 
   func pick(_ r: Row, shift: Bool) {
@@ -578,6 +612,7 @@ final class CommandBarCore {
     case let .url(u), let .search(u):
       if case .url = r.act { bump("url:" + URLs.normalize(u), title: r.title, url: u) }
       if case .search = r.act { bump("q:" + Text.lower(r.title), title: r.title, url: u) }
+      keywordTip(r, scope: s)
       go(u, peek: peek, scope: s)
     case .reload:
       if let id = selectedTab().sOpt("id") { env.call("webviews", "reload", ["id": .string(id)]) }
@@ -598,6 +633,7 @@ final class CommandBarCore {
       pickSetting(key)
     case let .pane(id):
       bump("pane:" + id, title: "", url: "")
+      env.emit("commands.settingPicked", ["pane": .string(id)])
       env.call("settings", "open", ["id": .string(id)])
     case let .option(key, i):
       pickOption(key, i)
@@ -655,6 +691,40 @@ final class CommandBarCore {
     var url: String? = nil  // a creation URL: picking it opens this URL in a new tab
   }
 
+  /// "New Google Sheet", "New Figma File"…: each site's documented new-item URL (the `.new`
+  /// domains, which redirect to the site's own create page), opened in a new tab. The accounts that
+  /// need a connection (Notion, Google Docs, Linear) live in `builtins`, gated on `connections`.
+  static func creator(_ id: String, _ title: String, _ icon: String, _ url: String, _ keywords: [String]) -> Builtin {
+    Builtin(id: "den.new." + id, title: title, icon: icon, keywords: ["create", "new"] + keywords, shortcut: "", needsTab: false, service: "tabs", url: url)
+  }
+
+  static let creators: [Builtin] = [
+    creator("googleSheet", "New Google Sheet", "sf:tablecells", "https://sheets.new/", ["spreadsheet", "sheets", "excel"]),
+    creator("googleSlides", "New Google Slides", "sf:rectangle.on.rectangle", "https://slides.new/", ["presentation", "deck", "slide", "keynote"]),
+    creator("googleForm", "New Google Form", "sf:list.bullet.clipboard", "https://forms.new/", ["survey", "forms"]),
+    creator("googleMeet", "New Google Meet", "sf:video", "https://meet.new/", ["meeting", "call", "video"]),
+    creator("calendarEvent", "New Calendar Event", "sf:calendar.badge.plus", "https://cal.new/", ["google calendar", "event", "meeting"]),
+    creator("keepNote", "New Google Keep Note", "sf:note.text", "https://keep.new/", ["note", "keep"]),
+    creator("figmaFile", "New Figma File", "sf:pencil.and.ruler", "https://figma.new/", ["figma", "design"]),
+    creator("figjamBoard", "New FigJam Board", "sf:scribble.variable", "https://figjam.new/", ["figjam", "whiteboard", "board"]),
+    creator("githubIssue", "New GitHub Issue", "sf:smallcircle.filled.circle", "", ["github", "issue", "bug"]),
+    creator("githubRepo", "New GitHub Repository", "sf:shippingbox", "https://repo.new/", ["github", "repo", "repository"]),
+    creator("gist", "New GitHub Gist", "sf:chevron.left.forwardslash.chevron.right", "https://gist.new/", ["github", "gist", "snippet"]),
+    creator("spotifyPlaylist", "New Spotify Playlist", "sf:music.note.list", "https://playlist.new/", ["spotify", "playlist", "music"]),
+  ]
+
+  /// "owner/repo" when `url` is a page of a GitHub repository (the repo New GitHub Issue files in).
+  static func githubRepo(_ url: String) -> String? {
+    guard URLs.host(url) == "github.com" else { return nil }
+    let parts = URLs.path(url).utf8.split(separator: 47).map { String(decoding: $0, as: UTF8.self) }
+    guard parts.count >= 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
+    let reserved = ["settings", "orgs", "organizations", "notifications", "marketplace", "explore", "topics", "sponsors", "login",
+                    "new", "issues", "pulls", "search", "features", "about", "pricing", "enterprise", "collections", "trending",
+                    "codespaces", "apps", "users", "dashboard", "account", "security", "site", "customer-stories", "readme"]
+    if reserved.contains(Text.lower(parts[0])) { return nil }
+    return parts[0] + "/" + parts[1]
+  }
+
   static let builtins: [Builtin] = [
     Builtin(id: "den.newSpace", title: "New Space", icon: "sf:plus.square.on.square", keywords: ["create", "space"], shortcut: "", needsTab: false, service: "spaces"),
     // Create-new-document commands: gated on a connected account (any id in `connections`), since
@@ -671,6 +741,7 @@ final class CommandBarCore {
             url: "https://linear.app/new"),
     Builtin(id: "den.renameTab", title: "Rename Tab", icon: "sf:pencil", keywords: ["title"], shortcut: "", needsTab: true, service: "tabs"),
     Builtin(id: "den.pinTab", title: "Pin Tab", icon: "sf:pin", keywords: ["unpin", "pinned"], shortcut: "⌘D", needsTab: true, service: "tabs"),
+    Builtin(id: "den.muteTab", title: "Mute Tab", icon: "sf:speaker.slash", keywords: ["unmute", "sound", "audio", "silence"], shortcut: "", needsTab: true, service: "tabs"),
     Builtin(id: "den.duplicateTab", title: "Duplicate Tab", icon: "sf:plus.rectangle.on.rectangle", keywords: ["copy", "clone"], shortcut: "", needsTab: true, service: "tabs"),
     Builtin(id: "den.copyURL", title: "Copy URL", icon: "sf:link", keywords: ["link", "share"], shortcut: "⇧⌘C", needsTab: true, service: "app"),
     Builtin(id: "den.copyMarkdown", title: "Copy URL as Markdown", icon: "sf:text.quote", keywords: ["link", "share", "md"], shortcut: "⌥⇧⌘C", needsTab: true, service: "app"),
@@ -703,7 +774,7 @@ final class CommandBarCore {
             service: "app"),
   ]
 
-  func builtin(_ id: String) -> Builtin? { Self.builtins.first { $0.id == id } }
+  func builtin(_ id: String) -> Builtin? { Self.builtins.first { $0.id == id } ?? Self.creators.first { $0.id == id } }
 
   /// Every command that can run right now: built-ins whose service (or listener) and tab exist,
   /// then registered commands whose owning plugin is still active.
@@ -717,12 +788,21 @@ final class CommandBarCore {
     let connected = Self.builtins.contains { !$0.connections.isEmpty }
       ? (env.call("connections", "list").array ?? []).filter { $0.b("connected") }.map { $0.s("id") } : []
     var out: [Command] = []
-    for b in Self.builtins {
+    for b in Self.builtins + Self.creators {
       if b.needsTab && tab.isNull { continue }
       if let s = b.service, known ? !services.contains(s) : !available(s) { continue }
       if let l = b.listener, !env.call("plugins", "listening", ["event": .string(l)]).b("listening") { continue }
       if !b.connections.isEmpty, !b.connections.contains(where: { connected.contains($0) }) { continue }
       var c = Command(id: b.id, title: b.title, icon: b.icon, keywords: b.keywords, shortcut: b.shortcut, owner: nil, aliases: b.aliases)
+      if b.id == "den.new.githubIssue" {
+        // Filed in the repository the tab shows; elsewhere GitHub has no repo to put it in.
+        guard let repo = Self.githubRepo(tab.s("url")) else { continue }
+        c.title = "New GitHub Issue in " + repo
+      }
+            if b.id == "den.muteTab", tab.b("muted") {
+        c.title = "Unmute Tab"
+        c.icon = "sf:speaker.wave.2"
+      }
       if b.id == "den.pinTab", tab.s("kind") != "today" {
         c.title = "Unpin Tab"
         c.icon = "sf:pin.slash"
@@ -774,6 +854,9 @@ final class CommandBarCore {
       env.call("tabs", tab.s("kind") == "today" ? "pin" : "unpin", ["id": .string(tabId)])
     case "den.duplicateTab":
       env.call("tabs", "duplicate", ["id": .string(tabId)])
+    case "den.muteTab":
+      guard !tabId.isEmpty else { return }
+      env.call("tabs", "act", ["id": .string(tabId), "action": .string(tab.b("muted") ? "unmute" : "mute")])
     case "den.copyURL":
       env.call("app", "copy", ["text": tab["url"]])
       toast(Copied.link(tab.s("url")), "sf:link")
@@ -814,6 +897,9 @@ final class CommandBarCore {
       setScope(.shortcuts, query: "")
     case "den.about":
       showAbout()
+    case "den.new.githubIssue":
+      guard let repo = Self.githubRepo(tab.s("url")) else { return }
+      env.call("tabs", "open", ["url": .string("https://github.com/" + repo + "/issues/new")])
     default:
       if let b = builtin(id) {
         if let u = b.url { env.call("tabs", "open", ["url": .string(u)]); return }

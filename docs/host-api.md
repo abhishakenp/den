@@ -74,6 +74,7 @@ Events: `window.sidebarResized {width, by: drag|reset|set}` (a drag when it ends
 
 | `setAutoplay` | `allowed` | ok. For every web view created from now on: `false` sets `mediaTypesRequiringUserActionForPlayback = .all` (media waits for a click). WebKit fixes it per configuration, so live pages keep theirs |
 | `setMuted` | `id`, `muted` | ok. WebKit's page mute (`_setPageMuted:`, Safari's tab mute): every frame, `<audio>`/`<video>` and WebAudio, without changing the page's own `muted`. Kept across discards while the tab lives. Emits `webviews.muted` |
+| `stopCapture` | `id` | ok. Turns off the page's camera and microphone (`setCameraCaptureState(.none)`, `setMicrophoneCaptureState(.none)`). `get` has `camera` / `microphone`; changes emit `webviews.capture {id, camera, microphone}` (`none` / `active` / `muted`) |
 | `snapshot` | `id`, `path`, `width?` (pt; a small copy at 2x, for previews), `format?: png\|jpeg` | `{pending}`, then the event `webviews.snapshot {id, path, ok}`. A view that can't draw (not in the window) writes its last snapshot, if any |
 | `snapshot` (capture) | `id`, and any of `rect?: {x, y, width, height}` (CSS px of the document, scroll included), `full?`, `clipboard?`, `folder?` + `name?` | `{pending}`, then `webviews.snapshot {id, ok, path?, clipboard, width, height, bytes, error?}` (pixels). See [Capture](#capture) |
 | `eval` | `id`, `plugin`, `script` (a function body that `return`s JSON data, ≤ 4 KB), `request?`, `timeoutMs?` (5000) | `{request}`, then `webviews.evalResult {request, webview, ok, value \| error}`. Only for a live page (it never loads or wakes one), in an isolated content world, and only when `plugin` has `session:<the page's host>` |
@@ -520,7 +521,7 @@ The Settings window (⌘,, "Settings…" in the den menu). Plugins contribute se
 | `open` | `section?` (or `id`, and `key?` a dotted setting key whose section opens) | ok. Shows the window at that section |
 | `close`, `state` | – | ok / `{open, section}` |
 
-Events: `settings.changed {id, key, value}`; `settings.action {id, key, item?, button?, value?}` (list and button rows, and `submit` text fields); `settings.opened {section}`.
+Events: `settings.changed {id, key, value}`; `settings.action {id, key, item?, button?, value?}` (list and button rows, and `submit` text fields); `settings.opened {section, via}` (`via`: "menu" for Settings… / ⌘,, else "").
 
 Controls are `{key, type, title, subtitle?, default?}`:
 
