@@ -284,9 +284,7 @@ final class LiveFolders {
       guard let (fid, key) = split(Text.dropPrefix(id, "live:")), let f = core.folders[fid] else { return true }
       if key == "connect" {
         if action == "click" {
-          
-            env.call("connections", "connect", ["id": .string(f.live)])
-          }
+          env.call("connections", "connect", ["id": .string(f.live)])
         }
         return true
       }
@@ -484,4 +482,4 @@ final class LiveFolders {
       registered.append(w.0)
     }
   }
-#endif
+}
