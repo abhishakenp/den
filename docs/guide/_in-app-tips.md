@@ -5,7 +5,7 @@ The spec for the `tips` plugin (`Plugins/tips`): small, one-time hints that teac
 ## Status (what `Plugins/tips` does today)
 
 - **Tour card**: from the second launch, in the sidebar's `sidebar.notice` slot above the footer ([host API](../host-api.md#ui)). The five steps show in that same card ("Tour · 2 of 5", Skip Tour / Next); each completes early on its event (`tabs.key.pin` or the tab menu's Pin, any `commands.run`, `spaces.current`, `peek.opened`). *Not yet:* callouts that point at the real UI, and step 2 opening the bar itself. The **Take the den Tour** command starts it again.
-- **Import card**: shown only when some plugin provides the `importer` service; hidden otherwise. Nothing provides it yet. The contract an importer implements:
+- **Import card**: shown only when some plugin provides the `importer` service (the `importer` plugin, [guide](import.md)) and it found another browser; hidden otherwise, and for good once any import ran (`importer.done`, or `importer.state.imported`). The contract an importer implements:
   - `importer.sources` → `[{id, name}]`, the browsers it found data for (`[]` or an error hides the card).
   - `importer.run {source}` → ok; it imports in the background and shows its own progress and result (a toast). The card goes away for good after one click (`tips.import = "done"`) or ×.
 - **Tips**: 14 wired (the table below marks each one ✅). The toast has one **Don't show tips** button instead of a `…` menu, and stays up while the pointer is on it (`toast.hold`). Not yet enforced: "never during a drag or a text-field edit" (no event says so); the command bar, dialogs, sheets and popovers are checked (`ui.get` overlays).
@@ -20,7 +20,7 @@ Arc and Dia are the bar for onboarding, with one caveat: **nothing may slow down
 
 - den opens instantly into a usable browser. No blocking welcome screen, sign-up or setup wizard, ever.
 - **"Take a tour"** is an optional, small, skippable card. It has 5 steps or fewer, each step can be skipped, and once dismissed it never comes back.
-- **Import** from Arc, Chrome or Safari is offered as a quiet one-click card, never a gate. *(Import isn't built yet.)*
+- **Import** from Arc, Chrome or Safari is offered as a quiet one-click card, never a gate ([Importing](import.md)).
 - **Discovery tips** appear only when they're relevant to what you're doing right now: one at a time, each at most once, never modal, never interrupting typing or a drag.
 - One global switch turns all of it off: **Settings ▸ General ▸ Show tips** (on by default), also reachable as "Don't show tips" in the command bar and on every tip's `…` menu.
 

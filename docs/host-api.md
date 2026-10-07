@@ -572,6 +572,23 @@ Chords are bound as main-menu items. That way they work while a web page has foc
 - Each namespace (plugin id) is one `Codec`-encoded file at `~/Library/Application Support/den/storage/<ns>.cvalue`.
 - Writes are atomic.
 
+## files
+
+Read-only local files for importers (`FilesService.swift`): other browsers' JSON, property lists and SQLite databases. Generic: what the data means belongs to the plugin (`importer`). Every method takes `plugin` (the caller's id) and works only inside the plugin's `files:<path>` grants ([permissions](#permissions)); anything else is `{"error": "files: not permitted"}`. Paths are `~/…` (expanded against `FilesService.home`: the real home; tests and scenarios point it at a fixture home) or absolute. Both the grant and the path are standardized and symlink-resolved, and `..` is refused, so neither escapes the grant.
+
+| Method | Args | Returns |
+|---|---|---|
+| `stat` | `plugin`, `paths: [path]` | `[{path, exists, dir, readable, denied, size, modified}]`, same order. `readable`: `open`/`opendir` worked. `denied`: it exists but opening failed with EPERM/EACCES (a folder macOS protects, e.g. `~/Library/Safari` without Full Disk Access). `modified` in ms. A path outside the grants: `{path, error: "not permitted"}` in its slot |
+| `list` | `plugin`, `path` | `[{name, dir, size, modified}]` by name, or `{error, denied}` |
+| `read` | `plugin`, `path`, `as: json\|plist\|text\|bytes`, `maxBytes?` (64 MB), `request?` | `{request}`, then `files.result {request, ok, value \| error, bytes}` (`bytes`: the file's size). `plist`: XML or binary; `Data` becomes bytes, dates ms since 1970. Over `maxBytes`: `error: "too large"`; a protected file: `"denied"` |
+| `sqlite` | `plugin`, `path`, `sql`, `maxRows?` (100,000), `request?` | `{request}`, then `files.result {request, ok, columns, rows: [[value]], truncated, error?}`. The database and its `-wal`/`-shm` are copied to a temporary folder first (a running browser keeps it locked, and the WAL holds its latest writes); the copy is opened and its WAL replayed there, and the statement must be read-only (`sqlite3_stmt_readonly`, else `error: "files: only read-only statements"`). Integers, reals, text, blobs (bytes) and null. The copy is deleted afterwards |
+| `openFullDiskAccess` | – | ok. System Settings ▸ Privacy & Security ▸ Full Disk Access |
+| `home` | – | `{home}` |
+
+- **Never writes.** Nothing is created, changed or deleted except den's own temporary database copy.
+- **Cost.** Nothing runs until a call. `read` and `sqlite` run on a background queue and answer on the main thread; `stat` and `list` are a few system calls.
+- Tests: `FilesServiceTests` (grants, `..` and symlink escapes, plist XML and binary, a WAL database still open in another connection, read-only statements, `vault.importFile`).
+
 ## updates
 
 The native half of updating. All policy lives in the `updates` plugin ([updates.md](updates.md)).
@@ -757,6 +774,7 @@ den's password vault. The host keeps every secret (Keychain + Touch ID); plugins
 | `copy` | `account`, `request?` | `{request}`. Touch ID, then the password on the pasteboard (marked concealed, cleared after 60 s unless something else was copied since: the pasteboard's change count must still be the one den set) |
 | `delete` | `account` | ok, while unlocked |
 | `suggest` | `webview`, `items: [{id, title, subtitle?, icon?}]` | ok. A small list under the focused field (`[]` hides) |
+| `importFile` | `columns: {origin, username, password: [header name]}`, `message?`, `prompt?`, `request?` | `{request}`. An open panel for a passwords CSV (a sheet on den's window) whose message and button copy come from the plugin, Touch ID ("import passwords"), then each row: header columns matched case-insensitively to the plugin's names (Chrome, Safari, 1Password, Bitwarden, Firefox exports); a URL without a scheme gets `https://`; no secure origin or no password → `skipped`; an origin + username already saved → `existing`, never overwritten. Then `vault.result {request, method: importFile, ok, added, existing, skipped, error?}` (`cancelled`: panel or Touch ID; `no columns`). RFC 4180 CSV (quotes, `""`, CRLF, newlines in quotes, BOM). The file is only read; no password reaches a plugin or a log |
 
 Events (never with a password): `vault.focus {webview, origin, field, signup, accounts: [{id, username}]}`, `vault.blur {webview}`, `vault.captured {capture, webview, origin, username, exists}`, `vault.suggestion {webview, item}`, `vault.result {request, method, ok, error?}`.
 
@@ -839,6 +857,7 @@ A plugin declares what it may reach in its sidecar `Plugins/<id>/plugin.json` (f
 - `session:<domain>`: cookies and site storage of `<domain>` and its subdomains, and `net.fetch` there with cookies.
 - `net:<domain>`: `net.fetch` there without cookies.
 - `pages:<domain>` or `pages:*`: `webviews.inject` into pages there (every page with `*`), in the plugin's own isolated world ([Plugins in pages](#plugins-in-pages)).
+- `files:<path>` (`~/…` or absolute, case kept): read-only [`files`](#files) access to that file or folder and everything under it (the importer: `files:~/Library/Application Support/Arc`).
 
 A plugin's resource folder is its other sidecar: `Plugins/<id>/resources/` becomes `Contents/Resources/plugin-resources/<id>/` (a dylib elsewhere uses `<id>.resources/` next to it). From a checkout (`swift test`), den reads `Plugins/<id>/resources/` directly.
 

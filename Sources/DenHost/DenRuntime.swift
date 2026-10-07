@@ -32,6 +32,8 @@ public final class DenRuntime {
   /// Per-site content rule lists, page preferences, HTTPS-first and the navigation guard (`shields`).
   public let sitePolicy: SitePolicyService
   public let vault: VaultService
+  /// Read-only local files for importers (`files:<path>` permissions).
+  public let files: FilesService
   /// Files pages hand over (WKDownload), and the upload picker's recent files.
   public let downloads: DownloadsService
   /// Chrome/Firefox extensions (docs/host-api.md#extensions). Nothing WebKit-side exists until
@@ -80,6 +82,7 @@ public final class DenRuntime {
       sitePolicy.resourceRoots = [storageRoot.appendingPathComponent("updates/lists", isDirectory: true)]
     }
     vault = VaultService(host: host, webviews: webviews)
+    files = FilesService(host: host, permissions: permissions)
     downloads = DownloadsService(host: host, storage: storage)
     webviews.downloads = downloads
     downloads.webView = { [weak webviews] preferred in
@@ -132,7 +135,7 @@ public final class DenRuntime {
     sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
     sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
     sitePolicy.resource = { [permissions] p, f in permissions.resource(p, f) }
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, session, net, ai, schedule, pageStyle, sitePolicy, vault, downloads, extensions, settings, media, nowPlaying, speech, translate, spotlight, handoff] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, session, net, ai, schedule, pageStyle, sitePolicy, vault, files, downloads, extensions, settings, media, nowPlaying, speech, translate, spotlight, handoff] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

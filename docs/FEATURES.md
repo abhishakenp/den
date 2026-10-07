@@ -200,8 +200,8 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | [Built-in password vault](guide/privacy-and-passwords.md) | ✅ Chromium | ? | ✅ Firefox | ✅ | den's own vault in the Keychain, filled after Touch ID. No API reads iCloud Keychain |
 | [Passkeys for all sites](guide/privacy-and-passwords.md) | ✅ | ? | ? | 🟡 | ✅ researched ([notes](research/passkeys.md)). ⏳ Apple's browser entitlement and a real signing identity |
 | Sync spaces and tabs across Macs | ✅ | ✅ | ✅ | ⏳ | Via iCloud/CloudKit, no den server |
-| Import from Arc (spaces, pinned tabs) | — | ➖ dropped | ? | ⏳ | Offered as a quiet card, never a gate |
-| Import from Chrome, Safari, Firefox, Zen, Dia | ✅ | ? | ? | ⏳ | |
+| [Import from Arc (spaces, pinned tabs)](guide/import.md) | — | ➖ dropped | ? | ✅ | Spaces with colors and profiles, pinned folders, favorites, history; a quiet card, never a gate |
+| [Import from Chrome, Safari, Firefox, Zen, Dia](guide/import.md) | ✅ | ? | ? | ✅ | Bookmarks, open tabs (Chromium), history, Zen workspaces; passwords from a CSV export |
 | Share a space/folder/split as a link | ✅ | ? | ✅ | **Skip** | Needs a server |
 | Web apps (PWA), and web apps in the Dock | ❌ | ? | ❌ requested | ⏳ | |
 
