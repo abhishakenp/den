@@ -37,12 +37,13 @@ Only tick an item after checking it against the code and tests on `origin/main`.
   - ⏳ history, and the sidebar rendering itself (see Thin host)
 - 🟡 Plugin API versioning and permissions
   - ✅ versioning: cordis ABI check per plugin, `DenHostAPI` generation stamped by `scripts/bundle.sh`; managed plugins load only into a matching host
-  - ✅ declared permissions: `session:<domain>` / `net:<domain>` per plugin (`permissions.json`), anything undeclared is denied
+  - ✅ declared permissions: `session:<domain>` / `net:<domain>` per plugin (`plugin.json`), anything undeclared is denied
   - ⏳ user-granted permissions for third-party plugins
 - 🟡 Lazy loading for plugins and services
   - ✅ optional features do no work until used: Settings, connections, previews, the briefing build nothing at launch; nothing polls until a connection exists
   - ✅ only the plugins that paint the first window load before it (`"launch": "firstFrame"` in their sidecar: spaces, tabs); the rest load right after it, and until then their services are stubs that load the plugin on the first call
-  - ⏳ load plugin dylibs on first use of a command or event (needs manifest-declared keys, menus and commands)
+  - ✅ load plugin dylibs on first use: `"launch": "lazy"` plugins declare their services, events, commands, keys (with their menu items) and settings sections in `plugin.json`; den registers those without loading the dylib and loads it on the first trigger, then passes the trigger on (`LazyPlugins.swift`, [schema](docs/den-home.md#the-sidecar-pluginjson)). Lazy now: extensions, theme
+  - ⏳ more lazy plugins: the connections family (slack, github, gmail, notion, calendar, connections, briefing) auto-connects at launch by watching cookies, and quit, updates, pagetools, panels, previews, darkmode, shields, media, passwords, peek and tips do work at launch (quit interception, page probes, link watching, restoring an open panel); each needs that launch work moved into a declared host rule first
 - ✅ Settings system, per plugin, editable at runtime (`settings` service; Settings window ⌘, with plugin-contributed sections; settings also editable from the command bar)
 - ✅ Command registry: every command bar action is a command; `[shortcuts]` in `config.toml` binds any command id or menu item
 - 🟡 Crash isolation

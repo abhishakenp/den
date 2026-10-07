@@ -5,7 +5,7 @@ import Foundation
 ///
 /// A plugin declares them in a sidecar next to its dylib, `<id>.json`:
 /// `{"permissions": ["session:slack.com", "net:api.example.com"]}` (bundle.sh copies
-/// `Plugins/<id>/permissions.json` there). `PluginLoader` grants them when it loads the plugin.
+/// `Plugins/<id>/plugin.json` there). `PluginLoader` grants them when it loads the plugin.
 /// Anything undeclared is denied.
 ///
 /// - `session:<domain>`: read cookies and site storage for `<domain>` and its subdomains, and

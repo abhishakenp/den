@@ -167,7 +167,10 @@ public final class DenRuntime {
   static func pluginsService(_ plugins: PluginHost, _ method: String, _ args: Value) -> Value {
     switch method {
     case "get":
-      let list = plugins.plugins.map { p -> Value in ["id": .string(p.id), "active": .bool(p.state == .active)] }
+      var list = plugins.plugins.map { p -> Value in ["id": .string(p.id), "active": .bool(p.state == .active)] }
+      // Lazy plugins not loaded yet count as available: their first use loads them.
+      let loaded = Set(plugins.plugins.map(\.id))
+      for id in PluginLoader.lazyIDs(plugins) where !loaded.contains(id) { list.append(["id": .string(id), "active": true, "lazy": true]) }
       return ["services": .array(plugins.serviceNames.map { .string($0) }), "plugins": .array(list)]
     case "listening":
       return ["listening": .bool(plugins.hasListeners(args.str("event")))]
