@@ -233,16 +233,11 @@ public struct ATCRule: Sendable {
 
   /// Parse a single rule from a Value (TOML table).
   public init?(_ v: Value?) {
-    guard case .map(let m) = v?.root else { return nil }
-    func str(k: String) -> String? {
-      m[k].flatMap { case .string(let s) in s }
-    }
-    func strList(k: String) -> [String] {
-      m[k].flatMap { case .array(let a) in a.compactMap { case .string(let s) in s } } ?? []
-    }
-    func modList(k: String) -> [ATCMod] {
-      m[k].flatMap { case .array(let a) in a.compactMap { case .string(let s) in ATCMod(rawValue: s) } } ?? []
-    }
+    guard let m = v?.object else { return nil }
+    let dict: [String: Value] = Dictionary(m, uniquingKeysWith: { $1 })
+    func str(k: String) -> String? { dict[k]?.string }
+    func strList(k: String) -> [String] { dict[k]?.array?.compactMap(\.string) ?? [] }
+    func modList(k: String) -> [ATCMod] { dict[k]?.array?.compactMap { $0.string.flatMap(ATCMod.init) } ?? [] }
     hosts = strList(k: "hosts"); urlPattern = str(k: "url_pattern") ?? str(k: "urlPattern") ?? ""
     modifiers = modList(k: "modifiers"); action = LinkAction(rawValue: str(k: "action") ?? "newTab") ?? .newTab
     when = ATCWhen(rawValue: str(k: "when") ?? "any") ?? .any
@@ -259,12 +254,13 @@ public struct ATC: Sendable {
 
   /// Parse ATC from a TOML `[atc]` value.
   public init?(_ v: Value?) {
-    guard case .map(let m) = v?.root else { return nil }
+    guard let m = v?.object else { return nil }
+    let dict: [String: Value] = Dictionary(m, uniquingKeysWith: { $1 })
     func ruleList(k: String) -> [ATCRule] {
-      m[k].flatMap { case .array(let a) in a.compactMap(ATCRule.init) } ?? []
+      dict[k]?.array?.compactMap(ATCRule.init) ?? []
     }
     rules = ruleList(k: "rules")
-    if let da = m["default_action"].flatMap({ case .string(let s) in s }),
+    if let da = dict["default_action"]?.string,
        let act = LinkAction(rawValue: da) { defaultAction = act }
   }
 
