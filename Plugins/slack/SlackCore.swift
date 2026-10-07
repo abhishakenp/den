@@ -4,9 +4,13 @@
 
 /// Slack through the web session the user signed in to in den (no Slack app, nothing to register).
 ///
-/// - **Connected** when the profile has slack.com's `d` cookie and app.slack.com's localStorage has
-///   `localConfig_v2` with at least one team. That config holds each workspace's web-client token
-///   (`xoxc-…`); den reads it with `session.eval` and keeps it **in memory only**.
+/// - **Connected** when the profile has slack.com's `d` cookie and the web client's localStorage
+///   has `localConfig_v2` with at least one team. The client writes that on the origin it boots
+///   on: `app.slack.com` usually, but a workspace sign-in is redirected back to the workspace
+///   (`/ssb/redirect`), and the config then lives on `acme.slack.com`. den reads it with
+///   `session.eval` from each candidate origin (hosts seen in tabs, cookie hosts, open tabs,
+///   then app.slack.com) and keeps it **in memory only**. That config holds each workspace's
+///   web-client token (`xoxc-…`).
 /// - **Data**: plain Web API calls, as the Slack web client makes them (form POST with `token`,
 ///   plus the `d` cookie via `net.fetch {session: true}`), per enabled workspace:
 ///   `client.counts` (which DMs are unread) → `conversations.history` for up to 6 unread DMs;
@@ -54,6 +58,9 @@ final class SlackCore {
   var names: [String: String] = [:]  // "<team>:<user>" -> display name
   var registerAttempts = 0
   var refreshing = false
+  /// Workspace hosts seen in a tab (a sign-in redirect lands on one), newest first, bounded.
+  var seenHosts: [String] = []
+  static let maxSeenHosts = 8
 
   init(env: PluginEnv) {
     self.env = env
@@ -69,9 +76,17 @@ final class SlackCore {
 
   func start() {
     env.on("connections.probe") { [self] v in
-      if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default") { _ in } }
+      // `register` is connections coming up after this plugin did, not the user asking: report as
+      // auto, so a session found now shows the Undo toast, the same as the launch probe.
+      if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default", auto: v.s("reason") == "register") { _ in } }
     }
     env.on("feed.refresh") { [self] _ in refresh() }
+    // A workspace page in a tab (a sign-in redirect lands on one, `/ssb/redirect`): remember its
+    // host, so the probe reads localStorage there. The client boots on the workspace origin in
+    // that flow, and its config never reaches app.slack.com's localStorage.
+    env.on("webviews.url") { [self] v in
+      if let h = Self.workspaceHost(URLs.host(v.s("url")), domain: domain) { noteHost(h) }
+    }
     // Auto-connect: signing in to Slack in den (now or later) connects it. The host observes the
     // cookie store and tells us when slack.com's cookies change; nothing polls.
     env.on("session.cookiesChanged") { [self] v in
@@ -119,16 +134,14 @@ final class SlackCore {
   /// Reads the `d` cookie and the workspaces; reports to `connections` and calls `done(found)`.
   func probe(profile: String, auto: Bool = false, _ done: @escaping (Bool) -> Void) {
     requests.call("session", "cookies", ["plugin": .string(Self.id), "domain": .string(domain), "profile": .string(profile)]) { [self] r in
-      guard r.a("cookies").contains(where: { $0.s("name") == "d" && !$0.s("value").isEmpty }) else {
+      let cookies = r.a("cookies")
+      guard cookies.contains(where: { $0.s("name") == "d" && !$0.s("value").isEmpty }) else {
         env.call("connections", "report", ["id": .string(Self.id), "connected": false, "profile": .string(profile), "auto": .bool(auto)])
         return done(false)
       }
-      requests.call("session", "eval", ["plugin": .string(Self.id), "origin": .string(origin), "script": .string(Self.configScript),
-                                         "profile": .string(profile)]) { [self] r in
-        teams = r["value"].array.map { list in
-          list.map { Team(id: $0.s("id"), name: $0.s("name"), url: $0.s("url"), token: $0.s("token"), user: $0.s("user"), icon: $0.s("icon")) }
-        } ?? []
-        guard !teams.isEmpty else {
+      readTeams(configOrigins(cookies: cookies), profile: profile) { [self] found in
+        teams = found
+        guard !found.isEmpty else {
           env.call("connections", "report", ["id": .string(Self.id), "connected": false, "profile": .string(profile), "auto": .bool(auto)])
           return done(false)
         }
@@ -139,6 +152,81 @@ final class SlackCore {
         done(true)
       }
     }
+  }
+
+  /// The origins to look for the config on, in order: workspace hosts seen in tabs, hosts the
+  /// cookie set mentions, hosts of open tabs, then `origin` (app.slack.com, or the mock), which
+  /// is probed last and as configured so its scheme and port stay intact.
+  func configOrigins(cookies: [Value]) -> [String] {
+    let app = Self.bareHost(URLs.host(origin))
+    var hosts: [String] = []
+    var origins: [String] = []
+    func add(_ host: String) {
+      guard !host.isEmpty, host != app, !hosts.contains(host) else { return }
+      hosts.append(host)
+      origins.append("https://" + host)
+    }
+    for h in seenHosts { add(h) }
+    for c in cookies {
+      if let w = Self.workspaceHost(Self.bareHost(c.s("domain")), domain: domain) { add(w) }
+    }
+    for h in openTabHosts() { add(h) }
+    origins.append(origin)
+    return origins
+  }
+
+  /// Reads `localConfig_v2` from each origin until one has the workspaces (usually the first).
+  func readTeams(_ origins: [String], profile: String, _ done: @escaping ([Team]) -> Void) {
+    guard let origin = origins.first else { return done([]) }
+    requests.call("session", "eval", ["plugin": .string(Self.id), "origin": .string(origin), "script": .string(Self.configScript),
+                                       "profile": .string(profile)]) { [self] r in
+      let found = r["value"].array.map { list in
+        list.compactMap { t -> Team? in
+          let team = Team(id: t.s("id"), name: t.s("name"), url: t.s("url"), token: t.s("token"), user: t.s("user"), icon: t.s("icon"))
+          return team.token.isEmpty ? nil : team
+        }
+      } ?? []
+      if found.isEmpty { readTeams(Array(origins.dropFirst()), profile: profile, done) } else { done(found) }
+    }
+  }
+
+  /// Workspace hosts of the tabs in front of the user (any space). The one case cookies can't
+  /// show: a workspace tab that loaded before this plugin did, its config already written.
+  func openTabHosts() -> [String] {
+    var out: [String] = []
+    for s in env.call("spaces", "list").array ?? [] {
+      let tree = env.call("tabs", "list", ["spaceId": s["id"]])
+      for key in ["favorites", "pinned", "today"] { collectTabHosts(tree[key].array ?? [], into: &out) }
+    }
+    return out
+  }
+
+  func collectTabHosts(_ items: [Value], into out: inout [String]) {
+    for it in items {
+      if it.b("folder") || it.b("split") {
+        collectTabHosts(it.a("children"), into: &out)
+        continue
+      }
+      if let h = Self.workspaceHost(URLs.host(it.s("url")), domain: domain), !out.contains(h) { out.append(h) }
+    }
+  }
+
+  /// "acme.slack.com" for a host under the service's domain: nil for the domain itself and for
+  /// `app.slack.com` (the universal client, which `configOrigins` appends as the configured
+  /// origin), and for anything not under the domain.
+  nonisolated static func workspaceHost(_ host: String, domain: String) -> String? {
+    let h = Text.lower(host)
+    guard !h.isEmpty, h != domain, h != "app." + domain, Text.hasSuffix(h, "." + domain) else { return nil }
+    return h
+  }
+
+  /// ".slack.com" -> "slack.com".
+  nonisolated static func bareHost(_ h: String) -> String { h.hasPrefix(".") ? String(h.dropFirst()) : h }
+
+  func noteHost(_ host: String) {
+    seenHosts.removeAll { $0 == host }
+    seenHosts.insert(host, at: 0)
+    if seenHosts.count > Self.maxSeenHosts { seenHosts.removeLast(seenHosts.count - Self.maxSeenHosts) }
   }
 
   // MARK: Refresh

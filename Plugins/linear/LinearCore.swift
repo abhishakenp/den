@@ -45,7 +45,7 @@ final class LinearCore {
 
   func start() {
     env.on("connections.probe") { [self] v in
-      if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default", auto: false) }
+      if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default", auto: v.s("reason") == "register") }
     }
     env.on("feed.refresh") { [self] _ in refresh() }
     // Auto-connect: signing in to Linear in den (now or later) connects it. The host observes the

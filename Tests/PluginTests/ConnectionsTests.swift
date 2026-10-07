@@ -260,6 +260,89 @@ struct ConnectionsTests {
     #expect(tabs.toasts.last == "GitHub disconnected")
   }
 
+  /// A sign-in redirected back to the workspace (`/ssb/redirect`) boots Slack's web client on the
+  /// **workspace host**, and its config never reaches app.slack.com's localStorage: the probe has
+  /// to read the origin the workspace tab is on. Seen live with a real workspace (2026-10-07).
+  @Test func slackReadsTheConfigFromTheWorkspaceOrigin() async throws {
+    let m = try mock()
+    defer { m.stop() }
+    let h = Harness()
+    let tabs = Tabs()
+    configure(h, m)
+    // The real addresses: slack.com cookies, the config on the workspace host, nothing on app.slack.com.
+    h.rt.call("storage", "set", ["ns": "slack", "key": "endpoints", "value": [
+      "api": .string(m.base + "/api/"), "origin": "https://app.slack.com", "domain": "slack.com",
+      "signIn": .string(m.base + "/slack/signin")]])
+    h.rt.permissions.grant("slack", ["session:slack.com"])
+    let store = h.rt.webviews.store(for: Self.profile).httpCookieStore
+    await store.setCookie(HTTPCookie(properties: [.domain: ".slack.com", .path: "/", .name: "d", .value: "xoxd-test", .secure: "TRUE"])!)
+    h.record(["session.result"])
+    // What Slack's web client writes on the workspace origin when it boots there.
+    _ = h.rt.call("session", "eval", ["plugin": "slack", "origin": "https://acme.slack.com", "profile": .string(Self.profile), "id": "seed",
+                                      "script": .string(#"localStorage.setItem('localConfig_v2', '{"teams":{"T01ACME":{"id":"T01ACME","name":"Acme Inc","url":"https://acme.slack.com/","token":"xoxc-mock-acme","user_id":"U0YOU"}},"lastActiveTeamId":"T01ACME"}'); return 'ok'"#)])
+    #expect(await until { events(h, "session.result").contains { $0.s("id") == "seed" && $0.b("ok") } })
+
+    h.rt.plugins.provide("tabs") { method, a in
+      if method == "open" { tabs.opened.append(a.s("url")); return ["id": .string("tab-\(tabs.opened.count)")] }
+      return ["ok": true]
+    }
+    h.rt.plugins.provide("spaces") { method, _ in method == "current" ? ["id": "s1"] : [["id": "s1", "name": "Personal", "profile": .string(Self.profile)]] }
+    let c = ConnectionsCore(env: env(h, tabs))
+    h.rt.plugins.provide("connections") { a, b in c.handle(a, b) }
+    c.start()
+    let s = SlackCore(env: h.env)
+    s.start()
+    // The workspace tab reports its host (the event a sign-in redirect produces).
+    h.rt.plugins.emit("webviews.url", ["id": "w1", "url": "https://acme.slack.com/ssb/redirect?entry_point=your_workspaces"])
+
+    h.rt.call("connections", "connect", ["id": "slack"])
+    #expect(await until { h.rt.call("connections", "get", ["id": "slack"]).b("connected") })
+    let slack = h.rt.call("connections", "get", ["id": "slack"])
+    #expect(slack.s("account") == "Acme Inc")
+    #expect(slack.a("teams").map { $0.s("id") } == ["T01ACME"])
+    #expect(slack.s("profile") == Self.profile)
+    #expect(tabs.toasts == ["Slack connected"])
+    #expect(tabs.opened.isEmpty)  // a session was found: no sign-in tab
+  }
+
+  /// A session that existed before the plugins loaded connects when `connections` comes up, even
+  /// though the provider's own launch probe ran before the service could take its report (the
+  /// plugin load order is not fixed). Its own register call asks for the probe back.
+  @Test func aSessionIsPickedUpWhenConnectionsLoadsAfterTheProvider() async throws {
+    let m = try mock()
+    defer { m.stop() }
+    let h = Harness()
+    let tabs = Tabs()
+    configure(h, m)
+    h.clock = Int64(m.now.timeIntervalSince1970 * 1000)
+    h.rt.plugins.provide("tabs") { method, a in
+      if method == "open" { tabs.opened.append(a.s("url")); return ["id": .string("tab-\(tabs.opened.count)")] }
+      return ["ok": true]
+    }
+    h.rt.plugins.provide("spaces") { method, _ in method == "current" ? ["id": "s1"] : [["id": "s1", "name": "Personal", "profile": .string(Self.profile)]] }
+    // Signed in before den started (or at least before connections loaded): cookie and config in place.
+    #expect(await signIn(h, m.base + "/slack/signin"))
+    // Slack loads first: its launch probe finds the session, but no connections service exists yet
+    // to take the report, so the connection cannot appear.
+    let s = SlackCore(env: h.env)
+    s.start()
+    #expect(!h.rt.call("connections", "get", ["id": "slack"]).b("connected"))
+
+    // connections loads now (a retried register, or a later load order).
+    let c = ConnectionsCore(env: env(h, tabs))
+    h.rt.plugins.provide("connections") { a, b in c.handle(a, b) }
+    c.start()
+    h.fireTimers()
+    #expect(await until { h.rt.call("connections", "get", ["id": "slack"]).b("connected") })
+    let slack = h.rt.call("connections", "get", ["id": "slack"])
+    #expect(slack.s("account") == "Acme Inc")
+    // Nobody asked: the auto-connect toast offers Undo, and no sheet or tab appears.
+    #expect(tabs.toasts == ["Slack connected"])
+    #expect(tabs.toastTrees.last?.s("action") == "Undo")
+    #expect(tabs.opened.isEmpty)
+    #expect(h.rt.ui.sheets["overlay.connections"] == nil)
+  }
+
   // MARK: Briefing pipeline
 
   /// Deterministic stand-in for Foundation Models (the real one is tested in AIServiceTests).
