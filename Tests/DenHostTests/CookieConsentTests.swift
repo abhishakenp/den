@@ -33,8 +33,8 @@ struct CookieConsentTests {
 
   static func bannerScanned(_ w: WKWebView, seconds: Double = 8) async -> Bool {
     await Wait.until("cookie banner data-den-scanned", seconds: seconds) {
-      let el = await Wait.js(w, "document.querySelector('[data-den-scanned]')")
-      return (el as? Bool) == true
+      let result = await Wait.js(w, "document.querySelector('[data-den-scanned]') !== null")
+      return result as? Bool == true
     }
   }
 
