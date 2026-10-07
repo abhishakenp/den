@@ -266,7 +266,7 @@ public final class SitePolicyService: HostService {
       let kind = args.str("kind")
       guard kind == "camera" || kind == "microphone" else { return .error("sitepolicy: setPermission needs kind camera or microphone") }
       let origin = args.str("origin")
-      let oh = PageStyleService.host(of: URL(string: origin))
+      let oh = PageStyleService.pageHost(of: URL(string: origin))
       guard oh == h || oh.hasSuffix("." + h) else { return .error("sitepolicy: setPermission origin '\(origin)' is not on \(h)") }
       let key = origin + " " + kind
       if let allowed = args["allowed"].bool { prompts?.setMedia(key, allowed) } else { prompts?.forgetMedia(key) }
@@ -654,7 +654,7 @@ public final class SitePolicyService: HostService {
   func configure(_ r: WebRecord, _ config: WKWebViewConfiguration) {
     let p = Page()
     pages[r.id] = p
-    let h = PageStyleService.host(of: URL(string: r.url))
+    let h = PageStyleService.pageHost(of: URL(string: r.url))
     apply(p, config.userContentController, rule(for: h), host: h)
   }
 
@@ -725,7 +725,7 @@ public final class SitePolicyService: HostService {
   func applyAll() {
     for r in webviews.records.values {
       guard let w = r.webView else { continue }
-      let h = PageStyleService.host(of: w.url ?? URL(string: r.url))
+      let h = PageStyleService.pageHost(of: w.url ?? URL(string: r.url))
       apply(page(r.id), w.configuration.userContentController, rule(for: h), host: h)
     }
   }
@@ -777,7 +777,7 @@ public final class SitePolicyService: HostService {
       default: break
       }
     }
-    let target = PageStyleService.host(of: url)
+    let target = PageStyleService.pageHost(of: url)
     let rule = rule(for: target)
     apply(p, w.configuration.userContentController, rule, host: target)
     Self.setPolicy(prefs, "_setAutoplayPolicy:", ["allow": 1, "sound": 2, "none": 3][rule.autoplay ?? ""] ?? 0)
@@ -786,7 +786,7 @@ public final class SitePolicyService: HostService {
     // blocks it with a notice otherwise (Popups.swift). WebKit's Block (2) would also refuse
     // pop-ups from a click, which broke every OAuth sign-in pop-up.
     Self.setPolicy(prefs, "_setPopUpPolicy:", rule.popups == "allow" ? 1 : 0)
-    if scheme == "http", httpsFirst, !Self.isLocal(url.host ?? ""), !httpAllowed.contains(PageStyleService.host(of: url)) {
+    if scheme == "http", httpsFirst, !Self.isLocal(url.host ?? ""), !httpAllowed.contains(PageStyleService.pageHost(of: url)) {
       prefs.preferredHTTPSNavigationPolicy = .errorOnFailure
       p.upgrading = url
     } else {
@@ -891,7 +891,7 @@ public final class SitePolicyService: HostService {
   func state(_ r: WebRecord) -> Value {
     let p = page(r.id)
     let u = r.webView?.url ?? URL(string: r.url)
-    let h = PageStyleService.host(of: u)
+    let h = PageStyleService.pageHost(of: u)
     let rule = rule(for: h)
     var byList: Value = .object([])
     var total = 0
@@ -963,7 +963,7 @@ public final class SitePolicyService: HostService {
     guard !h.isEmpty, let prompts else { return [] }
     return prompts.mediaDecisions.filter { k, _ in
       let origin = k.split(separator: " ").first.map(String.init) ?? ""
-      let oh = PageStyleService.host(of: URL(string: origin))
+      let oh = PageStyleService.pageHost(of: URL(string: origin))
       return oh == h || oh.hasSuffix("." + h)
     }.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
   }
