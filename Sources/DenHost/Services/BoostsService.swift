@@ -197,7 +197,8 @@ public final class BoostsService: HostService {
     active = true
     webviews.configureHooks.append { [weak self] r, config in self?.configure(r, config) }
     webviews.navigatingHooks.append { [weak self] r, w, url in
-      if let self, let h = PageStyleService.pageHost(of: url) {
+      if let self {
+        let h = PageStyleService.pageHost(of: url)
         self.apply(r, w, host: h)
       }
     }
