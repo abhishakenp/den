@@ -180,7 +180,7 @@ struct FilesServiceTests {
     auth.approve = approve
     rt.vault.store = store
     rt.vault.auth = auth
-    rt.vault.pickFile = { done in DispatchQueue.main.async { done(cancel ? nil : file) } }
+    rt.vault.pickFile = { _, _, done in DispatchQueue.main.async { done(cancel ? nil : file) } }
     final class Box { var results: [Value] = [] }
     let box = Box()
     _ = rt.host.on("vault.result") { box.results.append($0) }

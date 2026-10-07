@@ -51,15 +51,15 @@ enum CSV {
 /// Touch ID. The plugin names the columns (Chrome, Safari, 1Password, Bitwarden, Firefox headers);
 /// the passwords never leave the host, the file is only read.
 extension VaultService {
-  static let defaultPickFile: (@escaping @MainActor (URL?) -> Void) -> Void = { done in
+  static let defaultPickFile: (String, String, @escaping @MainActor (URL?) -> Void) -> Void = { message, prompt, done in
     MainActor.assumeIsolated {
       let panel = NSOpenPanel()
       panel.canChooseFiles = true
       panel.canChooseDirectories = false
       panel.allowsMultipleSelection = false
       panel.allowedContentTypes = [.commaSeparatedText, .plainText]
-      panel.message = "Choose a passwords export (.csv) from your browser or password manager."
-      panel.prompt = "Import"
+      if !message.isEmpty { panel.message = message }
+      panel.prompt = prompt.isEmpty ? "Choose" : prompt
       if let w = NSApp.keyWindow ?? NSApp.mainWindow {
         panel.beginSheetModal(for: w) { r in MainActor.assumeIsolated { done(r == .OK ? panel.url : nil) } }
       } else {
@@ -79,7 +79,7 @@ extension VaultService {
       if let error { v = v.with("error", .string(error)) }
       host.emit("vault.result", v)
     }
-    pickFile { [weak self] url in
+    pickFile(args.str("message"), args.str("prompt", "Choose")) { [weak self] url in
       guard let self else { return }
       guard let url else { return finish(false, "cancelled") }
       self.auth.authenticate(reason: "import passwords") { [weak self] ok, _ in

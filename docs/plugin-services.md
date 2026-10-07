@@ -428,7 +428,7 @@ Injects `ui`, `storage`, `files`; calls `tabs`, `spaces`, `commands`, `settings`
 | Method | Args | Returns |
 |---|---|---|
 | `sources` | – | `[{id, name, denied?}]`: browsers with data on this Mac (one `files.stat`), in the order Arc, Safari, Chrome, Dia, Brave, Edge, Firefox, Zen. `denied`: macOS refuses den (Safari without Full Disk Access) |
-| `run` | `source` (an id, or `passwords`) | ok, and the import runs in the background (`{needsAccess: true}` when denied: it opens System Settings ▸ Full Disk Access with `files.openFullDiskAccess` and says so in one toast; `passwords`: `vault.importFile`) |
+| `run` | `source` (an id, or `passwords`) | ok, and the import runs in the background (`{needsAccess: true}` when denied: it opens System Settings ▸ Full Disk Access with `files.openFullDiskAccess` and says so in one toast; `passwords`: `vault.importFile`, whose panel copy the plugin passes) |
 | `open` | – | ok. The "Import from Another Browser" dialog (`dialog` id `importer.dialog`, one `choices` row per source plus Passwords) |
 | `undo` | `batch?` (default the last) | ok. Takes that import back out |
 | `state` | – | `{running, source, lastBatch, last, imported}` |

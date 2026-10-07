@@ -264,7 +264,7 @@ struct ImporterTests {
       Linear,linear.app,jd@acme.test,s3cret,"multi
       line note"
       """.utf8).write(to: csv)
-    h.rt.vault.pickFile = { done in DispatchQueue.main.async { done(csv) } }
+    h.rt.vault.pickFile = { _, _, done in DispatchQueue.main.async { done(csv) } }
     h.rt.call("importer", "run", ["source": "passwords"])
     _ = await Wait.until("passwords", seconds: 20) { h.events.contains { $0.0 == "importer.passwords" } }
     let r = h.events.last { $0.0 == "importer.passwords" }?.1 ?? .null

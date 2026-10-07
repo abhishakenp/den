@@ -594,7 +594,10 @@ final class ImporterCore {
   // MARK: - Passwords
 
   func importPasswords() {
-    let r = env.call("vault", "importFile", ["columns": Self.passwordColumns, "request": .string(Self.passwordsRequest)])
+    // The panel's copy comes from here, the plugin: the host's open panel stays generic.
+    let r = env.call("vault", "importFile", ["columns": Self.passwordColumns, "request": .string(Self.passwordsRequest),
+                                             "message": .string("Choose a passwords export (.csv) from your browser or password manager."),
+                                             "prompt": .string("Import")])
     if r.isErr { toast("Passwords can't be imported here.", icon: "sf:exclamationmark.triangle") }
   }
 
