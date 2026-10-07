@@ -563,15 +563,25 @@ struct CommandBarTests {
     h.key("cmd+t")
     h.type("swi")
     #expect(h.suggestRequests.last?.0 == "swi")
-    let before = h.barRowIds
-    #expect(before.first == "search")
-    #expect(!before.contains { $0.hasPrefix("sugg:") })
+    // "Translucent window" fuzzy-matches "swi" (s→w→i), so it is a weak local match: on screen
+    // while there are no suggestions, below them once they arrive. Everything else that was on
+    // screen — search and the strong tab matches — keeps its position.
+    let weakRow = "set:general.translucent"
+    let before = h.barRowIds.filter { $0 != weakRow }
+    #expect(h.barRowIds.first == "search")
+    #expect(h.barRowIds.contains(weakRow))
+    #expect(!h.barRowIds.contains { $0.hasPrefix("sugg:") })
     let first = h.suggestRequests.last!
     await h.answerSuggestions(["swi", "swiggy", "swift", "switch 2", "swimming", "swiss"])
     let after = h.barRowIds
-    // Everything that was on screen keeps its position; suggestions come after the strong tab matches
-    // (as many as fit under their "Suggestions" header).
+    // Suggestions come after the strong tab matches (as many as fit under their "Suggestions"
+    // header); the weak settings row follows them.
     #expect(Array(after.prefix(before.count)) == before)
+    // The weak settings row never sits above the suggestions: with the 8-row budget it is pushed
+    // out entirely once they arrive.
+    if let weakIndex = after.firstIndex(of: weakRow) {
+      #expect(weakIndex > (after.lastIndex { $0.hasPrefix("sugg:") } ?? -1))
+    }
     #expect(after.filter { $0.hasPrefix("sugg:") } == ["sugg:swiggy", "sugg:swift", "sugg:switch 2"])
     #expect(h.bar.list("sections").last?.str("title") == "Suggestions")
     #expect(after.count <= CommandBarCore.maxRows)

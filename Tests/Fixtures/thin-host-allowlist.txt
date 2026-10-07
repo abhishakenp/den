@@ -198,6 +198,8 @@ string	Sources/DenHost/Services/GeneralSettings.swift	Show in Finder
 string	Sources/DenHost/Services/GeneralSettings.swift	Skip passkey sign-in, use the password
 string	Sources/DenHost/Services/GeneralSettings.swift	Space colors
 string	Sources/DenHost/Services/GeneralSettings.swift	System accent
+string	Sources/DenHost/Services/GeneralSettings.swift	Translucent window
+string	Sources/DenHost/Services/GeneralSettings.swift	Your desktop shows faintly through the space's colors, like macOS sidebars. Off by default: it costs the system some graphics work while den is on screen.
 string	Sources/DenHost/Services/MainMenu.swift	About den
 string	Sources/DenHost/Services/MainMenu.swift	Actual Size
 string	Sources/DenHost/Services/MainMenu.swift	Add Split View
@@ -268,6 +270,16 @@ string	Sources/DenHost/Services/MenuActions.swift	Show Web Inspector
 string	Sources/DenHost/Services/NativePiP.swift	Picture in Picture
 string	Sources/DenHost/Services/NativePiP.swift	Picture in Picture
 string	Sources/DenHost/Services/ScheduleService.swift	EEEE, MMMM d
+string	Sources/DenHost/Services/SitePermissions.swift	Allow
+string	Sources/DenHost/Services/SitePermissions.swift	Allow
+string	Sources/DenHost/Services/SitePermissions.swift	Allow \(host) to show notifications?
+string	Sources/DenHost/Services/SitePermissions.swift	Allow \(host) to use your location?
+string	Sources/DenHost/Services/SitePermissions.swift	Don’t Allow
+string	Sources/DenHost/Services/SitePermissions.swift	Don’t Allow
+string	Sources/DenHost/Services/SitePermissions.swift	Location Services are off for den
+string	Sources/DenHost/Services/SitePermissions.swift	Not Now
+string	Sources/DenHost/Services/SitePermissions.swift	Open Settings
+string	Sources/DenHost/Services/SitePermissions.swift	Websites can’t use your location until den is turned on in System Settings ▸ Privacy & Security ▸ Location Services.
 string	Sources/DenHost/Services/SitePolicyService.swift	HTTP \(status)
 string	Sources/DenHost/Services/SitePolicyService.swift	HTTP \(status)
 string	Sources/DenHost/Services/UniversalLinks.swift	Always for this site

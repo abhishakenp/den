@@ -74,5 +74,7 @@ extension TabsCore {
   func startPopups() {
     env.on("webviews.closeRequested") { [self] v in popupCloseRequested(v.s("id"), opener: v.sOpt("opener")) }
     env.on("webviews.popupBlocked") { [self] v in popupBlocked(v.s("id"), count: v.i("count")) }
+    // A click on a site's notification (host `notifications`): its tab comes forward.
+    env.on("notifications.clicked") { [self] v in select(v.s("webview")) }
   }
 }

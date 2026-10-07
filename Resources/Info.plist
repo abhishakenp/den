@@ -35,6 +35,7 @@
   <key>SUAutomaticallyUpdate</key><false/>
   <key>NSCameraUsageDescription</key><string>A website you allowed wants to use your camera.</string>
   <key>NSMicrophoneUsageDescription</key><string>A website you allowed wants to use your microphone.</string>
+  <key>NSLocationUsageDescription</key><string>A website you allowed wants to know your location.</string>
   <!-- Handoff: pages from Safari on your other devices come to den when it's the default browser. -->
   <key>NSUserActivityTypes</key>
   <array><string>NSUserActivityTypeBrowsingWeb</string></array>

@@ -212,13 +212,13 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | [Complete macOS menu bar; every shortcut is a menu item](guide/shortcuts.md) | ✅ | |
 | [Session restore](guide/sidebar-and-tabs.md) | 🟡 | ✅ spaces, tabs and selection survive quit and updates. ⏳ crash recovery, a "Page crashed · Reload" view |
 | [Error pages with Try Again](guide/page-tools.md) | ✅ | Offline, host not found, timeout, can't connect, not private |
-| [Page prompts](guide/privacy-and-passwords.md) | ✅ | Camera/mic, HTTP sign-in, file panels, JS alert/confirm/prompt. ⏳ location, notifications |
+| [Page prompts](guide/privacy-and-passwords.md) | ✅ | Camera/mic, location, notifications (to Notification Center while the tab is open), HTTP sign-in, file panels, JS alert/confirm/prompt |
 | [Default browser handling](guide/getting-started.md) | ✅ | Settings, menu bar, command bar banner, "Try for a week" |
 | [Web Inspector, inspect element, console, view source](guide/shortcuts.md) | ✅ | |
 | Downloads in the sidebar and Library | ⏳ | |
 | No white flash on tab switch or load | ⏳ | |
 | Protection against pages opening endless alerts | ⏳ | |
-| Web push notifications | ⏳ | Not supported in `WKWebView`; a workaround or Skip is still to be decided |
+| Web push notifications | 🟡 | Notifications from open tabs ✅ (den's bridge); push to closed tabs ❌ (`WKWebView` has none) |
 | [Auto-update (OTA)](guide/updates.md) | ✅ | Sparkle for the app, signed hot-swapped plugins; `stable` / `prerelease` / `follow-main` channels; relaunches only when you won't notice |
 | Onboarding: optional tour card, one-time tips | ⏳ | Zero-friction: never a blocking welcome or wizard ([spec](guide/_in-app-tips.md)) |
 | No row tooltips | ✅ | Hover cards show that information instead |
