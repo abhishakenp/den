@@ -142,6 +142,10 @@ final class ConnectionsCore {
       providers.sort { $0.order != $1.order ? $0.order < $1.order : $0.id < $1.id }
       registerCommands()
       changed()
+      // The provider is up: let it probe now. Its own launch probe can run before this service
+      // exists, and a report then has nowhere to go — a signed-in session would stay unconnected
+      // until some cookie changed. `reason` marks it as nobody asking (the Undo toast, no sheet).
+      env.emit("connections.probe", ["id": .string(id), "profile": .string(profileOfCurrentSpace()), "reason": "register"])
       return .okay
     case "list": return list()
     case "get": return list().array?.first { $0.s("id") == args.s("id") } ?? .null

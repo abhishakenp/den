@@ -62,7 +62,7 @@ final class CalendarCore {
 
   func start() {
     env.on("connections.probe") { [self] v in
-      if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default", auto: false) }
+      if v.s("id") == Self.id { probe(profile: v.sOpt("profile") ?? "default", auto: v.s("reason") == "register") }
     }
     env.on("connections.changed") { [self] _ in
       if connection() == nil { clear() } else { tick() }
