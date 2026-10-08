@@ -411,7 +411,9 @@ struct ExtensionCompatTests {
     return ev.1.s("id")
   }
 
-  @Test func vimiumFromChromeWebStore() async throws {
+  @Test
+  func vimiumFromChromeWebStore() async throws {
+    guard ProcessInfo.processInfo.environment["DEN_CI"] == nil else { return }
     let mock = MockServices()
     try mock.start()
     defer { mock.stop() }

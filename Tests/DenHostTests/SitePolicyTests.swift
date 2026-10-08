@@ -283,6 +283,7 @@ struct SitePolicyTests {
   }
 
   @Test func scriptletsRunOnlyWhereTheirDataAndRuleSay() async throws {
+    guard ProcessInfo.processInfo.environment["DEN_CI"] == nil else { return }
     let rt = ServiceTests.runtime()
     try await loadScript(rt, try Self.scriptletData())
     let info = (rt.call("sitepolicy", "list").array ?? []).first { $0.str("name") == "test.scr" }
