@@ -192,7 +192,7 @@ public final class BoostsService: HostService {
     return defaultRule
   }
 
-  func activate() {
+  public func activate() {
     guard !active else { return }
     active = true
     webviews.configureHooks.append { [weak self] r, config in self?.configure(r, config) }
