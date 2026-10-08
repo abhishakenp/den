@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import UniformTypeIdentifiers
 
 /// den's WKWebView: a browser-style context menu (PageContextMenu.swift: new *tab* instead of new
 /// window, Peek, split, private window, Save As…, copy as Markdown, search, PiP, Inspect
@@ -11,6 +12,8 @@ final class DenWebView: WKWebView {
   var recordId = ""
   /// What the last right-click hit, reported by `contextScript` just before WebKit asks for the menu.
   var context = ContextHit()
+  /// Service for PDF-specific behavior (toolbar, detection).
+  weak var pdfService: PDFService?
 
   /// Off-display (invisible) windows: a page shown in an ordered-in window paints (`Presentation`).
   override func viewDidMoveToWindow() {
@@ -52,12 +55,35 @@ final class DenWebView: WKWebView {
   // MARK: Dropped files
 
   /// Files dragged in from Finder open as new tabs (WebKit would replace this page with them).
+  /// PDF files are handled specially: they load directly in this web view with the PDF toolbar.
   override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
     if sender.draggingSource == nil, let urls = Self.fileURLs(sender.draggingPasteboard), !urls.isEmpty {
+      // Check if any dropped file is a PDF
+      let pdfUrls = urls.filter { Self.isPdfFile($0) }
+      if !pdfUrls.isEmpty {
+        // Handle PDF drop: load in current web view
+        for pdfUrl in pdfUrls {
+          if !recordId.isEmpty, let service = service,
+             let record = service.record(recordId) {
+            PDFService.configureForPdf(configuration)
+            loadFileURL(pdfUrl, allowingReadAccessTo: pdfUrl.deletingLastPathComponent())
+            service.pdfService?.showToolbar(recordId)
+            return true
+          }
+        }
+      }
       service?.host.emit("window.dropURLs", ["urls": .array(urls.map { .string($0.absoluteString) }), "target": "content"])
       return true
     }
     return super.performDragOperation(sender)
+  }
+
+  /// Check if a URL points to a PDF file by extension or UTI.
+  private static func isPdfFile(_ url: URL) -> Bool {
+    if url.pathExtension.lowercased() == "pdf" { return true }
+    if let uti = try? url.resourceValues(forKeys: [.typeIdentifierKey]).typeIdentifier,
+       let type = UTType(uti), type.conforms(to: .pdf) { return true }
+    return false
   }
 
   static func fileURLs(_ pb: NSPasteboard) -> [URL]? {

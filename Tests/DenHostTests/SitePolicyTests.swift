@@ -303,6 +303,7 @@ struct SitePolicyTests {
     while Date() < end {
       do {
         let s = try await pageState(rt, w)
+        // The script leaves one random-named count function on window
         if (s["hooked"] as? Bool == true) && ((s["ownKeys"] as? Int ?? -1) <= 1) {
           ready = true; break
         }
@@ -312,8 +313,7 @@ struct SitePolicyTests {
     #expect(ready, "Scriptlet didn't settle within 15s")
     let on = try await pageState(rt, w)
     #expect(on["hooked"] as? Bool == true, "\(on)")
-    let keys = (on["ownKeys"] as? Int) ?? 0
-    #expect(keys <= 1, "ownKeys=\(keys) \(on)")
+    #expect(on["ownKeys"] as? Int ?? 0 <= 1, "\(on)")
     #expect(on["initAds"] as? Bool == false, "\(on)")
     #expect(on["playerAds"] as? Bool == false, "\(on)")
     #expect(on["video"] as? Bool == true, "\(on)")
