@@ -183,8 +183,8 @@ final class OutlookCore {
     var error: String?
     var expired = false
 
-    let mailDone: (@escaping (String?) -> Void) -> Void = { [self] next in
-      guard fetchMail else { return next(nil) }
+    let mailDone: (@escaping () -> Void) -> Void = { [self] next in
+      guard fetchMail else { return next() }
       requests.call("net", "fetch", ["plugin": .string(Self.id), "url": .string(graph + "/v1.0/me/messages?" +
         Web.encode("$top") + "=" + String(Self.maxUnread) + "&" +
         Web.encode("$filter") + "=" + Web.encode("isRead+eq+false") + "&" +
@@ -196,20 +196,18 @@ final class OutlookCore {
         let json = r["json"]
         if Self.authGone(r.i("status")) {
           expired = true
-          next("signed out")
         } else if !r.b("ok"), r.i("status") >= 400 {
           error = error ?? "Outlook returned " + String(r.i("status"))
-          next(nil)
         } else {
           let msgs = json.a("value")
           items += msgs.prefix(Self.maxUnread).map { Self.mailItem($0, icon: Self.icon) }
-          next(nil)
         }
+        next()
       }
     }
 
-    let calDone: (@escaping (String?) -> Void) -> Void = { [self] next in
-      guard fetchCalendar else { return next(nil) }
+    let calDone: (@escaping () -> Void) -> Void = { [self] next in
+      guard fetchCalendar else { return next() }
       let now = Web.date(env.now())
       let tomorrow = Web.date(env.now() + 7 * 86_400_000)
       requests.call("net", "fetch", ["plugin": .string(Self.id), "url": .string(graph + "/v1.0/me/events?" +
@@ -222,15 +220,13 @@ final class OutlookCore {
         let json = r["json"]
         if Self.authGone(r.i("status")) {
           expired = true
-          next("signed out")
         } else if !r.b("ok"), r.i("status") >= 400 {
           error = error ?? "Outlook Calendar returned " + String(r.i("status"))
-          next(nil)
         } else {
           let evts = json.a("value")
-          items += evts.prefix(Self.maxEvents).map { Self.calEvent($0, icon: Self.icon) }
-          next(nil)
+          items += evts.prefix(Self.maxEvents).map { self.calEvent($0, icon: Self.icon) }
         }
+        next()
       }
     }
 
@@ -286,7 +282,7 @@ final class OutlookCore {
   }
 
   /// Calendar event from Graph API -> feed item.
-  static func calEvent(_ evt: Value, icon: String) -> Value {
+  func calEvent(_ evt: Value, icon: String) -> Value {
     let subject = evt.sOpt("subject") ?? "(Untitled)"
     let startMs = evt.i("start")
     let endMs = evt.i("end")
@@ -321,7 +317,7 @@ final class OutlookCore {
       "detail": .string(detail), "url": .string("https://outlook.office.com/owa/?path=/calendar/action/compose"),
       "ts": .int(startMs), "end": .int(endMs), "icon": .string(icon),
       "badge": .string(badge), "actor": .string(organizer), "where": .string("Outlook Calendar"),
-      "actionable": isOnline, "summary": .string(summary),
+      "actionable": .bool(isOnline), "summary": .string(summary),
       "join": .string(onlineUrl),
     ]
   }

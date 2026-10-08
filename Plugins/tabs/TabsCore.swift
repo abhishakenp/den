@@ -215,7 +215,7 @@ final class TabsCore {
   var settingsSubscribed = false
 
   /// Live folders (GitHub): rows fed by a connection. Countdown chips on favorites, by host.
-  lazy var liveFolders = LiveFolders(core: self)
+  lazy var liveFolders = LiveFoldersUI(core: self)
   var badges: [String: String] = [:]
   // Windows (TabsWindows.swift). Every window shows the same spaces and tabs; each keeps its own
   // place (space and tab, Arc). `currentSpace`/`selected` belong to `normalWin`, the normal window

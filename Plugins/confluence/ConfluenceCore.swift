@@ -309,20 +309,18 @@ final class ConfluenceCore {
       "id": .string("confluence:" + site.host + ":" + String(pageId)), "source": .string(Self.id), "kind": "update",
       "title": .string(title.isEmpty ? "(Untitled)" : title), "detail": .string(detail),
       "url": .string(fullUrl.isEmpty ? site.base : fullUrl), "ts": .int(updatedAt), "icon": .string(Self.icon),
-      "badge": .string(badge), "actor": .string(authorKey.isEmpty ? author : authorKey), "where": .string(space.isEmpty ? "Confluence" : space),
+      "badge": .string(badge), "actor": .string(authorKey.isEmpty ? author ?? "" : authorKey), "where": .string(space.isEmpty ? "Confluence" : space),
       "actionable": true, "summary": .string(summary),
       "importantKey": .string("confluence:" + site.host + ":" + String(pageId)),
       "importantTitle": .string(space.isEmpty ? title : title + " · " + space),
     ]
   }
 
-  extension Value {
-    /// Get a string by first trying key, then "expand" query param prefixed with key.
-    func expand(key: String) -> String {
-      let direct = s(key)
-      if !direct.isEmpty { return direct }
-      let exp = sOpt("expand") ?? ""
-      return Web.query(exp, key)
-    }
+  /// Get a string by first trying key, then "expand" query param prefixed with key.
+  static func expandValue(_ v: Value, key: String) -> String {
+    let direct = v.s(key)
+    if !direct.isEmpty { return direct }
+    let exp = v.sOpt("expand") ?? ""
+    return Web.query(exp, key)
   }
 }

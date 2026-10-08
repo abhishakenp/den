@@ -18,16 +18,9 @@
 /// - **Cost**: nothing of its own. Rows come from the `feed.items` the briefing's refresh already
 ///   gets (every 15 minutes while connected); a new folder, launch and "Refresh" ask once.
 /// Per-folder state (seen keys, done items, closed stacks) persists in storage ns `tabs` key `live`.
-final class LiveFolders {
-  struct Source {
-    var id: String
-    var title: String
-    var icon: String
-  }
+final class LiveFoldersUI {
+  /// Source -> its latest feed items (memory only).
 
-  static let sources: [Source] = [
-    Source(id: "github", title: "GitHub", icon: "https://github.com/favicon.ico"),
-  ]
   static let maxDone = 20
   static let doneKeepMs: Int64 = 7 * 86_400_000
   static let maxSeen = 300
@@ -61,7 +54,7 @@ final class LiveFolders {
     }
   }
 
-  static func source(_ id: String) -> Source? { sources.first { $0.id == id } }
+  static func source(_ id: String) -> LiveFolders? { LiveFolders.sources.first { $0.id == id } }
 
   func folders(of source: String) -> [TabsCore.Folder] { core.folders.values.filter { $0.live == source } }
 
@@ -459,7 +452,7 @@ final class LiveFolders {
   /// "New GitHub Live Folder" while that source is connected. `commands` may load later.
   func registerCommands() {
     var want: [(String, String, String)] = []
-    for s in Self.sources {
+    for s in LiveFolders.sources {
       let isConnected = connected(s.id)
       guard isConnected else { continue }
       want.append(("tabs.liveNew:" + s.id, "New " + s.title + " Live Folder", s.icon))

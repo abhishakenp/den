@@ -80,7 +80,7 @@ final class RssCore {
   func start() {
     feeds = loadFeeds()
     for f in feeds {
-      registerSource(LiveFolders.Source(id: f.id, title: f.name, icon: f.icon.isEmpty ? "sf:rss" : f.icon))
+      LiveFolders.registerSource(LiveFolders(id: f.id, title: f.name, icon: f.icon.isEmpty ? "sf:rss" : f.icon))
     }
     env.on("feed.refresh") { [self] _ in refresh() }
     env.on("config.changed") { [self] v in configChanged(v["config"]) }
@@ -89,20 +89,15 @@ final class RssCore {
     env.timer(Self.pollIntervalMs, true) { [self] in refresh() }
   }
 
-  /// Register a feed as a LiveFolders source.
-  private func registerSource(_ source: LiveFolders.Source) {
-    LiveFolders.registerSource(source)
-  }
-
   /// React to config reload (user edits config.toml).
   private func configChanged(_ cfg: Value) {
-    let oldIds = Set(feeds.map(\.id))
+    let oldIds = Set(feeds.map { $0.id })
     feeds = loadFeeds()
-    let newIds = Set(feeds.map(\.id))
+    let newIds = Set(feeds.map { $0.id })
     // Register any newly added feeds.
     for added in newIds.subtracting(oldIds) {
       if let f = feeds.first(where: { $0.id == added }) {
-        registerSource(LiveFolders.Source(id: f.id, title: f.name, icon: f.icon.isEmpty ? "sf:rss" : f.icon))
+        LiveFolders.registerSource(LiveFolders(id: f.id, title: f.name, icon: f.icon.isEmpty ? "sf:rss" : f.icon))
       }
     }
     // Refresh all feeds if config changed.
@@ -132,7 +127,7 @@ final class RssCore {
 
   func parseFeed(_ xml: String, feed: Feed) -> [Value] {
     let b = Array(xml.utf8)
-    if String(decoding: Array(xml.utf8).prefix(200), as: UTF8.self).contains("<feed") {
+    if xml.hasPrefix("<feed") {
       return parseAtom(b, feed: feed)
     }
     return parseRss(b, feed: feed)

@@ -46,11 +46,11 @@ struct LiveFoldersTests {
 
   @Test func stacksChainPRsByBranch() {
     let list = stack + [item("denhq/den", 300, "authored", head: "other", base: "main"), item("acme/web", 1, "review")]
-    let s = LiveFolders.stacks(list)
+    let s = LiveFoldersUI.stacks(list)
     #expect(s.count == 1)
     #expect(s[0].title == "den")
     #expect(s[0].members == ["github:denhq/den#209", "github:denhq/den#218", "github:denhq/den#219"])  // bottom first
-    #expect(LiveFolders.stacks([item("a/b", 1, "authored", head: "x", base: "y"), item("c/d", 2, "authored", head: "y", base: "main")]).isEmpty)
+    #expect(LiveFoldersUI.stacks([item("a/b", 1, "authored", head: "x", base: "y"), item("c/d", 2, "authored", head: "y", base: "main")]).isEmpty)
   }
 
   @Test func liveFolderRowsUnreadDoneAndReauth() {
