@@ -60,6 +60,15 @@ public final class DenRuntime {
   static var permissionsByHost: [ObjectIdentifier: Permissions] = [:]
   static func permissions(for plugins: PluginHost) -> Permissions? { permissionsByHost[ObjectIdentifier(plugins)] }
 
+  // MARK: Plugin Sandboxing
+
+  /// Process-level sandbox for plugins: isolated processes, reduced entitlements, XPC boundary.
+  let sandbox = PluginSandboxService()
+  /// Permission request dialogs for sandboxed plugins needing restricted access.
+  var permissionDialogs = PluginPermissionManager()
+  /// Settings panel integration for sandbox policy and per-plugin controls.
+  var sandboxSettings: PluginSandboxSettings?
+
   /// `crashMarkerPath: nil` skips cordis' crash signal handlers (tests); the app passes
   /// `PluginHost.defaultCrashMarkerPath`.
   public init(storageRoot: URL = StorageService.defaultRoot, crashMarkerPath: String? = nil, pluginCache: String? = nil) {
