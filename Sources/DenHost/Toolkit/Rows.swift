@@ -417,32 +417,47 @@ final class GridNode: NodeView {
   }
 }
 
-/// A tab using the camera or microphone (`capture: {camera, microphone}`, each "active" or
-/// "muted"): a red video / mic icon, always shown (not only on hover), like Safari's. A click
-/// emits `stopCapture`; the owner turns both off.
+/// A tab using the camera, microphone, or screen share (`capture: {camera, microphone, screen}`):
+/// a red video/mic/screen icon, always shown (not only on hover), like Safari's. A click emits
+/// `stopCapture`; the owner turns them off.
 @MainActor
 final class CaptureButton {
   let button: IconButton
+  let screenIcon: IconView
   init(_ emit: @escaping () -> Void) {
     button = IconButton(symbol: "video.fill", size: 22) { emit() }
     button.isHidden = true
+    screenIcon = IconView()
+    screenIcon.isHidden = true
   }
-  func update(_ c: Value) {
+  func update(_ c: Value, screen: Bool) {
     let cam = c.str("camera"), mic = c.str("microphone")
-    let on = (cam == "active" || cam == "muted") || (mic == "active" || mic == "muted")
-    button.isHidden = !on
-    guard on else { return }
     let camOn = cam == "active" || cam == "muted"
-    let paused = (camOn ? cam : mic) == "muted"
-    button.icon.spec = camOn ? (paused ? "sf:video.slash.fill" : "sf:video.fill") : (paused ? "sf:mic.slash.fill" : "sf:mic.fill")
-    let what = camOn && (mic == "active" || mic == "muted") ? "Camera and Microphone" : camOn ? "Camera" : "Microphone"
-    button.toolTip = "Turn Off " + what
-    button.setAccessibilityLabel("Turn Off " + what)
+    let micOn = mic == "active" || mic == "muted"
+    let hasCapture = camOn || micOn
+    let on = hasCapture || screen
+    button.isHidden = !on
+    screenIcon.isHidden = !on || !screen || hasCapture  // show screen icon alone or camera/mic icon alone
+    guard on else { return }
+    if screen && !hasCapture {
+      // Screen sharing only
+      screenIcon.spec = "sf:rectangle.on.rectangle.angled.fill"
+      screenIcon.setAccessibilityLabel("Turn Off Screen Share")
+    } else {
+      // Camera or mic only
+      let camOn = cam == "active" || cam == "muted"
+      let paused = (camOn ? cam : mic) == "muted"
+      button.icon.spec = camOn ? (paused ? "sf:video.slash.fill" : "sf:video.fill") : (paused ? "sf:mic.slash.fill" : "sf:mic.fill")
+      let what = camOn && micOn ? "Camera and Microphone" : camOn ? "Camera" : "Microphone"
+      button.toolTip = "Turn Off " + what
+      button.setAccessibilityLabel("Turn Off " + what)
+    }
   }
   func apply(_ p: Palette) {
     button.apply(p)
     button.hoverFill = p.controlHoverFill
     button.tint = p.tokens.destructive.ns
+    screenIcon.tint = p.tokens.destructive.ns
   }
 }
 
@@ -480,11 +495,12 @@ final class MediaButtons {
 }
 
 /// {type:"favoriteTile", id, icon, title, selected, audio, muted?, suspended?, badge?, media?: {paused, next, previous},
-///  capture?: {camera, microphone}}  (stopCapture: the capture badge clicked)
+///  capture?: {camera, microphone}, screenCapture?: bool}  (stopCapture: the capture badge clicked)
 /// actions: click, doubleClick, reorder, mute (speaker badge), media {action: toggle|next|previous}
 /// `badge`: a short text chip at the bottom of the tile ("in 8m": a plugin's countdown).
 /// `suspended`: the page was discarded; the icon dims until the page comes back.
 /// `capture`: a red camera / mic button (stopCapture) while the page uses them.
+/// `screenCapture`: a red screen share button when the page is sharing its screen.
 /// `media`: while hovered, play/pause (and previous / next when the tile is wide enough) take the
 /// icon's place, like a tab row's.
 final class FavoriteTileNode: HoverNode {
@@ -506,6 +522,7 @@ final class FavoriteTileNode: HoverNode {
     addSubview(chip)
     media.all.forEach { addSubview($0) }
     addSubview(capture.button)
+    addSubview(capture.screenIcon)
   }
   required init?(coder: NSCoder) { fatalError() }
   override func hoverChanged() { updateMedia(); needsLayout = true }
@@ -519,7 +536,7 @@ final class FavoriteTileNode: HoverNode {
     icon.fallbackLetter = v.str("title")
     audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))
-    capture.update(v["capture"])
+    capture.update(v["capture"], screen: v.flag("screenCapture"))
     chip.text = v.str("badge")
     chip.isHidden = chip.text.isEmpty
     setAccessibilityValue(chip.text.isEmpty ? nil : chip.text)
@@ -549,7 +566,11 @@ final class FavoriteTileNode: HoverNode {
     // A small round badge in the top-right corner, clear of the icon (den's estimate).
     audio.frame = NSRect(x: bounds.width - 21, y: 3, width: 18, height: 18)
     // The capture badge in the top-left corner, opposite the speaker.
-    capture.button.frame = NSRect(x: 2, y: 2, width: 20, height: 20)
+    let capOn = !capture.button.isHidden
+    let scOn = !capture.screenIcon.isHidden
+    let capX = capOn ? 2 : (scOn ? 2 : 0)
+    capture.button.frame = NSRect(x: capX, y: 2, width: 20, height: 20)
+    capture.screenIcon.frame = NSRect(x: scOn ? 2 : 0, y: 2, width: 20, height: 20)
     if !chip.isHidden {
       let w = min(bounds.width - 6, chip.width)
       chip.frame = NSRect(x: (bounds.width - w) / 2, y: bounds.height - TextChip.height - 3, width: w, height: TextChip.height)
@@ -1038,8 +1059,9 @@ final class RenameSupport {
 // MARK: - Tabs
 
 /// {type:"tabRow", id, title, icon, selected, audio, drift, closable=true, closeTitle?, indent?, muted?, suspended?, editing?, editText?, unread?,
-///  media?: {paused, next, previous}, capture?: {camera, microphone}}
+///  media?: {paused, next, previous}, capture?: {camera, microphone}, screenCapture?: bool}
 /// `capture`: a red camera / mic button (stopCapture) while the page uses them.
+/// `screenCapture`: a red screen share badge when the page is sharing its screen.
 /// `unread`: an accent dot on the right (a live folder's new item).
 /// `suspended`: the page was discarded (its WebContent process exited); the icon dims until the
 /// page comes back.
@@ -1067,7 +1089,7 @@ final class TabRowNode: HoverNode {
   override var busy: Bool { super.busy || rename.active }
   required init(renderer: Renderer) {
     super.init(renderer: renderer)
-    [icon, drift, label, capture.button, audio, dot, previous, playPause, next, close].forEach { addSubview($0) }
+    [icon, drift, label, capture.button, capture.screenIcon, audio, dot, previous, playPause, next, close].forEach { addSubview($0) }
     close.isHidden = true
     dot.isHidden = true
   }
@@ -1090,7 +1112,7 @@ final class TabRowNode: HoverNode {
     drift.isHidden = !v.flag("drift")
     audio.set(playing: v.flag("audio"), muted: v.flag("muted"))
     audio.isHidden = !(v.flag("audio") || v.flag("muted"))
-    capture.update(v["capture"])
+    capture.update(v["capture"], screen: v.flag("screenCapture"))
     close.toolTip = v.str("closeTitle", "Close Tab")
     dot.isHidden = !v.flag("unread")
     apply(r.palette)
@@ -1127,7 +1149,8 @@ final class TabRowNode: HoverNode {
     var right = bounds.width - 6
     if !close.isHidden { close.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 26 }
     if !audio.isHidden { audio.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 24 }
-    if !capture.button.isHidden { capture.button.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 24 }
+    let capOn = !capture.button.isHidden || !capture.screenIcon.isHidden
+    if capOn { capture.button.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); capture.screenIcon.frame = capture.button.frame; right -= 24 }
     if !dot.isHidden { dot.frame = NSRect(x: right - 10, y: (h - 6) / 2, width: 6, height: 6); right -= 14 }
     for b in mediaButtons.reversed() where !b.isHidden { b.frame = NSRect(x: right - 22, y: (h - 22) / 2, width: 22, height: 22); right -= 22 }
     label.frame = NSRect(x: x, y: (h - 18) / 2, width: max(0, right - x), height: 18)

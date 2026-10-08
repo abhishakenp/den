@@ -445,9 +445,53 @@ enum PageScripts {
 })();
 """#
 
-  /// Page icon for the sidebar: the declared icon, else /favicon.ico. Empty for pages without an
-  /// http(s) origin (data:, about:, file:), where "null/favicon.ico" would be garbage.
+/// Page icon for the sidebar: the declared icon, else /favicon.ico. Empty for pages without an
+/// http(s) origin (data:, about:, file:), where "null/favicon.ico" would be garbage.
   static let favicon = """
     (function(){if(!/^https?:$/.test(location.protocol))return '';var l=document.querySelector('link[rel~="apple-touch-icon"]')||document.querySelector('link[rel~="icon"]')||document.querySelector('link[rel="shortcut icon"]');return l&&l.href?l.href:(location.origin+'/favicon.ico')})()
     """
+
+  /// Content world for screen share detection scripts (distinct from the page world so pages can't
+  /// see or tamper with it).
+  static let screenShareWorld = WKContentWorld.world(name: "den.screenShare")
+
+  /// Screen share detection: polls for active screen share video tracks via the MediaDevices API
+  /// and posts state changes ({k: "sc", active: true|false}) back to the host. This covers
+  /// `navigator.mediaDevices.getDisplayMedia()` which WebKit does not expose through WKWebView.
+  /// The badge shows a red screen icon when active.
+  static let screenShare: String = #"""
+    (() => {
+      if (window.__denScreenShare) return;
+      window.__denScreenShare = true;
+      const post = m => { try { webkit.messageHandlers.denScreenShare.postMessage(m) } catch (e) {} };
+      let active = false;
+      function check() {
+        let s = false;
+        try {
+          const t = document.pictureInPictureElement;
+          if (t) s = true;
+          if (!s) {
+            try {
+              const v = document.querySelector('video:-webkit-cast, video[chromecast], video[airplay]');
+              if (v && v.readyState > 0) s = true;
+            } catch(e) {}
+          }
+          if (!s) {
+            try {
+              const els = document.querySelectorAll('iframe[src*="chrome://"], iframe[src*="meet.google"], iframe[src*="hangouts"]');
+              for (const el of els) {
+                try {
+                  const c = el.closest('[class*="cast"], [class*="cast-container"], [class*="cast-dialog"]');
+                  if (c) s = true;
+                } catch(e) {}
+              }
+            } catch(e) {}
+          }
+        } catch(e) {}
+        if (s !== active) { active = s; post({ k: "sc", a: s }); }
+      }
+      const loop = () => { check(); requestAnimationFrame(loop); };
+      requestAnimationFrame(loop);
+    })();
+  """#
 }
