@@ -59,8 +59,10 @@ final class SlackCore {
   var registerAttempts = 0
   var refreshing = false
   /// Workspace hosts seen in a tab (a sign-in redirect lands on one), newest first, bounded.
+  /// Persisted in storage so the probe can find localStorage after a relaunch.
   var seenHosts: [String] = []
   static let maxSeenHosts = 8
+  static let seenHostsKey = "seenHosts"
 
   init(env: PluginEnv) {
     self.env = env
@@ -94,6 +96,11 @@ final class SlackCore {
     }
     register()
     env.call("session", "watchCookies", ["plugin": .string(Self.id), "domain": .string(domain), "profile": "default"])
+    // Restore workspace hosts seen in tabs across relaunches so the probe can read localStorage
+    // from the right origins even if no Slack tab is open yet.
+    if case .array(let arr) = env.call("storage", "get", ["ns": Self.ns, "key": Self.seenHostsKey]) {
+      seenHosts = arr.map(\.s)
+    }
     autoProbe("default")
   }
 
@@ -227,6 +234,8 @@ final class SlackCore {
     seenHosts.removeAll { $0 == host }
     seenHosts.insert(host, at: 0)
     if seenHosts.count > Self.maxSeenHosts { seenHosts.removeLast(seenHosts.count - Self.maxSeenHosts) }
+    // Persist so workspace origins survive relaunches and are available for config probing.
+    env.call("storage", "set", ["ns": Self.ns, "key": Self.seenHostsKey, "value": .array(seenHosts.map { .string($0) })])
   }
 
   // MARK: Refresh
