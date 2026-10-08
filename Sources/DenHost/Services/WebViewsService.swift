@@ -220,6 +220,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   weak var extensionHooks: ExtensionsService?
   /// zoom / find / print / inspect / viewSource (PageActions.swift); set by `DenRuntime`.
   public internal(set) var pageActions: PageActions?
+  /// PDF viewing service (set by `DenRuntime`).
+  public weak var pdfService: PDFService?
   /// Develop ▸ Disable Caches: each main-frame load first empties its profile's caches (`caches`).
   public internal(set) var cachesDisabled = false
   /// The data stores of every profile in use (Develop ▸ Empty Caches).
@@ -429,6 +431,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     config.userContentController.add(scriptHandler, name: "denContext")
     let w = DenWebView(frame: .zero, configuration: config)
     w.service = self
+    w.pdfService = pdfService
     w.recordId = r.id
     TestMode.keepActive(w)
     w.navigationDelegate = self
@@ -1069,6 +1072,11 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
     let download = downloads != nil && DownloadsService.shouldDownload(canShow: navigationResponse.canShowMIMEType, mainFrame: navigationResponse.isForMainFrame,
                                                                         disposition: disposition)
+    // PDF detection: check if the response MIME type is PDF.
+    let mime = (navigationResponse.response as? HTTPURLResponse)?.mimeType
+    if !download, PDFService.isPdfMime(mime), let r = recordFor(webView) {
+      pdfService?.showToolbar(r.id)
+    }
     decisionHandler(download ? .download : .allow)
   }
 
