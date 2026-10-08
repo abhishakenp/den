@@ -66,6 +66,8 @@ public final class WebRecord {
   /// The page's camera and microphone: "none", "active" or "muted" (`webviews.capture`).
   public var camera = "none"
   public var microphone = "none"
+  /// Whether the page is actively sharing its screen (via `getDisplayMedia`).
+  public var screenCapture = false
   /// Media and form state per frame ("main", or the subframe's URL), and the frame it came from.
   public fileprivate(set) var frames: [String: (frame: WKFrameInfo, media: PageMedia)] = [:]
   /// WebKit says a video of this page is in picture in picture (`_webView:hasVideoInPictureInPictureDidChange:`).
@@ -212,6 +214,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   /// Closes the pop-up window showing a record (its page called `window.close()`).
   public var closePopupWindow: ((String) -> Void)?
   private lazy var scriptHandler = ScriptMessageProxy { [weak self] msg in self?.didReceive(msg) }
+  private lazy var screenShareHandler = ScriptMessageProxy { [weak self] msg in self?.didReceiveScreenShare(msg) }
   /// The `extensions` service: attaches its controller to new configurations, supplies extension
   /// pages' configurations, and watches store pages. nil (or nothing installed) costs nothing.
   weak var extensionHooks: ExtensionsService?
@@ -418,6 +421,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     config.userContentController.add(scriptHandler, contentWorld: PageScripts.world, name: PageScripts.handler)
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.sessionHook, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.cookieConsent, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+    config.userContentController.addUserScript(WKUserScript(source: PageScripts.screenShare, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+    config.userContentController.add(scriptHandler, contentWorld: PageScripts.screenShareWorld, name: "denScreenShare")
     for h in configureHooks { h(r, config) }
     for list in ruleLists { config.userContentController.add(list) }
     config.userContentController.addUserScript(WKUserScript(source: DenWebView.contextScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
@@ -1297,6 +1302,18 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       r.frames[key] = (msg.frameInfo, media)
     }
     mediaChanged(r)
+  }
+
+  func didReceiveScreenShare(_ msg: WKScriptMessage) {
+    guard let w = msg.webView, let r = recordFor(w), r.webView === w else { return }
+    let body = Self.jsValue(msg.body)
+    guard body.str("k") == "sc" else { return }
+    let active = body.flag("active", false)
+    let old = r.screenCapture
+    r.screenCapture = active
+    if old != active {
+      host.emit("webviews.screenCapture", ["id": .string(r.id), "screenCapture": .bool(active)])
+    }
   }
 
   // MARK: Links

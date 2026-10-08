@@ -22,6 +22,8 @@ final class TabsCore {
     var media: Value?
     /// The page's camera / microphone (`webviews.capture`), runtime only: nil when neither is on.
     var capture: Value?
+    /// Whether the page is sharing its screen (`webviews.screenCapture`), runtime only.
+    var screenCapture = false
     /// An icon the user chose (an emoji or `sf:` symbol, TabsIcons.swift); it replaces the favicon.
     var customIcon: String?
     /// The page was discarded (its WebContent process exited; the host kept the URL, history and
@@ -665,6 +667,15 @@ final class TabsCore {
         badges[host] = text.isEmpty ? nil : text
         renderFavorites()
       }
+    case "capture":
+      // {id, screenCapture: bool}: set screen sharing state for a tab (called by mediaBadge plugin
+      // or WebViewsService when the page calls stopCapture).
+      let id = args.s("id")
+      guard tabs[id] != nil else { return .err("tabs: no tab '" + id + "'") }
+      guard let sc = args["screenCapture"].bool else { return .err("tabs: capture needs screenCapture") }
+      guard tabs[id]?.screenCapture != sc else { return .okay }
+      tabs[id]?.screenCapture = sc
+      if let sid = spaceOf(id) { renderPage(sid) }
     case "newLiveFolder":
       guard let fid = liveFolders.create(args.s("source"), space: args.sOpt("spaceId")) else { return .err("tabs: no live source '" + args.s("source") + "'") }
       return ["id": .string(fid)]
@@ -754,7 +765,7 @@ final class TabsCore {
       "id": .string(id), "spaceId": .str(loc.flatMap { space(of: $0.0) }), "kind": .string(loc.map { kind(of: $0.0) } ?? "today"),
       "folderId": folderId, "title": .string(t.displayTitle), "customTitle": .str(t.customTitle), "url": .string(t.url),
       "pinnedUrl": .str(t.pinnedUrl), "favicon": .str(t.favicon.flatMap { URLs.usable($0) ? $0 : nil }), "webviewId": .string(id), "lastActive": .int(t.lastActive),
-      "audio": .bool(t.audio), "muted": .bool(t.muted), "icon": .str(t.customIcon),
+      "audio": .bool(t.audio), "muted": .bool(t.muted), "icon": .str(t.customIcon), "screenCapture": .bool(t.screenCapture),
     ]
   }
 
@@ -931,6 +942,7 @@ final class TabsCore {
         tabs[id]?.audio = st.b("audio")
         tabs[id]?.muted = st.b("muted")
         tabs[id]?.suspended = st.b("suspended")
+        tabs[id]?.screenCapture = st.b("screenCapture")
       }
     }
   }
@@ -2146,6 +2158,15 @@ final class TabsCore {
       let c: Value? = on ? ["camera": .string(v.s("camera")), "microphone": .string(v.s("microphone"))] : nil
       guard tabs[id]?.capture != c else { return }
       tabs[id]?.capture = c
+      if favorites.contains(id) { renderFavorites() } else if let sid = spaceOf(id) { renderPage(sid) }
+    }
+    // Screen sharing: a red screen-share badge on the row or tile.
+    env.on("webviews.screenCapture") { [self] v in
+      let id = v.s("id")
+      guard tabs[id] != nil else { return }
+      let on = v.b("screenCapture", false)
+      guard tabs[id]?.screenCapture != on else { return }
+      tabs[id]?.screenCapture = on
       if favorites.contains(id) { renderFavorites() } else if let sid = spaceOf(id) { renderPage(sid) }
     }
     // Now-playing media: the row's hover playback buttons.
