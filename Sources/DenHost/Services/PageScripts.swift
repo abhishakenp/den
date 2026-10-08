@@ -227,6 +227,224 @@ enum PageScripts {
 })();
 """#
 
+  /// Cookie consent auto-handler (inspired by DuckDuckGo autoconsent): detects cookie consent
+  /// banners and automatically rejects analytics/tracking while accepting only essential cookies.
+  ///
+  /// Strategy: scan the DOM for common banner patterns, look for reject/decline buttons first,
+  /// fall back to "Customize" → reject-tracking-categories, handle dynamically loaded banners
+  /// with retries. Runs silently in the page world — the page never sees interference.
+  static let cookieConsent = #"""
+(() => {
+  if (window.__denCookieConsent) return;
+  window.__denCookieConsent = true;
+
+  // Common banner selectors — id, class, role, or data attributes that signal a cookie dialog.
+  const bannerSelectors = [
+    '[role="dialog"]:not([data-den-scanned])',
+    'dialog:not([data-den-scanned])',
+    '[class*="cookie-banner"]', '[class*="cookie-dialog"]', '[class*="cookie-consent"]',
+    '[class*="cookie-policy"]', '[class*="cookie-notice"]', '[class*="cookie-banner__"]',
+    '[class*="cookies-banner"]', '[class*="cookies-dialog"]', '[class*="cookie-law"]',
+    '[data-cookie-blocker]', '[data-complience]', '[class*="cm-"]', // ConsentManagement
+    '[class*="cc-"]', // CookieNotice / Osano
+    '[class*="onetrust-"]', // OneTrust
+    '[class*="consent-"]', '[class*="gdpr"]', '[class*="banner"][class*="cookie"]',
+    'div[aria-label*="cookie"]', 'div[aria-label*="Cookie"]',
+    'div[role="dialog"][aria-label*="cookie"]', 'div[role="dialog"][aria-label*="Cookie"]',
+  ];
+
+  // Keywords that indicate a reject/decline button (case-insensitive).
+  const rejectKeywords = [
+    'reject all', 'decline all', 'do not sell', 'do not share',
+    'neither reject', 'only necessary', 'essential only',
+    'necesarias', 'solo esenciales', 'reject selection', 'customize',
+    'manage', 'preferences', 'settings', 'options', 'cookie settings',
+  ];
+
+  // Keywords for acceptance — we want to AVOID these.
+  const acceptKeywords = ['accept all', 'agree all', 'allow all', 'consent all', 'aceptar'];
+
+  // Check if text content looks like a reject/decline button.
+  function isRejectButton(el) {
+    const text = (el.textContent || '').trim().toLowerCase();
+    // Must have a reject keyword and NOT primarily an accept keyword.
+    const hasReject = rejectKeywords.some(k => text.includes(k));
+    const hasAccept = acceptKeywords.some(k => text.includes(k));
+    // If it's mostly accept-ish, skip it.
+    if (hasAccept && !hasReject) return false;
+    return hasReject && text.length < 80;
+  }
+
+  // Check if an element looks like a banner dialog.
+  function isBanner(el) {
+    if (!el || !el.isConnected) return false;
+    // Skip if already scanned.
+    if (el.hasAttribute('data-den-scanned')) return false;
+    // Skip very large elements (pages themselves).
+    if (el.children.length > 500) return false;
+    // Check for common banner attributes/roles.
+    const role = el.getAttribute('role');
+    if (role === 'dialog' || role === 'alertdialog') return true;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'dialog') return true;
+    // Check class names.
+    const cls = (el.className || '').toLowerCase();
+    if (typeof cls === 'string') {
+      const patterns = ['cookie', 'consent', 'complian', 'onetrust', 'cc-banner', 'cm-',
+                        'usercentrics', 'dialogue', 'preferences', 'banner'];
+      if (patterns.some(p => cls.includes(p))) return true;
+    }
+    // Check aria-label.
+    const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+    if (aria.includes('cookie') || aria.includes('consent')) return true;
+    // Check data attributes.
+    if (el.hasAttribute('data-cookie-blocker')) return true;
+    return false;
+  }
+
+  // Mark a banner element to avoid rescanning.
+  function markScanned(el) {
+    try { el.setAttribute('data-den-scanned', 'true'); } catch(e) {}
+  }
+
+  // Look for reject buttons within a container.
+  function findRejectButton(container) {
+    if (!container) return null;
+    // Direct text search in buttons.
+    const buttons = container.querySelectorAll('button, [role="button"], a[href], input[type="button"], input[type="submit"]');
+    let best = null;
+    let bestScore = -1;
+    for (const btn of buttons) {
+      const text = (btn.textContent || '').trim().toLowerCase();
+      if (!text || text.length > 80) continue;
+      // Score: reject keywords score high, accept keywords score negative.
+      let score = 0;
+      for (const k of rejectKeywords) {
+        if (text.includes(k)) {
+          if (acceptKeywords.some(ak => text.includes(ak))) { score -= 10; break; }
+          score += 10 - k.length / 10;
+          if (k.includes('reject') || k.includes('decline') || k.includes('neither') || k.includes('essential')) score += 5;
+        }
+      }
+      // Short text = more likely to be a button label.
+      score += Math.max(0, 5 - text.length / 5);
+      if (score > bestScore) { bestScore = score; best = btn; }
+    }
+    return bestScore > 2 ? best : null;
+  }
+
+  // Try to click a button.
+  function tryClick(el) {
+    if (!el || !el.isConnected) return false;
+    try {
+      el.click();
+      return true;
+    } catch(e) { return false; }
+  }
+
+  // Main attempt: scan the page for banners and handle them.
+  function attempt() {
+    // Mark all banners as scanned.
+    for (const sel of bannerSelectors) {
+      try {
+        const els = document.querySelectorAll(sel);
+        for (const el of els) {
+          if (!el.hasAttribute('data-den-scanned')) {
+            markScanned(el);
+            handleBanner(el);
+          }
+        }
+      } catch(e) {}
+    }
+    // Also walk visible elements for banner-like dialogs.
+    const dialogs = document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog');
+    for (const d of dialogs) {
+      if (!d.hasAttribute('data-den-scanned') && isBanner(d)) {
+        markScanned(d);
+        handleBanner(d);
+      }
+    }
+  }
+
+  function handleBanner(banner) {
+    // 1) Direct reject button in the banner.
+    let btn = findRejectButton(banner);
+    if (btn) { tryClick(btn); return; }
+    // 2) Reject button in the banner's parent (sometimes outside the dialog).
+    btn = findRejectButton(banner.parentElement);
+    if (btn) { tryClick(btn); return; }
+    // 3) Look in body for banners with reject buttons nearby.
+    const bodyBanners = document.querySelectorAll(bannerSelectors.slice(0, 5).join(','));
+    for (const b of bodyBanners) {
+      if (b.hasAttribute('data-den-scanned')) continue;
+      markScanned(b);
+      if (isBanner(b)) {
+        const closeBtn = findRejectButton(b);
+        if (closeBtn) { tryClick(closeBtn); return; }
+        const closeSelectors = ['button[aria-label*="close"]', 'button[aria-label*="Close"]',
+                                'button[data-dismiss]', 'a[aria-label*="close"]'];
+        for (const cs of closeSelectors) {
+          try {
+            const c = b.querySelector(cs);
+            if (c) { tryClick(c); return; }
+          } catch(e) {}
+        }
+      }
+    }
+    // 4) Check if any banner is now hidden (auto-dismissed).
+    const visible = document.querySelectorAll(bannerSelectors.join(','));
+    if (visible.length === 0) return;
+    // 5) Click "Accept" as a last resort to dismiss — then try to set cookie preferences
+    //    via localStorage/sessionStorage as a fallback.
+    acceptAsLastResort(banner);
+  }
+
+  // Accept only essential cookies as a last resort.
+  function acceptAsLastResort(banner) {
+    const acceptBtns = banner.querySelectorAll('button, [role="button"], a[href]');
+    for (const btn of acceptBtns) {
+      const text = (btn.textContent || '').trim().toLowerCase();
+      if (text && text.length < 40 && !rejectKeywords.some(k => text.includes(k))) {
+        if (text.includes('accept') || text.includes('agree') || text.includes('allow') || text.includes('close') ||
+            text.includes('done') || text.includes('ok') || text.includes('continue')) {
+          tryClick(btn);
+          setPrivacyPrefs();
+          return;
+        }
+      }
+    }
+  }
+
+  // Try to set privacy preferences through common storage mechanisms.
+  function setPrivacyPrefs() {
+    try {
+      const prefs = {
+        'ads': false, 'analytics': false, 'personalization': false,
+        'targeting': false, 'tracking': false, 'functional': false,
+      };
+      for (const [key, val] of Object.entries(prefs)) {
+        try { sessionStorage.setItem('den_' + key, String(val)); } catch(e) {}
+        try { localStorage.setItem('den_' + key, String(val)); } catch(e) {}
+      }
+      try { localStorage.setItem('aw', '1'); } catch(e) {}
+      try { sessionStorage.setItem('aw', '1'); } catch(e) {}
+    } catch(e) {}
+  }
+
+  // Run immediately, then retry a few times for dynamically loaded banners.
+  attempt();
+  const retries = [300, 800, 1500, 2500, 4000, 6000];
+  for (const delay of retries) {
+    setTimeout(attempt, delay);
+  }
+  // Also watch for new banners via MutationObserver.
+  try {
+    const obs = new MutationObserver(() => { attempt(); });
+    obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+  } catch(e) {}
+})();
+"""#
+
   /// Page icon for the sidebar: the declared icon, else /favicon.ico. Empty for pages without an
   /// http(s) origin (data:, about:, file:), where "null/favicon.ico" would be garbage.
   static let favicon = """

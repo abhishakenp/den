@@ -417,6 +417,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.media, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: PageScripts.world))
     config.userContentController.add(scriptHandler, contentWorld: PageScripts.world, name: PageScripts.handler)
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.sessionHook, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
+    config.userContentController.addUserScript(WKUserScript(source: PageScripts.cookieConsent, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
     for h in configureHooks { h(r, config) }
     for list in ruleLists { config.userContentController.add(list) }
     config.userContentController.addUserScript(WKUserScript(source: DenWebView.contextScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
