@@ -29,6 +29,8 @@ public final class PluginLoader {
     public var failed: [String: String] = [:]  // path -> reason
     public var crashed: [String] = []  // plugin ids disabled because their build crashed den
     public var permissions: [String: [String]] = [:]  // plugin id -> granted sidecar permissions
+    public var sandboxed: [String] = []  // plugin ids that were loaded in a sandboxed process
+    public var sandboxExempt: [String] = []  // plugin ids exempt from sandboxing (first-frame)
   }
 
   let plugins: PluginHost
@@ -36,6 +38,8 @@ public final class PluginLoader {
   /// Lazy plugins (`"launch": "lazy"`) registered but not loaded: LazyPlugins.swift.
   var lazy = LazyRegistry()
   static var loaders: [ObjectIdentifier: WeakLoader] = [:]
+  /// Reference to the sandbox service for generating profiles during load.
+  var sandboxService: DenHost.PluginSandboxService?
 
   public init(plugins: PluginHost) {
     self.plugins = plugins
@@ -195,6 +199,12 @@ public final class PluginLoader {
     p.revoke(id)
     let granted = p.loadSidecar(plugin: id, dylib: dylib)
     if !granted.isEmpty { outcome.permissions[id] = granted }
+
+    // Build a sandbox profile from the plugin's granted permissions.
+    let profile = p.buildSandboxProfile(for: id)
+    if !profile.isEmpty {
+      outcome.permissions[id] = granted + ["\(profile.allowedNetworkDomains.count) network domains", "\(profile.allowedFilePrefixes.count) file prefixes"]
+    }
   }
 
   /// Toast text naming the plugins that were turned off because they crashed den.

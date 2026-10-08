@@ -143,4 +143,30 @@ public final class Permissions {
       .deletingLastPathComponent().appendingPathComponent("Plugins")
     return FileManager.default.fileExists(atPath: u.path) ? u : nil
   }()
+
+  // MARK: Sandbox Profile Generation
+
+  /// Builds a `PluginSandboxProfile` from the plugin's granted permissions.
+  public func buildSandboxProfile(for pluginID: String) -> PluginSandboxProfile {
+    var profile = PluginSandboxProfile(pluginID: pluginID)
+
+    for grant in list(pluginID) {
+      guard let (kind, value) = Self.parse(grant) else { continue }
+      switch kind {
+      case "session", "net":
+        let domain = value.hasSuffix(".*") ? String(value.dropLast(2)) : value
+        if !profile.allowedNetworkDomains.contains(domain) { profile.allowedNetworkDomains.append(domain) }
+        if kind == "session" { profile.allowSandboxStorage = true }
+      case "files":
+        if !profile.allowedFilePrefixes.contains(value) { profile.allowedFilePrefixes.append(value) }
+      case "pages":
+        profile.allowKeychain = true
+      default: break
+      }
+    }
+
+    profile.resourceFolder = Self.repoPlugins?.appendingPathComponent(pluginID).appendingPathComponent("resources").path
+    profile.sandboxContainerPath = "\(NSHomeDirectory())/Library/Containers/com.den-browser.plugin/Data"
+    return profile
+  }
 }

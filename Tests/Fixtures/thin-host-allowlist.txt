@@ -188,19 +188,41 @@ string	Sources/DenHost/Services/GeneralSettings.swift	Configuration
 string	Sources/DenHost/Services/GeneralSettings.swift	Default browser
 string	Sources/DenHost/Services/GeneralSettings.swift	Default browser
 string	Sources/DenHost/Services/GeneralSettings.swift	General
+string	Sources/DenHost/Services/GeneralSettings.swift	Left
 string	Sources/DenHost/Services/GeneralSettings.swift	Links from other apps open in \(name).
 string	Sources/DenHost/Services/GeneralSettings.swift	Links from other apps open in den.
 string	Sources/DenHost/Services/GeneralSettings.swift	Make den Default
 string	Sources/DenHost/Services/GeneralSettings.swift	Open
+string	Sources/DenHost/Services/GeneralSettings.swift	Place the sidebar on the right instead of the left.
 string	Sources/DenHost/Services/GeneralSettings.swift	Plugins, themes, shortcuts and search keywords. Saved changes apply at once.
 string	Sources/DenHost/Services/GeneralSettings.swift	Problem: \($0)
+string	Sources/DenHost/Services/GeneralSettings.swift	Right
 string	Sources/DenHost/Services/GeneralSettings.swift	Show in Finder
 string	Sources/DenHost/Services/GeneralSettings.swift	Show in Finder
+string	Sources/DenHost/Services/GeneralSettings.swift	Sidebar position
 string	Sources/DenHost/Services/GeneralSettings.swift	Skip passkey sign-in, use the password
 string	Sources/DenHost/Services/GeneralSettings.swift	Space colors
 string	Sources/DenHost/Services/GeneralSettings.swift	System accent
 string	Sources/DenHost/Services/GeneralSettings.swift	Translucent window
 string	Sources/DenHost/Services/GeneralSettings.swift	Your desktop shows faintly through the space's colors, like macOS sidebars. Off by default: it costs the system some graphics work while den is on screen.
+string	Sources/DenHost/Services/LinkRouting.swift	Add new rule
+string	Sources/DenHost/Services/LinkRouting.swift	Default action
+string	Sources/DenHost/Services/LinkRouting.swift	Link Routing Rules
+string	Sources/DenHost/Services/LinkRouting.swift	No rules yet. Add a regex pattern above to get started.
+string	Sources/DenHost/Services/LinkRouting.swift	Open in new tab
+string	Sources/DenHost/Services/LinkRouting.swift	Open normally
+string	Sources/DenHost/Services/LinkRouting.swift	Regex pattern to match URLs. Press Return to add.
+string	Sources/DenHost/Services/LinkRouting.swift	What to do when no rule matches.
+string	Sources/DenHost/Services/LinkRoutingUI.swift	Enter a URL to test against.
+string	Sources/DenHost/Services/LinkRoutingUI.swift	Enter a regex pattern.
+string	Sources/DenHost/Services/LinkRoutingUI.swift	Invalid regex: \(error.localizedDescription)
+string	Sources/DenHost/Services/LinkRoutingUI.swift	Link Routing Rules
+string	Sources/DenHost/Services/LinkRoutingUI.swift	Match URL patterns with regex and control how links open. Rules fire in priority order (lowest first).
+string	Sources/DenHost/Services/LinkRoutingUI.swift	No rule matched this URL.
+string	Sources/DenHost/Services/LinkRoutingUI.swift	Ping
+string	Sources/DenHost/Services/LinkRoutingUI.swift	Regex pattern
+string	Sources/DenHost/Services/LinkRoutingUI.swift	Test
+string	Sources/DenHost/Services/LinkRoutingUI.swift	URL to test against
 string	Sources/DenHost/Services/MainMenu.swift	About den
 string	Sources/DenHost/Services/MainMenu.swift	Actual Size
 string	Sources/DenHost/Services/MainMenu.swift	Add Split View
@@ -270,6 +292,35 @@ string	Sources/DenHost/Services/MenuActions.swift	Page
 string	Sources/DenHost/Services/MenuActions.swift	Show Web Inspector
 string	Sources/DenHost/Services/NativePiP.swift	Picture in Picture
 string	Sources/DenHost/Services/NativePiP.swift	Picture in Picture
+string	Sources/DenHost/Services/PDFService.swift	Search PDF…
+string	Sources/DenHost/Services/PDFService.swift	Search PDF…
+string	Sources/DenHost/Services/PerformanceBudgets.swift	Extension memory high — reload to reclaim
+string	Sources/DenHost/Services/PluginPermissionDialog.swift	File Access
+string	Sources/DenHost/Services/PluginPermissionDialog.swift	Keychain Access
+string	Sources/DenHost/Services/PluginPermissionDialog.swift	Network Access
+string	Sources/DenHost/Services/PluginPermissionDialog.swift	Remember my choice
+string	Sources/DenHost/Services/PluginPermissionDialog.swift	Resource: \(request.resource)
+string	Sources/DenHost/Services/PluginPermissionDialog.swift	Session Storage
+string	Sources/DenHost/Services/PluginSandboxService.swift	Failed to generate sandbox profile: \(reason)
+string	Sources/DenHost/Services/PluginSandboxService.swift	Failed to spawn sandboxed process: \(reason)
+string	Sources/DenHost/Services/PluginSandboxService.swift	Maximum number of sandboxed plugin processes reached
+string	Sources/DenHost/Services/PluginSandboxService.swift	Plugin sandbox helper binary not found
+string	Sources/DenHost/Services/PluginSandboxService.swift	Plugin sandbox helper not found at \(helperURL.path)
+string	Sources/DenHost/Services/PluginSandboxService.swift	XPC connection failed: \(reason)
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Ask permission for restricted access
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Enable plugin sandboxing
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Exempt from sandbox
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Launches before the first window — sandboxing would block startup
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Launches before the first window — sandboxing would block startup
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	No special permissions
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Run plugins in isolated processes with reduced macOS sandbox entitlements
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Sandbox
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Sandbox
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Show a dialog when a sandboxed plugin needs access beyond its profile
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Spaces
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	Tabs
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	These plugins run unsandboxed (required for first-frame performance)
+string	Sources/DenHost/Services/PluginSandboxSettings.swift	View Permissions
 string	Sources/DenHost/Services/ScheduleService.swift	EEEE, MMMM d
 string	Sources/DenHost/Services/SitePermissions.swift	Allow
 string	Sources/DenHost/Services/SitePermissions.swift	Allow
@@ -369,6 +420,7 @@ string	Sources/DenHost/Toolkit/Rows.swift	Reload Page
 string	Sources/DenHost/Toolkit/Rows.swift	Search or Enter URL…
 string	Sources/DenHost/Toolkit/Rows.swift	Stop Loading
 string	Sources/DenHost/Toolkit/Rows.swift	Toggle Sidebar
+string	Sources/DenHost/Toolkit/Rows.swift	Turn Off Screen Share
 string	Sources/DenHost/Toolkit/Rows.swift	Unmute Tab
 string	Sources/DenHost/Toolkit/Rows.swift	Untitled
 string	Sources/DenHost/Toolkit/Rows.swift	Untitled
