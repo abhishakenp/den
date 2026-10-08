@@ -29,6 +29,8 @@ public final class DenRuntime {
   public let schedule: ScheduleService
   /// Per-site user stylesheets and appearance (the `darkmode` plugin), and den's password vault.
   public let pageStyle: PageStyleService
+  /// The macOS dock slot for installed PWAs (icons + badge via NSApplication.dockTile).
+  public let pwaDock: PwaDockService
   /// Per-site content rule lists, page preferences, HTTPS-first and the navigation guard (`shields`).
   public let sitePolicy: SitePolicyService
   /// Per-site CSS/JS boosts that inject into matching pages (`boosts`).
@@ -112,6 +114,7 @@ public final class DenRuntime {
     settings = SettingsService(host: host, storage: storage)
     speech = SpeechService(host: host)
     translate = TranslateService(host: host)
+    pwaDock = PwaDockService(host: host, storage: storage)
     // The real profile's Spotlight items live in den's index; any other storage root (tests,
     // --demo) gets one of its own, so it never touches them.
     spotlight = SpotlightService(host: host, indexName: isDefault ? "den" : "den-" + String(UInt(bitPattern: storageRoot.standardizedFileURL.path.hashValue), radix: 36))
@@ -149,7 +152,7 @@ public final class DenRuntime {
     sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
     sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
     sitePolicy.resource = { [permissions] p, f in permissions.resource(p, f) }
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, session, net, ai, schedule, pageStyle, sitePolicy, vault, files, downloads, extensions, settings, media, nowPlaying, speech, translate, spotlight, handoff, notifications, CloudService()] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, session, net, ai, schedule, pageStyle, sitePolicy, vault, files, downloads, extensions, settings, media, nowPlaying, speech, translate, pwaDock, spotlight, handoff, notifications, CloudService()] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

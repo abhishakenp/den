@@ -76,6 +76,7 @@ public final class WindowSet {
       w.showTheme(for: active.page)
     }
     if active.sidebarWidth != w.sidebarWidth { w.setSidebarWidth(active.sidebarWidth, animated: false) }
+    if active.sidebarPosition != w.sidebarPosition { w.sidebarPosition = active.sidebarPosition }
     all.append(w)
     wire(w)
     for s in setups { s(w) }
