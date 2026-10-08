@@ -21,6 +21,7 @@
 /// - `invalid_auth` / `not_authed` means the session ended: `connections.report {expired}`.
 final class SlackCore {
   static let id = "slack"
+  static let ns = "slack"
   static let icon = "https://slack.com/favicon.ico"
   static let maxDMs = 6
   static let maxThreads = 4
@@ -98,8 +99,8 @@ final class SlackCore {
     env.call("session", "watchCookies", ["plugin": .string(Self.id), "domain": .string(domain), "profile": "default"])
     // Restore workspace hosts seen in tabs across relaunches so the probe can read localStorage
     // from the right origins even if no Slack tab is open yet.
-    if case .array(let arr) = env.call("storage", "get", ["ns": Self.ns, "key": Self.seenHostsKey]) {
-      seenHosts = arr.map(\.s)
+    if case .array(let arr) = env.call("storage", "get", ["ns": .string(Self.ns), "key": .string(Self.seenHostsKey)]) {
+      seenHosts = arr.compactMap { v in if let s = v.string { return s } else { return nil } }
     }
     autoProbe("default")
   }
@@ -235,7 +236,7 @@ final class SlackCore {
     seenHosts.insert(host, at: 0)
     if seenHosts.count > Self.maxSeenHosts { seenHosts.removeLast(seenHosts.count - Self.maxSeenHosts) }
     // Persist so workspace origins survive relaunches and are available for config probing.
-    env.call("storage", "set", ["ns": Self.ns, "key": Self.seenHostsKey, "value": .array(seenHosts.map { .string($0) })])
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": .string(Self.seenHostsKey), "value": .array(seenHosts.map { .string($0 as String) })])
   }
 
   // MARK: Refresh
