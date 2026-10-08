@@ -57,6 +57,12 @@ enum GeneralSettings {
       Palette.accentSource = v["value"].string == "system" ? .system : .theme
       rt.ui.refreshPalette()
     }
+    // Sidebar position: apply to every window immediately.
+    rt.host.on("settings.changed") { [unowned rt] v in
+      guard v.str("id") == "general", v.str("key") == "sidebarPosition" else { return }
+      let pos = v["value"].string ?? "left"
+      for wc in rt.windows.all { wc.sidebarPosition = pos }
+    }
     // The system accent changing while it's in use.
     NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main) { [weak rt] _ in
       MainActor.assumeIsolated { if Palette.accentSource == .system { rt?.ui.refreshPalette() } }
@@ -90,6 +96,9 @@ enum GeneralSettings {
       ["key": "accent", "type": "choice", "title": "Accent color",
        "subtitle": "Buttons, selection and toggles take their color from the current space, or from macOS.",
        "options": [["value": "theme", "title": "Space colors"], ["value": "system", "title": "System accent"]], "default": "theme"],
+      ["key": "sidebarPosition", "type": "choice", "title": "Sidebar position",
+       "subtitle": "Place the sidebar on the right instead of the left.",
+       "options": [["value": "left", "title": "Left"], ["value": "right", "title": "Right"]], "default": "left"],
     ]
     out.append(["key": "translucent", "type": "toggle", "title": "Translucent window",
                 "subtitle": "Your desktop shows faintly through the space's colors, like macOS sidebars. Off by default: it costs the system some graphics work while den is on screen.",

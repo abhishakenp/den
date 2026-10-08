@@ -29,12 +29,14 @@ public final class PassthroughView: FlippedView {
 @MainActor
 public final class DenWindowController: NSObject, NSWindowDelegate {
   public let window: NSWindow
-  /// `w1` for the first window, `w2`… for more (⌘N), `p1`… for private windows (⇧⌘N). Normal
+/// `w1` for the first window, `w2`… for more (⌘N), `p1`… for private windows (⇧⌘N). Normal
   /// window ids are reused and stable across relaunches, which is what window restore keys on.
   public let id: String
   /// A private window: its own ephemeral data store, dark chrome, nothing persisted (the tabs
-  /// plugin keeps its tabs out of its state). Its theme is fixed (`Tokens.privateTheme`).
+  /// plugin keeps its tabs out of its state). Its theme is fixed (`Tokens.private_theme`).
   public let isPrivate: Bool
+  /// Sidebar position: "left" or "right". Defaults to "left".
+  public var sidebarPosition = "left" { didSet { if sidebarPosition != oldValue { relayout(animated: true) } } }
   let root = RootView()
   public let background = ThemeBackgroundView()
   /// Host for the sidebar UI (filled by the ui toolkit). Transparent when docked.
@@ -139,8 +141,17 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
 
   var sidebarFrame: NSRect {
     let b = root.bounds
-    if !sidebarHidden { return NSRect(x: 0, y: 0, width: sidebarWidth, height: b.height) }
+    if !sidebarHidden {
+      if sidebarPosition == "right" {
+        return NSRect(x: b.width - sidebarWidth, y: 0, width: sidebarWidth, height: b.height)
+      }
+      return NSRect(x: 0, y: 0, width: sidebarWidth, height: b.height)
+    }
     let i = Tokens.sidebarOverlayInset
+    if sidebarPosition == "right" {
+      let x = sidebarRevealed ? b.width - sidebarWidth - i : b.width + i
+      return NSRect(x: x, y: i, width: sidebarWidth, height: b.height - 2 * i)
+    }
     let x = sidebarRevealed ? i : -sidebarWidth - 20
     return NSRect(x: x, y: i, width: sidebarWidth, height: b.height - 2 * i)
   }
@@ -149,21 +160,32 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     let b = root.bounds
     let i = Tokens.cardInset
     let full = window.styleMask.contains(.fullScreen)
-    let left = sidebarHidden ? i : sidebarWidth
+    let left = sidebarHidden ? i : (sidebarPosition == "right" ? i : sidebarWidth)
+    let contentX = sidebarPosition == "right" ? i : left
+    let contentW = b.width - (sidebarHidden ? i : sidebarWidth) - i
     let inset = full && sidebarHidden ? 0 : i
-    return NSRect(x: sidebarHidden ? inset : left, y: inset, width: b.width - (sidebarHidden ? inset : left) - inset, height: b.height - 2 * inset)
+    return NSRect(x: contentX, y: inset, width: max(0, contentW), height: b.height - 2 * inset)
   }
 
   func layout() {
-    background.frame = root.bounds
+    let b = root.bounds
+    background.frame = b
     sidebar.frame = sidebarFrame
     sidebar.overlayMode = sidebarHidden
     contentArea.frame = contentFrame
-    overlays.frame = root.bounds
+    overlays.frame = b
     let hw = Tokens.sidebarResizeHandleWidth
-    resizeHandle.frame = NSRect(x: sidebarWidth - hw / 2, y: 0, width: hw, height: root.bounds.height)
+    if sidebarPosition == "right" {
+      resizeHandle.frame = NSRect(x: sidebarFrame.minX + sidebarWidth - hw / 2, y: 0, width: hw, height: b.height)
+    } else {
+      resizeHandle.frame = NSRect(x: sidebarWidth - hw / 2, y: 0, width: hw, height: b.height)
+    }
     resizeHandle.isHidden = sidebarHidden
-    edgeZone.frame = NSRect(x: 0, y: 0, width: Tokens.sidebarHoverRevealZone, height: root.bounds.height)
+    if sidebarPosition == "right" {
+      edgeZone.frame = NSRect(x: b.width - Tokens.sidebarHoverRevealZone, y: 0, width: Tokens.sidebarHoverRevealZone, height: b.height)
+    } else {
+      edgeZone.frame = NSRect(x: 0, y: 0, width: Tokens.sidebarHoverRevealZone, height: b.height)
+    }
     edgeZone.isHidden = !sidebarHidden || sidebarRevealed
     layoutTrafficLights()
     onLayout?()
@@ -181,7 +203,7 @@ public final class DenWindowController: NSObject, NSWindowDelegate {
     let h = Tokens.navRowHeight + (sidebarHidden ? Tokens.sidebarOverlayInset : 0)
     let wh = window.frame.height
     container.frame = NSRect(x: 0, y: wh - h, width: container.frame.width, height: h)
-    let dx: CGFloat = sidebarHidden ? Tokens.sidebarOverlayInset : 0
+    let dx: CGFloat = sidebarPosition == "right" ? 0 : (sidebarHidden ? Tokens.sidebarOverlayInset : 0)
     for (i, b) in buttons.enumerated() {
       // Spec §1: 16 pt buttons with left edges at x = 12/35/58 and top edge at y = 16.
       let s = b.frame.size

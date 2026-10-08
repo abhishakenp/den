@@ -290,6 +290,10 @@ final class PwaCore {
     apps[app.id] = app
     save()
     registerCommands()
+    // Register the PWA with the dock service so it appears in the macOS Dock.
+    if app.icon.hasPrefix("http") {
+      _ = env.call("pwa_dock", "register", ["appId": .string(app.id), "name": .string(app.name), "icon": .string(app.icon)])
+    }
     env.emit("pwa.installed", ["id": .string(app.id), "name": .string(app.name), "updated": .bool(updated)])
     toast((updated ? "Updated " : "Installed ") + app.name)
     var v = Self.record(app)
@@ -305,6 +309,8 @@ final class PwaCore {
       env.call("window", "closeMini", ["id": .string(o.window)])
       env.call("webviews", "close", ["id": .string(o.webview)])
     }
+    // Unregister from the dock service.
+    _ = env.call("pwa_dock", "unregister", ["appId": .string(id)])
     save()
     registerCommands()
     env.emit("pwa.uninstalled", ["id": .string(app.id), "name": .string(app.name)])
