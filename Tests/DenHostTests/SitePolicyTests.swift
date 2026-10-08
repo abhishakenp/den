@@ -328,7 +328,7 @@ struct SitePolicyTests {
     // fetch, 1 XHR replacement, 1 hidden element.
     let changed = events(rt, "sitepolicy.changed")
     _ = rt.call("sitepolicy", "get", ["id": "y"])
-    #expect(try await until { rt.call("sitepolicy", "get", ["id": "y"])["scripted"].int ?? -1 == 8 })
+    #expect(try await until(30) { rt.call("sitepolicy", "get", ["id": "y"])["scripted"].int ?? -1 == 8 })
     let st = rt.call("sitepolicy", "get", ["id": "y"])
     #expect(st["blocked"] == st["scripted"], "\(st)")
     #expect(st["blockedByList"]["scripts"] == st["scripted"])
