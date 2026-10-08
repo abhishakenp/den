@@ -89,7 +89,7 @@ struct CookieConsentTests {
   @Test func handlesOneTrustBanners() async throws {
     let rt = Self.runtime()
     let html = """
-      <div class="ot-pc-body">
+      <div role="dialog" class="ot-pc-body">
         <div class="ot-sdk-container">
           <p>Cookie preferences</p>
           <button class="ot-sdk-display-reject" aria-label="Reject all">Reject all</button>
