@@ -25,7 +25,9 @@ final class LiveFolders {
     var icon: String
   }
 
-  static let sources = [Source(id: "github", title: "GitHub", icon: "https://github.com/favicon.ico")]
+  static let sources: [Source] = [
+    Source(id: "github", title: "GitHub", icon: "https://github.com/favicon.ico"),
+  ]
   static let maxDone = 20
   static let doneKeepMs: Int64 = 7 * 86_400_000
   static let maxSeen = 300
@@ -74,8 +76,9 @@ final class LiveFolders {
     state[fid] = s
   }
 
-  func connected(_ source: String) -> Bool { env.call("connections", "get", ["id": .string(source)]).b("connected") }
-
+  func connected(_ source: String) -> Bool {
+    return env.call("connections", "get", ["id": .string(source)]).b("connected")
+  }
   // MARK: Feed
 
   /// Asks the source for fresh items (the same `feed.refresh` the briefing sends).
@@ -145,7 +148,9 @@ final class LiveFolders {
     }
   }
 
-  func icon(_ it: Value) -> String { Self.kindIcon(it.s("kind")) }
+  func icon(_ it: Value) -> String {
+    return Self.kindIcon(it.s("kind"))
+  }
 
   func visible(_ fid: String, _ source: String) -> [Value] {
     let dismissed = strings(fid, "dismissed")
@@ -176,10 +181,11 @@ final class LiveFolders {
   func rows(_ f: TabsCore.Folder) -> [Value] {
     let title = Self.source(f.live)?.title ?? f.live
     if !connected(f.live) {
-      return [["type": "tabRow", "id": .string("live:" + f.id + ":connect"), "title": .string("Sign in to " + title + " to fill this folder"),
+            return [["type": "tabRow", "id": .string("live:" + f.id + ":connect"), "title": .string("Sign in to " + title + " to fill this folder"),
                "icon": "sf:exclamationmark.triangle", "selected": false, "closable": false, "draggable": false]]
     }
-    guard items[f.live] != nil else {
+    
+        guard items[f.live] != nil else {
       return [["type": "tabRow", "id": .string("live:" + f.id + ":loading"), "title": "Loading…", "icon": "sf:hourglass",
                "selected": false, "closable": false, "draggable": false]]
     }
@@ -277,7 +283,9 @@ final class LiveFolders {
     if Text.hasPrefix(id, "live:") {
       guard let (fid, key) = split(Text.dropPrefix(id, "live:")), let f = core.folders[fid] else { return true }
       if key == "connect" {
-        if action == "click" { env.call("connections", "connect", ["id": .string(f.live)]) }
+        if action == "click" {
+          env.call("connections", "connect", ["id": .string(f.live)])
+        }
         return true
       }
       guard let it = (items[f.live] ?? []).first(where: { $0.s("id") == key }) else { return true }
@@ -451,7 +459,11 @@ final class LiveFolders {
   /// "New GitHub Live Folder" while that source is connected. `commands` may load later.
   func registerCommands() {
     var want: [(String, String, String)] = []
-    for s in Self.sources where connected(s.id) { want.append(("tabs.liveNew:" + s.id, "New " + s.title + " Live Folder", s.icon)) }
+    for s in Self.sources {
+      let isConnected = connected(s.id)
+      guard isConnected else { continue }
+      want.append(("tabs.liveNew:" + s.id, "New " + s.title + " Live Folder", s.icon))
+    }
     for id in registered where !want.contains(where: { $0.0 == id }) { env.call("commands", "unregister", ["id": .string(id)]) }
     registered.removeAll { id in !want.contains { $0.0 == id } }
     for w in want where !registered.contains(w.0) {

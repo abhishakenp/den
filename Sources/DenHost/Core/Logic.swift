@@ -182,6 +182,138 @@ public enum LinkPolicy {
   }
 }
 
+// MARK: - ATC (Air Traffic Control)
+
+/// Per-site link routing actions from config.toml `[atc]` rules.
+public enum LinkAction: String, Sendable {
+  case newTab, newTabForeground, peek, split, window, privateWindow, download, pass
+}
+
+/// A modifier for matching URL patterns in ATC rules.
+public enum ATCMod: String, Sendable {
+  case cmd, shift, opt, ctrl, cmdShift, cmdOpt, shiftOpt
+}
+
+extension ATCMod {
+  var chords: [Chord.Mod] {
+    switch self {
+    case .cmd: [.cmd]
+    case .shift: [.shift]
+    case .opt: [.opt]
+    case .ctrl: [.ctrl]
+    case .cmdShift: [.cmd, .shift]
+    case .cmdOpt: [.cmd, .opt]
+    case .shiftOpt: [.shift, .opt]
+    }
+  }
+}
+
+/// When an ATC rule applies.
+public enum ATCWhen: String, Sendable {
+  case crossSite, sameSite, any
+}
+
+/// A single ATC rule parsed from config.toml.
+public struct ATCRule: Sendable {
+  /// Host suffixes this rule applies to.
+  public var hosts: [String]
+  /// URL pattern (regex string).
+  public var urlPattern: String
+  /// Modifier keys required for the rule to fire.
+  public var modifiers: [ATCMod]
+  /// Action to take when the rule matches.
+  public var action: LinkAction
+  /// When the rule applies.
+  public var when: ATCWhen
+
+  public init(hosts: [String] = [], urlPattern: String, modifiers: [ATCMod] = [], action: LinkAction, when: ATCWhen = .any) {
+    self.hosts = hosts; self.urlPattern = urlPattern; self.modifiers = modifiers
+    self.action = action; self.when = when
+  }
+
+  /// Parse a single rule from a Value (TOML table).
+  public init?(_ v: Value?) {
+    guard let pairs = v?.object else { return nil }
+    func str(k: String) -> String? {
+      pairs.first { $0.0 == k }?.1.string
+    }
+    func strList(k: String) -> [String] {
+      pairs.first { $0.0 == k }?.1.array?.compactMap { $0.string } ?? []
+    }
+    func modList(k: String) -> [ATCMod] {
+      pairs.first { $0.0 == k }?.1.array?.compactMap { $0.string.flatMap(ATCMod.init) } ?? []
+    }
+    hosts = strList(k: "hosts"); urlPattern = str(k: "url_pattern") ?? str(k: "urlPattern") ?? ""
+    modifiers = modList(k: "modifiers"); action = LinkAction(rawValue: str(k: "action") ?? "newTab") ?? .newTab
+    when = ATCWhen(rawValue: str(k: "when") ?? "any") ?? .any
+    guard !urlPattern.isEmpty else { return nil }
+  }
+}
+
+/// Air Traffic Control: per-site link routing loaded from `~/.den/config.toml` (`[atc]`).
+public struct ATC: Sendable {
+  public var rules: [ATCRule] = []
+  public var defaultAction: LinkAction = .newTab
+
+  public init(rules: [ATCRule] = []) { self.rules = rules }
+
+  /// Parse ATC from a TOML `[atc]` value.
+  public init?(_ v: Value?) {
+    guard let pairs = v?.object else { return nil }
+    func ruleList(k: String) -> [ATCRule] {
+      pairs.first { $0.0 == k }?.1.array?.compactMap(ATCRule.init) ?? []
+    }
+    rules = ruleList(k: "rules")
+    if let da = pairs.first(where: { $0.0 == "default_action" })?.1.string,
+       let act = LinkAction(rawValue: da) { defaultAction = act }
+  }
+
+  /// Decide whether a link click should be routed by a rule.
+  /// Returns (event, payload) if a rule matched, nil otherwise.
+  public func decide(source: URL?, target: URL, isLinkClick: Bool, isMainFrame: Bool,
+                     modifiers: Set<Chord.Mod>) -> (event: String, payload: Value)? {
+    guard isLinkClick, isMainFrame, let scheme = target.scheme,
+          ["http", "https"].contains(scheme.lowercased()) else { return nil }
+
+    let targetHost = target.host ?? ""
+    let sourceHost = source?.host ?? ""
+
+    for rule in rules {
+      let requiredChords = rule.modifiers.flatMap { $0.chords }
+      if !requiredChords.isEmpty, !requiredChords.allSatisfy(modifiers.contains) { continue }
+
+      switch rule.when {
+      case .crossSite:
+        guard sourceHost != targetHost else { continue }
+      case .sameSite:
+        guard sourceHost == targetHost else { continue }
+      case .any:
+        break
+      }
+
+      if !rule.hosts.isEmpty {
+        let matched = rule.hosts.contains { host in
+          host == targetHost || targetHost.hasSuffix(".\(host)")
+        }
+        guard matched else { continue }
+      }
+
+      guard let regex = try? NSRegularExpression(pattern: rule.urlPattern, options: []),
+            regex.firstMatch(in: target.absoluteString, range: NSRange(target.absoluteString.startIndex..., in: target.absoluteString)) != nil
+      else { continue }
+
+      let payload: Value = [
+        "url": .string(target.absoluteString),
+        "source": .string(source?.absoluteString ?? ""),
+        "rule_hosts": .array(rule.hosts.map { .string($0) }),
+      ]
+      return (event: "atc.\(rule.action)", payload)
+    }
+
+    return nil
+  }
+}
+
 // MARK: - Split layout
 
 public enum SplitOrientation: String, Sendable { case horizontal, vertical, grid }

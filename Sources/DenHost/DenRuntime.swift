@@ -31,6 +31,8 @@ public final class DenRuntime {
   public let pageStyle: PageStyleService
   /// Per-site content rule lists, page preferences, HTTPS-first and the navigation guard (`shields`).
   public let sitePolicy: SitePolicyService
+  /// Per-site CSS/JS boosts that inject into matching pages (`boosts`).
+  public let boosts: BoostsService
   public let vault: VaultService
   /// Read-only local files for importers (`files:<path>` permissions).
   public let files: FilesService
@@ -84,6 +86,7 @@ public final class DenRuntime {
       sitePolicy.resourceRoots = [storageRoot.appendingPathComponent("updates/lists", isDirectory: true)]
     }
     vault = VaultService(host: host, webviews: webviews)
+    boosts = BoostsService(host: host, webviews: webviews)
     files = FilesService(host: host, permissions: permissions)
     downloads = DownloadsService(host: host, storage: storage)
     webviews.downloads = downloads

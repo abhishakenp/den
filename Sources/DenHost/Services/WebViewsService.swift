@@ -237,6 +237,9 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   public init(host: ServiceHost) { self.host = host }
 
+  /// Air Traffic Control: per-site link routing loaded from `~/.den/config.toml` (`[atc]`).
+  public var atc: ATC = .init()
+
   /// Hooks for host services that style or script pages per web view (`pagestyle`, `vault`).
   /// `configure` runs before each WKWebView is created, `created` right after, and
   /// `navigating` on every main-frame navigation decision, before the new document exists
@@ -1014,6 +1017,13 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if let event = LinkPolicy.route(rules: rules, source: webView.url, target: target, isLinkClick: action.navigationType == .linkActivated, isMainFrame: mainFrame, modifiers: mods) {
       decisionHandler(.cancel)
       host.emit(event, ["id": .string(r.id), "url": .string(target.absoluteString), "source": .string(webView.url?.absoluteString ?? "")])
+      return
+    }
+    // ATC (Air Traffic Control): per-site routing rules from `~/.den/config.toml` `[atc]`.
+    if let atcResult = atc.decide(source: webView.url, target: target, isLinkClick: action.navigationType == .linkActivated,
+                                  isMainFrame: mainFrame, modifiers: mods) {
+      decisionHandler(.cancel)
+      host.emit(atcResult.event, atcResult.payload)
       return
     }
     if mainFrame { for h in navigatingHooks { h(r, webView, target) } }

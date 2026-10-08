@@ -34,8 +34,35 @@ public final class PageStyleService: HostService {
     public var appearance: String?
   }
 
+  /// A named package of user stylesheets and page scripts, applied per domain (Zen Mods style).
+  public struct Mod: Equatable {
+    public var name: String
+    public var css: String
+    public var js: String
+    public var hosts: [String]
+    public init(name: String, css: String, js: String = "", hosts: [String] = []) {
+      self.name = name
+      self.css = css
+      self.js = js
+      self.hosts = hosts
+    }
+    public static func == (a: Mod, b: Mod) -> Bool {
+      a.name == b.name && a.css == b.css && a.js == b.js && a.hosts == b.hosts
+    }
+  }
+
   private(set) var css: [String: String] = [:]
   private var versions: [String: Int] = [:]
+  /// Named mods (CSS/JS packages) loaded from disk or defined at runtime.
+  private var mods: [String: Mod] = [:]
+  /// Per web view: applied mods with their CSS _WKUserStyleSheet for cleanup.
+  private var appliedMods: [String: [String: NSObject]] = [:]
+  /// Directory for per-site mods stored on disk (Zen Mods style).
+  static let modsRoot: URL = {
+    let p = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+    return p.appendingPathComponent("den/mods", isDirectory: true)
+  }()
+
   public private(set) var defaultRule = Rule()
   public private(set) var hostRules: [String: Rule] = [:]
   public private(set) var detect = false
@@ -47,7 +74,6 @@ public final class PageStyleService: HostService {
   private lazy var toneHandler = ScriptMessageProxy { [weak self] msg in self?.didReceive(msg) }
   static let world = WKContentWorld.world(name: "den-style")
 
-  /// `_WKUserStyleSheet` (WebKit SPI, present since macOS 10.12). Without it the service does nothing.
   static let sheetClass: NSObject.Type? = NSClassFromString("_WKUserStyleSheet") as? NSObject.Type
   public static var supported: Bool { sheetClass != nil }
 
@@ -73,15 +99,33 @@ public final class PageStyleService: HostService {
       hostRules = hosts
       let wantDetect = args.flag("detect")
       activate()
-      // Turning detection off affects web views created from now on (a script can't be removed alone).
       if wantDetect && !detect { for r in webviews.records.values { if let w = r.webView { installDetector(w.configuration.userContentController) } } }
       detect = wantDetect
       reapplyAll()
       return .ok
+    case "mods.define":
+      guard let n = args["name"].string, !n.isEmpty else { return .error("mods: define needs a name") }
+      let css = args.str("css")
+      let js = args.str("js")
+      let hosts = args.list("hosts").compactMap(\.string)
+      mods[n] = Mod(name: n, css: css, js: js, hosts: hosts)
+      if active { reapplyAll() }
+      return .ok
+    case "mods.list":
+      return .array(mods.values.sorted { $0.name < $1.name }.map { m in
+        ["name": .string(m.name), "css": .string(m.css), "js": .string(m.js), "hosts": .array(m.hosts.map { .string($0) })]
+      })
+    case "mods.remove":
+      guard let n = args["name"].string else { return .error("mods: remove needs a name") }
+      mods[n] = nil
+      if active { reapplyAll() }
+      return .ok
+    case "mods.scan":
+      return loadModsFromDisk()
     case "get":
       let id = args.str("id")
       guard let r = webviews.record(id) else { return .error("pagestyle: no webview '\(id)'") }
-      let h = Self.host(of: r.webView?.url ?? URL(string: r.url))
+      let h = Self.pageHost(of: r.webView?.url ?? URL(string: r.url))
       return [
         "host": .string(h), "sheets": .array((applied[id] ?? [:]).keys.sorted().map { .string($0) }),
         "appearance": ((appliedAppearance[id] ?? nil).map { Value.string($0) } ?? .null), "tone": tones[id].map { Value.string($0) } ?? .null, "supported": .bool(Self.supported),
@@ -95,7 +139,6 @@ public final class PageStyleService: HostService {
     Rule(sheets: v.list("sheets").compactMap(\.string), appearance: v["appearance"].string.flatMap { ["light", "dark"].contains($0) ? $0 : nil })
   }
 
-  /// "WWW.Example.com." -> "example.com"
   nonisolated static func key(_ h: String) -> String {
     var k = h.lowercased()
     if k.hasSuffix(".") { k.removeLast() }
@@ -103,9 +146,8 @@ public final class PageStyleService: HostService {
     return k
   }
 
-  nonisolated static func host(of url: URL?) -> String { key(url?.host ?? "") }
+  nonisolated static func pageHost(of url: URL?) -> String { key(url?.host ?? "") }
 
-  /// The rule for `host`: the host itself, then each parent domain, then the default.
   public func rule(for host: String) -> Rule {
     var h = Self.key(host)
     while !h.isEmpty {
@@ -116,27 +158,25 @@ public final class PageStyleService: HostService {
     return defaultRule
   }
 
-  // MARK: Web view hooks (installed on the first `rules`)
-
   func activate() {
     guard !active else { return }
     active = true
     webviews.configureHooks.append { [weak self] r, config in self?.configure(r, config) }
-    webviews.navigatingHooks.append { [weak self] r, w, url in self?.apply(r, w, host: Self.host(of: url)) }
+    webviews.navigatingHooks.append { [weak self] r, w, url in self?.apply(r, w, host: Self.pageHost(of: url)) }
     host.on("webviews.closed") { [weak self] v in
       let id = v.str("id")
       self?.applied[id] = nil
+      self?.appliedMods[id] = nil
       self?.tones[id] = nil
       self?.appliedAppearance[id] = nil
     }
   }
 
   func configure(_ r: WebRecord, _ config: WKWebViewConfiguration) {
-    // A new WKWebView (first show, or after a discard) starts with a fresh controller.
     applied[r.id] = [:]
+    appliedMods[r.id] = [:]
     appliedAppearance[r.id] = nil
     config.userContentController.add(toneHandler, contentWorld: Self.world, name: "denTone")
-    // A new controller may reuse a freed one's address: forget it before installing.
     withDetector.remove(ObjectIdentifier(config.userContentController))
     if detect { installDetector(config.userContentController) }
   }
@@ -150,7 +190,7 @@ public final class PageStyleService: HostService {
   func reapplyAll() {
     for r in webviews.records.values {
       guard let w = r.webView else { continue }
-      apply(r, w, host: Self.host(of: w.url ?? URL(string: r.url)))
+      apply(r, w, host: Self.pageHost(of: w.url ?? URL(string: r.url)))
     }
   }
 
@@ -168,13 +208,77 @@ public final class PageStyleService: HostService {
       have[n] = (versions[n] ?? 0, sheet)
     }
     applied[r.id] = have
+    applyMods(r, w, host: h)
     if appliedAppearance[r.id] != .some(rule.appearance) {
       appliedAppearance[r.id] = .some(rule.appearance)
       w.appearance = rule.appearance.map { NSAppearance(named: $0 == "dark" ? .darkAqua : .aqua) } ?? nil
     }
   }
 
-  /// `[[_WKUserStyleSheet alloc] initWithSource:css forMainFrameOnly:YES]` (user level, page world).
+  func applyMods(_ r: WebRecord, _ w: WKWebView, host h: String) {
+    let c = w.configuration.userContentController
+    let hKey = Self.key(h)
+    var matched: [(String, Mod)] = []
+    for (_, m) in mods where m.hosts.contains(hKey) { matched.append((m.name, m)) }
+    var parent = hKey
+    while !parent.isEmpty && matched.isEmpty {
+      guard let dot = parent.firstIndex(of: ".") else { break }
+      parent = String(parent[parent.index(after: dot)...])
+      for (_, m) in mods where m.hosts.contains(parent) { matched.append((m.name, m)) }
+    }
+    if matched.isEmpty {
+      for (_, m) in mods where m.hosts.isEmpty { matched.append((m.name, m)) }
+    }
+    var current = appliedMods[r.id] ?? [:]
+    let matchedNames = Set(matched.map(\.0))
+    for (name, oldSheet) in current where !matchedNames.contains(name) {
+      c.perform(NSSelectorFromString("_removeUserStyleSheet:"), with: oldSheet)
+      current[name] = nil
+    }
+    for (name, m) in matched where current[name] == nil {
+      guard let sheet = Self.makeSheet(m.css) else { continue }
+      c.perform(NSSelectorFromString("_addUserStyleSheet:"), with: sheet)
+      current[name] = sheet
+      if !m.js.isEmpty {
+        let script = WKUserScript(source: m.js, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        c.addUserScript(script)
+      }
+    }
+    appliedMods[r.id] = current
+  }
+
+  func loadModsFromDisk() -> Value {
+    let root = Self.modsRoot
+    guard let contents = try? FileManager.default.contentsOfDirectory(atPath: root.path) else { return ["count": .int(0)] }
+    var count = 0
+    for name in contents {
+      let dir = root.appendingPathComponent(name)
+      guard dir.hasDirectoryPath,
+            let css = try? String(contentsOf: dir.appendingPathComponent("style.css"), encoding: .utf8)
+      else { continue }
+      let js: String
+      let jsUrl = dir.appendingPathComponent("script.js")
+      if FileManager.default.fileExists(atPath: jsUrl.path) {
+        js = (try? String(contentsOf: jsUrl, encoding: .utf8)) ?? ""
+      } else {
+        js = ""
+      }
+      let hostsUrl = dir.appendingPathComponent("hosts.json")
+      let hosts: [String]
+      if FileManager.default.fileExists(atPath: hostsUrl.path),
+         let data = try? Data(contentsOf: hostsUrl),
+         let arr = try? JSONSerialization.jsonObject(with: data) as? [String] {
+        hosts = arr
+      } else {
+        hosts = []
+      }
+      let mod = Mod(name: name, css: css, js: js, hosts: hosts)
+      mods[name] = mod
+      count += 1
+    }
+    return ["count": .int(Int64(count))]
+  }
+
   static func makeSheet(_ source: String) -> NSObject? {
     guard let cls = sheetClass else { return nil }
     typealias Init = @convention(c) (AnyObject, Selector, NSString, Bool) -> Unmanaged<NSObject>?
@@ -190,13 +294,10 @@ public final class PageStyleService: HostService {
       let tone = body["tone"] as? String, ["dark", "light"].contains(tone)
     else { return }
     tones[r.id] = tone
-    let h = Self.host(of: w.url)
+    let h = Self.pageHost(of: w.url)
     host.emit("pagestyle.tone", ["id": .string(r.id), "host": .string(h), "tone": .string(tone), "dark": .bool(body["dark"] as? Bool ?? false)])
   }
 
-  /// Page tone from the first opaque background under the viewport center (then body, then the
-  /// text color / color-scheme). Relative luminance < 0.18 is dark. Runs 3–4 times per page.
-  // thin-host: feature-specific, migrate to plugin (the page-tone heuristic is dark-mode logic; the host should only run a plugin-supplied script)
   static let detector = """
     (()=>{const de=document.documentElement;
     const lum=c=>{const m=c&&c.match(/[\\d.]+/g);if(!m||m.length<3||(m.length>3&&+m[3]<0.5))return -1;
