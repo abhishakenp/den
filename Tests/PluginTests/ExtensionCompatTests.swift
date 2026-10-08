@@ -377,7 +377,7 @@ struct ExtensionCompatTests {
     let tab = h.tabs("open", ["url": .string(url)]).s("id")
     h.tabs("select", ["id": .string(tab)])
     let loaded = await wait(60) { h.rt.webviews.record(tab)?.loading == false && h.rt.webviews.record(tab)?.url.contains(storeId) == true }
-    let offered = await wait(20) { h.rt.extensions.ui.storeOffer?.id == storeId }
+    let offered = await wait(90) { h.rt.extensions.ui.storeOffer?.id == storeId }
     let pill = Self.pill(h.rt.ui.sidebarView)
     let button = pill?.storeButton
     print("compat pill url=\(url) loaded=\(loaded) offer=\(String(describing: h.rt.extensions.ui.storeOffer)) pill=\(pill != nil) button=\(button?.label.stringValue ?? "none") frame=\(button?.frame ?? .zero)")

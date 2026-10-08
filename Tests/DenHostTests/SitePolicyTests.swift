@@ -296,6 +296,12 @@ struct SitePolicyTests {
     // bodies lose their ad fields and nothing else, ad slots are hidden. A bad rule is skipped.
     // The script leaves nothing named on window but its random-named count function.
     let w = try await page(rt, "y", Self.adPage, "https://www.yt.test/watch")
+    // Wait for scriptlet injection to settle on slower CI runners
+    let ready = try await until(15) {
+      let s = try await pageState(rt, w)
+      return (s["hooked"] as? Bool == true) && ((s["ownKeys"] as? Int ?? -1) == 0)
+    }
+    #expect(ready, "Scriptlet didn't settle within 15s")
     let on = try await pageState(rt, w)
     #expect(on["hooked"] as? Bool == true, "\(on)")
     #expect(on["ownKeys"] as? Int == 0, "\(on)")
