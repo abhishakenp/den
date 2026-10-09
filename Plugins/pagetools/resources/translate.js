@@ -56,5 +56,16 @@
       return had;
     },
     active: function () { return applied; },
+    showOverlay: function () {
+      if (document.getElementById('den-translate-overlay')) return;
+      var d = document.createElement('div');
+      d.id = 'den-translate-overlay';
+      d.innerHTML = '<div style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.35);z-index:2147483647;display:flex;align-items:center;justify-content:center"><div style="background:#fff;border-radius:16px;padding:32px 48px;box-shadow:0 12px 40px rgba(0,0,0,0.3);text-align:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif"><div style="font-size:20px;font-weight:600;margin-bottom:12px;color:#1d1d1f">Translating…</div><div style="font-size:14px;color:#86868b">Please wait while we translate the page</div></div></div>';
+      document.body.appendChild(d);
+    },
+    hideOverlay: function () {
+      var d = document.getElementById('den-translate-overlay');
+      if (d) d.remove();
+    },
   };
 })();
