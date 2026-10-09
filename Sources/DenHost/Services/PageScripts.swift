@@ -255,6 +255,7 @@ enum PageScripts {
     'div[aria-label*="cookie"]', 'div[aria-label*="Cookie"]',
     'div[role="dialog"][aria-label*="cookie"]', 'div[role="dialog"][aria-label*="Cookie"]',
     '[id*="cookie"]', '[id*="consent"]', '[id*="gdpr"]',
+    '[role="dialog"]', // generic but heavily filtered in isBanner() (depth + reject button check)
   ];
 
   // Keywords that indicate a reject/decline button (case-insensitive).
@@ -282,6 +283,20 @@ enum PageScripts {
   // Check if an element looks like a cookie consent banner.
   // CRITICAL: must have cookie-related context (text, aria-label, class, or id).
   // Generic dialogs (role="dialog" with no cookie context) are NOT cookie banners.
+  // For generic dialogs: require shallow DOM depth (≤5 levels) AND a reject button.
+  function getDepth(el) {
+    let d = 0, p = el.parentElement;
+    while (p && p !== document.body) { d++; p = p.parentElement; }
+    return d;
+  }
+  function hasRejectButton(el) {
+    // Check all buttons (direct children and descendants) for reject keywords.
+    const btns = el.querySelectorAll('button, [role="button"]');
+    for (let i = 0; i < btns.length; i++) {
+      if (isRejectButton(btns[i])) return true;
+    }
+    return false;
+  }
   function isBanner(el) {
     if (!el || !el.isConnected) return false;
     // Skip if already scanned.
@@ -299,6 +314,13 @@ enum PageScripts {
     // Check id for cookie-related patterns.
     const id = (el.id || '').toLowerCase();
     if (id.includes('cookie') || id.includes('consent') || id.includes('gdpr') || id.includes('onetrust')) return true;
+    // For generic [role="dialog"] or [role="alertdialog"] without cookie-specific attributes:
+    // require shallow depth (≤5 levels) AND a reject button to avoid matching Google's dialogs.
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    if (role === 'dialog' || role === 'alertdialog') {
+      if (getDepth(el) > 5) return false;
+      if (!hasRejectButton(el)) return false;
+    }
     // Check the visible text for cookie consent keywords — if the banner text
     // mentions cookies/privacy it's likely a consent banner; otherwise skip.
     const text = (el.textContent || '').toLowerCase().slice(0, 500);
