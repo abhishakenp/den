@@ -250,10 +250,11 @@ enum PageScripts {
     '[class*="cookies-banner"]', '[class*="cookies-dialog"]', '[class*="cookie-law"]',
     '[data-cookie-blocker]', '[data-complience]', '[class*="cm-"]', // ConsentManagement
     '[class*="cc-"]', // CookieNotice / Osano
-    '[class*="onetrust-"]', // OneTrust
+    '[class*="onetrust-"]', '[class*="ot-pc"]', // OneTrust
     '[class*="consent-"]', '[class*="gdpr"]', '[class*="banner"][class*="cookie"]',
     'div[aria-label*="cookie"]', 'div[aria-label*="Cookie"]',
     'div[role="dialog"][aria-label*="cookie"]', 'div[role="dialog"][aria-label*="Cookie"]',
+    '[id*="cookie"]', '[id*="consent"]', '[id*="gdpr"]',
   ];
 
   // Keywords that indicate a reject/decline button (case-insensitive).
@@ -279,7 +280,7 @@ enum PageScripts {
   }
 
   // Check if an element looks like a cookie consent banner.
-  // CRITICAL: must have cookie-related context (text, aria-label, or class).
+  // CRITICAL: must have cookie-related context (text, aria-label, class, or id).
   // Generic dialogs (role="dialog" with no cookie context) are NOT cookie banners.
   function isBanner(el) {
     if (!el || !el.isConnected) return false;
@@ -289,12 +290,15 @@ enum PageScripts {
     if (el.children.length > 500) return false;
     // Check class names for cookie-related patterns.
     const cls = (el.className || '').toLowerCase();
-    if (typeof cls === 'string' && /cookie|consent|complian|onetrust|cc-banner|usercentrics|banner/.test(cls)) return true;
+    if (typeof cls === 'string' && /cookie|consent|complian|onetrust|ot-pc|cc-banner|usercentrics|banner/.test(cls)) return true;
     // Check aria-label for cookie-related keywords.
     const aria = (el.getAttribute('aria-label') || '').toLowerCase();
     if (aria.includes('cookie') || aria.includes('consent')) return true;
     // Check data attributes.
     if (el.hasAttribute('data-cookie-blocker')) return true;
+    // Check id for cookie-related patterns.
+    const id = (el.id || '').toLowerCase();
+    if (id.includes('cookie') || id.includes('consent') || id.includes('gdpr') || id.includes('onetrust')) return true;
     // Check the visible text for cookie consent keywords — if the banner text
     // mentions cookies/privacy it's likely a consent banner; otherwise skip.
     const text = (el.textContent || '').toLowerCase().slice(0, 500);
