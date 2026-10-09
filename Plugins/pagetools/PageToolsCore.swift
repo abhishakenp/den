@@ -494,8 +494,9 @@ final class PageToolsCore {
   private func updatePillProgress(_ w: String, pct: Int) {
     let p = probes[w]
     guard p?.translatable == true else { return }
-    let btn: Value = ["id": "pagetools.pill.translate", "icon": "sf:translate.circle", "tooltip": "Translating… \(pct)%",
-                      "active": Value.bool(true), "progress": Value.int(Int64(pct))]
+    let btn: Value = ["id": .string("pagetools.pill.translate"), "icon": .string("sf:translate.circle"),
+                      "tooltip": .string("Translating… \(pct)%"), "active": .bool(true),
+                      "progress": .int(Int64(pct))]
     env.call("tabs", "pillButtons", ["webview": .string(w), "owner": .string(Self.id), "buttons": .array([btn])])
   }
 
