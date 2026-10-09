@@ -233,15 +233,18 @@ enum PageScripts {
   /// Strategy: scan the DOM for common banner patterns, look for reject/decline buttons first,
   /// fall back to "Customize" → reject-tracking-categories, handle dynamically loaded banners
   /// with retries. Runs silently in the page world — the page never sees interference.
+  ///
+  /// IMPORTANT: only targets cookie-specific banners. Never treats generic dialogs
+  /// (role="dialog" without cookie context) as cookie banners — that breaks sites like Google
+  /// where dozens of non-cookie dialogs would be matched and their buttons clicked.
   static let cookieConsent = #"""
 (() => {
   if (window.__denCookieConsent) return;
   window.__denCookieConsent = true;
 
-  // Common banner selectors — id, class, role, or data attributes that signal a cookie dialog.
+  // Only cookie-specific selectors — no generic [role="dialog"] or <dialog>.
+  // Generic dialogs are not cookie banners and clicking buttons in them breaks the page.
   const bannerSelectors = [
-    '[role="dialog"]:not([data-den-scanned])',
-    'dialog:not([data-den-scanned])',
     '[class*="cookie-banner"]', '[class*="cookie-dialog"]', '[class*="cookie-consent"]',
     '[class*="cookie-policy"]', '[class*="cookie-notice"]', '[class*="cookie-banner__"]',
     '[class*="cookies-banner"]', '[class*="cookies-dialog"]', '[class*="cookie-law"]',
@@ -275,30 +278,27 @@ enum PageScripts {
     return hasReject && text.length < 80;
   }
 
-  // Check if an element looks like a banner dialog.
+  // Check if an element looks like a cookie consent banner.
+  // CRITICAL: must have cookie-related context (text, aria-label, or class).
+  // Generic dialogs (role="dialog" with no cookie context) are NOT cookie banners.
   function isBanner(el) {
     if (!el || !el.isConnected) return false;
     // Skip if already scanned.
     if (el.hasAttribute('data-den-scanned')) return false;
     // Skip very large elements (pages themselves).
     if (el.children.length > 500) return false;
-    // Check for common banner attributes/roles.
-    const role = el.getAttribute('role');
-    if (role === 'dialog' || role === 'alertdialog') return true;
-    const tag = el.tagName.toLowerCase();
-    if (tag === 'dialog') return true;
-    // Check class names.
+    // Check class names for cookie-related patterns.
     const cls = (el.className || '').toLowerCase();
-    if (typeof cls === 'string') {
-      const patterns = ['cookie', 'consent', 'complian', 'onetrust', 'cc-banner', 'cm-',
-                        'usercentrics', 'dialogue', 'preferences', 'banner'];
-      if (patterns.some(p => cls.includes(p))) return true;
-    }
-    // Check aria-label.
+    if (typeof cls === 'string' && /cookie|consent|complian|onetrust|cc-banner|usercentrics|banner/.test(cls)) return true;
+    // Check aria-label for cookie-related keywords.
     const aria = (el.getAttribute('aria-label') || '').toLowerCase();
     if (aria.includes('cookie') || aria.includes('consent')) return true;
     // Check data attributes.
     if (el.hasAttribute('data-cookie-blocker')) return true;
+    // Check the visible text for cookie consent keywords — if the banner text
+    // mentions cookies/privacy it's likely a consent banner; otherwise skip.
+    const text = (el.textContent || '').toLowerCase().slice(0, 500);
+    if (/cookie|consent|gdpr|privacy|ccpa|onetrust|preferences/.test(text)) return true;
     return false;
   }
 
@@ -344,7 +344,7 @@ enum PageScripts {
 
   // Main attempt: scan the page for banners and handle them.
   function attempt() {
-    // Mark all banners as scanned.
+    // Only query cookie-specific selectors — never [role="dialog"].
     for (const sel of bannerSelectors) {
       try {
         const els = document.querySelectorAll(sel);
@@ -355,14 +355,6 @@ enum PageScripts {
           }
         }
       } catch(e) {}
-    }
-    // Also walk visible elements for banner-like dialogs.
-    const dialogs = document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog');
-    for (const d of dialogs) {
-      if (!d.hasAttribute('data-den-scanned') && isBanner(d)) {
-        markScanned(d);
-        handleBanner(d);
-      }
     }
   }
 
@@ -432,16 +424,12 @@ enum PageScripts {
   }
 
   // Run immediately, then retry a few times for dynamically loaded banners.
+  // Only re-query cookie-specific selectors (never generic dialogs).
   attempt();
-  const retries = [300, 800, 1500, 2500, 4000, 6000];
+  const retries = [500, 1500, 3000, 6000];
   for (const delay of retries) {
     setTimeout(attempt, delay);
   }
-  // Also watch for new banners via MutationObserver.
-  try {
-    const obs = new MutationObserver(() => { attempt(); });
-    obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
-  } catch(e) {}
 })();
 """#
 

@@ -490,6 +490,15 @@ final class PageToolsCore {
     env.call("tabs", "pillButtons", ["webview": .string(w), "owner": .string(Self.id), "buttons": .array(buttons)])
   }
 
+  /// Updates the translate pill with a progress percentage while translation is in flight.
+  private func updatePillProgress(_ w: String, pct: Int) {
+    let p = probes[w]
+    guard p?.translatable == true else { return }
+    let btn = ["id": "pagetools.pill.translate", "icon": "sf:translate.circle", "tooltip": "Translating… \(pct)%",
+               "active": .bool(true), "progress": .int(Int64(pct))]
+    env.call("tabs", "pillButtons", ["webview": .string(w), "owner": .string(Self.id), "buttons": .array([btn])])
+  }
+
   // MARK: - Injection
 
   func inject(_ w: String, _ what: String, files: [String] = [], global: String = "", script: String = "", args: Value = .null) {
@@ -646,6 +655,16 @@ final class PageToolsCore {
     inject(w, "collect", files: ["translate.js"], global: "__denTranslate", script: "return window.__denTranslate.collect(4000)")
   }
 
+  /// Shows a persistent "Translating…" overlay so the user sees instant feedback.
+  private func showTranslateOverlay(_ w: String) {
+    script(w, "translateOverlay", "return window.__denTranslate.showOverlay()", [])
+  }
+
+  /// Hides the "Translating…" overlay.
+  private func hideTranslateOverlay(_ w: String) {
+    script(w, "translateOverlayHide", "return window.__denTranslate.hideOverlay()", [])
+  }
+
   func collected(_ w: String, _ v: Value) {
     let texts = (v["value"]["texts"].array ?? []).map { $0.string ?? "" }
     var order = (v["value"]["order"].array ?? []).compactMap { $0.int.map { Int($0) } }
@@ -663,6 +682,8 @@ final class PageToolsCore {
     guard !from.isEmpty else { return toast("den can’t tell which language this page is in", icon: "sf:translate") }
     guard from != userLang else { return toast("This page is already in " + d.s("name"), icon: "sf:translate") }
     translation = Translation(webview: w, texts: texts, order: order, title: v["value"].s("title"), from: from, fromName: d.s("name"), to: userLang, next: 0)
+    // Show persistent overlay + instant toast so the user sees translation started immediately.
+    showTranslateOverlay(w)
     toast("Translating from " + d.s("name") + "…", icon: "sf:translate")
     nextBatch()
   }
@@ -681,6 +702,7 @@ final class PageToolsCore {
     guard var t = translation, v.s("request") == "pagetools:" + t.webview + ":" + String(t.next) else { return }
     guard v["ok"] == true else {
       translation = nil
+      hideTranslateOverlay(t.webview)
       let e = v.s("error")
       if e == "notInstalled" { return toast("Translating " + t.fromName + " needs its language download", icon: "sf:arrow.down.circle") }
       if e == "unsupported" { return toast(t.fromName + " can’t be translated on this Mac", icon: "sf:translate") }
@@ -692,19 +714,25 @@ final class PageToolsCore {
     let at = t.order[t.next..<min(t.order.count, t.next + out.count)].map { Value.int(Int64($0)) }
     script(t.webview, "apply", "return window.__denTranslate.apply(s, t, n)", ["s": .array(at), "t": .array(out), "n": title])
     t.next += out.count
-    if out.isEmpty || t.next >= t.texts.count {
+    let done = out.isEmpty || t.next >= t.texts.count
+    if done {
       translation = nil
+      hideTranslateOverlay(t.webview)
       translated[t.webview] = t.fromName
       updatePill(t.webview)
       toast("Translated from " + t.fromName, icon: "sf:translate")
     } else {
+      // Update pill with progress while keeping overlay visible.
+      let pct = min(99, Int(Double(t.next) / Double(t.texts.count) * 100))
       translation = t
+      updatePillProgress(t.webview, pct: pct)
       nextBatch()
     }
   }
 
   func showOriginal(_ w: String) {
     guard translated[w] != nil else { return }
+    hideTranslateOverlay(w)
     script(w, "restore", "return window.__denTranslate ? window.__denTranslate.restore() : false")
     translated[w] = nil
     updatePill(w)
