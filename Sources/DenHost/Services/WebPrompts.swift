@@ -59,7 +59,7 @@ public final class WebPrompts {
   /// from the fourth dialog on, the dialog offers "Stop this page from showing dialogs". Both
   /// reset when the page navigates.
   public private(set) var dialogCounts: [ObjectIdentifier: Int] = [:]
-  public private(set) var silenced: Set<ObjectIdentifier> = []
+  public private(set) var silenced: Set<String> = []
   public static let dialogsBeforeOffer = 3
   static let checkedKey = "\u{1}checked"
 
@@ -107,7 +107,10 @@ public final class WebPrompts {
   /// once; past `dialogsBeforeOffer` dialogs in one page load, the dialog offers to silence it.
   func script(_ tree: Value, _ webView: WKWebView, answer: @escaping (String, [String: String]) -> Void, cancel: @escaping () -> Void) {
     let key = ObjectIdentifier(webView)
-    if silenced.contains(key) { return cancel() }
+    // Silencing is per-origin, not per-web-view address, so dialog counts don't bleed across
+    // pages and reused addresses don't carry stale silence flags forward.
+    let origin = webView.url?.host?.lowercased() ?? ""
+    if silenced.contains(origin) { return cancel() }
     let n = (dialogCounts[key] ?? 0) + 1
     dialogCounts[key] = n
     var t = tree
@@ -120,17 +123,18 @@ public final class WebPrompts {
 
   /// No more dialogs from this page until it navigates; its queued ones get their cancel answers.
   func silence(_ webView: WKWebView) {
-    silenced.insert(ObjectIdentifier(webView))
+    silenced.insert(webView.url?.host?.lowercased() ?? "")
     let gone = queue.filter { $0.webView === webView && $0.scripted }
     queue.removeAll { $0.webView === webView && $0.scripted }
     gone.forEach { $0.cancel() }
   }
 
-  /// A new page in `webView` (a main-frame navigation committed): the counts start over.
+  /// A new page in `webView` (a main-frame navigation committed): the counts start over, and
+  /// any silence flag (per-origin) for this page's host is cleared so the new page can show dialogs.
   public func pageChanged(_ webView: WKWebView) {
     let key = ObjectIdentifier(webView)
     dialogCounts[key] = nil
-    silenced.remove(key)
+    silenced.remove(webView.url?.host?.lowercased() ?? "")
   }
 
   /// HTTP Basic / Digest / NTLM sign-in. `done(nil)` means Cancel.
