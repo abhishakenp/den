@@ -315,11 +315,13 @@ enum PageScripts {
     const id = (el.id || '').toLowerCase();
     if (id.includes('cookie') || id.includes('consent') || id.includes('gdpr') || id.includes('onetrust')) return true;
     // For generic [role="dialog"] or [role="alertdialog"] without cookie-specific attributes:
-    // require shallow depth (≤5 levels) AND a reject button to avoid matching Google's dialogs.
+    // ONLY match if the element's own visible text directly mentions cookies/consent.
+    // This avoids matching Google/Arc dialogs that happen to have a reject button somewhere inside.
     const role = (el.getAttribute('role') || '').toLowerCase();
     if (role === 'dialog' || role === 'alertdialog') {
-      if (getDepth(el) > 5) return false;
-      if (!hasRejectButton(el)) return false;
+      const selfText = (el.textContent || '').toLowerCase().slice(0, 300);
+      if (!/cookie|consent|gdpr|ccpa|compliant|onetrust|usercentrics/i.test(selfText)) return false;
+      if (getDepth(el) > 4) return false;
     }
     // Check the visible text for cookie consent keywords — if the banner text
     // mentions cookies/privacy it's likely a consent banner; otherwise skip.
@@ -334,10 +336,11 @@ enum PageScripts {
   }
 
   // Look for reject buttons within a container.
+  // CRITICAL: only click actual buttons (not <a href> links) to avoid unintended navigation.
   function findRejectButton(container) {
     if (!container) return null;
-    // Direct text search in buttons.
-    const buttons = container.querySelectorAll('button, [role="button"], a[href], input[type="button"], input[type="submit"]');
+    // Only real buttons — never click <a href> because that navigates away from the page.
+    const buttons = container.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"]');
     let best = null;
     let bestScore = -1;
     for (const btn of buttons) {
