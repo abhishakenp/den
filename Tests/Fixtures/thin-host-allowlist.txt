@@ -49,6 +49,7 @@ call	Sources/DenHost/Extensions/ExtensionBridge.swift	tabs
 call	Sources/DenHost/Extensions/ExtensionsService.swift	tabs
 call	Sources/DenHost/Extensions/ExtensionsService.swift	tabs
 call	Sources/DenHost/Extensions/ExtensionsService.swift	tabs
+call	Sources/DenHost/Extensions/ExtensionsService.swift	tabs
 call	Sources/DenHost/Intents/DenIntents.swift	commands
 call	Sources/DenHost/Intents/DenIntents.swift	spaces
 call	Sources/DenHost/Intents/DenIntents.swift	spaces
@@ -114,6 +115,7 @@ string	Sources/DenHost/Extensions/ExtensionsService.swift	Added \(name)
 string	Sources/DenHost/Extensions/ExtensionsService.swift	Allow
 string	Sources/DenHost/Extensions/ExtensionsService.swift	Cancel
 string	Sources/DenHost/Extensions/ExtensionsService.swift	Choose an unpacked extension folder, or a .crx, .xpi or .zip file.
+string	Sources/DenHost/Extensions/ExtensionsService.swift	Den User
 string	Sources/DenHost/Extensions/ExtensionsService.swift	Install Extension
 string	Sources/DenHost/Extensions/ExtensionsService.swift	It can:\n
 string	Sources/DenHost/Extensions/ExtensionsService.swift	It needs no special access.
