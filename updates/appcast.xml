@@ -3,6 +3,15 @@
 <channel>
 <title>den</title>
 <item>
+  <title>den 0.2.0-alpha.8</title>
+  <pubDate>Sat, 10 Oct 2026 06:19:19 +0000</pubDate>
+  <sparkle:version>396</sparkle:version>
+  <sparkle:shortVersionString>0.2.0-alpha.8</sparkle:shortVersionString>
+  <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+  <sparkle:releaseNotesLink>https://github.com/abhishakenp/den/releases/tag/v0.2.0-alpha.8</sparkle:releaseNotesLink>
+  <enclosure url="https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.8/den-0.2.0-alpha.8.zip" length="10027842" type="application/octet-stream" sparkle:edSignature="K/0NMpMthg5fvR+u+9vbdY+hdUxxqE3TUYBZSVsBdtmYGd5GLNJSxwBWfsbC0zrEshhb8GDoeaw8A/XZNNh0Aw=="/>
+</item>
+<item>
   <title>den 0.2.0-alpha.7</title>
   <pubDate>Sat, 10 Oct 2026 05:22:24 +0000</pubDate>
   <sparkle:version>393</sparkle:version>
