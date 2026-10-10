@@ -403,7 +403,7 @@ enum PageScripts {
         const closeBtn = findRejectButton(b);
         if (closeBtn) { tryClick(closeBtn); return; }
         const closeSelectors = ['button[aria-label*="close"]', 'button[aria-label*="Close"]',
-                                'button[data-dismiss]', 'a[aria-label*="close"]'];
+                                'button[data-dismiss]'];
         for (const cs of closeSelectors) {
           try {
             const c = b.querySelector(cs);
@@ -422,7 +422,7 @@ enum PageScripts {
 
   // Accept only essential cookies as a last resort.
   function acceptAsLastResort(banner) {
-    const acceptBtns = banner.querySelectorAll('button, [role="button"], a[href]');
+    const acceptBtns = banner.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"]');
     for (const btn of acceptBtns) {
       const text = (btn.textContent || '').trim().toLowerCase();
       if (text && text.length < 40 && !rejectKeywords.some(k => text.includes(k))) {
