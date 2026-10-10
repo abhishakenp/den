@@ -1,4 +1,5 @@
 import AppKit
+import PluginCores
 import CordisValue
 
 /// Rounded floating panel: an elevated surface (Elevation.swift: layered shadow, rim, edge) tinted

@@ -1,5 +1,6 @@
 import AppKit
 import CordisValue
+import PluginCores
 
 /// Arc's space theme picker (spec §4), shown in the `popover` slot.
 ///

@@ -1,4 +1,5 @@
 import AppKit
+import PluginCores
 import CordisValue
 
 // thin-host: feature-specific, migrate to plugin. The bar's row fields (icon, title, subtitle,

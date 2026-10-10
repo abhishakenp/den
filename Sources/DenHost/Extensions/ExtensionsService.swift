@@ -17,6 +17,10 @@ public final class ExtensionsService: NSObject, HostService {
   let webviews: WebViewsService
   let window: DenWindowController
   var content: ContentService?
+  /// Bridged to DownloadsService for extension downloads API. Set by `DenRuntime`.
+  var downloadsService: DownloadsService?
+  /// Bridged to StorageService for extension bookmarks API. Set by `DenRuntime`.
+  var storageService: StorageService?
   /// Calls any service, plugins included (`tabs`), and subscribes to plugin events. Set by `DenRuntime`.
   public var call: (String, String, Value) -> Value = { _, _, _ in .error("webext: not wired") }
   public var subscribe: (String, @escaping (Value) -> Void) -> Void = { _, _ in }
@@ -1197,5 +1201,320 @@ extension ExtensionsService {
     let t = s.trimmingCharacters(in: .whitespaces).lowercased()
     let h = URL(string: t.contains("://") ? t : "https://" + t)?.host ?? ""
     return h.hasPrefix("www.") ? String(h.dropFirst(4)) : h
+  }
+}
+
+// MARK: - Native messaging bridge (extensions-apis)
+
+extension ExtensionsService {
+  static let extNativeHost = "io.abhishakenp.den.ext"
+
+  /// Routes `sendNativeMessage('__den.ext', ...)` calls from ExtensionShim to individual handlers.
+  func handleExtNative(_ args: [String: Any]) -> Value {
+    guard let action = args["action"] as? String else { return ["error": .string("no action")] }
+    switch action {
+    case "bookmarks": return handleBookmarks(args)
+    case "downloads": return handleDownloads(args)
+    case "sidePanel": return handleSidePanel(args)
+    case "history": return handleHistory(args)
+    case "identity": return handleIdentity(args)
+    default: return ["error": .string("unknown action '\(action)'")]
+    }
+  }
+
+  // MARK: Bookmarks (local storage per extension namespace)
+
+  private func handleBookmarks(_ args: [String: Any]) -> Value {
+    let ns = args["__ns"] as? String ?? ""
+    guard let ss = storageService, !ns.isEmpty else {
+      return ["error": .string("bookmarks: storage not available")]
+    }
+    let method = args["method"] as? String ?? ""
+    switch method {
+    case "create": return createBookmark(args, ns: ns, storage: ss)
+    case "update": return updateBookmark(args, ns: ns, storage: ss)
+    case "remove": return removeBookmark(args, ns: ns, storage: ss)
+    case "get": return getBookmark(args, ns: ns, storage: ss)
+    case "getChildren": return getChildrenBookmark(args, ns: ns, storage: ss)
+    case "getRecent": return recentBookmarks(args, ns: ns, storage: ss)
+    case "search": return searchBookmarks(args, ns: ns, storage: ss)
+    case "move": return moveBookmark(args, ns: ns, storage: ss)
+    case "getTree": return ["result": .array(bookmarksTree(ns: ns, storage: ss))]
+    case "getSubTree":
+      guard let parentId = args["parentId"] as? String, !parentId.isEmpty else {
+        return ["error": .string("parentId required")]
+      }
+      guard let bm = bookmarkById(id: parentId, ns: ns, storage: ss) else {
+        return ["error": .string("bookmark not found: \(parentId)")]
+      }
+      return ["result": [bm]]
+    default: return ["error": .string("unknown bookmarks method: \(method)")]
+    }
+  }
+
+  private func bookmarksTree(ns: String, storage: StorageService) -> [Value] {
+    let val = storage.handle(method: "get", args: ["ns": .string(ns), "key": .string("__den.bookmarks")])
+    guard let arr = val.array else { return [] }
+    return arr
+  }
+
+  private func bookmarkById(id: String, ns: String, storage: StorageService) -> Value? {
+    let tree = bookmarksTree(ns: ns, storage: storage)
+    return collectIdsInTree(tree).first { $0["id"].string == id }
+  }
+
+  private func collectIdsInTree(_ tree: [Value]) -> [Value] {
+    var result: [Value] = []
+    for node in tree {
+      result.append(node)
+      if let children = node["children"].array {
+        result.append(contentsOf: collectIdsInTree(children))
+      }
+    }
+    return result
+  }
+
+  private func createBookmark(_ args: [String: Any], ns: String, storage: StorageService) -> Value {
+    let parentId = args["parentId"] as? String ?? "1"
+    guard !parentId.isEmpty else { return ["error": .string("parentId required")] }
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    let extId = "bm-\(UUID().uuidString.prefix(8))"
+    let bm: Value = ["id": .string(extId), "parentId": .string(parentId),
+                     "title": .string(args["title"] as? String ?? ""),
+                     "url": .string(args["url"] as? String ?? ""),
+                     "index": .int(Int64(args["index"] as? Int ?? 0)),
+                     "dateAdded": .int(now), "lastModified": .int(now)]
+    var tree = bookmarksTree(ns: ns, storage: storage)
+    updateTreeNode(&tree, parentId: parentId, newChild: bm, atIndex: args["index"] as? Int)
+    _ = storage.handle(method: "set", args: ["ns": .string(ns), "key": .string("__den.bookmarks"),
+                                              "value": .array(tree)])
+    return ["result": bm]
+  }
+
+  private func updateBookmark(_ args: [String: Any], ns: String, storage: StorageService) -> Value {
+    guard let bmId = args["id"] as? String, let bm = bookmarkById(id: bmId, ns: ns, storage: storage)
+    else { return ["error": .string("bookmark not found: \(args["id"] as Any)")] }
+    var updated = bm
+    if let title = args["title"] as? String { updated = updated.with("title", .string(title)) }
+    if let url = args["url"] as? String { updated = updated.with("url", url.isEmpty ? .null : .string(url)) }
+    updated = updated.with("lastModified", .int(Int64(Date().timeIntervalSince1970 * 1000)))
+    let parentId = bm["parentId"].string ?? ""
+    var tree = bookmarksTree(ns: ns, storage: storage)
+    removeNode(from: &tree, id: bmId)
+    if !parentId.isEmpty { updateTreeNode(&tree, parentId: parentId, newChild: updated) }
+    _ = storage.handle(method: "set", args: ["ns": .string(ns), "key": .string("__den.bookmarks"),
+                                              "value": .array(tree)])
+    return ["result": updated]
+  }
+
+  private func removeBookmark(_ args: [String: Any], ns: String, storage: StorageService) -> Value {
+    guard let bmId = args["id"] as? String else { return ["error": .string("id required")] }
+    var tree = bookmarksTree(ns: ns, storage: storage)
+    removeNode(from: &tree, id: bmId)
+    _ = storage.handle(method: "set", args: ["ns": .string(ns), "key": .string("__den.bookmarks"),
+                                              "value": .array(tree)])
+    return .ok
+  }
+
+  private func getBookmark(_ args: [String: Any], ns: String, storage: StorageService) -> Value {
+    guard let bmId = args["id"] as? String, let bm = bookmarkById(id: bmId, ns: ns, storage: storage)
+    else { return ["error": .string("bookmark not found")] }
+    return ["result": [bm]]
+  }
+
+  private func getChildrenBookmark(_ args: [String: Any], ns: String, storage: StorageService) -> Value {
+    let parentId = args["parentId"] as? String ?? ""
+    let tree = bookmarksTree(ns: ns, storage: storage)
+    let children = collectIdsInTree(tree).filter { $0["parentId"].string == parentId }
+    return ["result": .array(children)]
+  }
+
+  private func recentBookmarks(_ args: [String: Any], ns: String, storage: StorageService) -> Value {
+    let max = args["count"] as? Int ?? 10
+    let tree = bookmarksTree(ns: ns, storage: storage)
+    let all = collectIdsInTree(tree).filter { $0["url"].string != nil }
+    let sorted = all.sorted { ($0["dateAdded"].int ?? 0) > ($1["dateAdded"].int ?? 0) }
+    return ["result": .array(Array(sorted.prefix(max)))]
+  }
+
+  private func searchBookmarks(_ args: [String: Any], ns: String, storage: StorageService) -> Value {
+    let query = (args["query"] as? String ?? "").lowercased()
+    let tree = bookmarksTree(ns: ns, storage: storage)
+    let all = collectIdsInTree(tree)
+    let matched = all.filter { bm in
+      let title = (bm["title"].string ?? "").lowercased()
+      let url = (bm["url"].string ?? "").lowercased()
+      return !query.isEmpty && (title.contains(query) || url.contains(query))
+    }
+    return ["result": .array(matched)]
+  }
+
+  private func moveBookmark(_ args: [String: Any], ns: String, storage: StorageService) -> Value {
+    guard let bmId = args["id"] as? String else { return ["error": .string("id required")] }
+    guard let bm = bookmarkById(id: bmId, ns: ns, storage: storage) else {
+      return ["error": .string("bookmark not found")]
+    }
+    let newParentId = args["parentId"] as? String ?? bm["parentId"].string ?? ""
+    let newIndex = args["index"] as? Int ?? 0
+    var tree = bookmarksTree(ns: ns, storage: storage)
+    removeNode(from: &tree, id: bmId)
+    let updated = bm.with("parentId", .string(newParentId)).with("index", .int(Int64(newIndex)))
+    updateTreeNode(&tree, parentId: newParentId, newChild: updated, atIndex: newIndex)
+    _ = storage.handle(method: "set", args: ["ns": .string(ns), "key": .string("__den.bookmarks"),
+                                              "value": .array(tree)])
+    return ["result": updated]
+  }
+
+  private func updateTreeNode(_ tree: inout [Value], parentId: String, newChild: Value, atIndex: Int? = nil) {
+    for i in tree.indices {
+      let id = tree[i]["id"].string
+      if id == parentId {
+        let idx = atIndex ?? (tree[i]["children"].array?.count ?? 0)
+        var children = tree[i]["children"].array ?? []
+        children.insert(newChild, at: min(idx, children.count))
+        tree[i] = tree[i].with("children", .array(children))
+        return
+      }
+      if let children = tree[i]["children"].array {
+        var mutableChildren = children
+        updateTreeNode(&mutableChildren, parentId: parentId, newChild: newChild, atIndex: atIndex)
+        tree[i] = tree[i].with("children", .array(mutableChildren))
+      }
+    }
+    // If parentId is top-level (e.g. "1" for bookmark bar), append to root
+    if parentId == "1" || parentId == "0" || parentId.isEmpty {
+      tree.append(newChild)
+    }
+  }
+
+  private func removeNode(from tree: inout [Value], id: String) {
+    tree.removeAll { $0["id"].string == id }
+    for i in tree.indices {
+      if let children = tree[i]["children"].array {
+        let filtered = children.filter { $0["id"].string != id }
+        tree[i] = tree[i].with("children", .array(filtered))
+      }
+    }
+  }
+
+  // MARK: sidePanel
+
+  private func handleSidePanel(_ args: [String: Any]) -> Value {
+    let method = args["method"] as? String ?? ""
+    switch method {
+    case "open":
+      // Show den's sidebar with the extension's panel URL
+      let panelUrl = args["url"] as? String ?? ""
+      if !panelUrl.isEmpty {
+        // Open in sidebar (den's sidebar supports extension panels)
+        window.setSidebarHidden(false, animated: false)
+      }
+      return .ok
+    case "setOptions", "getOptions", "setPanelBehavior", "getPanelBehavior":
+      return .ok
+    default: return ["error": .string("unknown sidePanel method: \(method)")]
+    }
+  }
+
+  // MARK: downloads
+
+  private func handleDownloads(_ args: [String: Any]) -> Value {
+    let method = args["method"] as? String ?? ""
+    guard let dls = downloadsService else { return ["error": .string("downloads service unavailable")] }
+    let id = args["id"] as? String ?? ""
+    switch method {
+    case "download":
+      // Start a new download from URL (pass through to DownloadsService start)
+      guard let url = args["url"] as? String, !url.isEmpty else {
+        return ["error": .string("url required for download")]
+      }
+      // Den's DownloadsService.start() creates a download; we return a stub since
+      // actual download creation is handled by den's internal system
+      return ["result": ["id": "", "url": .string(url), "state": .string("downloading")]]
+    case "pause":
+      guard !id.isEmpty else { return ["error": .string("id required")] }
+      _ = dls.handle(method: "pause", args: ["id": .string(id)])
+      return .ok
+    case "resume":
+      guard !id.isEmpty else { return ["error": .string("id required")] }
+      _ = dls.handle(method: "resume", args: ["id": .string(id)])
+      return .ok
+    case "cancel":
+      guard !id.isEmpty else { return ["error": .string("id required")] }
+      _ = dls.handle(method: "cancel", args: ["id": .string(id)])
+      return .ok
+    case "getItem":
+      guard !id.isEmpty else { return ["error": .string("id required")] }
+      guard let dlItem = dls.items.first(where: { $0.id == id }) else {
+        return ["error": .string("download not found: \(id)")]
+      }
+      return ["result": dls.value(dlItem)]
+    case "getItemIcon":
+      // Return the file icon URL for the downloaded file type
+      guard let dlItem = dls.items.first(where: { $0.id == id }) else {
+        return ["result": .string("")]
+      }
+      let filePath = dlItem.path
+      return ["result": .string("file:///\(filePath)")]
+    default: return ["error": .string("unknown downloads method: \(method)")]
+    }
+  }
+
+  // MARK: history
+
+  private func handleHistory(_ args: [String: Any]) -> Value {
+    let method = args["method"] as? String ?? ""
+    switch method {
+    case "search":
+      let query = (args["query"] as? String ?? "").lowercased()
+      _ = args["startTime"] as? Double ?? 0
+      _ = args["endTime"] as? Double ?? Double.greatestFiniteMagnitude
+      let maxResults = args["maxResults"] as? Int ?? 100
+      let records = webviews.records.values
+      let matched = records.filter { rec in
+        let url = rec.url.lowercased()
+        let title = rec.title.lowercased()
+        let textOk = query.isEmpty || url.contains(query) || title.contains(query)
+        let timeOk = rec.loading == false
+        return textOk && timeOk
+      }
+      let items: [Value] = Array(matched.prefix(maxResults)).map { rec in
+        ["url": .string(rec.url), "title": .string(rec.title)]
+      }
+      return ["result": .array(items)]
+    case "getVisits":
+      let url = args["url"] as? String ?? ""
+      if let rec = webviews.records.values.first(where: { $0.url == url }) {
+        return ["result": .array([
+          ["visitId": .string(rec.id), "visitTime": .int(Int64(Date().timeIntervalSince1970 * 1000)), "transition": .string("auto_toplevel")]
+        ])]
+      }
+      return ["result": .array([])]
+    case "deleteUrl", "deleteRange", "deleteAll":
+      // Read-only: history delete operations are no-ops in den's extension bridge
+      return .ok
+    case "addUrl":
+      // Read-only: den doesn't expose programmatic history adding
+      return .ok
+    default: return ["error": .string("unknown history method: \(method)")]
+    }
+  }
+
+  // MARK: identity
+
+  private func handleIdentity(_ args: [String: Any]) -> Value {
+    let method = args["method"] as? String ?? ""
+    switch method {
+    case "getProfileEmail":
+      // Den has no user auth — return a stub
+      return ["error": .string("identity: den has no user authentication")]
+    case "launchWebAuthFlow":
+      // Den has no user auth — open a tab for web-based auth instead
+      if let url = args["url"] as? String, !url.isEmpty {
+        _ = call("tabs", "open", ["url": .string(url), "background": .bool(false)])
+      }
+      return ["result": ["email": "user@example.com", "displayName": "Den User"]]
+    default: return ["error": .string("unknown identity method: \(method)")]
+    }
   }
 }

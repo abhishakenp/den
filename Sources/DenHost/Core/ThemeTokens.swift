@@ -1,35 +1,11 @@
 import CoreGraphics
 import Foundation
+import PluginCores
 
 // den's theme-token layer: every chrome surface (dialogs, command bar, popovers, toasts, hover
 // cards, sheets, Settings, Little Arc) takes its colors from these, derived from the current space
 // theme and the effective appearance, so nothing is a fixed white card or a fixed brand blue.
 // Pure and AppKit-free (unit-tested in DenHostTests/ThemeTokenTests); `Palette` wraps it for AppKit.
-
-extension RGB {
-  /// WCAG 2.x relative luminance (linearized sRGB).
-  public var relativeLuminance: CGFloat {
-    func lin(_ c: CGFloat) -> CGFloat { c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
-    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
-  }
-
-  /// WCAG contrast ratio (1…21) between two opaque colors.
-  public func contrast(_ o: RGB) -> CGFloat {
-    let a = relativeLuminance, b = o.relativeLuminance
-    return (max(a, b) + 0.05) / (min(a, b) + 0.05)
-  }
-
-  public var clamped: RGB { RGB(min(max(r, 0), 1), min(max(g, 0), 1), min(max(b, 0), 1)) }
-
-
-}
-
-/// A color with alpha, for overlays drawn on a surface (hairlines, hover, pressed, shadow).
-public struct RGBA: Equatable, Sendable {
-  public var rgb: RGB
-  public var a: CGFloat
-  public init(_ rgb: RGB, _ a: CGFloat) { (self.rgb, self.a) = (rgb, a) }
-}
 
 public enum AccentSource: String, Sendable { case theme, system }
 
@@ -66,23 +42,23 @@ public struct ThemeTokens: Equatable, Sendable {
   /// Dia's measured values; a themed space tints them slightly. Text is contrast-checked like
   /// every other surface, so Dia's light secondary (#7B7B7B, 3.9:1) is darkened to 4.5:1.
   public struct CardTokens: Equatable, Sendable {
-    public var fill = RGB(0xF4 / 255, 0xF4 / 255, 0xF4 / 255)
-    public var text = RGB(0x25 / 255, 0x25 / 255, 0x25 / 255), secondary = RGB(0.45, 0.45, 0.45), glyph = RGB(0.45, 0.45, 0.45)
+    public var fill = RGB(Double(0xF4) / 255, Double(0xF4) / 255, Double(0xF4) / 255)
+    public var text = RGB(Double(0x25) / 255, Double(0x25) / 255, Double(0x25) / 255), secondary = RGB(0.45, 0.45, 0.45), glyph = RGB(0.45, 0.45, 0.45)
     /// Hairline (dark: one #3C3C3C stroke; light: #DCDCDC outside a 1 pt white highlight).
-    public var border = RGB(0xDC / 255, 0xDC / 255, 0xDC / 255), highlight: RGB? = RGB(1, 1, 1)
+    public var border = RGB(Double(0xDC) / 255, Double(0xDC) / 255, Double(0xDC) / 255), highlight: RGB? = RGB(1, 1, 1)
     /// Icon-button hover fill (dark #373737).
     public var hover = RGB(0.9, 0.9, 0.9)
-    public var tooltip = RGB(0x47 / 255, 0x47 / 255, 0x47 / 255), onTooltip = RGB(0xE4 / 255, 0xE4 / 255, 0xE4 / 255)
+    public var tooltip = RGB(Double(0x47) / 255, Double(0x47) / 255, Double(0x47) / 255), onTooltip = RGB(Double(0xE4) / 255, Double(0xE4) / 255, Double(0xE4) / 255)
     /// Status tones (PR peek, spec §3.2): passed, pending, failed, and the CI bar's empty track.
-    public var success = RGB(0x1C / 255, 0x86 / 255, 0x37 / 255), warning = RGB(0xCB / 255, 0x9F / 255, 0x16 / 255)
-    public var danger = RGB(0xA2 / 255, 0x31 / 255, 0x27 / 255), track = RGB(0xDA / 255, 0xDD / 255, 0xDF / 255)
+    public var success = RGB(Double(0x1C) / 255, Double(0x86) / 255, Double(0x37) / 255), warning = RGB(Double(0xCB) / 255, Double(0x9F) / 255, Double(0x16) / 255)
+    public var danger = RGB(Double(0xA2) / 255, Double(0x31) / 255, Double(0x27) / 255), track = RGB(Double(0xDA) / 255, Double(0xDD) / 255, Double(0xDF) / 255)
     /// Diff counts (+adds / −dels) as text on the card.
-    public var addText = RGB(0x1E / 255, 0x8A / 255, 0x3C / 255), delText = RGB(0xA2 / 255, 0x3A / 255, 0x36 / 255)
+    public var addText = RGB(Double(0x1E) / 255, Double(0x8A) / 255, Double(0x3C) / 255), delText = RGB(Double(0xA2) / 255, Double(0x3A) / 255, Double(0x36) / 255)
     /// A failing-check row: soft fill, accent bar (= danger), text.
-    public var dangerSoft = RGB(0xF0 / 255, 0xDD / 255, 0xDD / 255), onDangerSoft = RGB(0x7C / 255, 0x31 / 255, 0x37 / 255)
+    public var dangerSoft = RGB(Double(0xF0) / 255, Double(0xDD) / 255, Double(0xDD) / 255), onDangerSoft = RGB(Double(0x7C) / 255, Double(0x31) / 255, Double(0x37) / 255)
     /// "Show comments": the strong (black in light) button; "Show N failures": destructive.
-    public var strong = RGB(0.07, 0.07, 0.07), onStrong = RGB(1, 1, 1)
-    public var destructive = RGB(0xA6 / 255, 0x30 / 255, 0x27 / 255), onDestructive = RGB(1, 1, 1)
+    public var strong = RGB(0.07, 0.07, 0.07), onStrong = RGB(1.0, 1.0, 1.0)
+    public var destructive = RGB(Double(0xA6) / 255, Double(0x30) / 255, Double(0x27) / 255), onDestructive = RGB(1.0, 1.0, 1.0)
     public init() {}
   }
 
@@ -117,14 +93,14 @@ public struct ThemeTokens: Equatable, Sendable {
     return RGB(cs.map(\.r).reduce(0, +) / n, cs.map(\.g).reduce(0, +) / n, cs.map(\.b).reduce(0, +) / n)
   }
 
-  static let ink = RGB(0x0E / 255, 0x0F / 255, 0x10 / 255)
-  static let snow = RGB(0xFA / 255, 0xFB / 255, 1)
-  static let white = RGB(1, 1, 1)
+  static let ink = RGB(Double(0x0E) / 255, Double(0x0F) / 255, Double(0x10) / 255)
+  static let snow = RGB(Double(0xFA) / 255, Double(0xFB) / 255, 1.0)
+  static let white = RGB(1.0, 1.0, 1.0)
 
   /// Moves `c` toward black or white (whichever is farther from `bg`) until it reaches `target`.
   public static func ensure(_ c: RGB, on bg: RGB, _ target: CGFloat) -> RGB {
     if c.contrast(bg) >= target { return c }
-    let toward = bg.relativeLuminance > 0.18 ? RGB(0, 0, 0) : white
+    let toward = bg.relativeLuminance > 0.18 ? RGB(0.0, 0.0, 0.0) : white
     var lo: CGFloat = 0, hi: CGFloat = 1
     guard c.mix(toward, 1).contrast(bg) >= target else { return c.mix(toward, 1) }
     for _ in 0..<18 {

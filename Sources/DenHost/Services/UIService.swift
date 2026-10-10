@@ -1,4 +1,5 @@
 import AppKit
+import PluginCores
 import CordisValue
 import os
 

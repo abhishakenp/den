@@ -145,8 +145,16 @@ final class ExtensionControllerDelegate: NSObject, WKWebExtensionControllerDeleg
   }
 
   /// `runtime.sendNativeMessage`: a desktop app's native host (NativeMessaging.swift).
+  /// Routes internal messages to our handlers, external ones to native hosts.
   func webExtensionController(_ controller: WKWebExtensionController, sendMessage message: Any, toApplicationWithIdentifier applicationIdentifier: String?, for extensionContext: WKWebExtensionContext, replyHandler: @escaping (Any?, (any Error)?) -> Void) {
-    svc.native.sendMessage(message, to: applicationIdentifier, caller: svc.nativeCaller(extensionContext), reply: replyHandler)
+    let args = message as? [String: Any]
+    if applicationIdentifier == ExtensionsService.extNativeHost {
+      // Internal native message: route to Swift handlers.
+      let result = svc.handleExtNative(args ?? [:])
+      MainActor.assumeIsolated { replyHandler(result, nil) }
+    } else {
+      svc.native.sendMessage(message, to: applicationIdentifier, caller: svc.nativeCaller(extensionContext), reply: replyHandler)
+    }
   }
 
   /// `runtime.connectNative`: a port to a desktop app's native host for as long as it's open.

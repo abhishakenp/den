@@ -1,5 +1,6 @@
 import AppKit
 import CordisValue
+import PluginCores
 
 /// den's Settings window (⌘,): a native AppKit window, built the first time it opens.
 ///
