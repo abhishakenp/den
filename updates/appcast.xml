@@ -84,5 +84,5 @@
   <sparkle:shortVersionString>0.2.0-alpha.9</sparkle:shortVersionString>
   <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
   <sparkle:releaseNotesLink>https://github.com/abhishakenp/den/releases/tag/v0.2.0-alpha.9</sparkle:releaseNotesLink>
-  <enclosure url="https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.9/den-0.2.0-alpha.9.dmg" length="10124935" type="application/octet-stream" sparkle:edSignature="R9ZxnkdcHKtbZ70K8SdcJ29ufoS3XAXY8r0iRciziDfD4Iy0gLFsraWhZaSVXRHkgMh9bPemISIG/irR4AVXBA=="/>
+  <enclosure url="https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.9/den-0.2.0-alpha.9.dmg" length="10577220" type="application/octet-stream" sparkle:edSignature="R9ZxnkdcHKtbZ70K8SdcJ29ufoS3XAXY8r0iRciziDfD4Iy0gLFsraWhZaSVXRHkgMh9bPemISIG/irR4AVXBA=="/>
 </item>
