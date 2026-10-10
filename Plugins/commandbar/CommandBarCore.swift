@@ -31,6 +31,7 @@ final class CommandBarCore {
     var icon: String
     var keywords: [String]
     var shortcut: String
+    var shortcutRef = ""  // resolve the shortcut live from this ref (a keys.bind event or menu id)
     var owner: String?  // plugin id; the command goes away when that plugin is no longer active
     var aliases: [String] = []  // other names that match as well as the title ("prefs" → Settings)
   }
@@ -67,6 +68,7 @@ final class CommandBarCore {
     var score = 0
     var strength = 0  // how well the text matched (no usage): decides the tier, so rows don't jump while typing
     var shortcut = ""  // drawn as keycaps ("⇧⌘C", menu order ⌃⌥⇧⌘)
+    var shortcutFor = ""  // resolve the keycaps live from this ref instead (a keys.bind event)
     var toggle: Bool? = nil  // a switch showing a setting's state
     var drill = false  // Tab / → opens its options or settings in the bar
     var completion = ""  // Tab puts this in the field (file rows)
@@ -689,6 +691,7 @@ final class CommandBarCore {
     var aliases: [String] = []
     var method: String? = nil  // a destination: picking it calls `service.method`
     var url: String? = nil  // a creation URL: picking it opens this URL in a new tab
+    var shortcutRef: String? = nil  // resolve the shortcut keycaps live from this ref
   }
 
   /// "New Google Sheet", "New Figma File"…: each site's documented new-item URL (the `.new`
@@ -727,6 +730,10 @@ final class CommandBarCore {
 
   static let builtins: [Builtin] = [
     Builtin(id: "den.newSpace", title: "New Space", icon: "sf:plus.square.on.square", keywords: ["create", "space"], shortcut: "", needsTab: false, service: "spaces"),
+    Builtin(id: "den.nextSpace", title: "Next Space", icon: "sf:arrow.forward.square", keywords: ["spaces"], shortcut: "", needsTab: false,
+            service: nil, listener: "spaces.key.next", shortcutRef: "spaces.key.next"),
+    Builtin(id: "den.prevSpace", title: "Previous Space", icon: "sf:arrow.backward.square", keywords: ["spaces"], shortcut: "", needsTab: false,
+            service: nil, listener: "spaces.key.prev", shortcutRef: "spaces.key.prev"),
     // Create-new-document commands: gated on a connected account (any id in `connections`), since
     // the account is what makes the service's creation URL usable. The provider's plugin registers
     // the connection, so a connection also means its service is there.
@@ -794,6 +801,7 @@ final class CommandBarCore {
       if let l = b.listener, !env.call("plugins", "listening", ["event": .string(l)]).b("listening") { continue }
       if !b.connections.isEmpty, !b.connections.contains(where: { connected.contains($0) }) { continue }
       var c = Command(id: b.id, title: b.title, icon: b.icon, keywords: b.keywords, shortcut: b.shortcut, owner: nil, aliases: b.aliases)
+      c.shortcutRef = b.shortcutRef ?? "" 
       if b.id == "den.new.githubIssue" {
         // Filed in the repository the tab shows; elsewhere GitHub has no repo to put it in.
         guard let repo = Self.githubRepo(tab.s("url")) else { continue }
@@ -843,6 +851,10 @@ final class CommandBarCore {
     case "den.newSpace":
       let r = env.call("spaces", "create", ["name": "New Space"])
       if let sid = r["id"].string { env.call("spaces", "switch", ["id": .string(sid)]) }
+    case "den.nextSpace":
+      env.emit("spaces.key.next", .null)
+    case "den.prevSpace":
+      env.emit("spaces.key.prev", .null)
     case "den.renameTab":
       guard !tabId.isEmpty else { return }
       if !isOpen {
@@ -1372,12 +1384,14 @@ final class CommandBarCore {
   func spaceRows(_ q: String) -> [Row] {
     let current = env.call("spaces", "current").s("id")
     var out: [Row] = []
-    for sp in env.call("spaces", "list").array ?? [] {
+    for (i, sp) in (env.call("spaces", "list").array ?? []).enumerated() {
       let id = sp.s("id")
       guard id != current, let m = Self.match(q, title: sp.s("name"), keywords: ["space"]) else { continue }
-      out.append(Row(
+      var r = Row(
         id: "space:" + id, icon: sp.sOpt("icon") ?? "sf:square.stack", title: sp.s("name"), subtitle: "— Switch to Space", act: .space(id),
-        key: "space:" + id, score: m + usageScore("space:" + id), strength: m))
+        key: "space:" + id, score: m + usageScore("space:" + id), strength: m)
+      if i < 9 { r.keycap = "^" + String(i + 1) }  // the space's jump chord (ctrl+n), as keycaps
+      out.append(r)
     }
     return Self.top(out, 3)
   }
@@ -1539,6 +1553,7 @@ final class CommandBarCore {
         if !r.subtitle.isEmpty { v.put("subtitle", .string(r.subtitle)) }
         if !r.accessory.isEmpty { v.put("accessory", .string(r.accessory)) }
         if !r.shortcut.isEmpty { v.put("shortcut", .string(r.shortcut)) }
+        if !r.shortcutFor.isEmpty { v.put("shortcutFor", .string(r.shortcutFor)) }
         if let on = r.toggle { v.put("toggle", .bool(on)) }
         // Tab and settings rows always show their arrow keycap; other rows show ↩ when selected.
         let cap = r.keycap.isEmpty && r.id == selected ? "↩" : r.keycap

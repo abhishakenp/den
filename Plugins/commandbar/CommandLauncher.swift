@@ -56,6 +56,7 @@ extension CommandBarCore {
     for c in commands() {
       let e = IndexEntry(kind: .command, id: c.id, title: c.title, icon: c.icon, section: "den", aliases: c.aliases, keywords: c.keywords)
       e.shortcut = c.shortcut
+      e.shortcutRef = c.shortcutRef
       out.append(e)
     }
     out += settingsEntries()
@@ -174,6 +175,7 @@ extension CommandBarCore {
     switch e.kind {
     case .command:
       r.shortcut = e.shortcut
+      r.shortcutFor = e.shortcutRef
     case .pane:
       r.act = .pane(e.id)
       r.drill = true

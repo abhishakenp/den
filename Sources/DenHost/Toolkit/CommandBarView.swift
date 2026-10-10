@@ -447,9 +447,12 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       r.subtitle.stringValue = rv.str("subtitle")
       r.accessory.stringValue = rv.str("accessory")
       r.keycap.text = rv.str("keycap")
-      // A command's chord as the menu bar has it now (a [shortcuts] remap included), else the plugin's.
+      // A command's chord as the menu bar has it now (a [shortcuts] remap included), else the
+      // plugin's ref (a keys.bind event), else the plugin's static keycaps.
       let cmd = rv.str("id").hasPrefix("cmd:") ? String(rv.str("id").dropFirst(4)) : ""
-      r.setShortcut(Shortcuts.chord(for: cmd).map(ShortcutRecorder.display) ?? rv.str("shortcut"))
+      let ref = rv.str("shortcutFor")
+      let chord = Shortcuts.chord(for: cmd) ?? (ref.isEmpty ? nil : Shortcuts.chord(for: ref))
+      r.setShortcut(chord.map(ShortcutRecorder.display) ?? rv.str("shortcut"))
       r.toggle.isHidden = rv["toggle"].bool == nil
       r.toggle.on = rv.flag("toggle")
       r.onClick = { [weak self, rid = r.rowId] in self?.submit(rid, modifiers: []) }

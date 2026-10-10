@@ -20,6 +20,7 @@ final class IndexEntry {
   var subtitle = ""  // "Settings › Appearance"
   var icon: String
   var shortcut = ""
+  var shortcutRef = ""  // resolve the shortcut live from this ref (a keys.bind event or menu id)
   var section: String  // row header: "den" or "Settings"
   // Settings
   var pane = ""

@@ -115,7 +115,7 @@ public enum MainMenu {
       Entry("history.archive", "Search Archive…", "", .command("den.viewArchive")),
     ]),
     ("Spaces", [
-      Entry("spaces.new", "New Space", "", .command("den.newSpace")),
+      Entry("spaces.new", "New Space", "cmd+opt+n", .command("den.newSpace")),
       Entry("spaces.theme", "Edit Theme Color…", "", .command("den.theme")), .sep,
       Entry("spaces.next", "Next Space", "", .event("spaces.key.next")),
       Entry("spaces.prev", "Previous Space", "", .event("spaces.key.prev")), .sep,
