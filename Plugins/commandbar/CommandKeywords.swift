@@ -52,7 +52,7 @@ extension CommandBarCore {
       tips: [
         KeywordSuggestion(operatorText: "site:stackoverflow.com", description: "Search SO only", icon: "sf:link.circle"),
         KeywordSuggestion(operatorText: "score:>10", description: "Top-voted answers", icon: "sf:arrow.up.circle"),
-        KeywordSuggestion(operatorText: "answers:0", description: "Unanswered questions", icon: "sf:questionmark.circle.badge.plus"),
+        KeywordSuggestion(operatorText: "answers:0", description: "Unanswered questions", icon: "sf:questionmark.circle"),
         KeywordSuggestion(operatorText: "has:answer", description: "Questions with answers", icon: "sf:checkmark.circle"),
         KeywordSuggestion(operatorText: "accepted:yes", description: "Accepted answer", icon: "sf:checkmark.seal"),
       ]),
@@ -64,7 +64,7 @@ extension CommandBarCore {
         KeywordSuggestion(operatorText: "duration:short", description: "Under 4 minutes", icon: "sf:clock"),
         KeywordSuggestion(operatorText: "duration:medium", description: "4–20 minutes", icon: "sf:clock.fill"),
         KeywordSuggestion(operatorText: "duration:long", description: "Over 20 minutes", icon: "sf:clock.badge.checkmark"),
-        KeywordSuggestion(operatorText: "list=PL", description: "Search a playlist", icon: "sf:playlist"),
+        KeywordSuggestion(operatorText: "list=PL", description: "Search a playlist", icon: "sf:music.note.list"),
         KeywordSuggestion(operatorText: "upload_date:week", description: "Uploaded this week", icon: "sf:calendar.badge.clock"),
       ]),
     SearchSite(
@@ -109,7 +109,7 @@ extension CommandBarCore {
     SearchSite(
       host: "duckduckgo.com",
       name: "DuckDuckGo",
-      icon: "sf:crosshair",
+      icon: "sf:target",
       tips: [
         KeywordSuggestion(operatorText: "site:github.com", description: "Restrict to a site", icon: "sf:link"),
         KeywordSuggestion(operatorText: "filetype:pdf", description: "PDF only", icon: "sf:doc"),
@@ -131,7 +131,7 @@ extension CommandBarCore {
       icon: "sf:globe.americas",
       tips: [
         KeywordSuggestion(operatorText: "site:wikipedia.org", description: "Wikipedia only", icon: "sf:globe"),
-        KeywordSuggestion(operatorText: "insite:wikipedia.org", description: "Not on Wikipedia", icon: "sf:globe.slash"),
+        KeywordSuggestion(operatorText: "insite:wikipedia.org", description: "Not on Wikipedia", icon: "sf:slash.circle"),
         KeywordSuggestion(operatorText: "filetype:pdf", description: "PDF documents", icon: "sf:doc.fill"),
       ]),
   ]

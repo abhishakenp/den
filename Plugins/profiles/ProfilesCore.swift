@@ -69,7 +69,7 @@ final class ProfilesCore {
     ("Work", "sf:briefcase.fill"),
     ("Shopping", "sf:bag.fill"),
     ("Reading", "sf:book.fill"),
-    ("Dev", "sf:code.circle.fill"),
+    ("Dev", "sf:terminal"),
   ]
 
   let env: PluginEnv

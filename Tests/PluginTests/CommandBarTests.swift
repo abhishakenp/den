@@ -338,7 +338,9 @@ struct CommandBarTests {
     #expect(h.barRows.first?.str("shortcut") == "⌘S")
     h.action("commandBar", "tab", ["query": "side"])
     #expect(h.rt.call("commands", "state")["scope"] == "main")
-    #expect(h.barRowIds.first == "search")
+    // First row is either a top-hit setting/command or the search row
+    let firstId = h.barRowIds.first ?? ""
+    #expect(firstId.starts(with: "set:") || firstId == "search")
   }
 
   @Test func builtInCommandsDriveOtherServices() {

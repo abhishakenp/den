@@ -80,7 +80,7 @@ final class RssCore {
   func start() {
     feeds = loadFeeds()
     for f in feeds {
-      LiveFolders.registerSource(LiveFolders(id: f.id, title: f.name, icon: f.icon.isEmpty ? "sf:rss" : f.icon))
+      LiveFolders.registerSource(LiveFolders(id: f.id, title: f.name, icon: f.icon.isEmpty ? "sf:dot.radiowaves.left.and.right" : f.icon))
     }
     env.on("feed.refresh") { [self] _ in refresh() }
     env.on("config.changed") { [self] v in configChanged(v["config"]) }
@@ -97,7 +97,7 @@ final class RssCore {
     // Register any newly added feeds.
     for added in newIds.subtracting(oldIds) {
       if let f = feeds.first(where: { $0.id == added }) {
-        LiveFolders.registerSource(LiveFolders(id: f.id, title: f.name, icon: f.icon.isEmpty ? "sf:rss" : f.icon))
+        LiveFolders.registerSource(LiveFolders(id: f.id, title: f.name, icon: f.icon.isEmpty ? "sf:dot.radiowaves.left.and.right" : f.icon))
       }
     }
     // Refresh all feeds if config changed.
@@ -157,7 +157,7 @@ final class RssCore {
         "title": .string(title),
         "url": .string(link),
         "ts": .int(ts),
-        "icon": .string(feed.icon.isEmpty ? "sf:rss" : feed.icon),
+        "icon": .string(feed.icon.isEmpty ? "sf:dot.radiowaves.left.and.right" : feed.icon),
         "kind": .string("rss"),
         "detail": .string(description),
       ])
@@ -195,7 +195,7 @@ final class RssCore {
         "title": .string(title),
         "url": .string(link),
         "ts": .int(ts),
-        "icon": .string(feed.icon.isEmpty ? "sf:rss" : feed.icon),
+        "icon": .string(feed.icon.isEmpty ? "sf:dot.radiowaves.left.and.right" : feed.icon),
         "kind": .string("rss"),
         "detail": .string(summary.isEmpty ? content : summary),
       ])
@@ -263,7 +263,7 @@ final class RssCore {
   // MARK: Registration
 
   func register() {
-    let r = env.call("connections", "register", ["id": .string("rss"), "title": "RSS", "icon": "sf:rss",
+    let r = env.call("connections", "register", ["id": .string("rss"), "title": "RSS", "icon": "sf:dot.radiowaves.left.and.right",
                                                   "owner": .string("rss"), "order": 100])
     registered = !r.isErr
     if !registered && registerAttempts < 60 {
