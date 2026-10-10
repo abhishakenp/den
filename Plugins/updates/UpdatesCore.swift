@@ -23,6 +23,7 @@ final class UpdatesCore {
   static let ns = "updates"
   static let commandId = "den.checkForUpdates"
   static let toastId = "updates.toast"
+  static let settingsId = "updates"
   static let manifestURL = "https://raw.githubusercontent.com/abhishakenp/den/main/updates/plugins.json"
 
   let env: PluginEnv
@@ -35,6 +36,9 @@ final class UpdatesCore {
   var bad: [String] = []  // sha256s that failed or crashed
   var pendingRestart = ""  // "follow-main" or "sparkle" when a host update waits for a relaunch
   var pendingVersion = ""
+  var pendingChangelog: String = ""
+  var sparklePhase: String = ""  // checking, found, downloading, ready, none, error
+  var sparkleError: String = ""
   var backgroundSince: Int64 = 0
   var manual = false
   var followState: Value = .null
@@ -43,6 +47,7 @@ final class UpdatesCore {
   var policyTimerOn = false
   var checkTimerOn = false
   var stopped = false
+  var settingsRegistered = false
 
   init(env: PluginEnv) { self.env = env }
 
@@ -63,6 +68,7 @@ final class UpdatesCore {
         channel = c
         configureSparkle()
         about()
+        if settingsRegistered { registerSettings() }
       }
     }
     env.on("updates.stateChanged") { [self] v in followMainState(v["state"]) }
@@ -74,9 +80,20 @@ final class UpdatesCore {
     env.on("ui.action") { [self] v in
       if v.s("id") == Self.toastId && v.s("action") == "toast" { restartNow(background: false) }
     }
+    env.on("settings.action") { [self] v in
+      if v.s("id") == Self.settingsId { settingsAction(v.s("key")) }
+    }
+    env.on("settings.changed") { [self] v in
+      if v.s("id") == Self.settingsId, v.s("key") == "channel", let c = v["value"].string {
+        // Persist to config.toml
+        env.call("config", "set", ["key": .string("updates"), "value": ["channel": .string(c)]])
+        setChannel(c)
+      }
+    }
     rollbackCrashed()
     configureSparkle()
     registerCommand()
+    registerSettings()
     followMainState(followState)
     about()
     scheduleChecks()
@@ -158,6 +175,7 @@ final class UpdatesCore {
     }
     save()
     about()
+    if settingsRegistered { registerSettings() }
     if manual && pendingRestart.isEmpty {
       manual = false
       toast(lastResult == "Plugins are up to date" ? "den is up to date" : lastResult, icon: "sf:checkmark.circle", action: "", duration: 2500)
@@ -246,15 +264,25 @@ final class UpdatesCore {
   }
 
   func sparkle(_ v: Value) {
-    switch v.s("phase") {
+    sparklePhase = v.s("phase")
+    switch sparklePhase {
     case "found":
       pendingVersion = v.s("version")
+      pendingChangelog = v.s("changelog")
       env.call("updates", "sparkleReply", ["choice": "install"])  // download in the background
-    case "ready": hostUpdateReady(kind: "sparkle", version: v.sOpt("version") ?? pendingVersion)
+    case "ready":
+      hostUpdateReady(kind: "sparkle", version: v.sOpt("version") ?? pendingVersion)
     case "none":
+      pendingVersion = ""
       if manual && lastResult == "Plugins are up to date" { manual = false }
-    case "error": env.log("host update check failed: " + v.s("error"))
-    default: break
+    case "error":
+      sparkleError = v.s("error") ?? "Update check failed"
+    case "downloading":
+      pendingVersion = v.s("version") ?? pendingVersion
+    case "checking":
+      break
+    default:
+      break
     }
   }
 
@@ -353,6 +381,86 @@ final class UpdatesCore {
       if !installed.isEmpty { text += "\nPlugins updated since this release: " + String(installed.count) }
     }
     env.call("app", "setAbout", ["credits": .string(text)])
+  }
+
+  // MARK: Settings panel
+
+  /// Register the Updates section in Settings.
+  func registerSettings() {
+    let currentVersion = info.s("version")
+    let buildNum = String(info.i("build"))
+    let shortCommit = Self.short(info.s("commit"))
+
+    // Determine what state we're in and what buttons/info to show
+    var controls: [Value] = []
+
+    // Current version info
+    let versionInfo = shortCommit.isEmpty
+      ? "Version \(currentVersion) (\(buildNum))"
+      : "Version \(currentVersion) (\(buildNum), \(shortCommit))"
+    controls.append(["key": .string("currentVersion"), "type": .string("info"), "title": .string("Current version"), "value": .string(versionInfo)])
+
+    // Check for updates button
+    controls.append(["key": .string("checkForUpdates"), "type": .string("button"), "title": .string("Check for Updates…"), "icon": .string("sf:arrow.triangle.2.circlepath")])
+
+    // Channel selector
+    controls.append(["key": .string("channel"), "type": .string("choice"), "title": .string("Update channel"), "default": .string("stable"),
+      "options": .array([["value": .string("stable"), "title": .string("Stable")], ["value": .string("prerelease"), "title": .string("Prerelease (alpha/beta)")], ["value": .string("follow-main"), "title": .string("follow-main (developers)")]])])
+
+    // Pending restart info/button
+    if !pendingRestart.isEmpty, !pendingVersion.isEmpty {
+      controls.append(["key": .string("restartUpdate"), "type": .string("button"), "title": .string("Restart to Apply Update (\(pendingVersion))"), "icon": .string("sf:arrow.clockwise")])
+      controls.append(["key": .string("updateReady"), "type": .string("info"), "title": .string("Update ready"), "value": .string("A new version (\(pendingVersion)) is ready. Restart den to apply it.")])
+    } else if sparklePhase == "ready", !pendingVersion.isEmpty {
+      controls.append(["key": .string("sparkleReady"), "type": .string("info"), "title": .string("Update ready"), "value": .string("den \(pendingVersion) is downloaded and ready.")])
+    } else if sparklePhase == "downloading" {
+      controls.append(["key": .string("downloading"), "type": .string("info"), "title": .string("Downloading update…"), "value": .string("Please wait while den downloads the update.")])
+    } else if sparklePhase == "checking" {
+      controls.append(["key": .string("checking"), "type": .string("info"), "title": .string("Checking…"), "value": .string("Checking for updates. Please wait.")])
+    } else if sparkleError.count > 10 {
+      controls.append(["key": .string("error"), "type": .string("info"), "title": .string("Update check failed"), "value": .string(sparkleError)])
+    } else if lastCheck > 0 {
+      let lastCheckStr = Self.utc(lastCheck)
+      let resultText = lastResult.isEmpty ? "No issues" : lastResult
+      controls.append(["key": .string("lastCheck"), "type": .string("info"), "title": .string("Last check"), "value": .string("\(lastCheckStr) — \(resultText)")])
+    }
+
+    // Release notes link if we have a pending or ready version
+    if !pendingVersion.isEmpty {
+      controls.append(["key": .string("releaseNotes"), "type": .string("info"), "title": .string("Release notes"), "value": .string("See release notes for \(pendingVersion).")])
+    }
+
+    let r = env.call("settings", "register", [
+      "id": .string(Self.settingsId), "title": .string("Updates"), "icon": .string("sf:arrow.triangle.2.circlepath"),
+      "order": .int(90), "controls": .array(controls),
+    ])
+    settingsRegistered = !r.isErr
+  }
+
+  /// Handle button clicks in the settings panel.
+  func settingsAction(_ key: String) {
+    switch key {
+    case "checkForUpdates":
+      check(manual: true)
+    case "restartUpdate":
+      if !pendingRestart.isEmpty {
+        restartNow(background: false)
+      }
+    case "channel":
+      break  // handled by settings.changed
+    default:
+      break
+    }
+  }
+
+  /// Set the update channel.
+  func setChannel(_ newChannel: String) {
+    let allowed = ["stable", "prerelease", "follow-main"]
+    guard allowed.contains(newChannel) else { return }
+    channel = newChannel
+    configureSparkle()
+    about()
+    registerSettings()  // refresh the UI
   }
 
   func save() {
