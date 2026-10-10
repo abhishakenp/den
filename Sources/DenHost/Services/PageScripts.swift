@@ -318,7 +318,7 @@ enum PageScripts {
     if (el.children.length > 500) return false;
     // Check class names for cookie-related patterns.
     const cls = (el.className || '').toLowerCase();
-    if (typeof cls === 'string' && /cookie|consent|complian|onetrust|ot-pc|cc-banner|usercentrics|banner/.test(cls)) return true;
+    if (typeof cls === 'string' && /cookie|consent|complian|onetrust|ot-pc|usercentrics|cc-banner/.test(cls)) return true;
     // Check aria-label for cookie-related keywords.
     const aria = (el.getAttribute('aria-label') || '').toLowerCase();
     if (aria.includes('cookie') || aria.includes('consent')) return true;
@@ -339,7 +339,7 @@ enum PageScripts {
     // Check the visible text for cookie consent keywords — if the banner text
     // mentions cookies/privacy it's likely a consent banner; otherwise skip.
     const text = (el.textContent || '').toLowerCase().slice(0, 500);
-    if (/cookie|consent|gdpr|privacy|ccpa|onetrust|preferences/.test(text)) return true;
+    if (/cookie|consent|gdpr|ccpa|onetrust|usercentrics|complian/.test(text)) return true;
     return false;
   }
 
@@ -353,7 +353,7 @@ enum PageScripts {
   function findRejectButton(container) {
     if (!container) return null;
     // Only real buttons — never click <a href> because that navigates away from the page.
-    const buttons = container.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"]');
+    const buttons = container.querySelectorAll('button, [role="button"]');
     let best = null;
     let bestScore = -1;
     for (const btn of buttons) {
@@ -375,9 +375,23 @@ enum PageScripts {
     return bestScore > 2 ? best : null;
   }
 
-  // Try to click a button.
+  // Whether clicking `el` can only act on the consent UI, never the page. A <button> inside a
+  // <form> defaults to type=submit (clicking it navigates — Google's search form looped this way),
+  // and <input> buttons submit too. Only explicit type="button" (or non-form elements) are safe.
+  function canClick(el) {
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toUpperCase();
+    if (tag === 'INPUT' || tag === 'SUBMIT' || tag === 'FORM') return false;
+    if (el.closest && el.closest('form')) {
+      const t = (el.getAttribute('type') || '').toLowerCase();
+      if (t !== 'button') return false;
+    }
+    return true;
+  }
+
+  // Try to click a button (only ones that can't submit a form).
   function tryClick(el) {
-    if (!el || !el.isConnected) return false;
+    if (!el || !el.isConnected || !canClick(el)) return false;
     try {
       el.click();
       return true;
@@ -435,7 +449,7 @@ enum PageScripts {
 
   // Accept only essential cookies as a last resort.
   function acceptAsLastResort(banner) {
-    const acceptBtns = banner.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"]');
+    const acceptBtns = banner.querySelectorAll('button, [role="button"]');
     for (const btn of acceptBtns) {
       const text = (btn.textContent || '').trim().toLowerCase();
       if (text && text.length < 40 && !rejectKeywords.some(k => text.includes(k))) {

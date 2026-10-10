@@ -994,6 +994,17 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   func recordFor(_ w: WKWebView) -> WebRecord? { records.values.first { $0.webView === w } }
 
+  /// Navigation debugging: when DEN_NAV_LOG names a file, every main-frame navigation event
+  /// (decisions, commits, redirects, failures) gets a line there, so a reload loop can be traced.
+  nonisolated static func navLog(_ kind: String, _ webView: WKWebView, _ url: String?, extra: String = "") {
+    guard let path = ProcessInfo.processInfo.environment["DEN_NAV_LOG"], !path.isEmpty else { return }
+    let line = "\(String(format: "%.3f", CFAbsoluteTimeGetCurrent())) \(kind) [\(String(describing: webView).suffix(9))] \(url ?? "-")\(extra.isEmpty ? "" : " | \(extra)")\n"
+    DispatchQueue.global(qos: .utility).async {
+      if let fh = FileHandle(forWritingAtPath: path) { fh.seekToEndOfFile(); fh.write(Data(line.utf8)); try? fh.close() }
+      else { try? line.write(toFile: path, atomically: true, encoding: .utf8) }
+    }
+  }
+
   /// The preferences variant (WebKit calls only this one when it exists), so `sitepolicy` can set
   /// per-navigation web page preferences (HTTPS-first, autoplay, pop-ups).
   public func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, preferences: WKWebpagePreferences,
@@ -1004,16 +1015,19 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   func decide(_ webView: WKWebView, _ action: WKNavigationAction, _ preferences: WKWebpagePreferences, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
     guard let r = recordFor(webView), let target = action.request.url else { return decisionHandler(.allow) }
     let mainFrame = action.targetFrame?.isMainFrame ?? true
+    Self.navLog("decide type=\(action.navigationType.rawValue) mf=\(mainFrame) src=\(webView.url?.absoluteString ?? "-")", webView, target.absoluteString)
     // A new document: the tab's volume and playback speed get re-applied on its first media report.
     if mainFrame { r.playbackApplied = false }
     // mailto:, tel:, zoommtg:… open in their app (ExternalLinks.swift), never as an error page.
     if ExternalLinks.isExternal(target) {
+      Self.navLog("decide -> external", webView, target.absoluteString)
       decisionHandler(.cancel)
       openExternal(target, from: webView, userInitiated: Self.isUserInitiated(action), mainFrame: mainFrame)
       return
     }
     // An https link a native app claims: asked first (UniversalLinks.swift), never taken silently.
     if universalLink(r, webView, action, target: target, mainFrame: mainFrame) {
+      Self.navLog("decide -> universalLink", webView, target.absoluteString)
       decisionHandler(.cancel)
       return
     }
@@ -1025,6 +1039,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if f.contains(.option) { mods.insert(.opt) }
     if f.contains(.control) { mods.insert(.ctrl) }
     if let event = LinkPolicy.route(rules: rules, source: webView.url, target: target, isLinkClick: action.navigationType == .linkActivated, isMainFrame: mainFrame, modifiers: mods) {
+      Self.navLog("decide -> linkPolicy \(event)", webView, target.absoluteString)
       decisionHandler(.cancel)
       host.emit(event, ["id": .string(r.id), "url": .string(target.absoluteString), "source": .string(webView.url?.absoluteString ?? "")])
       return
@@ -1032,6 +1047,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     // ATC (Air Traffic Control): per-site routing rules from `~/.den/config.toml` `[atc]`.
     if let atcResult = atc.decide(source: webView.url, target: target, isLinkClick: action.navigationType == .linkActivated,
                                   isMainFrame: mainFrame, modifiers: mods) {
+      Self.navLog("decide -> atc", webView, target.absoluteString)
       decisionHandler(.cancel)
       host.emit(atcResult.event, atcResult.payload)
       return
@@ -1039,6 +1055,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     if mainFrame { for h in navigatingHooks { h(r, webView, target) } }
     // Browser link clicks: ⌘-click and middle-click open a background tab, ⌘⇧-click a selected one.
     if let bg = LinkPolicy.newTab(isLinkClick: action.navigationType == .linkActivated, target: target, modifiers: mods, buttonNumber: action.buttonNumber) {
+      Self.navLog("decide -> newTab bg=\(bg)", webView, target.absoluteString)
       decisionHandler(.cancel)
       host.emit("webviews.newWindow", ["id": .string(r.id), "url": .string(target.absoluteString), "background": .bool(bg)])
       return
@@ -1049,6 +1066,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       return
     }
     if mainFrame, let sp = sitePolicy, case let .cancel(then) = sp.decide(r, webView, action, preferences) {
+      Self.navLog("decide -> sitepolicy cancel (then reloads)", webView, target.absoluteString)
       decisionHandler(.cancel)
       DispatchQueue.main.async { then() }
       return
@@ -1099,6 +1117,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   }
 
   public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    Self.navLog("COMMIT", webView, webView.url?.absoluteString ?? "-")
     if let sp = sitePolicy, let r = recordFor(webView) { sp.committed(r, webView) }
     // A new page may show dialogs again (loop protection counts per page load).
     prompts?.pageChanged(webView)
@@ -1111,6 +1130,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   }
 
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    Self.navLog("FINISH", webView, webView.url?.absoluteString ?? "-")
     guard let r = recordFor(webView) else { return }
     markPainted(r, webView)  // without WebKit's paint events, a finished load counts
     extensionHooks?.pageChanged(webView)
@@ -1124,7 +1144,12 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     }
   }
 
+  public func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
+    Self.navLog("REDIRECT", webView, webView.url?.absoluteString ?? "-")
+  }
+
   public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    Self.navLog("FAIL", webView, webView.url?.absoluteString ?? "-", extra: "\((error as NSError).domain) \((error as NSError).code) \(error.localizedDescription)")
     if let r = recordFor(webView) { markPainted(r, webView); onFinish?(r.id) }
   }
 
@@ -1271,6 +1296,7 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   }
 
   public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    Self.navLog("FAIL-PROVISIONAL", webView, webView.url?.absoluteString ?? "-", extra: "\((error as NSError).domain) \((error as NSError).code) \(error.localizedDescription)")
     if let r = recordFor(webView) { onFinish?(r.id) }
     if let sp = sitePolicy, let r = recordFor(webView), sp.failed(r, webView, error) { return }
     let url = ((error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? webView.url
