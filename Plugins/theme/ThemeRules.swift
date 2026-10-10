@@ -7,7 +7,6 @@
 #endif
 
 import CoreGraphics
-import Foundation
 
 // MARK: - Color type (moved from DenHost/Core/Logic.swift + DenHost/Core/ThemeTokens.swift + DenHost/Core/ThemePickerMath.swift)
 
@@ -17,7 +16,7 @@ public struct RGB: Equatable, Sendable {
   public init(_ r: Double, _ g: Double, _ b: Double) { (self.r, self.g, self.b) = (r, g, b) }
 
   public init?(hex: String) {
-    var s = hex.trimmingCharacters(in: .whitespaces)
+    var s = String(hex.filter { !$0.isWhitespace })
     if s.hasPrefix("#") { s.removeFirst() }
     if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
     guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
@@ -58,7 +57,11 @@ extension RGB {
   /// "#rrggbb" (lowercase).
   public var hex: String {
     func c(_ v: Double) -> Int { Int((min(max(v, 0), 1) * 255).rounded()) }
-    return String(format: "#%02x%02x%02x", c(r), c(g), c(b))
+    let n = [c(r), c(g), c(b)]
+    let digits: [UInt8] = Array("0123456789abcdef".utf8)
+    var out: [UInt8] = [35]
+    for x in n { out.append(digits[x / 16]); out.append(digits[x % 16]) }
+    return String(decoding: out, as: UTF8.self)
   }
 
   public init(hue h: Double, saturation s: Double, brightness v: Double) {
