@@ -242,6 +242,18 @@ enum PageScripts {
   if (window.__denCookieConsent) return;
   window.__denCookieConsent = true;
 
+  // Reload-loop kill switch: count document starts per origin (sessionStorage survives reloads
+  // in this tab). A consent flow that bounces between pages must never click itself forever:
+  // after the 4th load in 30 s this origin gets no auto-interaction at all (den's other page
+  // scripts are unaffected).
+  const loopKey = '__denCcLoads';
+  let loads = { n: 0, t: 0 };
+  try { loads = JSON.parse(sessionStorage.getItem(loopKey) || '{"n":0,"t":0}'); } catch(e) {}
+  const now = Date.now();
+  loads = { n: (now - (loads.t || 0) < 30000) ? (loads.n || 0) + 1 : 1, t: now };
+  try { sessionStorage.setItem(loopKey, JSON.stringify(loads)); } catch(e) {}
+  if (loads.n > 4) return;
+
   // Only cookie-specific selectors — no generic [role="dialog"] or <dialog>.
   // Generic dialogs are not cookie banners and clicking buttons in them breaks the page.
   const bannerSelectors = [
@@ -258,12 +270,13 @@ enum PageScripts {
     '[role="dialog"]', // generic but heavily filtered in isBanner() (depth + reject button check)
   ];
 
-  // Keywords that indicate a reject/decline button (case-insensitive).
+  // Keywords that indicate a reject/decline button (case-insensitive). Only buttons that CLOSE
+  // the banner belong here: "customize"/"manage"/"options" open a settings flow instead (which
+  // navigates or expands — clicking them from here can bounce the page into a reload loop).
   const rejectKeywords = [
     'reject all', 'decline all', 'do not sell', 'do not share',
-    'neither reject', 'only necessary', 'essential only',
-    'necesarias', 'solo esenciales', 'reject selection', 'customize',
-    'manage', 'preferences', 'settings', 'options', 'cookie settings',
+    'reject selection', 'only necessary', 'essential only',
+    'necesarias', 'solo esenciales', 'continue without accepting', 'continue without agreeing',
   ];
 
   // Keywords for acceptance — we want to AVOID these.
