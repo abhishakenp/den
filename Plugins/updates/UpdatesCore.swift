@@ -5,13 +5,10 @@
 /// Update policy: channels, schedule, what to install, when to relaunch, and every string the
 /// user sees. The host `updates` service only fetches, verifies, places files and bridges Sparkle.
 ///
-/// Channels (`[updates] channel` in ~/.den/config.toml):
+/// Channels (`[updates] channel` in ~/.den/config.toml, also the Updates settings panel):
 /// - `stable` / `prerelease`: host updates through Sparkle (appcast on GitHub), plugin updates
 ///   from `plugins.json` (a conditional GET: 304 when nothing changed). Checked 1 min after launch,
 ///   then every `check_hours` (6). Unverifiable plugins never load (the host checks sha256 + EdDSA).
-/// - `follow-main` (developers): scripts/updater.sh builds pushed commits of main. Plugins land
-///   live; a host install shows "den updated — restart to apply". Default when the updater's
-///   state file exists and no channel is set.
 ///
 /// Relaunch (host updates), never while media plays:
 /// - den not frontmost for `relaunch_background_s` (60 s): relaunch in the background;
@@ -34,14 +31,13 @@ final class UpdatesCore {
   var lastResult = ""
   var installed: [(String, String)] = []  // id -> sha256 installed from a manifest
   var bad: [String] = []  // sha256s that failed or crashed
-  var pendingRestart = ""  // "follow-main" or "sparkle" when a host update waits for a relaunch
+  var pendingRestart = ""  // "sparkle" when a host update waits for a relaunch
   var pendingVersion = ""
   var pendingChangelog: String = ""
   var sparklePhase: String = ""  // checking, found, downloading, ready, none, error
   var sparkleError: String = ""
   var backgroundSince: Int64 = 0
   var manual = false
-  var followState: Value = .null
   var commandRegistered = false
   var registerAttempts = 0
   var settingsRegisterAttempts = 0
@@ -60,7 +56,6 @@ final class UpdatesCore {
     lastResult = st.s("lastResult")
     for p in st.a("installed") { installed.append((p.s("id"), p.s("sha256"))) }
     bad = st.a("bad").compactMap { $0.string }
-    followState = env.call("updates", "state")
     channel = pickChannel(env.call("config", "get", ["key": "updates"]))
 
     env.on("config.changed") { [self] v in
@@ -72,7 +67,6 @@ final class UpdatesCore {
         if settingsRegistered { registerSettings() }
       }
     }
-    env.on("updates.stateChanged") { [self] v in followMainState(v["state"]) }
     startNotices()
     env.on("updates.fetched") { [self] v in if v.s("url") == manifestURL() { manifest(v) } }
     env.on("updates.pluginInstalled") { [self] v in pluginInstalled(v) }
@@ -95,7 +89,6 @@ final class UpdatesCore {
     configureSparkle()
     registerCommand()
     tryRegisterSettings()
-    followMainState(followState)
     about()
     scheduleChecks()
   }
@@ -109,11 +102,10 @@ final class UpdatesCore {
 
   func pickChannel(_ section: Value) -> String {
     let c = section.s("channel")
-    if c == "stable" || c == "prerelease" || c == "follow-main" { return c }
-    return followState.isNull ? "stable" : "follow-main"
+    return c == "prerelease" ? "prerelease" : "stable"
   }
 
-  var usesReleases: Bool { channel != "follow-main" }
+  var usesReleases: Bool { true }
 
   func setting(_ key: String, _ fallback: Int64) -> Int64 {
     let v = env.call("config", "get", ["key": .string("updates." + key)])
@@ -148,11 +140,6 @@ final class UpdatesCore {
 
   func check(manual m: Bool) {
     manual = m
-    if !usesReleases {
-      if m { toast("Checking for updates…", icon: "sf:arrow.triangle.2.circlepath", action: "", duration: 2500) }
-      env.call("updates", "kickUpdater")
-      return
-    }
     if m { toast("Checking for updates…", icon: "sf:arrow.triangle.2.circlepath", action: "", duration: 2500) }
     env.call("updates", "fetch", ["url": .string(manifestURL()), "etag": .string(etag), "json": true])
     if info.b("sparkle") { env.call("updates", "sparkleCheck", ["userInitiated": false]) }
@@ -244,26 +231,6 @@ final class UpdatesCore {
   }
 
   // MARK: Host updates
-
-  func followMainState(_ state: Value) {
-    let prevCheck = followState.s("lastCheck")
-    followState = state
-    guard !state.isNull else { return }
-    channel = pickChannel(env.call("config", "get", ["key": "updates"]))
-    // The app on disk is a different build than the one running: an update was installed.
-    // (Asked of the host, not state.json: a build installed by hand is not an update.)
-    let running = info.s("commit"), onDisk = env.call("updates", "info").s("onDiskCommit")
-    if !onDisk.isEmpty, !running.isEmpty, onDisk != running {
-      hostUpdateReady(kind: "follow-main", version: onDisk)
-    } else if pendingRestart == "follow-main" {
-      pendingRestart = ""
-      env.call("ui", "set", ["slot": "toast", "tree": ["type": "toast", "id": .string(Self.toastId), "dismiss": true]])
-    } else if manual && state.s("lastCheck") != prevCheck {
-      manual = false
-      toast(state.s("lastResult").isEmpty ? "den is up to date" : state.s("lastResult"), icon: "sf:checkmark.circle", action: "", duration: 3000)
-    }
-    about()
-  }
 
   func sparkle(_ v: Value) {
     sparklePhase = v.s("phase")
@@ -378,15 +345,9 @@ final class UpdatesCore {
     let short = Self.short(info.s("commit"))
     var text = "Version " + info.s("version") + " (" + String(info.i("build")) + (short.isEmpty ? "" : ", " + short) + ")\n"
     text += "Update channel: " + channel + "\n"
-    if channel == "follow-main" && !followState.isNull {
-      text += "Deployed: " + Self.short(followState.s("deployed")) + " at " + followState.s("deployedAt") + "\n"
-      text += "Last check: " + followState.s("lastCheck")
-      if !followState.s("lastResult").isEmpty { text += " — " + followState.s("lastResult") }
-    } else {
-      text += "Last check: " + (lastCheck == 0 ? "never" : Self.utc(lastCheck))
-      if !lastResult.isEmpty { text += " — " + lastResult }
-      if !installed.isEmpty { text += "\nPlugins updated since this release: " + String(installed.count) }
-    }
+    text += "Last check: " + (lastCheck == 0 ? "never" : Self.utc(lastCheck))
+    if !lastResult.isEmpty { text += " — " + lastResult }
+    if !installed.isEmpty { text += "\nPlugins updated since this release: " + String(installed.count) }
     env.call("app", "setAbout", ["credits": .string(text)])
   }
 
@@ -432,8 +393,8 @@ final class UpdatesCore {
     controls.append(["key": .string("checkForUpdates"), "type": .string("button"), "title": .string("Check for Updates…"), "icon": .string("sf:arrow.triangle.2.circlepath")])
 
     // Channel selector
-    controls.append(["key": .string("channel"), "type": .string("choice"), "title": .string("Update channel"), "default": .string("stable"),
-      "options": .array([["value": .string("stable"), "title": .string("Stable")], ["value": .string("prerelease"), "title": .string("Prerelease (alpha/beta)")], ["value": .string("follow-main"), "title": .string("follow-main (developers)")]])])
+    controls.append(["key": .string("channel"), "type": .string("choice"), "title": .string("Update channel"), "default": .string(channel),
+      "options": .array([["value": .string("stable"), "title": .string("Stable")], ["value": .string("prerelease"), "title": .string("Prerelease (alpha/beta)")]])])
 
     // Pending restart info/button
     if !pendingRestart.isEmpty, !pendingVersion.isEmpty {
@@ -484,7 +445,7 @@ final class UpdatesCore {
 
   /// Set the update channel.
   func setChannel(_ newChannel: String) {
-    let allowed = ["stable", "prerelease", "follow-main"]
+    let allowed = ["stable", "prerelease"]
     guard allowed.contains(newChannel) else { return }
     channel = newChannel
     configureSparkle()

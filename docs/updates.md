@@ -9,14 +9,14 @@ Pick a **channel** in `~/.den/config.toml`:
 
 ```toml
 [updates]
-channel = "stable"          # stable | prerelease | follow-main
+channel = "stable"          # stable | prerelease (also the Updates settings panel)
 check_hours = 6             # release channels: how often to check
 relaunch_background_s = 60  # relaunch after den has been in the background this long…
 relaunch_idle_min = 10      # …or when den is frontmost but there's been no input for this long
 # plugins_url = "…"         # override the plugin manifest (testing)
 ```
 
-When `channel` isn't set, it's `follow-main` if the developer updater is installed, otherwise `stable`.
+When `channel` isn't set, it's `stable`. Changing the channel in the Updates settings panel writes it back to config.toml.
 
 ## Who does what
 
@@ -28,7 +28,6 @@ The host stays generic ([architecture/thin-host.md](architecture/thin-host.md)):
   - sha256 and EdDSA checks
   - atomic placement in `~/.den/updates/plugins`
   - the Sparkle bridge
-  - kicking the developer updater
 
   Its API is in [host-api.md](host-api.md#updates).
 
@@ -61,6 +60,7 @@ The session (spaces, tabs, selection) comes back from plugin storage. The rule i
 - The plugin checks on its schedule. `found` → it downloads in the background. `ready` → it shows the toast and waits for the relaunch rule.
 - Sparkle's own scheduler is off (`SUEnableAutomaticChecks = false`).
 - Pre-release items carry `<sparkle:channel>prerelease</sparkle:channel>` and are offered only on that channel.
+- den ships **one update system**: everything goes through the appcast + `plugins.json` above. There is no source-building updater; to follow development, pick the `prerelease` channel.
 - Sparkle quits den without the quit dialog, installs, and relaunches. Unlike den's own relaunch, Sparkle's may take focus.
 
 **Plugin updates.** One conditional GET of `plugins.json` per check: `304 Not Modified` when nothing changed. For each plugin in the channel's entry that is built for the running host (`hostAPI` equal) and whose sha256 differs from the loaded file:
@@ -84,27 +84,6 @@ bundled < Application Support < managed < `~/.den/plugins/<id>.dylib` < source f
   - older: **superseded** by the new bundle
 - After an update replaces `/Applications/den.app`, the running (older) host also ignores the new bundle's plugins, whose on-disk `DenHostAPI` differs. When nothing compatible is left, the running plugin stays.
 - cordis still checks its own C ABI (`abi` in each plugin manifest) when it loads a plugin.
-
-## Developer channel: `follow-main`
-
-`scripts/updater.sh install` installs a user LaunchAgent, `io.github.abhishakenp.den.updater`:
-
-- It runs `updater.sh check` every 150 s, and at login, at nice 10. Nothing runs between checks. Throttled I/O (`ProcessType=Background`, i.e. `taskpolicy -b`, or `LowPriorityIO`) is opt-in (`DEN_UPDATER_PROCESS_TYPE=Background scripts/updater.sh install`): while other processes kept the disk busy, it left a plugin build that takes 12 s with about 20 s of CPU in 11–12 minutes.
-- **Check for Updates…** starts it immediately (`launchctl kickstart`).
-- `scripts/updater.sh uninstall` removes it.
-
-Each check:
-
-1. `git ls-remote` of `origin/main`. When nothing changed, that's the whole check.
-2. On a new commit, it builds **only that pushed commit** in its own clone `~/.den/src` (den's watcher ignores that folder), and diffs it against the last deployed commit:
-   - **Only `Plugins/**` changed:** it builds the affected plugins with cordis-build (`Plugins/Shared` means all of them) and runs their test suites. It then places them in `~/.den/updates/plugins` with the commit's `hostAPI`, and the running den hot-swaps them (same pid).
-   - **`Sources/`, `Package.*`, `Resources/` or `scripts/bundle.sh` changed:** it runs the full test suite and `scripts/bundle.sh`, installs with `ditto` (next to the old app, then swaps it in), and removes the managed plugin builds, which the new bundle supersedes. den shows the toast and applies the relaunch rule.
-   - Every test run goes through `scripts/test.sh`, which lets only one `swift test` run on the machine at a time.
-   - **Anything fails:** nothing is deployed, the last good version stays, and `~/.den/logs/updater.log` says why. That commit isn't retried until `main` moves.
-     - A test run that crashed is run again once.
-     - Failed tests are re-run once on their own, because WebKit and latency tests are timing-sensitive.
-     - When the 1-minute load is above twice the core count, a failure isn't held against the commit. It is tried again at most every 20 minutes.
-3. Results go to `~/.den/updates/state.json`. The About panel shows the deployed commit, when it was deployed and the last check. `state.json` is written only when something changed, or when you asked for a check, so an idle check never wakes den.
 
 ## Gatekeeper without notarization
 

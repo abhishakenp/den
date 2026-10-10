@@ -24,13 +24,9 @@ public struct DenHome: Sendable, Equatable {
   public var themes: URL { root.appendingPathComponent("themes", isDirectory: true) }
   public var config: URL { root.appendingPathComponent("config.toml") }
   public var logs: URL { root.appendingPathComponent("logs", isDirectory: true) }
-  /// Plugin updates (release OTA or the follow-main updater): `<id>.dylib` + `<id>.json`.
+  /// Plugin updates (release OTA): `<id>.dylib` + `<id>.json`.
   public var updates: URL { root.appendingPathComponent("updates", isDirectory: true) }
   public var managedPlugins: URL { updates.appendingPathComponent("plugins", isDirectory: true) }
-  /// Written by scripts/updater.sh (follow-main): deployed commit, host install pending, …
-  public var updaterState: URL { updates.appendingPathComponent("state.json") }
-  /// The follow-main updater's clean checkout. Not watched.
-  public var source: URL { root.appendingPathComponent("src", isDirectory: true) }
   /// Unpacked extension folders loaded as development extensions (docs/den-home.md).
   public var extensions: URL { root.appendingPathComponent("extensions", isDirectory: true) }
 

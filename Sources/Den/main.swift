@@ -303,7 +303,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     live.configChanged = { [weak config] in config?.reloadConfig(edited: true) }
     live.themesChanged = { [weak config] in config?.reloadThemes() }
     live.hostAPI = DenBuild.running.hostAPI
-    live.updaterStateChanged = { [weak self] in self?.updates?.stateChanged() }
     self.live = live
     home.ensureLayout()
     config.start()

@@ -78,7 +78,6 @@ footprint by megabytes). `.github/workflows/perf-lab.yml` measures on the runner
 
 Every green push to `main` uploads `den-<commit>.zip` (the `den-app` artifact, kept 14 days).
 It is ad hoc signed and not Sparkle-signed: the EdDSA key for update feeds stays on the
-maintainer's Mac. So it is fine for trying a commit, but it is not a drop-in for the local updater:
+maintainer's Mac. So it is fine for trying a commit, but it is not a drop-in for updates:
 an ad hoc signature has a different designated requirement from the local `den Local Signing`
 identity, so macOS would treat it as a different app (Keychain and TCC grants would ask again).
-The updater keeps building locally for that reason.

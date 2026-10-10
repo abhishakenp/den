@@ -219,7 +219,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | No white flash on tab switch or load | ⏳ | |
 | Protection against pages opening endless alerts | ⏳ | |
 | Web push notifications | 🟡 | Notifications from open tabs ✅ (den's bridge); push to closed tabs ❌ (`WKWebView` has none) |
-| [Auto-update (OTA)](guide/updates.md) | ✅ | Sparkle for the app, signed hot-swapped plugins; `stable` / `prerelease` / `follow-main` channels; relaunches only when you won't notice |
+| [Auto-update (OTA)](guide/updates.md) | ✅ | Sparkle for the app, signed hot-swapped plugins; `stable` / `prerelease` channels; relaunches only when you won't notice |
 | Onboarding: optional tour card, one-time tips | ⏳ | Zero-friction: never a blocking welcome or wizard ([spec](guide/_in-app-tips.md)) |
 | No row tooltips | ✅ | Hover cards show that information instead |
 

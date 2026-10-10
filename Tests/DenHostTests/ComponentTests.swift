@@ -5,6 +5,7 @@ import DenTestSupport
 import Testing
 
 @testable import DenHost
+import PluginCores
 
 /// Host components added for the theme, commandbar, peek, quit and tabs plugins.
 @MainActor

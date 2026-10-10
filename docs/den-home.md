@@ -8,12 +8,11 @@ den creates `~/.den` the first time it runs (after the first window is on screen
   themes/       <name>.json or <name>.toml theme presets
   extensions/   unpacked extension folders (each with a manifest.json), loaded as development extensions
   config.toml   settings, shortcuts, site-search keywords
-  logs/         plugins.log (loads, reloads, builds), build-<id>.log, den.log (launches and quits), updater.log
-  updates/      managed plugin updates (plugins/<id>.dylib + <id>.json) and the developer updater's state
-  src/          the developer updater's clean checkout of main (not watched)
+  logs/         plugins.log (loads, reloads, builds), build-<id>.log, den.log (launches and quits)
+  updates/      managed plugin updates (plugins/<id>.dylib + <id>.json)
 ```
 
-Updates, channels and `scripts/updater.sh` / `scripts/release.sh` are covered in [updates.md](updates.md).
+Updates, channels and `scripts/release.sh` are covered in [updates.md](updates.md).
 
 Set `DEN_HOME` to use another folder. `--no-den-home` ignores it entirely (`scripts/snapshots.sh` and `scripts/measure-memory.sh` pass it, so your plugins don't change their results).
 

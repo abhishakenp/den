@@ -14,19 +14,18 @@ Set one in `~/.den/config.toml`:
 
 ```toml
 [updates]
-channel = "stable"          # stable | prerelease | follow-main
+channel = "stable"          # stable | prerelease (also the Updates settings panel)
 check_hours = 6             # release channels: how often to check
 relaunch_background_s = 60  # relaunch once den has been in the background this long…
 relaunch_idle_min = 10      # …or when den is frontmost but you haven't touched it this long
 ```
 
-With no `channel`, den uses `follow-main` if the developer updater is installed, and `stable` otherwise. The first check runs a minute after launch.
+With no `channel`, den uses `stable`. The first check runs a minute after launch. Changing the channel in the Updates settings panel writes it back to config.toml.
 
 | Channel | What you get |
 |---|---|
 | `stable` | Signed releases. The app through Sparkle, plugins as signed downloads |
 | `prerelease` | The same, plus releases tagged like `0.1.0-alpha.1` |
-| `follow-main` | Every commit on `main`, built and tested on your Mac first |
 
 ## Checking by hand
 
@@ -44,15 +43,6 @@ It never restarts while media is playing. Your spaces, tabs and selection come b
 ## Plugin updates are checked
 
 Every downloaded plugin is checked against its sha256 and an EdDSA signature before it's written to disk. A plugin that fails to start is rolled back, and one that crashed den is refused at the next launch and rolled back too. That build is never installed again.
-
-## Following `main` (developers)
-
-```sh
-scripts/updater.sh install     # a LaunchAgent that checks origin/main every 150 s
-scripts/updater.sh uninstall
-```
-
-On a new commit it builds that commit in `~/.den/src` and runs the tests. If only plugins changed, the running den hot-swaps them. If the host changed, it installs the new app and the restart rule above applies. If anything fails, nothing is deployed, and `~/.den/logs/updater.log` says why.
 
 ## Opening a downloaded build
 

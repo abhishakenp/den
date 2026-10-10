@@ -5,6 +5,7 @@ import DenTestSupport
 import Testing
 
 @testable import DenHost
+import PluginCores
 
 /// Hover intent timing, `ui.card` placement and motion, card shortcuts, the generic card nodes and
 /// the card tokens (docs/reference/dia-ui-spec.md §2).

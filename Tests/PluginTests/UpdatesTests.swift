@@ -66,56 +66,45 @@ struct UpdatesTests {
     #expect(h.rt.ui.toasts.last?.icon.spec == "sf:puzzlepiece.extension")
   }
 
-  @Test func followMainHostInstallAsksToRestartAndRelaunchesInTheBackground() {
+  @Test func sparkleUpdateDownloadsThenWaitsForTheRestart() {
     let fake = FakeUpdates()
-    fake.state = ["deployed": "bbbbbbb2", "installedCommit": "bbbbbbb2", "deployedAt": "2026-09-27T19:00:00Z", "lastCheck": "2026-09-27T19:01:00Z"]
-    fake.info = fake.info.with("onDiskCommit", "bbbbbbb2")  // the updater replaced den.app
+    fake.info = fake.info.with("sparkle", true)
     let (h, core, registered) = setup(fake)
-    #expect(core.channel == "follow-main")
     #expect(registered.contains("den.checkForUpdates"))
-    #expect(toastTexts(h) == ["den updated — restart to apply|Restart"])
-    #expect(core.pendingRestart == "follow-main")
-    // The About panel names the channel and the deployed commit.
-    #expect(AboutPanel.shared.credits.contains("Update channel: follow-main") && AboutPanel.shared.credits.contains("Deployed: bbbbbbb"))
+    #expect(fake.called("sparkleConfigure").first?["channel"] == "stable")
+    h.rt.plugins.emit("updates.sparkle", ["phase": "found", "version": "0.1.1"])
+    #expect(fake.called("sparkleReply").map { $0.s("choice") } == ["install"])  // download
+    h.rt.plugins.emit("updates.sparkle", ["phase": "ready"])
+    #expect(core.pendingRestart == "sparkle" && toastTexts(h) == ["den updated — restart to apply|Restart"])
 
+    // A Sparkle update relaunches by answering Sparkle, not the app-relaunch path.
     var relaunched: [Bool] = []
     h.rt.app.relaunchHandler = { relaunched.append($0) }
     // Tests run inactive = "not frontmost". The first tick notes it, the next one 60 s later relaunches.
     core.policyTick()
-    #expect(relaunched.isEmpty)
+    #expect(fake.called("sparkleReply").count == 1)
     h.clock += 61_000
     core.policyTick()
-    #expect(relaunched == [true])
+    #expect(relaunched.isEmpty && fake.called("sparkleReply").count == 2)
 
-    // The toast's Restart button relaunches in the foreground.
+    // The toast's Restart button answers Sparkle again (its installer does the relaunch).
     h.action("updates.toast", "toast")
-    #expect(relaunched == [true, false])
+    #expect(fake.called("sparkleReply").map { $0.s("choice") } == ["install", "install", "install"])
   }
 
-  /// state.json names another build, but the app on disk is the running one (installed by hand):
-  /// nothing to restart for. A pending toast goes away once disk and process agree again.
-  @Test func onlyTheAppOnDiskDecidesWhetherARestartIsPending() {
+  @Test func manualCheckFetchesManifestAndSparkleWithoutKickingAnyUpdater() {
     let fake = FakeUpdates()
-    fake.state = ["deployed": "0ld0ld0", "installedCommit": "0ld0ld0", "lastCheck": "t1"]
-    let (h, core, _) = setup(fake)
-    #expect(core.pendingRestart.isEmpty && h.rt.ui.toasts.isEmpty)
-    fake.info = fake.info.with("onDiskCommit", "bbbbbbb2")
-    h.rt.plugins.emit("updates.stateChanged", ["state": ["installedCommit": "bbbbbbb2", "lastCheck": "t2"]])
-    #expect(core.pendingRestart == "follow-main" && h.rt.ui.toasts.count == 1)
-    fake.info = fake.info.with("onDiskCommit", "aaaaaaa1")
-    h.rt.plugins.emit("updates.stateChanged", ["state": ["installedCommit": "aaaaaaa1", "lastCheck": "t3"]])
-    #expect(core.pendingRestart.isEmpty && h.rt.ui.toasts.isEmpty)
-  }
-
-  @Test func sameCommitMeansNothingPendingAndManualCheckKicksTheUpdater() {
-    let fake = FakeUpdates()
-    fake.state = ["deployed": "aaaaaaa1", "installedCommit": "aaaaaaa1", "lastCheck": "t1"]
+    fake.info = fake.info.with("sparkle", true)
     let (h, core, _) = setup(fake)
     #expect(core.pendingRestart.isEmpty && h.rt.ui.toasts.isEmpty)
     h.rt.plugins.emit("commands.run", ["id": "den.checkForUpdates"])
-    #expect(fake.called("kickUpdater").count == 1)
-    h.rt.plugins.emit("updates.stateChanged", ["state": ["deployed": "aaaaaaa1", "installedCommit": "aaaaaaa1", "lastCheck": "t2", "lastResult": "Up to date at aaaaaaa"]])
-    #expect(toastTexts(h).last == "Up to date at aaaaaaa|")
+    #expect(fake.called("fetch").count == 1)
+    #expect(fake.called("sparkleCheck").count == 1)
+    // Sparkle says nothing new: the manual check toast reports the plugin manifest's verdict.
+    h.rt.plugins.emit("updates.fetched", ["url": .string(UpdatesCore.manifestURL), "status": 304, "bytes": 0])
+    h.rt.plugins.emit("updates.sparkle", ["phase": "none"])
+    #expect(toastTexts(h).last == "den is up to date|")
+    _ = core
   }
 
   @Test func releaseManifestInstallsOnlyChangedCompatibleVerifiedPlugins() {
@@ -156,19 +145,6 @@ struct UpdatesTests {
     let (_, core, _) = setup(fake)
     #expect(fake.called("rollbackPlugin").map { $0.s("id") } == ["tabs"])
     _ = core
-  }
-
-  @Test func sparkleUpdateDownloadsThenWaitsForTheRestart() {
-    let fake = FakeUpdates()
-    fake.info = fake.info.with("sparkle", true)
-    let (h, core, _) = setup(fake)
-    #expect(fake.called("sparkleConfigure").first?["channel"] == "stable")
-    h.rt.plugins.emit("updates.sparkle", ["phase": "found", "version": "0.1.1"])
-    #expect(fake.called("sparkleReply").map { $0.s("choice") } == ["install"])  // download
-    h.rt.plugins.emit("updates.sparkle", ["phase": "ready"])
-    #expect(core.pendingRestart == "sparkle" && toastTexts(h) == ["den updated — restart to apply|Restart"])
-    h.action("updates.toast", "toast")
-    #expect(fake.called("sparkleReply").map { $0.s("choice") } == ["install", "install"])
   }
 
   @Test func utcFormatting() {

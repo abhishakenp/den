@@ -4,6 +4,7 @@ import DenTestSupport
 import Testing
 
 @testable import DenHost
+import PluginCores
 
 /// Favicons that would render blurry fall back to a sharp vector icon.
 @MainActor

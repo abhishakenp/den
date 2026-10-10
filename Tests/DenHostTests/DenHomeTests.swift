@@ -266,9 +266,9 @@ struct DenHomeTests {
     #expect(svc.handle(method: "installPlugin", args: ["id": "tabs", "url": "http://insecure"]).isError)
   }
 
-  @Test func updaterPathsAreClassified() {
+  @Test func managedPluginPathsAreClassified() {
     let c = LivePlugins.classify(["/h/.den/updates/state.json", "/h/.den/updates/plugins/tabs.dylib", "/h/.den/updates/plugins/theme.json",
                                   "/h/.den/updates/plugins/tabs.prev.dylib", "/h/.den/updates/plugins/.tabs.dylib.tmp"], root: "/h/.den")
-    #expect(c.updaterState && c.dylibs == ["tabs.dylib", "theme.dylib"])
+    #expect(c.dylibs == ["tabs.dylib", "theme.dylib"] && !c.config && !c.themes)
   }
 }

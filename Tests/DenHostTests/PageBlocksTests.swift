@@ -6,6 +6,7 @@ import Testing
 import WebKit
 
 @testable import DenHost
+import PluginCores
 
 /// The generic blocks behind the page tools: `webviews.inject` / `message` / `setMenu` /
 /// `setContentRules` / `snapshot` with a rect, and the `speech`, `translate` and

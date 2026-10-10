@@ -56,7 +56,6 @@ public final class LivePlugins {
   public var notify: (Value) -> Void = { _ in }
   public var configChanged: () -> Void = {}
   public var themesChanged: () -> Void = {}
-  public var updaterStateChanged: () -> Void = {}
   /// The running host's API generation (`DenBuild.running.hostAPI`; nil accepts everything).
   public var hostAPI: Int?
   /// Called after each finished source build (tests).
@@ -131,7 +130,6 @@ public final class LivePlugins {
     public var sources: Set<String> = []  // ids with a source folder
     public var config = false
     public var themes = false
-    public var updaterState = false  // updates/state.json
   }
 
   /// Sorts FSEvents paths under `root` (a real path) into what needs refreshing.
@@ -145,13 +143,9 @@ public final class LivePlugins {
         c.config = true
       } else if first == "themes" {
         c.themes = true
-      } else if first == "updates", parts.count >= 2 {
-        if parts == ["updates", "state.json"] {
-          c.updaterState = true
-        } else if parts.count == 3, parts[1] == "plugins", parts[2].hasSuffix(".dylib") || parts[2].hasSuffix(".json") {
-          let base = parts[2].hasSuffix(".dylib") ? String(parts[2].dropLast(6)) : String(parts[2].dropLast(5))
-          if validID(base), !base.hasSuffix(".prev") { c.dylibs.insert(base + ".dylib") }
-        }
+      } else if first == "updates", parts.count == 3, parts[1] == "plugins", parts[2].hasSuffix(".dylib") || parts[2].hasSuffix(".json") {
+        let base = parts[2].hasSuffix(".dylib") ? String(parts[2].dropLast(6)) : String(parts[2].dropLast(5))
+        if validID(base), !base.hasSuffix(".prev") { c.dylibs.insert(base + ".dylib") }
       } else if first == "plugins", parts.count >= 2 {
         let name = parts[1]
         guard !name.hasPrefix("."), validID(name.hasSuffix(".dylib") ? String(name.dropLast(6)) : name) else { continue }
@@ -178,7 +172,6 @@ public final class LivePlugins {
       for name in knownNames() { refresh(name) }
     }
     if c.themes { themesChanged() }
-    if c.updaterState { updaterStateChanged() }
     for name in c.dylibs.sorted() { refresh(name) }
     for id in c.sources.sorted() { build(id) }
   }

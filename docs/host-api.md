@@ -597,12 +597,10 @@ The native half of updating. All policy lives in the `updates` plugin ([updates.
 | Method | Args | Returns |
 |---|---|---|
 | `info` | – | `{version, build, commit, hostAPI, builtAt, crashed: [id], sparkle, publicKey, onDiskCommit}` (`onDiskCommit`: the build on disk, which may be an installed update not yet running) |
-| `state` | – | the follow-main updater's `~/.den/updates/state.json`, or null |
 | `fetch` | `url` (https), `etag?`, `json?` | `{pending}`. Emits `updates.fetched {url, status, etag, body, value?, bytes, error}` (304 when the ETag matches) |
 | `plugins` | – | `[{id, file, layer, sha256}]` for the loaded plugins |
 | `installPlugin` | `id, url, sha256, signature, version, hostAPI, permissions?` | `{pending}`. Verifies sha256 + EdDSA (`SUPublicEDKey`), places the file in `~/.den/updates/plugins` (keeping `.prev`) and loads it. Emits `updates.pluginInstalled {id, ok, active, error?}` |
 | `rollbackPlugin` | `id` | `{ok, restored}` |
-| `kickUpdater` | – | ok. Runs the follow-main LaunchAgent now |
 | `sparkleConfigure` / `sparkleCheck` / `sparkleReply` | `channel` / `userInitiated?` / `choice: install\|later\|skip` | ok |
 
 Events: `updates.stateChanged {state}`, `updates.fetched`, `updates.pluginInstalled`, `updates.sparkle {phase: checking|none|found|downloading|ready|installing|error, version?, error?}`.

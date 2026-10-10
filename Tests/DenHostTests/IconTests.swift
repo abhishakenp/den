@@ -3,6 +3,7 @@ import DenTestSupport
 import Testing
 
 @testable import DenHost
+import PluginCores
 
 /// Dark-mode favicons: dark monochrome icons on transparency (GitHub) are drawn inverted.
 @MainActor

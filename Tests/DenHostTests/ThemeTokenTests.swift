@@ -5,6 +5,7 @@ import DenTestSupport
 import Testing
 
 @testable import DenHost
+import PluginCores
 
 /// The theme-token layer: derived from the space theme, contrast-enforced, cached, and used by
 /// every surface (dialogs, command bar, toasts, hover cards, popovers, Settings).

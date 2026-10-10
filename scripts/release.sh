@@ -105,7 +105,7 @@ if os.path.exists(path):
     m = re.search(r"<title>den</title>\n(.*)</channel>", open(path).read(), re.S)
     items = m.group(1) if m else ""
 date = datetime.datetime.now(datetime.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
-chan = ""
+chan = "  <sparkle:channel>prerelease</sparkle:channel>\n" if pre == "1" else ""
 item = f"""<item>
   <title>den {ver}</title>
   <pubDate>{date}</pubDate>

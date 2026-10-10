@@ -8,7 +8,6 @@ import Foundation
 ///
 /// Methods:
 ///   info            -> {version, build, commit, hostAPI, builtAt, crashed: [id], sparkle: bool, publicKey: bool, onDiskCommit}
-///   state           -> ~/.den/updates/state.json (the follow-main updater's state) or null
 ///   fetch {url, etag?, json?} -> {pending}. Conditional GET; emits updates.fetched
 ///                      {url, status, etag, body (string, only on 200), value (parsed, with json), bytes}
 ///   plugins         -> [{id, file, layer: bundle|user|managed|home|source|dev, sha256}] for loaded plugins
@@ -18,9 +17,8 @@ import Foundation
 ///                      previous build as <id>.prev.dylib, and loads it. Emits updates.pluginInstalled
 ///                      {id, ok, error?, active}. Nothing unverified is ever written there.
 ///   rollbackPlugin {id} -> {ok, restored: bool}: puts <id>.prev back, or removes the managed copy
-///   kickUpdater     -> {ok}: runs the follow-main LaunchAgent now (scripts/updater.sh)
 ///   sparkleConfigure {channel} / sparkleCheck {userInitiated?} / sparkleReply {choice: install|later|skip}
-/// Events: updates.stateChanged {state}, updates.fetched, updates.pluginInstalled,
+/// Events: updates.fetched, updates.pluginInstalled,
 ///         updates.sparkle {phase: checking|none|found|downloading|ready|installing|error, version?, error?}
 @MainActor
 public final class UpdatesService: HostService {
@@ -39,7 +37,6 @@ public final class UpdatesService: HostService {
   /// Sparkle, when the app links it.
   public var sparkle: SparkleBridge?
   public var session: URLSession = .shared
-  public var updaterLabel = "io.github.abhishakenp.den.updater"
 
   public init(host: ServiceHost, home: DenHome, build: DenBuild, publicKey: String? = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String) {
     self.host = host
@@ -56,7 +53,6 @@ public final class UpdatesService: HostService {
               "crashed": .array(crashed.map { .string($0) }), "sparkle": .bool(sparkle != nil), "publicKey": .bool(publicKey != nil),
               // The build on disk now (an installed update the running process doesn't have yet).
               "onDiskCommit": .string(DenBuild(info: (NSDictionary(contentsOf: Bundle.main.bundleURL.appendingPathComponent("Contents/Info.plist")) as? [String: Any]) ?? [:]).commit)]
-    case "state": return readState()
     case "fetch":
       let url = args.str("url")
       guard let u = URL(string: url), u.scheme == "https" else { return .error("updates: fetch needs an https url") }
@@ -71,7 +67,6 @@ public final class UpdatesService: HostService {
       install(id: id, url: u, sha256: args.str("sha256").lowercased(), signature: args.str("signature"), meta: args)
       return ["pending": true]
     case "rollbackPlugin": return rollback(args.str("id"))
-    case "kickUpdater": return kickUpdater()
     case "sparkleConfigure":
       guard let sparkle else { return .error("updates: Sparkle is not available") }
       sparkle.configure(channel: args.str("channel"))
@@ -85,15 +80,6 @@ public final class UpdatesService: HostService {
     }
     return .ok
   }
-
-  // MARK: State (follow-main)
-
-  public func readState() -> Value {
-    guard let data = try? Data(contentsOf: home.updaterState), let any = try? JSONSerialization.jsonObject(with: data) else { return .null }
-    return ConfigService.jsonValue(any) ?? .null
-  }
-
-  public func stateChanged() { host.emit("updates.stateChanged", ["state": readState()]) }
 
   // MARK: Fetch
 
@@ -215,17 +201,6 @@ public final class UpdatesService: HostService {
     }
     _ = activate("\(id).dylib")
     return ["ok": true, "restored": .bool(restored)]
-  }
-
-  func kickUpdater() -> Value {
-    // The marker makes the updater report back (state.json) even when nothing changed.
-    try? FileManager.default.createDirectory(at: home.updates, withIntermediateDirectories: true)
-    FileManager.default.createFile(atPath: home.updates.appendingPathComponent("check-requested").path, contents: nil)
-    let p = Process()
-    p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-    p.arguments = ["kickstart", "gui/\(getuid())/\(updaterLabel)"]
-    do { try p.run() } catch { return .error("updates: \(error.localizedDescription)") }
-    return .ok
   }
 
   public func sparkleEvent(_ phase: String, version: String? = nil, error: String? = nil) {

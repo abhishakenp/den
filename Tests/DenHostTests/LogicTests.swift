@@ -5,6 +5,7 @@ import DenTestSupport
 import Testing
 
 @testable import DenHost
+import PluginCores
 
 @Suite(.watchdog)
 struct LogicTests {
