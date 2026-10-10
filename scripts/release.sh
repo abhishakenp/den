@@ -77,7 +77,7 @@ for f in $APP/Contents/PlugIns/*.dylib; do
   fi
   plugins+=("{\"id\":\"$id\",\"version\":\"$VERSION\",\"abi\":$ABI,\"hostAPI\":$HOSTAPI,\"sha256\":\"$sha\",\"signature\":\"$sig\",\"url\":\"$URLBASE/$id.dylib\",\"permissions\":$perms$extra}")
 done
-CHANNEL=stable; (( PRE )) && CHANNEL=prerelease
+CHANNEL=stable
 ENTRY="{\"version\":\"$VERSION\",\"tag\":\"$TAG\",\"build\":$BUILD,\"hostAPI\":$HOSTAPI,\"commit\":\"$COMMIT\",\"plugins\":[${(j:,:)plugins}]}"
 
 # Notes: commits since the previous tag.
@@ -105,7 +105,7 @@ if os.path.exists(path):
     m = re.search(r"<title>den</title>\n(.*)</channel>", open(path).read(), re.S)
     items = m.group(1) if m else ""
 date = datetime.datetime.now(datetime.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
-chan = "  <sparkle:channel>prerelease</sparkle:channel>\n" if pre == "1" else ""
+chan = ""
 item = f"""<item>
   <title>den {ver}</title>
   <pubDate>{date}</pubDate>
