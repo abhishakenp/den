@@ -3,6 +3,15 @@
 <channel>
 <title>den</title>
 <item>
+  <title>den 0.2.0-alpha.9</title>
+  <pubDate>Sat, 10 Oct 2026 18:00:00 +0000</pubDate>
+  <sparkle:version>398</sparkle:version>
+  <sparkle:shortVersionString>0.2.0-alpha.9</sparkle:shortVersionString>
+  <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+  <sparkle:releaseNotesLink>https://github.com/abhishakenp/den/releases/tag/v0.2.0-alpha.9</sparkle:releaseNotesLink>
+  <enclosure url="https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.9/den-0.2.0-alpha.9.dmg" length="10577220" type="application/octet-stream" sparkle:edSignature="R9ZxnkdcHKtbZ70K8SdcJ29ufoS3XAXY8r0iRciziDfD4Iy0gLFsraWhZaSVXRHkgMh9bPemISIG/irR4AVXBA=="/>
+</item>
+<item>
   <title>den 0.2.0-alpha.8</title>
   <pubDate>Sat, 10 Oct 2026 06:19:19 +0000</pubDate>
   <sparkle:version>396</sparkle:version>
@@ -77,12 +86,3 @@
 </item>
 </channel>
 </rss>
-<item>
-  <title>den 0.2.0-alpha.9</title>
-  <pubDate>Sat, 10 Oct 2026 08:45:00 +0000</pubDate>
-  <sparkle:version>398</sparkle:version>
-  <sparkle:shortVersionString>0.2.0-alpha.9</sparkle:shortVersionString>
-  <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-  <sparkle:releaseNotesLink>https://github.com/abhishakenp/den/releases/tag/v0.2.0-alpha.9</sparkle:releaseNotesLink>
-  <enclosure url="https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.9/den-0.2.0-alpha.9.dmg" length="10577220" type="application/octet-stream" sparkle:edSignature="R9ZxnkdcHKtbZ70K8SdcJ29ufoS3XAXY8r0iRciziDfD4Iy0gLFsraWhZaSVXRHkgMh9bPemISIG/irR4AVXBA=="/>
-</item>

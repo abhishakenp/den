@@ -1,9 +1,9 @@
 {
   "channels": {
     "prerelease": {
-      "build": 396,
-      "commit": "5d8316d2eb24c3df090902f4ee35f633d6cabf2a",
-      "hostAPI": 188,
+      "build": 398,
+      "commit": "c9dbe2b18b698c21213b69142b102a01455153a1",
+      "hostAPI": 190,
       "plugins": [
         {
           "abi": 1,
@@ -421,9 +421,9 @@
       "version": "0.2.0-alpha.9"
     },
     "stable": {
-      "build": 396,
-      "commit": "5d8316d2eb24c3df090902f4ee35f633d6cabf2a",
-      "hostAPI": 188,
+      "build": 398,
+      "commit": "c9dbe2b18b698c21213b69142b102a01455153a1",
+      "hostAPI": 190,
       "plugins": [
         {
           "abi": 1,

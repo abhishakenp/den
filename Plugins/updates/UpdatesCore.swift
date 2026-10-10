@@ -176,7 +176,8 @@ final class UpdatesCore {
     save()
     about()
     if settingsRegistered { registerSettings() }
-    if manual && pendingRestart.isEmpty {
+    // Sparkle checks asynchronously; don't show "up to date" before its result arrives.
+    if manual && pendingRestart.isEmpty, sparklePhase == "none" || sparklePhase == "" || sparklePhase == "ready" {
       manual = false
       toast(lastResult == "Plugins are up to date" ? "den is up to date" : lastResult, icon: "sf:checkmark.circle", action: "", duration: 2500)
     }
@@ -274,7 +275,12 @@ final class UpdatesCore {
       hostUpdateReady(kind: "sparkle", version: v.sOpt("version") ?? pendingVersion)
     case "none":
       pendingVersion = ""
-      if manual && lastResult == "Plugins are up to date" { manual = false }
+      if manual {
+        manual = false
+        if settingsRegistered { registerSettings() }
+        let msg = lastResult == "Plugins are up to date" ? "den is up to date" : lastResult
+        toast(msg, icon: "sf:checkmark.circle", action: "", duration: 2500)
+      }
     case "error":
       sparkleError = v.s("error") ?? "Update check failed"
     case "downloading":
