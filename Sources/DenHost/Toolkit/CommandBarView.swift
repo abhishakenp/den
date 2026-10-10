@@ -136,6 +136,11 @@ final class CommandBarView: PanelView, NSTextFieldDelegate {
       for (k, t) in zip(shortcutCaps, keys) { k.text = t }
     }
     required init?(coder: NSCoder) { fatalError() }
+    /// All clicks within the row's bounds are handled here so onClick/onHover fire regardless of
+    /// which subview (icon, label, keycap) the user taps. Switch already returns nil from hitTest:.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+      return bounds.contains(point) ? self : nil
+    }
     /// Spec §2: highlight inset 10 horizontally and 2 vertically inside the 50 pt row, radius 6.
     var highlight: NSRect { bounds.insetBy(dx: Tokens.commandBarHighlightInsetX, dy: Tokens.commandBarHighlightInsetY) }
     override func draw(_ dirtyRect: NSRect) {
