@@ -44,6 +44,7 @@ final class UpdatesCore {
   var followState: Value = .null
   var commandRegistered = false
   var registerAttempts = 0
+  var settingsRegisterAttempts = 0
   var policyTimerOn = false
   var checkTimerOn = false
   var stopped = false
@@ -93,7 +94,7 @@ final class UpdatesCore {
     rollbackCrashed()
     configureSparkle()
     registerCommand()
-    registerSettings()
+    tryRegisterSettings()
     followMainState(followState)
     about()
     scheduleChecks()
@@ -392,7 +393,28 @@ final class UpdatesCore {
   // MARK: Settings panel
 
   /// Register the Updates section in Settings.
+  /// Like `registerCommand()`, retries up to 60 times if the service isn't ready.
+  func tryRegisterSettings() -> Bool {
+    if settingsRegistered { return true }
+    let r = doRegisterSettings()
+    guard !r.isErr else {
+      settingsRegisterAttempts += 1
+      if settingsRegisterAttempts < 60 {
+        env.timer(500, false) { [self] in tryRegisterSettings() }
+      }
+      return false
+    }
+    settingsRegistered = true
+    return true
+  }
+
+  /// Public entry: delegates to the retry wrapper.
   func registerSettings() {
+    _ = tryRegisterSettings()
+  }
+
+  /// Actual settings registration logic.
+  private func doRegisterSettings() -> Value {
     let currentVersion = info.s("version")
     let buildNum = String(info.i("build"))
     let shortCommit = Self.short(info.s("commit"))
@@ -441,6 +463,7 @@ final class UpdatesCore {
       "order": .int(90), "controls": .array(controls),
     ])
     settingsRegistered = !r.isErr
+    return r
   }
 
   /// Handle button clicks in the settings panel.
