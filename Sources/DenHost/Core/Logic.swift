@@ -1,29 +1,12 @@
 import CordisValue
 import CoreGraphics
 import Foundation
+import PluginCores
 
 // Pure, AppKit-free logic used by the services. Unit-tested in DenHostTests.
+// RGB type is now imported from PluginCores (Plugins/theme/ThemeRules.swift).
 
 // MARK: - Theme
-
-public struct RGB: Equatable, Sendable {
-  public var r, g, b: CGFloat
-  public init(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat) { (self.r, self.g, self.b) = (r, g, b) }
-
-  public init?(hex: String) {
-    var s = hex.trimmingCharacters(in: .whitespaces)
-    if s.hasPrefix("#") { s.removeFirst() }
-    if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
-    guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
-    self.init(CGFloat((v >> 16) & 0xFF) / 255, CGFloat((v >> 8) & 0xFF) / 255, CGFloat(v & 0xFF) / 255)
-  }
-
-  public func mix(_ o: RGB, _ t: CGFloat) -> RGB {
-    RGB(r + (o.r - r) * t, g + (o.g - g) * t, b + (o.b - b) * t)
-  }
-
-  public var luminance: CGFloat { 0.2126 * r + 0.7152 * g + 0.0722 * b }
-}
 
 public enum Appearance: String, Sendable { case light, dark, auto }
 

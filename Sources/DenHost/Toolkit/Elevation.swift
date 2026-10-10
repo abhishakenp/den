@@ -1,4 +1,5 @@
 import AppKit
+import PluginCores
 import CoreImage
 import QuartzCore
 import WebKit

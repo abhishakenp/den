@@ -25,6 +25,7 @@ let package = Package(
     .target(
       name: "DenHost",
       dependencies: [
+        "PluginCores",
         .product(name: "CordisValue", package: "cordis-swift"),
         .product(name: "Cordis", package: "cordis-swift"),
       ]

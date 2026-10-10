@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import PluginCores
 
 /// Every visual constant of den's chrome lives here, so estimates can be swapped for values
 /// measured on a real Arc build (docs/reference/arc-ui-spec.md) in one place.

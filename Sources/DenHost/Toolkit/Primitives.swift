@@ -1,6 +1,7 @@
 import AppKit
 import UniformTypeIdentifiers
 import CordisValue
+import PluginCores
 
 /// Colors for chrome drawn on top of the themed background.
 ///

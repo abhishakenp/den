@@ -1,4 +1,5 @@
 import AppKit
+import PluginCores
 
 extension RGB {
   public var ns: NSColor { NSColor(srgbRed: r, green: g, blue: b, alpha: 1) }

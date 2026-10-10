@@ -152,6 +152,15 @@ public enum ExtensionShim {
         try { const o = await local.get(key); return o && o[key] || fallback; } catch (e) { return fallback; }
       };
       const save = (key, value) => { try { local.set({[key]: value}); } catch (e) {} };
+      const extCall = (action, method, params = {}) =>
+        new Promise((resolve, reject) => {
+          api.runtime.sendNativeMessage('__den.ext', {
+            ...params, action, method, __ns: api.runtime.id
+          }, (r) => {
+            if (r && r.error) reject(new Error(r.error));
+            else resolve((r && r.result));
+          });
+        });
 
       // Link hints (Vimium's F, and extensions like it) open a link in a new tab with a synthetic
       // ⌘/Ctrl-click. WebKit does nothing for one, so the content script asks its own background
@@ -280,7 +289,8 @@ public enum ExtensionShim {
       if (perms.includes('sidePanel')) {
         define('sidePanel', {
           setOptions: fn(() => undefined), getOptions: fn(() => ({enabled: false})), setPanelBehavior: fn(() => undefined),
-          getPanelBehavior: fn(() => ({openPanelOnActionClick: false})), open: fn(() => { throw unavailable('The side panel'); }),
+          getPanelBehavior: fn(() => ({openPanelOnActionClick: false})),
+          open: fn((p) => extCall('sidePanel', 'open', p)),
         });
       }
       if (perms.includes('offscreen')) {
@@ -290,15 +300,50 @@ public enum ExtensionShim {
         });
       }
 
-      // bookmarks: den keeps none an extension can read.
+      // downloads: bridge to den's download system.
+      if (perms.includes('downloads')) {
+        const dl = (method, p) => extCall('downloads', method, p);
+        define('downloads', {
+          download: fn((p) => dl('download', p)),
+          pause: fn((id) => dl('pause', {id})),
+          resume: fn((id) => dl('resume', {id})),
+          cancel: fn((id) => dl('cancel', {id})),
+          getItem: fn((id) => dl('getItem', {id})),
+          getItemIcon: fn((id) => dl('getItemIcon', {id})),
+          setShelfEnabled: fn(() => undefined), getShelfEnabled: fn(() => true),
+          showDefaultUI: fn(() => undefined), show: fn(() => undefined),
+          onCreated: event(), onDownloadRemoving: event(), onDownloadRemoved: event(),
+          onDeterminingFilename: event(), onChanged: event(), onError: event(),
+        });
+      }
+
+      // identity: stub with current user info (den has no user auth).
+      if (perms.includes('identity')) {
+        const id = (method, p) => extCall('identity', method, p || {});
+        define('identity', {
+          getProfileEmail: fn(() => Promise.reject(new Error('identity: den has no user authentication'))),
+          launchWebAuthFlow: fn((p) => id('launchWebAuthFlow', p)),
+          getAuthToken: fn(() => Promise.reject(new Error('identity: not available'))),
+          getProfile: fn(() => Promise.resolve({email: 'user@example.com', displayName: 'Den User'})),
+          removeAuthToken: fn(() => undefined),
+        });
+      }
+
+      // bookmarks: local storage per extension namespace.
       if (perms.includes('bookmarks')) {
         const tree = () => [{id: '0', title: '', children: [{id: '1', parentId: '0', title: 'Bookmarks', children: []}]}];
         define('bookmarks', {
-          getTree: fn(tree), getSubTree: fn(() => []), get: fn(() => []), getChildren: fn(() => []),
-          getRecent: fn(() => []), search: fn(() => []),
-          create: fn(() => { throw unavailable('Bookmarks'); }), update: fn(() => { throw unavailable('Bookmarks'); }),
-          move: fn(() => { throw unavailable('Bookmarks'); }), remove: fn(() => { throw unavailable('Bookmarks'); }),
-          removeTree: fn(() => { throw unavailable('Bookmarks'); }),
+          getTree: fn(() => extCall('bookmarks', 'getTree')),
+          getSubTree: fn((parentId) => extCall('bookmarks', 'getSubTree', {parentId})),
+          get: fn((id) => extCall('bookmarks', 'get', {id}).then(r => r || [])),
+          getChildren: fn((parentId) => extCall('bookmarks', 'getChildren', {parentId})),
+          getRecent: fn((count = 10) => extCall('bookmarks', 'getRecent', {count})),
+          search: fn((q) => extCall('bookmarks', 'search', {query: q || ''})),
+          create: fn((p) => extCall('bookmarks', 'create', p)),
+          update: fn((id, p) => extCall('bookmarks', 'update', {...p, id})),
+          move: fn((id, p) => extCall('bookmarks', 'move', {...p, id})),
+          remove: fn((id) => extCall('bookmarks', 'remove', {id})),
+          removeTree: fn((id) => extCall('bookmarks', 'remove', {id})),
           onCreated: event(), onRemoved: event(), onChanged: event(), onMoved: event(),
           onChildrenReordered: event(), onImportBegan: event(), onImportEnded: event(),
         });
@@ -325,16 +370,10 @@ public enum ExtensionShim {
         if (inBackground) api.tabs.onUpdated.addListener((id, info, tab) => {
           if (info.status === 'complete' && tab && tab.url) record(tab.url, tab.title);
         });
+        const hl = (method, p) => extCall('history', method, p);
         define('history', {
-          search: fn(async (q = {}) => {
-            const text = (q.text || '').toLowerCase(), start = q.startTime || 0, end = q.endTime || Infinity;
-            const max = q.maxResults == null ? 100 : q.maxResults;
-            const h = await load(HKEY, []);
-            const out = h.filter((x) => x.lastVisitTime >= start && x.lastVisitTime <= end &&
-              (!text || x.url.toLowerCase().includes(text) || (x.title || '').toLowerCase().includes(text)));
-            return max > 0 ? out.slice(0, max) : out;
-          }),
-          getVisits: fn(async ({url}) => (await load(HKEY, [])).filter((x) => x.url === url).map((x) => ({id: x.id, visitId: x.id, visitTime: x.lastVisitTime, transition: 'link'}))),
+          search: fn((q = {}) => hl('search', q)),
+          getVisits: fn(({url}) => hl('getVisits', {url})),
           addUrl: fn(({url, title}) => record(url, title)),
           deleteUrl: fn(async ({url}) => { save(HKEY, (await load(HKEY, [])).filter((x) => x.url !== url)); onVisitRemoved.fire({allHistory: false, urls: [url]}); }),
           deleteRange: fn(async ({startTime, endTime}) => { save(HKEY, (await load(HKEY, [])).filter((x) => x.lastVisitTime < startTime || x.lastVisitTime > endTime)); onVisitRemoved.fire({allHistory: false, urls: []}); }),
