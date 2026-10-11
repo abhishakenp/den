@@ -780,9 +780,9 @@ final class CommandBarCore {
     Builtin(id: "den.quit", title: "Quit den", icon: "sf:power", keywords: ["exit", "close"], shortcut: "⌘Q", needsTab: false, service: "app"),
     // Destinations: den's own screens. Each is hidden until the service that owns it is loaded.
     Builtin(id: "den.settings", title: "Settings", icon: "sf:gearshape", keywords: ["general", "customize"], shortcut: "⌘,", needsTab: false,
-            service: "settings", aliases: ["preferences", "prefs", "options", "config", "configuration"]),
+            service: "settings", aliases: ["preferences", "prefs", "options", "config", "configuration"], method: "open"),
     Builtin(id: "den.extensions", title: "Extensions", icon: "sf:puzzlepiece.extension", keywords: ["web extensions", "safari"], shortcut: "⌘⇧A",
-            needsTab: false, service: "extensions", aliases: ["addons", "add-ons", "plugins"]),
+            needsTab: false, service: "extensions", aliases: ["addons", "add-ons", "plugins"], method: "open"),
     Builtin(id: "den.downloads", title: "Downloads", icon: "sf:arrow.down.circle", keywords: ["files", "saved"], shortcut: "⌘⇧D", needsTab: false,
             service: "downloads", aliases: ["dl", "dls"], method: "open"),
     Builtin(id: "den.history", title: "History", icon: "sf:clock.arrow.circlepath", keywords: ["visited", "recent pages"], shortcut: "⌘Y",

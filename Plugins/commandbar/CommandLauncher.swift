@@ -81,6 +81,9 @@ extension CommandBarCore {
         for s in p.a("schema") {
           let key = s.s("key")
           guard !key.isEmpty, !s.s("title").isEmpty else { continue }
+          // Shortcut remaps (type "shortcut") stay in their Settings pane: their titles are menu
+          // entry titles ("Switch to Recent Tab"), which would hijack searches like "swi".
+          if s.s("type") == "shortcut" { continue }
           let e = IndexEntry(kind: .setting, id: key, title: s.s("title"), icon: s.sOpt("icon") ?? picon, section: "Settings",
                              keywords: s.a("keywords").compactMap { $0.string }, path: ptitle)
           e.subtitle = "— Settings › " + ptitle

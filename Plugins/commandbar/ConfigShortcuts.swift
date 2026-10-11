@@ -56,8 +56,9 @@ extension CommandBarCore {
     }
     errors += applyKeywords(config["search"]["keywords"])
     env.call("config", "report", ["source": "commandbar", "errors": .array(errors.map { .string($0) })])
-    // Refresh the shortcuts settings panel (if it's open) to reflect the new bindings.
-    _ = env.call("settings", "open", ["section": .string("shortcuts")])
+    // Refresh the Shortcuts pane's contents: re-register (the open window re-renders on
+    // register). `settings.open` would force the window open on every config load.
+    _ = env.call("shortcuts", "registerSettings", [])
   }
 
   /// Merges `[search.keywords]` into the engines. Returns problems found.

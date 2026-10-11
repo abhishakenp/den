@@ -290,17 +290,13 @@ struct LauncherTests {
     h.submit("win:" + win)
     #expect(!h.rt.ui.commandBarOpen)
 
-    // Keyboard Shortcuts lists every binding with its keycaps; picking one runs it.
+    // Keyboard Shortcuts… opens the Shortcuts pane in Settings (the bar's shortcuts scope
+    // moved there); the chord glyphs stay shared with the pane's controls.
     h.record(["commands.key.edit"])
     h.key("cmd+t")
     h.type("keyboard")
     h.submit("cmd:den.shortcuts")
-    #expect(h.rt.call("commands", "state")["scope"] == "shortcuts")
-    h.type("open location")
-    let loc = h.barRows.first { $0.str("id") == "key:cmd+l" }
-    #expect(loc?.str("shortcut") == "⌘L")
-    h.submit("key:cmd+l")
-    #expect(h.events.contains { $0.0 == "commands.key.edit" })
+    #expect(h.rt.settings.window?.section == "shortcuts")
     #expect(CommandBarCore.chordGlyphs("cmd+shift+k") == "⇧⌘K")
     #expect(CommandBarCore.chordGlyphs("ctrl+opt+left") == "⌃⌥←")
     #expect(CommandBarCore.chordGlyphs("cmd+shift+=") == "⇧⌘=")
