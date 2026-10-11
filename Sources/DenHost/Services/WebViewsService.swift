@@ -423,7 +423,6 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.media, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: PageScripts.world))
     config.userContentController.add(scriptHandler, contentWorld: PageScripts.world, name: PageScripts.handler)
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.sessionHook, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
-    config.userContentController.addUserScript(WKUserScript(source: PageScripts.cookieConsent, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.screenShare, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
     config.userContentController.add(scriptHandler, contentWorld: PageScripts.screenShareWorld, name: "denScreenShare")
     for h in configureHooks { h(r, config) }
