@@ -85,7 +85,7 @@ struct SettingsTests {
     // General gains "Quitting"; Tabs gains "Downloads" and "Links".
     #expect(h.rt.settings.groups(of: "general").map(\.id) == ["general", "quit"])
     #expect(h.rt.settings.groups(of: "tabs").map(\.id) == ["tabs", "tabs.downloads", "peek"])
-    #expect(h.rt.call("settings", "list").array?.map { $0.s("id") } == ["general", "tabs", "commandbar", "briefing"])
+    #expect(h.rt.call("settings", "list").array?.map { $0.s("id") } == ["general", "tabs", "commandbar", "shortcuts", "briefing"])
     // Quit prompt.
     #expect(quit.warn)
     h.rt.call("settings", "set", ["id": "quit", "key": "warn", "value": false])
