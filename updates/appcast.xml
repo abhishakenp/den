@@ -3,6 +3,39 @@
 <channel>
 <title>den</title>
 <item>
+  <title>den 0.2.0-alpha.11</title>
+  <pubDate>Sun, 11 Oct 2026 01:56:20 +0000</pubDate>
+  <sparkle:channel>prerelease</sparkle:channel>
+  <sparkle:version>420</sparkle:version>
+  <sparkle:shortVersionString>0.2.0-alpha.11</sparkle:shortVersionString>
+  <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+  <sparkle:releaseNotesLink>https://github.com/abhishakenp/den/releases/tag/v0.2.0-alpha.11</sparkle:releaseNotesLink>
+  <description><![CDATA[- test: the Shortcuts pane joins the settings sections list (PR #17) (c383251)
+- commandbar: restore method:open on Settings and Extensions; settings.open no longer forces the window open; shortcut remaps out of the launcher index (5c656ad)
+- test: pin the mock Calendar page's clock (10:07 local) — time-dependent flake (7275cf7)
+- test: compare calendar events as a set (fixture times reorder around day boundaries) (09bef41)
+- updates: never install a staged update older than the running app; main channel for developers; changelog in Settings (8d9de42)
+- shortcuts: configurable shortcuts settings tab in Settings window (#17) (7a4dbba)
+- commandbar: add default shortcuts to all builtin commands (e7c19ae)
+- cookie consent: never click anything that can submit a form; navigation event log (067f454)
+- test: fix shimmer assertion timing in theOnDeviceModelNamesTheGroupWithAShimmerThenAReveal (4d289d7)
+- tests: regenerate the thin-host allowlist for the extensions host bridge (ff78ce6)
+- command bar: space commands with their shortcuts, live chord refs on rows (7047c10)
+- page scripts: a reload-loop kill switch for the cookie consent handler, and no more clicking settings-flow buttons (224be4b)
+- updates: one update system — remove the follow-main source-building updater (03193c8)
+- release: v0.2.0-alpha.10 appcast and plugin manifest (54b1c06)
+- fix: remove Foundation dependency from theme plugin for embedded swift (07d67bf)
+- ci: retry build on macos-26 runner (foundation sdk) (3c0871d)
+- fix: remove a[href] from cookie consent accept and close selectors to prevent navigation-induced reload loops (a70447c)
+- updates plugin: add retry logic for settings registration (like registerCommand) (c80020d)
+- updates: fix OTA — rewrite appcast XML, point to .dmg, fix check race condition (e51a698)
+- updates plugin: add Updates section to Settings with check button, channel selector, and status (1f3e043)
+- fix: alpha.9 appcast length and plugins.json version (d565420)
+- release: v0.2.0-alpha.9 appcast entry (bbab7b9)
+- clear roadmap: 16 non-blocked items implemented and merged (#40) (c9dbe2b)]]></description>
+  <enclosure url="https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.11/den-0.2.0-alpha.11.zip" length="10142262" type="application/octet-stream" sparkle:edSignature="E33TL6CRLn2fU0RCIDi10FqNdaMyjYBVUn+GJIEy9VKU62UpB4X9hpzc0YkkMuJc6yGRM+R2dBT4oSBgZ0qiAQ=="/>
+</item>
+<item>
   <title>den 0.2.0-alpha.10</title>
   <sparkle:channel>prerelease</sparkle:channel>
   <pubDate>Sat, 10 Oct 2026 15:55:47 +0000</pubDate>
