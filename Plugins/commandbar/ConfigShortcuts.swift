@@ -56,6 +56,8 @@ extension CommandBarCore {
     }
     errors += applyKeywords(config["search"]["keywords"])
     env.call("config", "report", ["source": "commandbar", "errors": .array(errors.map { .string($0) })])
+    // Refresh the shortcuts settings panel (if it's open) to reflect the new bindings.
+    _ = env.call("settings", "open", ["section": .string("shortcuts")])
   }
 
   /// Merges `[search.keywords]` into the engines. Returns problems found.

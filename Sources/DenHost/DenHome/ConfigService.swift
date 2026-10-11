@@ -11,6 +11,7 @@ import Foundation
 ///                   what plugins reported
 ///   report {source, errors: [string]} -> ok: a plugin's problems applying its config sections
 ///                   (replaces that source's earlier report)
+///   save {config} -> ok: persists the config object to config.toml and emits config.changed
 /// Events: config.changed {config, edited} (`edited`: the file changed while den ran), config.themesChanged {themes}
 ///
 /// The service reads nothing until `start()` (after the first window), so plugins that call it
@@ -55,6 +56,18 @@ public final class ConfigService: HostService {
       let list = args.list("errors").compactMap(\.string)
       reported.removeAll { $0.0 == source }
       if !list.isEmpty { reported.append((source, list)) }
+      return .ok
+    case "save":
+      let config = args["config"]
+      guard case .object = config else { return .error("config: save needs an object") }
+      do {
+        let text = TOML.text(config)
+        try text.write(to: home.config, atomically: true, encoding: .utf8)
+      } catch {
+        readErrors.append("config.toml write: \(error.localizedDescription)")
+        return .error("config: save failed: \(error.localizedDescription)")
+      }
+      reloadConfig(edited: true)
       return .ok
     default: return .error("config: unknown method '\(method)'")
     }

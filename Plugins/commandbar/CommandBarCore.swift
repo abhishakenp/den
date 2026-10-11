@@ -211,10 +211,15 @@ final class CommandBarCore {
       indexValid = false
       if isOpen { render() }
     }
-    env.on("settings.changed") { [self] v in if v.s("id") == Self.ns { settingChanged(v.s("key"), v["value"]) } }
+    env.on("settings.changed") { [self] v in
+      let sid = v.s("id"), key = v.s("key")
+      if sid == Self.ns { settingChanged(key, v["value"]) }
+      if sid == Self.ns + ".shortcuts" { handleShortcutChange(key, v["value"].string ?? "") }
+    }
     env.on("settings.action") { [self] v in if v.s("id") == Self.ns { settingAction(v) } }
     checkTrial()
     syncSettings()
+    syncShortcutsSettings()
   }
 
   // MARK: - Settings window
@@ -266,6 +271,17 @@ final class CommandBarCore {
       if isOpen { render() }
     default: break
     }
+  }
+
+  /// Handle a shortcut setting change: apply chord and tell the host to persist.
+  func handleShortcutChange(_ key: String, _ chord: String) {
+    // Forward to host for persistence (plugin can't access MainMenu/Chord).
+    env.call("shortcuts", "change", ["key": .string(key), "chord": .string(chord)])
+  }
+
+  /// Register the Shortcuts settings section by asking the host to build it.
+  func syncShortcutsSettings() {
+    env.call("shortcuts", "registerSettings", [])
   }
 
   func settingAction(_ v: Value) {
@@ -901,12 +917,7 @@ final class CommandBarCore {
     case "den.quit":
       env.call("app", "quit", ["confirm": true])
     case "den.shortcuts":
-      if !isOpen {
-        isOpen = true
-        mode = "new"
-      }
-      backStack.append((scope, query))
-      setScope(.shortcuts, query: "")
+      env.call("settings", "open", ["section": .string("shortcuts")])
     case "den.about":
       showAbout()
     case "den.new.githubIssue":

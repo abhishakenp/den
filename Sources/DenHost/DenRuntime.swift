@@ -45,6 +45,8 @@ public final class DenRuntime {
   public let extensions: ExtensionsService
   /// den's Settings window (⌘,) and the sections plugins contribute to it.
   public let settings: SettingsService
+  /// Shortcut configuration for the Settings > Shortcuts section.
+  public let shortcuts: ShortcutsService
   /// The cordis registration of each host service (tests can withdraw one to stand in a fake).
   public private(set) var serviceHandles: [String: CordisHandle] = [:]
   // On-device text to speech and translation (the `pagetools` plugin's reader and translation).
@@ -123,6 +125,7 @@ public final class DenRuntime {
     extensions.storageService = storage
     extensions.attach(windows: windows)
     settings = SettingsService(host: host, storage: storage)
+    shortcuts = ShortcutsService(host: host, settings: settings, keys: keys)
     speech = SpeechService(host: host)
     translate = TranslateService(host: host)
     pwaDock = PwaDockService(host: host, storage: storage)
@@ -163,7 +166,7 @@ public final class DenRuntime {
     sitePolicy.colors = { [weak webviews] in webviews?.prompts?.errorPageColors }
     sitePolicy.call = { [weak plugins] s, m, a in plugins?.call(s, m, a) ?? .error("no plugin host") }
     sitePolicy.resource = { [permissions] p, f in permissions.resource(p, f) }
-    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, session, net, ai, schedule, pageStyle, sitePolicy, vault, files, downloads, extensions, settings, media, nowPlaying, speech, translate, pwaDock, spotlight, handoff, notifications, CloudService()] {
+    for s: HostService in [windowService, webviews, content, ui, keys, storage, app, session, net, ai, schedule, pageStyle, sitePolicy, vault, files, downloads, extensions, settings, shortcuts, media, nowPlaying, speech, translate, pwaDock, spotlight, handoff, notifications, CloudService()] {
       host.provide(s)
       serviceHandles[s.name] = plugins.provide(s.name) { [unowned s] method, args in s.handle(method: method, args: args) }
     }

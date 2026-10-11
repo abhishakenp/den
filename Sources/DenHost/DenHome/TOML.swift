@@ -20,6 +20,83 @@ public enum TOML {
     return try p.document()
   }
 
+  /// Serialize a Value back to TOML text (preserving nested table structure).
+  public static func text(_ v: Value) -> String {
+    guard case let .object(pairs) = v else { return "" }
+    var lines = [String]()
+
+    func valueText(_ v: Value, indent: Int = 0) -> String {
+      let pad = String(repeating: " ", count: indent * 2)
+      switch v {
+      case let .string(s):
+        let escaped = s.replacingOccurrences(of: "\\", with: "\\\\")
+          .replacingOccurrences(of: "\"", with: "\\\"")
+          .replacingOccurrences(of: "\n", with: "\\n")
+          .replacingOccurrences(of: "\t", with: "\\t")
+        return "\(pad)\"\(escaped)\""
+      case let .int(n): return "\(pad)\(n)"
+      case let .double(d): return "\(pad)\(d)"
+      case let .bool(b): return "\(pad)\(b)"
+      case let .array(a):
+        if a.isEmpty { return "\(pad)[]" }
+        let items = a.map { valueText($0) }
+        return "\(pad)[\(items.joined(separator: ", "))]"
+      case let .object(inner):
+        if inner.isEmpty { return "\(pad){}" }
+        // Check if all values are primitives
+        let allPrimitives = inner.allSatisfy { _, v in
+          switch v { case .string, .int, .double, .bool: return true; default: return false }
+        }
+        if allPrimitives {
+          let items = inner.map { "\($0.0) = \(valueText($0.1, indent: 0))" }
+          return items.joined(separator: ", ")
+        }
+        // Nested table
+        return "{ " + inner.map { "\($0.0) = \(valueText($0.1))" }.joined(separator: " ") + " }"
+      default: return "\(pad)\"\""
+      }
+    }
+
+    for (k, val) in pairs {
+      switch val {
+      case let .object(inner):
+        // Check if this looks like a shortcuts table (all keys are chords like "cmd+shift+k")
+        let looksLikeShortcuts = inner.allSatisfy { k, _ in
+          k.contains("+") || k.hasPrefix("cmd") || k.hasPrefix("opt") || k.hasPrefix("shift") || k.hasPrefix("ctrl")
+        }
+        if looksLikeShortcuts {
+          lines.append("[\(k)]")
+          for (ik, iv) in inner {
+            if let s = iv.string {
+              lines.append("\"\(ik)\" = \"\(s)\"")
+            }
+          }
+        } else if inner.isEmpty {
+          lines.append("[\(k)]")
+        } else {
+          // Regular nested table
+          for (ik, iv) in inner {
+            lines.append("\(k).\(ik) = \(valueText(iv))")
+          }
+        }
+      case let .string(s):
+        lines.append("\(k) = \"\(s)\"")
+      case let .int(n):
+        lines.append("\(k) = \(n)")
+      case let .double(d):
+        lines.append("\(k) = \(d)")
+      case let .bool(b):
+        lines.append("\(k) = \(b)")
+      case let .array(a):
+        let items = a.map { $0.string.map { "\"\($0)\"" } ?? "0" }
+        lines.append("\(k) = [\(items.joined(separator: ", "))]")
+      default:
+        lines.append("\(k) = \"\"")
+      }
+    }
+    return lines.joined(separator: "\n") + "\n"
+  }
+
   struct Parser {
     let s: [Unicode.Scalar]
     var i = 0

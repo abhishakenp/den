@@ -35,7 +35,7 @@ extension Value {
   func a(_ key: String) -> [Value] { self[key].array ?? [] }
   var isErr: Bool { !self["error"].isNull }
 
-  mutating func put(_ key: String, _ value: Value) {
+  public mutating func put(_ key: String, _ value: Value) {
     guard case var .object(pairs) = self else {
       self = .object([(key, value)])
       return
