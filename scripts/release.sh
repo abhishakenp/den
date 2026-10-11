@@ -96,9 +96,9 @@ if channel == "stable":  # pre-release users get a newer stable too
 json.dump(doc, open(path, "w"), indent=1, sort_keys=True)
 json.dump({"schema": 1, "channels": {channel: entry}}, open(dist, "w"), indent=1, sort_keys=True)
 PY
-python3 - updates/appcast.xml "$VERSION" "$BUILD" "$URLBASE/den-$VERSION.zip" "$ZIPSIG" "$ZIPLEN" "$PRE" "https://github.com/$REPO/releases/tag/$TAG" <<'PY'
+python3 - updates/appcast.xml "$VERSION" "$BUILD" "$URLBASE/den-$VERSION.zip" "$ZIPSIG" "$ZIPLEN" "$PRE" "https://github.com/$REPO/releases/tag/$TAG" "$DIST/notes.md" <<'PY'
 import sys, os, datetime, re
-path, ver, build, url, sig, length, pre, notes = sys.argv[1:]
+path, ver, build, url, sig, length, pre, notes, notesfile = sys.argv[1:]
 head = '<?xml version="1.0" encoding="utf-8"?>\n<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">\n<channel>\n<title>den</title>\n'
 items = ""
 if os.path.exists(path):
@@ -106,6 +106,12 @@ if os.path.exists(path):
     items = m.group(1) if m else ""
 date = datetime.datetime.now(datetime.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
 chan = "  <sparkle:channel>prerelease</sparkle:channel>\n" if pre == "1" else ""
+# The changelog rides in <description> (CDATA): the updates Settings panel shows it as
+# "What's new" without a network fetch. Commit subjects only, capped.
+desc = ""
+if os.path.exists(notesfile):
+    lines = [l for l in open(notesfile).read().splitlines() if l.startswith("- ")]
+    desc = "<![CDATA[" + "\n".join(lines[:40])[:3500] + "]]>"
 item = f"""<item>
   <title>den {ver}</title>
   <pubDate>{date}</pubDate>
@@ -113,6 +119,7 @@ item = f"""<item>
   <sparkle:shortVersionString>{ver}</sparkle:shortVersionString>
   <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
   <sparkle:releaseNotesLink>{notes}</sparkle:releaseNotesLink>
+  <description>{desc}</description>
   <enclosure url="{url}" length="{length}" type="application/octet-stream" sparkle:edSignature="{sig}"/>
 </item>
 """

@@ -13,6 +13,7 @@ final class DenSparkle: NSObject, SparkleBridge, SPUUserDriver, SPUUpdaterDelega
   var channel = "stable"
   var updater: SPUUpdater?
   var pending: ((SPUUserUpdateChoice) -> Void)?
+  var lastItem: SUAppcastItem?
 
   init(service: UpdatesService) { self.service = service }
 
@@ -45,8 +46,15 @@ final class DenSparkle: NSObject, SparkleBridge, SPUUserDriver, SPUUpdaterDelega
   // MARK: SPUUpdaterDelegate
 
   nonisolated func allowedChannels(for updater: SPUUpdater) -> Set<String> {
-    MainActor.assumeIsolated { channel == "prerelease" ? ["prerelease"] : [] }
+    // stable: only untagged items. prerelease and main (developers): the tagged ones too.
+    MainActor.assumeIsolated { channel == "stable" ? [] : ["prerelease"] }
   }
+
+  /// The appcast item's build (`sparkle:version`) as a number, or nil.
+  nonisolated static func build(of item: SUAppcastItem) -> Int? { Int(item.versionString) }
+
+  /// The running app's build (CFBundleVersion).
+  static var runningBuild: Int { Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "") ?? 0 }
 
   nonisolated func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
     MainActor.assumeIsolated { willInstall() }
@@ -61,9 +69,20 @@ final class DenSparkle: NSObject, SparkleBridge, SPUUserDriver, SPUUpdaterDelega
   func showUserInitiatedUpdateCheck(cancellation: @escaping () -> Void) { service.sparkleEvent("checking") }
 
   func showUpdateFound(with appcastItem: SUAppcastItem, state: SPUUserUpdateState, reply: @escaping (SPUUserUpdateChoice) -> Void) {
+    // A staged download resumes across launches (Sparkle trusts the earlier "install" reply), so
+    // an old staged item would otherwise reinstall over a newer running app. Never install
+    // anything whose build is not newer than this one.
+    guard Self.build(of: appcastItem).map({ $0 > Self.runningBuild }) == true else {
+      service.sparkleEvent("none")
+      reply(.skip)
+      return
+    }
+    lastItem = appcastItem
     pending = reply
     // Already downloaded earlier (resumed): straight to "ready".
-    service.sparkleEvent(state.stage == .installing ? "ready" : "found", version: appcastItem.displayVersionString)
+    service.sparkleEvent(state.stage == .installing ? "ready" : "found",
+                         version: appcastItem.displayVersionString,
+                         changelog: appcastItem.itemDescription ?? "")
   }
 
   func showUpdateReleaseNotes(with downloadData: SPUDownloadData) {}
@@ -86,6 +105,13 @@ final class DenSparkle: NSObject, SparkleBridge, SPUUserDriver, SPUUpdaterDelega
   func showExtractionReceivedProgress(_ progress: Double) {}
 
   func showReady(toInstallAndRelaunch reply: @escaping (SPUUserUpdateChoice) -> Void) {
+    // Paranoia: showUpdateFound always precedes this and carries the guard, but if an item
+    // slipped through unvetted, refuse to install it.
+    if let item = lastItem, Self.build(of: item).map({ $0 > Self.runningBuild }) != true {
+      service.sparkleEvent("none")
+      reply(.skip)
+      return
+    }
     pending = reply
     service.sparkleEvent("ready")
   }

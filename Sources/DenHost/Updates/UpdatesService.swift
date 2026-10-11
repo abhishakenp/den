@@ -203,10 +203,11 @@ public final class UpdatesService: HostService {
     return ["ok": true, "restored": .bool(restored)]
   }
 
-  public func sparkleEvent(_ phase: String, version: String? = nil, error: String? = nil) {
+  public func sparkleEvent(_ phase: String, version: String? = nil, error: String? = nil, changelog: String? = nil) {
     var v: Value = ["phase": .string(phase)]
     if let version { v = v.with("version", .string(version)) }
     if let error { v = v.with("error", .string(error)) }
+    if let changelog, !changelog.isEmpty { v = v.with("changelog", .string(changelog)) }
     host.emit("updates.sparkle", v)
   }
 

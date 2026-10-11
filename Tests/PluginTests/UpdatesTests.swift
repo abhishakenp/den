@@ -92,6 +92,30 @@ struct UpdatesTests {
     #expect(fake.called("sparkleReply").map { $0.s("choice") } == ["install", "install", "install"])
   }
 
+  @Test func mainChannelRidesPrereleaseArtifactsAndShowsTheChangelog() {
+    let fake = FakeUpdates()
+    fake.info = fake.info.with("sparkle", true)
+    let (h, core, _) = setup(fake)
+    // main (developers): a valid channel, Sparkle rides prerelease, plugins too.
+    core.setChannel("main")
+    #expect(core.channel == "main")
+    #expect(fake.called("sparkleConfigure").last?["channel"] == "main")
+    let prerelease = ["version": .string("0.2.0-alpha.11"), "plugins": .array([])] as Value
+    core.manifest(["status": .int(200), "value": ["channels": ["stable": ["version": .string("0.2.0-stale"), "plugins": .array([])],
+                                                              "prerelease": prerelease] as Value] as Value])
+    #expect(fake.called("installPlugin").isEmpty)  // nothing changed, but the prerelease entry was read
+    // The changelog from the appcast shows in the panel as "What's new".
+    h.rt.plugins.emit("updates.sparkle", ["phase": "found", "version": "0.2.0-alpha.11", "changelog": "- one\n- two"])
+    #expect(core.pendingChangelog == "- one\n- two")
+    core.settingsRegistered = false  // re-register with the changelog present
+    core.registerSettings()
+    let controls = h.rt.settings.entries["updates"]?.controls ?? []
+    #expect(controls.contains { $0.s("key") == "whatsNew" && $0.s("value").contains("one") })
+    // Channel choice control offers all three.
+    let channel = controls.first { $0.s("key") == "channel" }
+    #expect(channel?["options"].array?.count == 3)
+  }
+
   @Test func manualCheckFetchesManifestAndSparkleWithoutKickingAnyUpdater() {
     let fake = FakeUpdates()
     fake.info = fake.info.with("sparkle", true)

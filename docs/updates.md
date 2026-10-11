@@ -9,7 +9,7 @@ Pick a **channel** in `~/.den/config.toml`:
 
 ```toml
 [updates]
-channel = "stable"          # stable | prerelease (also the Updates settings panel)
+channel = "stable"          # stable | prerelease | main (developers, hourly checks)
 check_hours = 6             # release channels: how often to check
 relaunch_background_s = 60  # relaunch after den has been in the background this long…
 relaunch_idle_min = 10      # …or when den is frontmost but there's been no input for this long
@@ -41,7 +41,7 @@ den never relaunches while media is playing. Otherwise it relaunches when one of
 
 The session (spaces, tabs, selection) comes back from plugin storage. The rule is checked every 15 s, and only while an update is waiting.
 
-## Release channels: `stable` and `prerelease`
+## Release channels: `stable`, `prerelease` and `main`
 
 `scripts/release.sh <semver>` publishes a release. A `-` suffix makes it a pre-release, for example `0.1.0-alpha.1`. The script:
 
@@ -60,7 +60,7 @@ The session (spaces, tabs, selection) comes back from plugin storage. The rule i
 - The plugin checks on its schedule. `found` → it downloads in the background. `ready` → it shows the toast and waits for the relaunch rule.
 - Sparkle's own scheduler is off (`SUEnableAutomaticChecks = false`).
 - Pre-release items carry `<sparkle:channel>prerelease</sparkle:channel>` and are offered only on that channel.
-- den ships **one update system**: everything goes through the appcast + `plugins.json` above. There is no source-building updater; to follow development, pick the `prerelease` channel.
+- den ships **one update system**: everything goes through the appcast + `plugins.json` above. There is no source-building updater. `main` (developers) rides the prerelease artifacts with hourly checks; `prerelease` follows the usual alpha cadence; `stable` takes untagged releases only.
 - Sparkle quits den without the quit dialog, installs, and relaunches. Unlike den's own relaunch, Sparkle's may take focus.
 
 **Plugin updates.** One conditional GET of `plugins.json` per check: `304 Not Modified` when nothing changed. For each plugin in the channel's entry that is built for the running host (`hostAPI` equal) and whose sha256 differs from the loaded file:

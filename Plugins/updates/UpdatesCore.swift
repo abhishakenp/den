@@ -102,7 +102,7 @@ final class UpdatesCore {
 
   func pickChannel(_ section: Value) -> String {
     let c = section.s("channel")
-    return c == "prerelease" ? "prerelease" : "stable"
+    return c == "prerelease" || c == "main" ? c : "stable"
   }
 
   var usesReleases: Bool { true }
@@ -133,7 +133,8 @@ final class UpdatesCore {
     env.timer(60_000, false) { [self] in
       guard !stopped else { return }
       check(manual: false)
-      let hours = setting("check_hours", 6)
+      // main (developers): hourly, whatever check_hours says.
+      let hours = channel == "main" ? 1 : setting("check_hours", 6)
       env.timer(UInt64(max(hours, 1)) * 3_600_000, true) { [self] in if !stopped { check(manual: false) } }
     }
   }
@@ -155,6 +156,7 @@ final class UpdatesCore {
       etag = v.s("etag")
       let channels = v["value"]["channels"]
       var entry = channels[channel]
+      if entry.isNull, channel == "main" { entry = channels["prerelease"] }
       if entry.isNull { entry = channels["stable"] }
       let n = installUpdates(entry)
       lastResult = n == 0 ? "Plugins are up to date" : "Updating " + String(n) + (n == 1 ? " plugin" : " plugins")
@@ -394,7 +396,9 @@ final class UpdatesCore {
 
     // Channel selector
     controls.append(["key": .string("channel"), "type": .string("choice"), "title": .string("Update channel"), "default": .string(channel),
-      "options": .array([["value": .string("stable"), "title": .string("Stable")], ["value": .string("prerelease"), "title": .string("Prerelease (alpha/beta)")]])])
+      "options": .array([["value": .string("stable"), "title": .string("Stable")],
+                         ["value": .string("prerelease"), "title": .string("Prerelease (alpha/beta)")],
+                         ["value": .string("main"), "title": .string("Main (developers, checks hourly)")]])])
 
     // Pending restart info/button
     if !pendingRestart.isEmpty, !pendingVersion.isEmpty {
@@ -414,9 +418,13 @@ final class UpdatesCore {
       controls.append(["key": .string("lastCheck"), "type": .string("info"), "title": .string("Last check"), "value": .string("\(lastCheckStr) — \(resultText)")])
     }
 
-    // Release notes link if we have a pending or ready version
+    // What's new: the update's changelog (from the appcast), when one is found or ready.
     if !pendingVersion.isEmpty {
-      controls.append(["key": .string("releaseNotes"), "type": .string("info"), "title": .string("Release notes"), "value": .string("See release notes for \(pendingVersion).")])
+      var notes = Self.trimmed(pendingChangelog)
+      if notes.count > 600 { notes = String(notes.prefix(600)) + "…" }
+      controls.append(["key": .string("whatsNew"), "type": .string("info"),
+                       "title": .string("What's new in \(pendingVersion)"),
+                       "value": .string(notes.isEmpty ? "See the release notes on GitHub for \(pendingVersion)." : notes)])
     }
 
     let r = env.call("settings", "register", [
@@ -445,7 +453,7 @@ final class UpdatesCore {
 
   /// Set the update channel.
   func setChannel(_ newChannel: String) {
-    let allowed = ["stable", "prerelease"]
+    let allowed = ["stable", "prerelease", "main"]
     guard allowed.contains(newChannel) else { return }
     channel = newChannel
     configureSparkle()
@@ -459,6 +467,14 @@ final class UpdatesCore {
       "installed": .array(installed.map { ["id": .string($0.0), "sha256": .string($0.1)] }),
       "bad": .array(bad.suffix(50).map { .string($0) }),
     ]])
+  }
+
+  /// Whitespace-trimmed copy (no Foundation in plugins).
+  static func trimmed(_ s: String) -> String {
+    var b = Array(s.unicodeScalars)
+    while let f = b.first, f == " " || f == "\n" || f == "\t" || f == "\r" { b.removeFirst() }
+    while let l = b.last, l == " " || l == "\n" || l == "\t" || l == "\r" { b.removeLast() }
+    return String(String.UnicodeScalarView(b))
   }
 
   static func short(_ sha: String) -> String {
