@@ -95,7 +95,11 @@ extension MockServices {
     """
     <!doctype html><title>Google Calendar - Today</title><body style="font:14px -apple-system;padding:24px"><h2>Today</h2><div id=grid></div>
     <script>
-    const now = new Date();
+    // Pinned to 10:07 local of the real day: minute-bearing labels every run (an on-the-hour
+    // event renders as "3pm", which once reordered a time-sensitive assertion), and the
+    // now+60m events can never cross midnight.
+    const d = new Date();
+    const now = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 10, 7, 0);
     const label = d => d.toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'});
     const t = d => d.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'}).replace(':00', '').replace(/\\s/g, '').toLowerCase();
     let a = new Date(now.getTime() + 60 * 60000); a.setSeconds(0, 0);
