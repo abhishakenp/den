@@ -516,6 +516,32 @@ struct ConnectionsTests {
     HTTPCookie(properties: [.domain: ".gh.example", .path: "/", .name: name, .value: value, .secure: "TRUE", .expires: Date().addingTimeInterval(3600)])!
   }
 
+  /// An existing sign-in in a non-default profile connects at launch: the provider probes the
+  /// profiles the spaces use, not just the default (Dia: signed in is connected).
+  @Test func existingSignInInASpaceProfileConnectsAtLaunch() async {
+    let h = Harness()
+    let tabs = Tabs()
+    h.rt.plugins.provide("tabs") { method, a in
+      if method == "open" { tabs.opened.append(a.s("url")); return ["id": .string("tab-\(tabs.opened.count)")] }
+      return ["ok": true]
+    }
+    h.rt.plugins.provide("spaces") { method, _ in method == "current" ? ["id": "s1"] : [["id": "s1", "name": "Work", "profile": .string(Self.profile)]] }
+    h.rt.call("storage", "set", ["ns": "github", "key": "base", "value": "https://gh.example"])
+    h.rt.permissions.grant("github", ["session:gh.example"])
+    // Signed in already: the cookies sit in the space profile's store.
+    let store = h.rt.webviews.store(for: Self.profile).httpCookieStore
+    await store.setCookie(githubCookie("logged_in", "yes"))
+    await store.setCookie(githubCookie("dotcom_user", "octo-den"))
+    let c = ConnectionsCore(env: env(h, tabs))
+    h.rt.plugins.provide("connections") { a, b in c.handle(a, b) }
+    c.start()
+    let g = GitHubCore(env: h.env)
+    g.start()
+    #expect(await until { h.rt.call("connections", "get", ["id": "github"]).b("connected") })
+    #expect(h.rt.call("connections", "get", ["id": "github"]).s("account") == "@octo-den")
+    #expect(tabs.toasts == ["GitHub connected"])  // the auto-connect toast, no sign-in tab
+  }
+
   /// Signing in to github.com in den connects GitHub by itself (the host's cookie observer emits
   /// `session.cookiesChanged`), with "GitHub connected · Undo"; Undo sticks until a manual Connect.
   @Test func autoConnectToastsWithUndoAndRemembersTheDecline() async {

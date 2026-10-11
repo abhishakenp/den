@@ -22,6 +22,35 @@ struct CookieWatchTests {
     return cond()
   }
 
+  @Test func starWatchCoversEveryProfileIncludingOnesLearnedLater() async throws {
+    let rt = ServiceTests.runtime()
+    rt.permissions.grant("gh", ["session:127.0.0.1"])
+    var events: [Value] = []
+    rt.plugins.on("session.cookiesChanged") { events.append($0) }
+    let session = rt.session
+    // Watch every profile before any non-default one exists.
+    #expect(rt.call("session", "watchCookies", ["plugin": "gh", "domain": "127.0.0.1", "profile": "*"]) == .ok)
+    #expect(await until { session.observedProfiles == ["default"] })
+    #expect(rt.call("session", "profiles")["profiles"].array?.compactMap { $0.string } == ["default"])
+
+    // A web view with a new profile: the star domains get watched there too.
+    let profile = "starwatch-\(UUID().uuidString)"
+    let tab = rt.call("webviews", "create", ["url": "about:blank", "profile": .string(profile)]).str("id")
+    let w = rt.webviews.materialize(tab)!
+    _ = w
+    #expect(await until { session.observedProfiles.contains(profile) && session.hasBaseline("127.0.0.1", profile: profile) })
+    #expect(rt.call("session", "profiles")["profiles"].array?.compactMap { $0.string } == ["default", profile].sorted())
+
+    // A cookie change in that profile's store reports with its profile.
+    await rt.webviews.store(for: profile).httpCookieStore.setCookie(HTTPCookie(properties:
+      [.domain: "127.0.0.1", .path: "/", .name: "sid", .value: "abc"])!)
+    #expect(await until { events.contains { $0.str("domain") == "127.0.0.1" && $0.str("profile") == profile } })
+
+    // Unwatching with "*" takes every profile's watch down.
+    #expect(rt.call("session", "unwatchCookies", ["plugin": "gh", "domain": "127.0.0.1", "profile": "*"]) == .ok)
+    #expect(await until { session.observedProfiles.isEmpty })
+  }
+
   @Test func watchReportsOnlyRealChangesOnTheWatchedDomainAndStopsOnUnwatch() async throws {
     let m = MockServices()
     try m.start()

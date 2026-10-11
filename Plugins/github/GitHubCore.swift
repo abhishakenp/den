@@ -76,8 +76,14 @@ final class GitHubCore {
       if v.s("domain") == cookieDomain { autoProbe(v.sOpt("profile") ?? "default") }
     }
     register()
-    env.call("session", "watchCookies", ["plugin": .string(Self.id), "domain": .string(cookieDomain), "profile": "default"])
-    autoProbe("default")
+    env.call("session", "watchCookies", ["plugin": .string(Self.id), "domain": .string(cookieDomain), "profile": "*"])
+    // Existing sign-ins in every profile (Dia: signed in is connected): the spaces'
+    // profiles (cookies live per profile) plus whatever den knows already; cookie
+    // changes cover sign-ins from here on.
+    var profiles: Set<String> = ["default"]
+    for sp in env.call("spaces", "list").array ?? [] { if let p = sp.sOpt("profile"), !p.isEmpty { profiles.insert(p) } }
+    for pv in env.call("session", "profiles").array ?? [] { if let p = pv.string { profiles.insert(p) } }
+    for p in profiles.sorted() { autoProbe(p) }
   }
 
   /// A probe nobody asked for (launch, a cookie change); skipped after the user undid an auto-connect.

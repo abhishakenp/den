@@ -96,13 +96,19 @@ final class SlackCore {
       if v.s("domain") == domain { autoProbe(v.sOpt("profile") ?? "default") }
     }
     register()
-    env.call("session", "watchCookies", ["plugin": .string(Self.id), "domain": .string(domain), "profile": "default"])
+    env.call("session", "watchCookies", ["plugin": .string(Self.id), "domain": .string(domain), "profile": "*"])
     // Restore workspace hosts seen in tabs across relaunches so the probe can read localStorage
     // from the right origins even if no Slack tab is open yet.
     if case .array(let arr) = env.call("storage", "get", ["ns": .string(Self.ns), "key": .string(Self.seenHostsKey)]) {
       seenHosts = arr.compactMap { v in if let s = v.string { return s } else { return nil } }
     }
-    autoProbe("default")
+    // Existing sign-ins in every profile (Dia: signed in is connected): the spaces'
+    // profiles (cookies live per profile) plus whatever den knows already; cookie
+    // changes cover sign-ins from here on.
+    var profiles: Set<String> = ["default"]
+    for sp in env.call("spaces", "list").array ?? [] { if let p = sp.sOpt("profile"), !p.isEmpty { profiles.insert(p) } }
+    for pv in env.call("session", "profiles").array ?? [] { if let p = pv.string { profiles.insert(p) } }
+    for p in profiles.sorted() { autoProbe(p) }
   }
 
   /// A probe nobody asked for (launch, a cookie change). Skipped after the user undid an

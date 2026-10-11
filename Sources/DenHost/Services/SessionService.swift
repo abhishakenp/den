@@ -20,8 +20,12 @@ import WebKit
 ///       navigation is refused.
 ///   watchCookies {plugin, domain, profile?}   -> ok (idempotent)
 ///   unwatchCookies {plugin, domain, profile?} -> ok
-///       Event `session.cookiesChanged {domain, profile}` (never cookie values) when the cookies
+///       `profile: "*"` watches every profile den knows (and each one it learns about later),
+///       so a sign-in in any space's profile auto-connects. Event
+///       `session.cookiesChanged {domain, profile}` (never cookie values) when the cookies
 ///       covering a watched `domain` change, e.g. the user signs in to or out of that site in den.
+///   profiles -> {profiles: [string]}: every profile den knows ("default" plus each profile a
+///       web view uses), so a provider can probe existing sign-ins in all of them at launch.
 ///       Event-driven: a `WKHTTPCookieStoreObserver` sits on a profile's cookie store only while
 ///       something watches it, backed by finished page loads on the watched domain (see
 ///       `observeLoads` for why); each burst is coalesced into one read (`coalesceMs`, a one-shot
@@ -42,6 +46,9 @@ public final class SessionService: NSObject, HostService, WKNavigationDelegate {
   // MARK: Cookie watches
   /// profile -> domain -> plugins watching it.
   private var watches: [String: [String: Set<String>]] = [:]
+  /// Domains watched with `profile: "*"`: domain -> the plugins watching it. Every profile den
+  /// knows (and each one it learns about later) watches these.
+  private var starWatches: [String: Set<String>] = [:]
   /// profile -> domain -> fingerprint of the cookies covering it (nil until the baseline read).
   private var fingerprints: [String: [String: String]] = [:]
   /// One observer per watched profile's cookie store.
@@ -98,6 +105,8 @@ public final class SessionService: NSObject, HostService, WKNavigationDelegate {
       let id = requestId(args)
       evaluate(id: id, origin: origin, script: script, profile: args.str("profile", "default"), timeoutMs: Int(args.num("timeoutMs", 10_000)))
       return ["id": .string(id)]
+    case "profiles":
+      return ["profiles": .array(knownProfiles().map { .string($0) })]
     case "watchCookies", "unwatchCookies":
       let domain = args.str("domain").lowercased()
       guard !domain.isEmpty else { return .error("session: domain required") }
@@ -110,7 +119,20 @@ public final class SessionService: NSObject, HostService, WKNavigationDelegate {
     }
   }
 
+  /// Every profile den knows: "default" plus each profile a web view uses.
+  func knownProfiles() -> [String] {
+    var out: Set<String> = ["default"]
+    for r in webviews.records.values { out.insert(r.profile) }
+    out.formUnion(watches.keys)
+    return out.sorted()
+  }
+
   func watch(plugin: String, domain: String, profile: String) {
+    if profile == "*" {
+      starWatches[domain, default: []].insert(plugin)
+      for p in knownProfiles() { watch(plugin: plugin, domain: domain, profile: p) }
+      return
+    }
     let isNewDomain = watches[profile]?[domain] == nil
     watches[profile, default: [:]][domain, default: []].insert(plugin)
     watchLoads()
@@ -150,6 +172,14 @@ public final class SessionService: NSObject, HostService, WKNavigationDelegate {
     guard !loadHookInstalled else { return }
     loadHookInstalled = true
     webviews.createdHooks.append { [weak self] r, w in self?.observeLoads(r, w) }
+    webviews.createdHooks.append { [weak self] r, _ in
+      guard let self, !self.starWatches.isEmpty else { return }
+      let watched = self.watches[r.profile] ?? [:]
+      // Baseline before observer inside `watch` (the macOS 26 ordering caveat).
+      for d in self.starWatches.keys.filter({ watched[$0] == nil }).sorted() {
+        for plugin in self.starWatches[d]!.sorted() { self.watch(plugin: plugin, domain: d, profile: r.profile) }
+      }
+    }
   }
 
   func observeLoads(_ r: WebRecord, _ w: WKWebView) {
@@ -169,6 +199,12 @@ public final class SessionService: NSObject, HostService, WKNavigationDelegate {
   }
 
   func unwatch(plugin: String, domain: String, profile: String) {
+    if profile == "*" {
+      starWatches[domain]?.remove(plugin)
+      if starWatches[domain]?.isEmpty == true { starWatches[domain] = nil }
+      for p in Array(watches.keys) { unwatch(plugin: plugin, domain: domain, profile: p) }
+      return
+    }
     guard var ds = watches[profile], var ps = ds[domain] else { return }
     ps.remove(plugin)
     if ps.isEmpty {
