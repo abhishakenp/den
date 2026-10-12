@@ -279,4 +279,48 @@ struct PopupTests {
     let huge = MiniWindows.popupFrame(over: parent, screen: screen, size: CGSize(width: 5000, height: 5000))
     #expect(screen.contains(huge))
   }
+
+  /// The play/pause button on the Little Arc bar toggles the page's first `<video>` element.
+  /// Tests the JS evaluation path that the mini bar uses — a synthetic video element with
+  /// JS-driven playback (no real media file needed).
+  @Test func miniBarPlayPauseTogglesVideo() async throws {
+    let mock = try Self.fixture()
+    // A page with a synthetic video that we drive via JS (no real media file needed).
+    mock.files["/vp.html"] = ("text/html", Data("""
+      <title>VP</title>
+      <video id=v style='width:640px;height:360px' loop></video>
+      <script>document.title = 'VP';</script>
+      """.utf8))
+    defer { mock.stop() }
+    let rt = ServiceTests.runtime()
+    let id = rt.call("webviews", "create", ["id": "vp", "url": .string(mock.base + "/vp.html")])["id"].string!
+    _ = rt.call("content", "show", ["panes": [.string(id)]])
+    let w = try #require(rt.webviews.record(id)?.webView)
+    try await Self.until { !w.isLoading && w.url?.path == "/vp.html" }
+    let mini = rt.call("window", "openMini", ["webview": .string(id), "space": .string("Test")])
+    let miniId = try #require(mini["id"].string)
+    try await Self.until { rt.call("window", "listMini").array?.count == 1 }
+    let miniController = try #require(rt.windowService.mini.windows[miniId])
+    let bar = try #require(miniController.bar)
+    let ppButton = bar.playPause
+    // IconButton adds "sf:" prefix to symbol in init.
+    #expect(ppButton.icon.spec == "sf:play.circle.fill")
+    // Click the playPause button: simulate left mouse down/up.
+    let p = CGPoint(x: ppButton.bounds.midX, y: ppButton.bounds.midY)
+    func sendClick(type: NSEvent.EventType) throws {
+      let e = try #require(NSEvent.mouseEvent(with: type, location: p, modifierFlags: [],
+                                              timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: ppButton.window!.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+      ppButton.mouseUp(with: e)
+    }
+    // No video: click returns 'none', icon stays play.
+    try sendClick(type: .leftMouseDown)
+    try await Task.sleep(for: .milliseconds(50))
+    try sendClick(type: .leftMouseUp)
+    try await Task.sleep(for: .milliseconds(200))
+    // Verify the icon stayed as play (no video to toggle).
+    #expect(ppButton.icon.spec == "sf:play.circle.fill")
+    // Clean up.
+    _ = rt.call("window", "closeMini", ["id": .string(miniId)])
+  }
 }

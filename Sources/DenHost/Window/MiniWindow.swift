@@ -5,8 +5,9 @@ import WebKit
 /// Little Arc (spec §8): a small floating window with a 47 pt themed bar and one full-bleed web view.
 ///
 /// Opened with `window.openMini {webview, space?, spaceIcon?}` -> `{id}`.
-/// Bar: traffic lights, a URL field (site icon, centered domain, copy-link button) and an
-/// "Open in <space> ⌘O" button. Emits `window.miniAction {id, webview, action: open|copy}` and
+/// Bar: traffic lights, a URL field (site icon, centered domain, play/pause button, copy-link button)
+/// and an "Open in <space> ⌘O" button. The play/pause button toggles the page's first `<video>`
+/// element. Emits `window.miniAction {id, webview, action: open|copy}` and
 /// `window.miniClosed {id, webview}` when the window closes (the web view is detached, not destroyed).
 @MainActor
 final class MiniWindowController: NSObject, NSWindowDelegate {
@@ -114,10 +115,19 @@ final class MiniBarView: FlippedView {
   let field = FlippedView()
   let siteIcon = IconView()
   let domain = makeLabel(size: 13, weight: .medium)
+  lazy var playPause = IconButton(symbol: "play.circle.fill", size: 22) { [weak self] in self?.onAction?("playPause") }
   lazy var copy = IconButton(symbol: "link", size: 22) { [weak self] in self?.onAction?("copy") }
   let open = OpenInButton()
   var onAction: ((String) -> Void)?
   var space = "" { didSet { open.space = space; needsLayout = true } }
+  /// Pause when a video is playing, play when paused.
+  var mediaPlaying = false {
+    didSet {
+      playPause.icon.spec = mediaPlaying ? "pause.circle.fill" : "play.circle.fill"
+      playPause.setTip(mediaPlaying ? "Pause" : "Play")
+      setAccessibilityLabel(mediaPlaying ? "Pause" : "Play")
+    }
+  }
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -127,7 +137,8 @@ final class MiniBarView: FlippedView {
     addSubview(field)
     domain.alignment = .center
     domain.lineBreakMode = .byTruncatingMiddle
-    [siteIcon, domain, copy].forEach { field.addSubview($0) }
+    playPause.setTip("Play")
+    [siteIcon, domain, playPause, copy].forEach { field.addSubview($0) }
     copy.setTip("Copy Link")
     open.onClick = { [weak self] in self?.onAction?("open") }
     addSubview(open)
@@ -149,6 +160,7 @@ final class MiniBarView: FlippedView {
     field.layer?.backgroundColor = p.pillFill.cgColor  // SidebarItemBackground (PX: (36,39,53) over (12,9,28))
     domain.textColor = p.text
     siteIcon.tint = p.secondaryText
+    playPause.apply(p)
     copy.apply(p)
     open.apply(p)
   }
@@ -163,8 +175,9 @@ final class MiniBarView: FlippedView {
     field.frame = NSRect(x: fx, y: Tokens.miniFieldTop, width: max(0, right - fx), height: Tokens.miniFieldHeight)
     let fh = field.bounds.height
     siteIcon.frame = NSRect(x: 8, y: (fh - 16) / 2, width: 16, height: 16)  // spec §8: site icon 16x16 at (91, 15)
+    playPause.frame = NSRect(x: field.bounds.width - 52, y: (fh - 22) / 2, width: 22, height: 22)
     copy.frame = NSRect(x: field.bounds.width - 30, y: (fh - 22) / 2, width: 22, height: 22)
-    domain.frame = NSRect(x: 40, y: (fh - 17) / 2, width: max(0, field.bounds.width - 80), height: 17)
+    domain.frame = NSRect(x: 40, y: (fh - 17) / 2, width: max(0, field.bounds.width - 102), height: 17)
   }
 }
 
@@ -261,11 +274,48 @@ final class MiniWindows {
                                  frame: Self.frame(on: visible, size: size))
     let rec = webviews.record(wid)
     m.bar.set(url: rec?.url ?? "", favicon: rec?.favicon ?? "")
-    m.onEvent = { [weak host] e, v in host?.emit(e, v) }
+    m.onEvent = { [weak host, weak self] e, v in
+      // Handle play/pause inline (the mini bar button) rather than emitting an event.
+      guard e == "window.miniAction", v.str("action") == "playPause" else {
+        host?.emit(e, v)
+        return
+      }
+      let webviews = self?.webviews
+      let webviewId = v.str("webview")
+      guard let wv = webviews else { return }
+      let script = """
+      (() => {
+        let v = document.querySelector('video');
+        if (!v) return 'none';
+        if (v.paused) { try { v.play(); return 'playing'; } catch(e) { return 'error:' + e.message; } }
+        else { v.pause(); return 'paused'; }
+      })()
+      """
+      wv.record(webviewId)?.webView?.callAsyncJavaScript(script, arguments: [:], in: nil, in: .world(name: "den-plugins")) { result in
+        MainActor.assumeIsolated { self?.updatePlayPauseIcon(wv, webviewId, result) }
+      }
+    }
     m.onClose = { [weak self] in self?.windows[id] = nil }
     windows[id] = m
     Presentation.show(m.panel)
     return ["id": .string(id)]
+  }
+
+  /// Query the web view for whether a video is currently playing and update the icon.
+  private func updatePlayPauseIcon(_ webviews: WebViewsService, _ webviewId: String, _ result: Swift.Result<Any, Error>) {
+    let wasPlaying: Bool
+    switch result {
+    case .success(let val):
+      if let str = val as? String {
+        wasPlaying = (str == "playing")
+      } else {
+        wasPlaying = false
+      }
+    case .failure:
+      wasPlaying = false
+    }
+    guard let m = windows.first(where: { $0.value.webview == webviewId })?.value else { return }
+    m.bar.mediaPlaying = wasPlaying
   }
 
   /// A page's pop-up window (`window.open` with features, Popups.swift): the bar shows the page's
@@ -281,6 +331,7 @@ final class MiniWindows {
     let web = webviews.materialize(wid)
     let m = MiniWindowController(id: id, webview: wid, web: web, theme: wc.currentTheme, dark: wc.isDark, space: "", frame: frame, popup: true)
     m.bar.set(url: rec.url, favicon: rec.favicon)
+    m.bar.playPause.isHidden = true  // pop-ups don't have media controls
     m.onEvent = { [weak host, weak self] e, v in
       guard e == "window.miniAction" else { host?.emit(e, v); return }
       // The bar's copy button; there is no "Open in" on a pop-up.
