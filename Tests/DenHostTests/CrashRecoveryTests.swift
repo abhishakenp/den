@@ -1,4 +1,5 @@
 import CordisValue
+import DenTestSupport
 import Foundation
 import Testing
 
@@ -6,6 +7,7 @@ import Testing
 
 /// CrashRecovery's rules, without a web view: when a crashed page may come back by itself, and
 /// where its video resumes.
+@Suite(.watchdog)
 struct CrashRecoveryTests {
   @Test func aPageComesBackUntilItKeepsCrashing() {
     let t0 = Date(timeIntervalSince1970: 1_000_000)

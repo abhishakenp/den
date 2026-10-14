@@ -297,9 +297,10 @@ struct GoogleNotionTests {
     let before = m.log.count
     h.rt.plugins.emit("feed.refresh", ["reason": "manual"])
     #expect(await ct.until { feedItems(h, "calendar") != nil })
-    // Remaining events (all three, unless the run is in the last hour of the day).
+    // Remaining events: the all-day one always; the timed ones (pinned to late morning on the
+    // page, 7275cf7) only while the run's real clock is before they end.
     let remaining = cal.events.filter { $0.b("allDay") || $0.i("end") > h.clock }.count
-    #expect(feedItems(h, "calendar")!.count == remaining && remaining >= 2)
+    #expect(feedItems(h, "calendar")!.count == remaining && remaining >= 1)
     #expect(m.log.count == before)
   }
 
