@@ -3,6 +3,20 @@
 <channel>
 <title>den</title>
 <item>
+  <title>den 0.2.0-alpha.14</title>
+  <pubDate>Wed, 14 Oct 2026 17:38:10 +0000</pubDate>
+  <sparkle:channel>prerelease</sparkle:channel>
+  <sparkle:version>428</sparkle:version>
+  <sparkle:shortVersionString>0.2.0-alpha.14</sparkle:shortVersionString>
+  <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+  <sparkle:releaseNotesLink>https://github.com/abhishakenp/den/releases/tag/v0.2.0-alpha.14</sparkle:releaseNotesLink>
+  <description><![CDATA[- test: watchdog on CrashRecoveryTests; calendar feed test no longer depends on the time of day (1f182b1)
+- fix(webviews): YouTube tabs recover from a dead web process; drop the per-frame screen share poll (dfdae2e)
+- mini: add play/pause button to Little Arc bar for video playback control (a329226)
+- release: v0.2.0-alpha.13 appcast and plugin manifest (b0a31e6)]]></description>
+  <enclosure url="https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.14/den-0.2.0-alpha.14.zip" length="10195334" type="application/octet-stream" sparkle:edSignature="kFUXZsIv8wZTQCXG9+mao4tOo702TYebxIJ45J2EtspwKKxkfIq+cgWge2MKHdObrXQSY2HIjryXDzA8x2QICg=="/>
+</item>
+<item>
   <title>den 0.2.0-alpha.13</title>
   <pubDate>Sun, 11 Oct 2026 06:00:48 +0000</pubDate>
   <sparkle:channel>prerelease</sparkle:channel>
