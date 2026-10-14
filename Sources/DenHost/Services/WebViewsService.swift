@@ -21,6 +21,17 @@ public struct PageMedia: Equatable {
   public var now: Value?
 
   init() {}
+
+  /// The same report but for the playing video's current time (`video.t`).
+  func sameIgnoringTime(_ o: PageMedia) -> Bool {
+    func strip(_ m: PageMedia) -> PageMedia {
+      var m = m
+      if case let .object(pairs)? = m.video { m.video = .object(pairs.filter { $0.0 != "t" }) }
+      return m
+    }
+    return strip(self) == strip(o)
+  }
+
   init(_ v: Value) {
     audible = v.flag("a")
     playing = v.flag("p")
@@ -81,9 +92,15 @@ public final class WebRecord {
   fileprivate var snapshotWaiters: [@MainActor () -> Void]?
   /// A snapshot of the page is being taken right now.
   public var isCapturingSnapshot: Bool { snapshotWaiters != nil }
-  /// The web process died (`webViewWebContentProcessDidTerminate`): the crash page shows the
-  /// next time the page is on screen, and Reload brings the page back.
+  /// The web process died (`webViewWebContentProcessDidTerminate`): the page comes back by itself
+  /// (`showCrashPageIfNeeded`) the next time it's on screen, or at once when it was on screen or
+  /// playing. Only a page that keeps crashing gets the crash page with Reload.
   public fileprivate(set) var crashed = false
+  /// When this page's web process died lately (`CrashRecovery.mayRestore` keeps the last few).
+  public fileprivate(set) var crashTimes: [Date] = []
+  /// Where a page restored after a crash picks up its video: the URL, the time, and whether it
+  /// was playing. Applied on the restored page's first media report with a long enough video.
+  public fileprivate(set) var resume: CrashRecovery.Resume?
   /// The page has painted (its first visually non-empty layout) since this view was created.
   /// Until then the view draws no background of its own, so the card's colour shows instead of
   /// WebKit's white.
@@ -192,7 +209,7 @@ public final class WebRecord {
 ///
 /// Events: webviews.title {id,title}  webviews.url {id,url}  webviews.favicon {id,url}
 ///   webviews.progress {id,progress,loading}  webviews.state {id,canGoBack,canGoForward}
-///   webviews.audio {id,playing}  webviews.newWindow {id,url,background?,webview?}  webviews.crashed {id}
+///   webviews.audio {id,playing}  webviews.newWindow {id,url,background?,webview?}  webviews.crashed {id}  webviews.restored {id,url,resume}
 ///   webviews.popup {id,opener,url}  webviews.popupBlocked {id,url,count}  webviews.closeRequested {id,opener}  (Popups.swift)
 ///   webviews.suspended {id}  webviews.snapshot {id,path,ok}  webviews.muted {id,muted}  webviews.volume {id,volume}
 ///   webviews.rate {id,rate}  webviews.media {id, playing, pip, dirty}
@@ -424,7 +441,8 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     config.userContentController.add(scriptHandler, contentWorld: PageScripts.world, name: PageScripts.handler)
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.sessionHook, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
     config.userContentController.addUserScript(WKUserScript(source: PageScripts.screenShare, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
-    config.userContentController.add(scriptHandler, contentWorld: PageScripts.screenShareWorld, name: "denScreenShare")
+    config.userContentController.addUserScript(WKUserScript(source: PageScripts.screenShareBridge, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: PageScripts.screenShareWorld))
+    config.userContentController.add(screenShareHandler, contentWorld: PageScripts.screenShareWorld, name: "denScreenShare")
     for h in configureHooks { h(r, config) }
     for list in ruleLists { config.userContentController.add(list) }
     config.userContentController.addUserScript(WKUserScript(source: DenWebView.contextScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
@@ -1154,22 +1172,49 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
     guard let r = recordFor(webView) else { return }
+    let m = r.media
+    let url = webView.url?.absoluteString ?? r.url
+    // Where its video was, before the dead frames' reports are dropped.
+    r.resume = CrashRecovery.resume(url: url, video: m.video)
     r.frames = [:]
     mediaChanged(r)
     r.crashed = true
-    // On screen: the crash page at once. Off screen: when it's next shown (`showCrashPageIfNeeded`),
-    // so a background crash starts no new web process.
-    if webView.window != nil { showCrashPageIfNeeded(r.id) }
+    Self.navLog("CRASHED", webView, url, extra: "playing=\(m.playing) resume=\(r.resume.map { String(format: "%.1f", $0.time) } ?? "-")")
+    // On screen, or playing (music in a background tab): back at once. Otherwise when it's next
+    // shown (`showCrashPageIfNeeded`), so a background crash starts no new web process.
+    if webView.window != nil || m.playing { showCrashPageIfNeeded(r.id) }
     host.emit("webviews.crashed", ["id": .string(r.id)])
   }
 
-  /// den's "This page crashed · Reload" page in place of a dead page (Dia 0.45). The tab keeps
-  /// its URL, so Reload (the button, ⌘R) loads the real page again. Never reloads by itself.
+  /// A page whose web process died comes back by itself: the same URL (WebKit's reload keeps its
+  /// back/forward list), and its video resumes where it was (`resume`). One that keeps crashing
+  /// (`CrashRecovery.mayRestore`) gets den's "This page crashed · Reload" page instead (Dia 0.45):
+  /// the tab keeps its URL, so Reload (the button, ⌘R) loads the real page again.
   public func showCrashPageIfNeeded(_ id: String) {
     guard let r = records[id], r.crashed, let w = r.webView else { return }
     r.crashed = false
     let url = w.url ?? URL(string: r.url) ?? URL(string: "about:blank")!
+    let (restore, times) = CrashRecovery.mayRestore(r.crashTimes, now: Date())
+    r.crashTimes = times
+    if restore {
+      Self.navLog("RESTORE", w, url.absoluteString)
+      if w.url != nil { w.reload() } else { w.load(URLRequest(url: url)) }
+      host.emit("webviews.restored", ["id": .string(r.id), "url": .string(url.absoluteString),
+                                      "resume": r.resume.map { .double($0.time) } ?? .null])
+      return
+    }
+    r.resume = nil
     w.loadSimulatedRequest(URLRequest(url: url), responseHTML: WebErrorPage.html(WebErrorPage.crashed, url: url, colors: prompts?.errorPageColors))
+  }
+
+  /// The restored page's video is ready: back to where it was (and playing, if it was).
+  func applyResume(_ r: WebRecord, _ w: WKWebView, _ media: PageMedia) {
+    guard let res = r.resume, let v = media.video, let dur = v["dur"].double, dur > res.time else { return }
+    guard CrashRecovery.samePage(w.url?.absoluteString ?? "", res.url) else { r.resume = nil; return }
+    r.resume = nil
+    Self.navLog("RESUME", w, res.url, extra: String(format: "t=%.1f play=%d", res.time, res.play ? 1 : 0))
+    w.callAsyncJavaScript("return window.__denMedia && window.__denMedia.resume(t, p)", arguments: ["t": res.time, "p": res.play],
+                          in: nil, in: PageScripts.world)
   }
 
   // MARK: First paint (no white flash)
@@ -1330,11 +1375,16 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
       r.playbackApplied = true
       Self.applyPlayback(w, volume: r.volume, rate: r.rate)
     }
+    if msg.frameInfo.isMainFrame, r.resume != nil { applyResume(r, w, media) }
+    // A report that only moved the playing video's time (`timeupdate`, every few seconds): kept
+    // for a crash restore, nothing to tell the plugins.
+    let old = r.frames[key]?.media
     if !msg.frameInfo.isMainFrame && !media.playing && !media.dirty && !media.pip && media.video == nil && media.now.map({ _ in true }) != true {
       r.frames[key] = nil
     } else {
       r.frames[key] = (msg.frameInfo, media)
     }
+    if let old, old.sameIgnoringTime(media) { return }
     mediaChanged(r)
   }
 

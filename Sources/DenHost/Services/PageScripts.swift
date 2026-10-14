@@ -4,7 +4,8 @@ import WebKit
 /// document start into every frame, in den's own isolated content world (`den`): the page can't
 /// see or tamper with it, but it shares the DOM, so it hears the media and input events.
 ///
-/// It posts `denMedia` messages only when something changes (never on a timer):
+/// It posts `denMedia` messages only when something changes (never on a timer; a playing video's
+/// `timeupdate` refreshes its time at most every 5 s, for a crash restore):
 ///   {k: "s", a, p, d, pip, v, n}  state: a = audible media playing, p = any media playing,
 ///                              d = unsaved form input, pip = a video of this frame is in picture
 ///                              in picture (WebKit's), v = the frame's main playing video,
@@ -109,6 +110,17 @@ enum PageScripts {
     document.addEventListener(e, ev => { follow(ev); soon(); }, true);
   }
   // Media Session handlers or metadata changed in the page (sessionHook, page world).
+  // A playing video's time, at most every 5 s (den restores a crashed page there). Sent only
+  // with the rest of the state; the host tells nobody about a report that only moved the time.
+  let tAt = 0;
+  document.addEventListener('timeupdate', ev => {
+    if (!isMedia(ev.target) || ev.target.paused) return;
+    const now = Date.now();
+    if (now - tAt < 5000) return;
+    tAt = now;
+    last = '';
+    soon();
+  }, true);
   document.addEventListener('__denms', ev => { try { const a = JSON.parse(String(ev.detail || '[]')); if (Array.isArray(a)) acts = a.map(String).slice(0, 16); } catch (e) {} soon(); }, true);
   const fire = a => { try { document.dispatchEvent(new CustomEvent('__denmsdo', { detail: a })); } catch (e) {} return true; };
 
@@ -178,6 +190,18 @@ enum PageScripts {
       try { await document.exitPictureInPicture(); } catch (e) { return false; }
       return true;
     },
+    // After a crash restore: the page's main video back to `t` seconds, playing if `play`.
+    // A video shorter than `t` (an ad before it) is left alone (false).
+    resume(t, play) {
+      let v = best();
+      if (!v || !(v.duration > t)) { v = null; for (const x of document.querySelectorAll('video')) if (x.duration > t && isFinite(x.duration)) { v = x; break; } }
+      if (!v) return false;
+      if (Math.abs(v.currentTime - t) > 2) v.currentTime = t;
+      if (play && v.paused) v.play().catch(() => {});
+      if (!play && !v.paused) v.pause();
+      soon();
+      return true;
+    },
     // A report now, sent even if nothing changed (den deciding with what it last heard).
     refresh() { last = ''; state(); return true; },
     probe() { const v = pipVideo() || document.querySelector('video'); return v ? Object.assign(info(v), { inPip: document.pictureInPictureElement === v }) : null; },
@@ -233,47 +257,54 @@ enum PageScripts {
     (function(){if(!/^https?:$/.test(location.protocol))return '';var l=document.querySelector('link[rel~="apple-touch-icon"]')||document.querySelector('link[rel~="icon"]')||document.querySelector('link[rel="shortcut icon"]');return l&&l.href?l.href:(location.origin+'/favicon.ico')})()
     """
 
-  /// Content world for screen share detection scripts (distinct from the page world so pages can't
-  /// see or tamper with it).
+  /// Content world for the screen share bridge (`screenShareBridge`): the page can't see or
+  /// tamper with it.
   static let screenShareWorld = WKContentWorld.world(name: "den.screenShare")
 
-  /// Screen share detection: polls for active screen share video tracks via the MediaDevices API
-  /// and posts state changes ({k: "sc", active: true|false}) back to the host. This covers
-  /// `navigator.mediaDevices.getDisplayMedia()` which WebKit does not expose through WKWebView.
-  /// The badge shows a red screen icon when active.
+  /// Screen share detection, page world, every frame. Event-driven: it wraps
+  /// `navigator.mediaDevices.getDisplayMedia()` (which WebKit doesn't report through WKWebView) and
+  /// follows the returned video tracks until they end or are stopped. On every change it tells the
+  /// den world (`screenShareBridge`) through a DOM event carrying a string. Nothing runs between
+  /// changes: no timer, no animation-frame loop (an earlier version polled on every animation
+  /// frame in every frame of every page, keeping YouTube's renderer busy, and couldn't even reach
+  /// its message handler from the page world).
   static let screenShare: String = #"""
     (() => {
-      if (window.__denScreenShare) return;
-      window.__denScreenShare = true;
-      const post = m => { try { webkit.messageHandlers.denScreenShare.postMessage(m) } catch (e) {} };
+      const md = navigator.mediaDevices;
+      if (!md || window.__denScreenShare) return;
+      Object.defineProperty(window, '__denScreenShare', { value: true });
+      const P = Object.getPrototypeOf(md);
+      const orig = P && P.getDisplayMedia;
+      if (typeof orig !== 'function') return;
+      const live = new Set();
+      const note = () => { try { document.dispatchEvent(new CustomEvent('__densc', { detail: live.size ? '1' : '0' })); } catch (e) {} };
+      const follow = t => {
+        if (live.has(t)) return;
+        live.add(t);
+        const done = () => { if (live.delete(t)) note(); };
+        t.addEventListener('ended', done);
+        const stop = t.stop;
+        t.stop = function () { const r = stop.apply(this, arguments); done(); return r; };
+      };
+      Object.defineProperty(P, 'getDisplayMedia', { configurable: true, writable: true, value: function () {
+        return orig.apply(this, arguments).then(s => { try { s.getVideoTracks().forEach(follow); note(); } catch (e) {} return s; });
+      } });
+    })();
+  """#
+
+  /// den.screenShare world, every frame: posts `{k: "sc", active}` to `denScreenShare` when the
+  /// page world's `screenShare` hook reports a change.
+  static let screenShareBridge: String = #"""
+    (() => {
+      if (window.__denScreenShareBridge) return;
+      window.__denScreenShareBridge = true;
       let active = false;
-      function check() {
-        let s = false;
-        try {
-          const t = document.pictureInPictureElement;
-          if (t) s = true;
-          if (!s) {
-            try {
-              const v = document.querySelector('video:-webkit-cast, video[chromecast], video[airplay]');
-              if (v && v.readyState > 0) s = true;
-            } catch(e) {}
-          }
-          if (!s) {
-            try {
-              const els = document.querySelectorAll('iframe[src*="chrome://"], iframe[src*="meet.google"], iframe[src*="hangouts"]');
-              for (const el of els) {
-                try {
-                  const c = el.closest('[class*="cast"], [class*="cast-container"], [class*="cast-dialog"]');
-                  if (c) s = true;
-                } catch(e) {}
-              }
-            } catch(e) {}
-          }
-        } catch(e) {}
-        if (s !== active) { active = s; post({ k: "sc", a: s }); }
-      }
-      const loop = () => { check(); requestAnimationFrame(loop); };
-      requestAnimationFrame(loop);
+      document.addEventListener('__densc', e => {
+        const a = String(e.detail) === '1';
+        if (a === active) return;
+        active = a;
+        try { webkit.messageHandlers.denScreenShare.postMessage({ k: 'sc', active: a }); } catch (x) {}
+      }, true);
     })();
   """#
 }

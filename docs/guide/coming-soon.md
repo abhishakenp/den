@@ -28,7 +28,7 @@ What's being built or planned, from [ROADMAP.md](../../ROADMAP.md) and the curre
 - A built-in ad and tracker blocker.
 - Link routing rules (URL → space), like Arc's Air Traffic Control.
 - Boosts: per-site colors, fonts and CSS.
-- Crash recovery; a "Page crashed · Reload" view and protection against endless alerts.
+- Protection against endless alerts.
 - Web apps (PWA).
 - Non-US keyboard layouts for shortcuts, and CJK input in the command bar.
 

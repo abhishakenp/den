@@ -210,7 +210,7 @@ What Arc, Dia and Zen do, and where den stands on each. The Arc, Dia and Zen col
 | Feature | den | Notes |
 |---|---|---|
 | [Complete macOS menu bar; every shortcut is a menu item](guide/shortcuts.md) | ✅ | |
-| [Session restore](guide/sidebar-and-tabs.md) | 🟡 | ✅ spaces, tabs and selection survive quit and updates. ⏳ crash recovery, a "Page crashed · Reload" view |
+| [Session restore](guide/sidebar-and-tabs.md) | 🟡 | ✅ spaces, tabs and selection survive quit and updates; a page whose web process dies comes back by itself (its video resumes where it was), and one that keeps crashing shows a "Page crashed · Reload" view |
 | [Error pages with Try Again](guide/page-tools.md) | ✅ | Offline, host not found, timeout, can't connect, not private |
 | [Page prompts](guide/privacy-and-passwords.md) | ✅ | Camera/mic, location, notifications (to Notification Center while the tab is open), HTTP sign-in, file panels, JS alert/confirm/prompt |
 | [Default browser handling](guide/getting-started.md) | ✅ | Settings, menu bar, command bar banner, "Try for a week" |

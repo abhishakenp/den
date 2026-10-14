@@ -40,28 +40,35 @@ struct PageSafetyTests {
     return m
   }
 
-  @Test(.timeLimit(.minutes(3))) func aDeadWebProcessShowsTheCrashPageAndReloadRecovers() async throws {
+  @Test(.timeLimit(.minutes(3))) func aDeadWebProcessComesBackByItselfUntilItKeepsCrashing() async throws {
     let h = Harness()
     let mock = try served(["/p": "<title>Plain page</title><p>hello</p>", "/q": "<title>Other page</title><p>other</p>"])
     defer { mock.stop() }
-    h.record(["webviews.crashed"])
+    h.record(["webviews.crashed", "webviews.restored"])
     let a = h.rt.call("webviews", "create", ["id": "crash-a", "url": .string(mock.base + "/p")])["id"].string!
     _ = h.rt.call("content", "show", ["panes": [.string(a)]])
     let w = try #require(h.rt.webviews.record(a)?.webView)
     #expect(await until { w.title == "Plain page" })
-    // Kill the page's real WebContent process (WebKit's own test hook).
+    // Kill the page's real WebContent process: it comes back by itself, same URL, new process.
+    // Up to CrashRecovery.limit times within its window.
+    for n in 1...CrashRecovery.limit {
+      let pid = w.value(forKey: "_webProcessIdentifier") as? NSNumber
+      #expect(PageSafetyTests.crash(w))
+      #expect(await until { h.events.filter { $0.0 == "webviews.restored" }.count == n })
+      #expect(await until { w.title == "Plain page" && (w.value(forKey: "_webProcessIdentifier") as? NSNumber) != pid })
+      #expect(w.url?.absoluteString == mock.base + "/p")
+    }
+    // One crash too many: den's crash page, which never reloads by itself.
     #expect(PageSafetyTests.crash(w))
-    #expect(await until { h.events.contains { $0.0 == "webviews.crashed" } })
     #expect(await until { w.title == "This page crashed" })
     #expect(await js(w, "document.body.dataset.denError") as? String == "crashed")
     #expect(await js(w, "document.getElementById('retry').textContent") as? String == "Reload")
     #expect(w.url?.absoluteString == mock.base + "/p")  // the tab keeps its page
-    // It never reloads by itself; Reload brings the page back.
     try? await Task.sleep(for: .milliseconds(600))
     #expect(w.title == "This page crashed")
     _ = h.rt.call("webviews", "reload", ["id": .string(a)])
     #expect(await until { w.title == "Plain page" })
-    // A page that crashes off screen shows the page when it's next on screen.
+    // A page that crashes off screen (nothing playing) waits to come back until it's shown.
     let b = h.rt.call("webviews", "create", ["id": "crash-b", "url": .string(mock.base + "/q")])["id"].string!
     _ = h.rt.call("content", "show", ["panes": [.string(b)]])
     let wb = try #require(h.rt.webviews.record(b)?.webView)
@@ -70,8 +77,41 @@ struct PageSafetyTests {
     #expect(await until { wb.window == nil })
     #expect(Self.crash(wb))
     #expect(await until { h.rt.webviews.record(b)?.crashed == true })
+    try? await Task.sleep(for: .milliseconds(400))
+    #expect(h.rt.webviews.record(b)?.crashed == true)  // no new web process while it's hidden
     _ = h.rt.call("content", "show", ["panes": [.string(b)]])
-    #expect(await until { wb.title == "This page crashed" })
+    #expect(await until { h.rt.webviews.record(b)?.crashed == false })
+    #expect(await until { wb.title == "Other page" })
+  }
+
+  /// A video page whose web process dies comes back playing at the same time (YouTube's case).
+  @Test(.timeLimit(.minutes(3))) func aCrashedVideoResumesWhereItWas() async throws {
+    let h = Harness()
+    let mock = MockServices()
+    try mock.start()
+    defer { mock.stop() }
+    let video = try #require(MediaScenarios.fixture())
+    mock.files = [
+      "/v.html": ("text/html", Data("<title>V</title><video src='/v.mp4' style='width:640px' muted autoplay></video>".utf8)),
+      "/v.mp4": ("video/mp4", video),
+    ]
+    h.record(["webviews.restored"])
+    let id = h.rt.call("webviews", "create", ["id": "crash-v", "url": .string(mock.base + "/v.html")])["id"].string!
+    _ = h.rt.call("content", "show", ["panes": [.string(id)]])
+    let w = try #require(h.rt.webviews.record(id)?.webView)
+    #expect(await until { w.title == "V" })
+    // Muted, playing, at 12 s (the fixture is 30 s long); den hears the time.
+    _ = await js(w, "const v = document.querySelector('video'); v.muted = true; v.currentTime = 12; v.play(); 1")
+    #expect(await until(20) { (h.rt.webviews.record(id)?.media.video?["t"].double ?? 0) >= 12 })
+    #expect(PageSafetyTests.crash(w))
+    #expect(await until { h.events.contains { $0.0 == "webviews.restored" } })
+    #expect(await until { w.title == "V" })
+    // Back where it was, and playing.
+    #expect(await until(20) {
+      guard let v = h.rt.webviews.record(id)?.media.video, let t = v["t"].double else { return false }
+      return t >= 11 && v["paused"].bool == false
+    })
+    #expect(h.rt.webviews.record(id)?.resume == nil)
   }
 
   @Test(.timeLimit(.minutes(3))) func aDialogLoopCanBeStoppedAfterThree() async throws {
