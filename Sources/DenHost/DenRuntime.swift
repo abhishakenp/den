@@ -113,6 +113,9 @@ public final class DenRuntime {
     webviews.uploadPicker = UploadPicker(downloads: downloads)
     // No platform passkeys without Apple's entitlement: pages are told so (Passkeys.swift).
     webviews.configureHooks.append { _, c in Passkeys.configure(c) }
+    // Local network report for an on-device assistant (NetReport.swift): off by default.
+    NetReport.shared.webviews = webviews
+    webviews.configureHooks.append { _, c in NetReport.shared.configure(c) }
     // The real profile keeps extensions next to its storage and a persistent controller; any other
     // storage root (tests, --demo, --storage) gets its own folder and a non-persistent controller.
     let isDefault = storageRoot.standardizedFileURL == StorageService.defaultRoot.standardizedFileURL
