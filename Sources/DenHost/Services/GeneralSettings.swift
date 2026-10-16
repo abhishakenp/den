@@ -42,7 +42,9 @@ enum GeneralSettings {
       if v.str("id") == "general", v.str("key") == "netReport" { NetReport.enabledSetting = v["value"].bool ?? false }
     }
     // Local network report (NetReport.swift): off unless the user turned it on.
-    NetReport.enabledSetting = s.stored("general").first(where: { $0.0 == "netReport" })?.1.bool ?? false
+    // A local assistant may also turn it on for this user with `defaults write <bundle id> netReport -bool true`
+    // (no UI step); the hosts are still only those in its allow list.
+    NetReport.enabledSetting = s.stored("general").first(where: { $0.0 == "netReport" })?.1.bool ?? UserDefaults.standard.bool(forKey: "netReport")
     // Translucent window (vibrancy): read before the first frame, so the window opens as it was.
     ThemeBackgroundView.translucency = s.stored("general").first(where: { $0.0 == "translucent" })?.1.bool ?? false
     if ThemeBackgroundView.translucency { applyTranslucency(rt) }
@@ -105,9 +107,6 @@ enum GeneralSettings {
     ]
     out.append(["key": "translucent", "type": "toggle", "title": "Translucent window",
                 "subtitle": "Your desktop shows faintly through the space's colors, like macOS sidebars. Off by default: it costs the system some graphics work while den is on screen.",
-                "default": false])
-    out.append(["key": "netReport", "type": "toggle", "title": "Report page network to local assistant",
-                "subtitle": "Writes what pages on the sites your assistant allowed fetch to a local folder, so it can learn their search and open results directly. Nothing leaves this Mac; sites not on its list are never touched.",
                 "default": false])
     out.append(["key": "passkeyFallback", "type": "toggle", "title": "Skip passkey sign-in, use the password",
                 "subtitle": .string(Passkeys.entitled

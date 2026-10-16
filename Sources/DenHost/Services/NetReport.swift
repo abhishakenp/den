@@ -17,6 +17,7 @@ import WebKit
 ///   older than `retentionDays` are deleted.
 /// - `inbox/<id>.json` → `outbox/<id>.json`: commands from the assistant:
 ///   `{"op": "navigate", "url": …}` loads a URL in the page in front (same tab);
+///   `{"op": "preload", "url": …}` loads it in one hidden page of the user's session (setting on; records nothing);
 ///   `{"op": "fetch", "url": …, "method": …, "body": …, "contentType": …}` runs the request from
 ///   inside a page already open on that host (its cookies, never exported), only for `fetch` hosts.
 ///
@@ -44,9 +45,9 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
 
   static let handlerName = "denNet"
   static let marker = "window.__denNet"
-  static let maxResponse = 512 * 1024
-  static let maxFileBytes: UInt64 = 64 << 20
-  static let retentionDays = 2.0
+  nonisolated static let maxResponse = 512 * 1024
+  nonisolated static let maxFileBytes: UInt64 = 64 << 20
+  nonisolated static let retentionDays = 2.0
 
   /// Web view hooks (new web views get the handler and the current script).
   weak var webviews: WebViewsService?
@@ -57,6 +58,7 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
   private var allowStamp: Date?
   private var lastCheck = Date.distantPast
   private var inboxSource: DispatchSourceFileSystemObject?
+  private var preloaded: WKWebView?
   private let writer = DispatchQueue(label: "den.netreport.writer", qos: .utility)
 
   static let script = """
@@ -115,7 +117,7 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
     let stamp = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date
     guard force || stamp != allowStamp else { return }
     allowStamp = stamp
-    let a = Self.enabledSetting ? Self.readAllow(file) : ([], [])
+    let a: (hosts: [String], fetch: [String]) = Self.enabledSetting ? Self.readAllow(file) : ([], [])
     hosts = a.hosts
     fetchHosts = a.fetch
     for c in controllers.allObjects { install(c) }
@@ -153,7 +155,7 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
     guard Self.enabledSetting, ["http", "https"].contains(origin.protocol), Self.matches(origin.host, hosts),
           let body = m.body as? [String: Any], let kind = body["k"] as? String,
           let url = body["url"] as? String, let u = URL(string: url), ["http", "https"].contains(u.scheme ?? "") else { return }
-    if m.webView.map({ webviews?.records.values.first(where: { r in r.webView === $0 })?.isPrivate == true }) == true { return }
+    if let view = m.webView, webviews?.records.values.first(where: { $0.webView === view })?.isPrivate == true { return }
     var line: [String: Any] = ["at": Int(Date().timeIntervalSince1970 * 1000), "url": url, "page": m.frameInfo.request.url?.absoluteString ?? ""]
     if kind == "n" {
       line["k"] = "n"
@@ -239,6 +241,22 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
     if !FileManager.default.fileExists(atPath: dest.path) { try? FileManager.default.moveItem(at: tmp, to: dest) }
   }
 
+  /// Calls back with ms since `t0` once `w` stops loading (polled every 20 ms, 15 s cap).
+  private func whenLoaded(_ w: WKWebView, _ t0: Date, _ cb: @escaping @MainActor (Int) -> Void) {
+    Task { @MainActor in
+      var started = false
+      while true {
+        if w.isLoading { started = true }
+        let elapsed = Date().timeIntervalSince(t0)
+        if (started && !w.isLoading) || elapsed > 15 || (!started && elapsed > 2) {
+          cb(Int(elapsed * 1000))
+          return
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+      }
+    }
+  }
+
   func run(_ cmd: [String: Any], _ done: @escaping @MainActor ([String: Any]) -> Void) {
     let t0 = Date()
     let ms = { Int(Date().timeIntervalSince(t0) * 1000) }
@@ -248,9 +266,29 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
     switch cmd["op"] as? String {
     case "navigate":
       guard let front = web.pageActions?.frontId else { return done(["ok": false, "error": "no page in front"]) }
-      if let r = web.records[front], r.isPrivate { return done(["ok": false, "error": "private page in front"]) }
+      guard let r = web.records[front], !r.isPrivate else { return done(["ok": false, "error": "private or missing page in front"]) }
       let v = web.handle(method: "navigate", args: ["id": .string(front), "url": .string(urlStr)])
-      done(["ok": v.str("error").isEmpty, "error": v.str("error"), "tab": front, "ms": ms()])
+      guard v.str("error").isEmpty else { return done(["ok": false, "error": v.str("error")]) }
+      // `wait`: reply once the page finished loading (for timing), else at once.
+      if cmd["wait"] as? Bool == true, let w = r.webView { whenLoaded(w, t0) { done(["ok": true, "tab": front, "ms": ms(), "loadedMs": $0]) } }
+      else { done(["ok": true, "tab": front, "ms": ms()]) }
+    case "preload":
+      // A hidden page in the user's own (non-private) web session, so the reveal that follows
+      // finds DNS, TLS and the page's resources warm. Never shown; replaced by the next preload.
+      // Records nothing: only warms the page the assistant is about to show. The assistant decides
+      // which hosts it may name (it never names an excluded one); den only requires the setting.
+      guard Self.enabledSetting else { return done(["ok": false, "error": "network report is off"]) }
+      _ = host
+      guard let shared = web.records.values.first(where: { !$0.isPrivate && $0.webView != nil })?.webView else { return done(["ok": false, "error": "no page open"]) }
+      let cfg = WKWebViewConfiguration()
+      cfg.websiteDataStore = shared.configuration.websiteDataStore
+      cfg.mediaTypesRequiringUserActionForPlayback = .all
+      preloaded?.stopLoading()
+      let w = WKWebView(frame: NSRect(x: 0, y: 0, width: 1280, height: 900), configuration: cfg)
+      w.customUserAgent = shared.customUserAgent
+      preloaded = w
+      w.load(URLRequest(url: url))
+      whenLoaded(w, t0) { done(["ok": true, "loadedMs": $0, "ms": ms()]) }
     case "fetch":
       guard Self.matches(host, fetchHosts) else { return done(["ok": false, "error": "no consent for \(host)"]) }
       guard let w = web.records.values.first(where: { !$0.isPrivate && $0.webView?.url?.host.map { Self.matches($0, [host]) || Self.matches(host, [$0]) } == true })?.webView
