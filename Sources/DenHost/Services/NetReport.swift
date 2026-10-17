@@ -1,30 +1,24 @@
 import Foundation
 import WebKit
 
-/// Network report for an on-device assistant (opt-in, off by default): what pages on hosts the
-/// user allowed fetched (fetch / XHR, with the response text) and where the tab went (history
+/// Network report for an on-device assistant (opt-in, off by default): what pages on every site
+/// (private tabs excepted) fetched (fetch / XHR, with the response text) and where the tab went (history
 /// navigation), appended as JSON lines to a local folder. No proxy, no certificate, nothing leaves
 /// the machine.
 ///
 /// Folder: `~/Library/Application Support/den/netreport/` (mode 700).
-/// - `allow.json` `{"hosts": [...], "fetch": [...]}` is written by the assistant, never by den.
-///   `hosts`: sites whose traffic may be reported. No file, an empty list or an unreadable file
-///   means nothing is reported (fail closed). The assistant decides which hosts are safe (its
-///   exclusion rules keep banking and other sensitive sites off the list).
-///   `fetch`: hosts where the assistant may ask den to make a request with the user's session
-///   (the user consented per site).
 /// - `net-YYYY-MM-DD.jsonl`: one line per exchange (`k: "x"`) or navigation (`k: "n"`). Files
 ///   older than `retentionDays` are deleted.
 /// - `inbox/<id>.json` → `outbox/<id>.json`: commands from the assistant:
 ///   `{"op": "navigate", "url": …}` loads a URL in the page in front (same tab);
 ///   `{"op": "preload", "url": …}` loads it in one hidden page of the user's session (setting on; records nothing);
 ///   `{"op": "fetch", "url": …, "method": …, "body": …, "contentType": …}` runs the request from
-///   inside a page already open on that host (its cookies, never exported), only for `fetch` hosts.
+///   inside a page already open on that host (its cookies, never exported), from any host with an open page.
 ///
 /// Request header VALUES are never recorded; `authz: true` only says the page sent an
 /// Authorization header (such a request cannot be replayed outside the page).
 ///
-/// The page script is installed only on allowed hosts (per-frame host filter), in the page world
+/// The page script is installed on every http(s) page, in the page world
 /// (where the page's own `fetch` lives); it wraps fetch / XHR / history and posts to `denNet`.
 /// Messages are attributed by the frame's real security origin, not by what the page says.
 ///
@@ -53,10 +47,7 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
   weak var webviews: WebViewsService?
   private var controllers = NSHashTable<WKUserContentController>.weakObjects()
   private var wired = Set<ObjectIdentifier>()
-  private(set) var hosts: [String] = []
-  private(set) var fetchHosts: [String] = []
-  private var allowStamp: Date?
-  private var lastCheck = Date.distantPast
+  private var refreshed = false
   private var inboxSource: DispatchSourceFileSystemObject?
   private var preloaded: WKWebView?
   private let writer = DispatchQueue(label: "den.netreport.writer", qos: .utility)
@@ -88,38 +79,14 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
     addEventListener('popstate',nav);})();
     """
 
-  // MARK: allow list
-
-  /// Host `h` is `allowed` or a subdomain of it.
-  static func matches(_ h: String, _ list: [String]) -> Bool {
-    let h = h.lowercased()
-    return list.contains { h == $0 || h.hasSuffix("." + $0) }
+  /// Host `h` is `base` or a subdomain of it.
+  static func matches(_ h: String, _ base: String) -> Bool {
+    let h = h.lowercased(), base = base.lowercased()
+    return h == base || h.hasSuffix("." + base)
   }
 
-  static func readAllow(_ url: URL) -> (hosts: [String], fetch: [String]) {
-    guard let d = try? Data(contentsOf: url),
-          let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return ([], []) }
-    let clean: (Any?) -> [String] = { v in
-      ((v as? [String]) ?? []).map { $0.lowercased().trimmingCharacters(in: .whitespaces) }
-        .filter { !$0.isEmpty && $0.count <= 253 && $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" } && $0.contains(".") }
-    }
-    let hosts = clean(o["hosts"])
-    return (hosts, clean(o["fetch"]).filter { matches($0, hosts) })
-  }
-
-  /// Re-reads `allow.json` when it changed (checked at most every 2 s unless forced) and
-  /// re-installs the host-filtered script on every known web view.
+  /// Re-installs the script on every known web view and starts or stops the inbox.
   func refresh(force: Bool = false) {
-    let now = Date()
-    guard force || now.timeIntervalSince(lastCheck) > 2 else { return }
-    lastCheck = now
-    let file = Self.root.appendingPathComponent("allow.json")
-    let stamp = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date
-    guard force || stamp != allowStamp else { return }
-    allowStamp = stamp
-    let a: (hosts: [String], fetch: [String]) = Self.enabledSetting ? Self.readAllow(file) : ([], [])
-    hosts = a.hosts
-    fetchHosts = a.fetch
     for c in controllers.allObjects { install(c) }
     if Self.enabledSetting { startInbox() } else { stopInbox() }
   }
@@ -130,11 +97,8 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
       c.removeAllUserScripts()
       others.forEach(c.addUserScript)
     }
-    guard Self.enabledSetting, !hosts.isEmpty else { return }
-    let (s, filtered) = BoostsService.userScript(Self.script, hosts: hosts)
-    // Without the per-frame host filter the script would run on every site: then it is not installed.
-    guard filtered else { return }
-    c.addUserScript(s)
+    guard Self.enabledSetting else { return }
+    c.addUserScript(WKUserScript(source: Self.script, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page))
   }
 
   /// `configureHooks` entry: every new web view.
@@ -144,15 +108,14 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
       c.add(self, contentWorld: .page, name: Self.handlerName)
       controllers.add(c)
     }
-    if lastCheck == .distantPast { refresh(force: true) } else { install(c) }
+    if !refreshed { refreshed = true; refresh(force: true) } else { install(c) }
   }
 
   // MARK: report
 
   public func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
-    refresh()
     let origin = m.frameInfo.securityOrigin
-    guard Self.enabledSetting, ["http", "https"].contains(origin.protocol), Self.matches(origin.host, hosts),
+    guard Self.enabledSetting, ["http", "https"].contains(origin.protocol),
           let body = m.body as? [String: Any], let kind = body["k"] as? String,
           let url = body["url"] as? String, let u = URL(string: url), ["http", "https"].contains(u.scheme ?? "") else { return }
     if let view = m.webView, webviews?.records.values.first(where: { $0.webView === view })?.isPrivate == true { return }
@@ -276,7 +239,7 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
       // A hidden page in the user's own (non-private) web session, so the reveal that follows
       // finds DNS, TLS and the page's resources warm. Never shown; replaced by the next preload.
       // Records nothing: only warms the page the assistant is about to show. The assistant decides
-      // which hosts it may name (it never names an excluded one); den only requires the setting.
+      // which hosts it may name; den only requires the setting.
       guard Self.enabledSetting else { return done(["ok": false, "error": "network report is off"]) }
       _ = host
       guard let shared = web.records.values.first(where: { !$0.isPrivate && $0.webView != nil })?.webView else { return done(["ok": false, "error": "no page open"]) }
@@ -290,8 +253,7 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
       w.load(URLRequest(url: url))
       whenLoaded(w, t0) { done(["ok": true, "loadedMs": $0, "ms": ms()]) }
     case "fetch":
-      guard Self.matches(host, fetchHosts) else { return done(["ok": false, "error": "no consent for \(host)"]) }
-      guard let w = web.records.values.first(where: { !$0.isPrivate && $0.webView?.url?.host.map { Self.matches($0, [host]) || Self.matches(host, [$0]) } == true })?.webView
+      guard let w = web.records.values.first(where: { !$0.isPrivate && $0.webView?.url?.host.map { Self.matches($0, host) || Self.matches(host, $0) } == true })?.webView
       else { return done(["ok": false, "error": "no open page on \(host)"]) }
       let js = """
         const r = await fetch(u, {method: m, body: b || undefined, headers: t ? {'content-type': t} : {}, credentials: 'include'});
