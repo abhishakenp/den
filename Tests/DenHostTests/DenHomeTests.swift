@@ -206,6 +206,37 @@ struct DenHomeTests {
     #expect(c == LivePlugins.Changes(dylibs: ["tabs.dylib"], sources: ["hello", "gone"], config: true, themes: true))
   }
 
+  /// A source plugin's `plugin.json` lands next to its build as `<id>.json` (the sidecar the
+  /// loader grants from), follows edits, and goes when the folder drops it; editing it is a change.
+  @Test func sourcePluginSidecarIsCopiedNextToItsBuild() {
+    let base = FileManager.default.temporaryDirectory.appendingPathComponent("den-sidecar-\(UUID().uuidString)")
+    let home = DenHome(root: base.appendingPathComponent(".den"))
+    write("// src", home.plugins.appendingPathComponent("irismirror/IrisMirrorPlugin.swift"))
+    write(#"{"permissions": ["pages:*", "net:127.0.0.1"]}"#, home.plugins.appendingPathComponent("irismirror/plugin.json"))
+    write("built", home.buildCache.appendingPathComponent("irismirror.dylib"))
+    let live = LivePlugins(plugins: PluginHost(crashMarkerPath: nil), home: home, layers: .init(bundle: nil, user: nil, dev: nil), compiler: nil)
+    let sidecar = home.buildCache.appendingPathComponent("irismirror.json")
+
+    #expect(live.syncSidecar("irismirror"))
+    #expect(!live.syncSidecar("irismirror"))  // unchanged: nothing to do
+    let p = Permissions()
+    #expect(p.loadSidecar(plugin: "irismirror", dylib: home.buildCache.appendingPathComponent("irismirror.dylib")) == ["pages:*", "net:127.0.0.1"])
+    #expect(p.allowsNet("irismirror", host: "127.0.0.1") && p.allowsPages("irismirror", host: "example.com"))
+    // What launch loads for it is the build whose sidecar this is.
+    #expect(LivePlugins.launchFiles(home).map(\.lastPathComponent) == ["irismirror.dylib"])
+
+    write(#"{"permissions": ["pages:*"]}"#, home.plugins.appendingPathComponent("irismirror/plugin.json"))
+    #expect(live.syncSidecar("irismirror"))
+    #expect(Permissions().loadSidecar(plugin: "irismirror", dylib: home.buildCache.appendingPathComponent("irismirror.dylib")) == ["pages:*"])
+
+    try? FileManager.default.removeItem(at: home.plugins.appendingPathComponent("irismirror/plugin.json"))
+    #expect(live.syncSidecar("irismirror"))
+    #expect(!FileManager.default.fileExists(atPath: sidecar.path))
+
+    let c = LivePlugins.classify(["/Users/me/.den/plugins/irismirror/plugin.json", "/Users/me/.den/plugins/irismirror/notes.json"], root: "/Users/me/.den")
+    #expect(c.sources == ["irismirror"])
+  }
+
   @Test func toolchainResolutionFollowsCordisBuild() {
     let base = FileManager.default.temporaryDirectory.appendingPathComponent("den-tc-\(UUID().uuidString)")
     func make(_ dir: URL) {

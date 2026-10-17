@@ -151,7 +151,7 @@ public final class LivePlugins {
         guard !name.hasPrefix("."), validID(name.hasSuffix(".dylib") ? String(name.dropLast(6)) : name) else { continue }
         if parts.count == 2, name.hasSuffix(".dylib") {
           c.dylibs.insert(name)
-        } else if parts.count == 2 && !name.contains(".") || parts.count == 3 && parts[2].hasSuffix(".swift") {
+        } else if parts.count == 2 && !name.contains(".") || parts.count == 3 && (parts[2].hasSuffix(".swift") || parts[2] == "plugin.json") {
           c.sources.insert(name)
         }
       }
@@ -357,6 +357,7 @@ public final class LivePlugins {
     }
     let stamp = compiler.fingerprint(id: id, sources: files)
     if (try? String(contentsOf: stampFile, encoding: .utf8)) == stamp, FileManager.default.fileExists(atPath: out.path) {
+      syncSidecar(id)
       refresh(name)
       return
     }
@@ -376,6 +377,7 @@ public final class LivePlugins {
           if ok {
             try? Data(stamp.utf8).write(to: stampFile, options: .atomic)
             self.log.write("built \(id) in \(ms) ms")
+            self.syncSidecar(id)
             self.refresh(name)
           } else {
             let first = Self.firstError(output)
@@ -387,6 +389,32 @@ public final class LivePlugins {
         }
       }
     }
+  }
+
+  /// Copies the folder's `plugin.json` next to its build as `<id>.json`, the sidecar the loader
+  /// grants permissions from (LazyPlugins.swift), or removes a stale one when the folder has none.
+  /// When it changed and the build is the loaded one, its permissions are granted again (the launch
+  /// loader granted from the sidecar that was there before; a reload of an unchanged build doesn't).
+  @discardableResult
+  func syncSidecar(_ id: String) -> Bool {
+    let fm = FileManager.default
+    let src = sourceDir(id).appendingPathComponent("plugin.json")
+    let dst = home.buildCache.appendingPathComponent("\(id).json")
+    let want = try? Data(contentsOf: src)
+    let have = try? Data(contentsOf: dst)
+    guard want != have else { return false }
+    if let want {
+      try? fm.createDirectory(at: home.buildCache, withIntermediateDirectories: true)
+      try? want.write(to: dst, options: .atomic)
+    } else {
+      try? fm.removeItem(at: dst)
+    }
+    let out = home.buildCache.appendingPathComponent("\(id).dylib")
+    if let info = plugins.plugins.first(where: { Self.realPath($0.path) == Self.realPath(out.path) }) {
+      grant(info.id, out)
+      log.write("permissions \(info.id): \(DenRuntime.permissions(for: plugins)?.list(info.id).joined(separator: " ") ?? "-")")
+    }
+    return true
   }
 
   func noteNoToolchain(_ reason: String, log message: String) {
