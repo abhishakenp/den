@@ -24,6 +24,7 @@ struct UpdatesTests {
       default: return ["ok": true]
       }
     }
+    func manifestFetches() -> [Value] { called("fetch").filter { $0.s("url") != UpdatesCore.appcastURL } }
     func called(_ m: String) -> [Value] { calls.filter { $0.0 == m }.map(\.1) }
   }
 
@@ -122,7 +123,7 @@ struct UpdatesTests {
     let (h, core, _) = setup(fake)
     #expect(core.pendingRestart.isEmpty && h.rt.ui.toasts.isEmpty)
     h.rt.plugins.emit("commands.run", ["id": "den.checkForUpdates"])
-    #expect(fake.called("fetch").count == 1)
+    #expect(fake.manifestFetches().count == 1 && fake.called("fetch").count == 2)
     #expect(fake.called("sparkleCheck").count == 1)
     // Sparkle says nothing new: the manual check toast reports the plugin manifest's verdict.
     h.rt.plugins.emit("updates.fetched", ["url": .string(UpdatesCore.manifestURL), "status": 304, "bytes": 0])
@@ -149,7 +150,7 @@ struct UpdatesTests {
 
     // 304: nothing installed, the ETag is sent next time.
     core.check(manual: false)
-    #expect(fake.called("fetch").last?["etag"] == "\"e1\"")
+    #expect(fake.manifestFetches().last?["etag"] == "\"e1\"")
     h.rt.plugins.emit("updates.fetched", ["url": .string(UpdatesCore.manifestURL), "status": 304, "bytes": 0])
     #expect(fake.called("installPlugin").count == 1 && core.lastResult == "Plugins are up to date")
 
@@ -174,5 +175,65 @@ struct UpdatesTests {
   @Test func utcFormatting() {
     #expect(UpdatesCore.utc(0) == "1970-01-01 00:00 UTC")
     #expect(UpdatesCore.utc(1_790_517_282_872) == "2026-09-27 13:54 UTC")
+  }
+
+  static let appcast = """
+    <?xml version="1.0" encoding="utf-8"?>
+    <rss><channel><title>den</title>
+    <item><title>den 0.2.0-alpha.15</title><pubDate>Sun, 18 Oct 2026 06:00:00 +0000</pubDate>
+      <sparkle:shortVersionString>0.2.0-alpha.15</sparkle:shortVersionString>
+      <description><![CDATA[- fix(tabs): PiP survives pause (7ff68f4)
+    - perf: memory pressure (a94a415)]]></description></item>
+    <item><title>den 0.2.0-alpha.14</title><pubDate>Wed, 14 Oct 2026 17:38:10 +0000</pubDate>
+      <sparkle:shortVersionString>0.2.0-alpha.14</sparkle:shortVersionString>
+      <description><![CDATA[- mini: play/pause (a329226)]]></description></item>
+    </channel></rss>
+    """
+
+  @Test func appcastParsesEveryRelease() {
+    let r = UpdatesCore.parseAppcast(Self.appcast)
+    #expect(r.map(\.version) == ["0.2.0-alpha.15", "0.2.0-alpha.14"])
+    #expect(r.map(\.date) == ["18 Oct 2026", "14 Oct 2026"])
+    #expect(r[0].notes == "- fix(tabs): PiP survives pause (7ff68f4)\n- perf: memory pressure (a94a415)")
+    #expect(r[1].notes == "- mini: play/pause (a329226)")
+    #expect(UpdatesCore.parseAppcast("").isEmpty)
+  }
+
+  @Test func historyListsEveryVersionNewestFirstWithTheInstalledOneMarked() {
+    let fake = FakeUpdates()
+    fake.info = ["version": "0.2.0-alpha.14", "build": 10, "commit": "aaaaaaa1", "hostAPI": 5, "crashed": [], "sparkle": false, "onDiskCommit": "aaaaaaa1"]
+    let (h, core, _) = setup(fake)
+    h.rt.plugins.emit("updates.fetched", ["url": .string(UpdatesCore.appcastURL), "status": 200, "body": .string(Self.appcast)])
+    #expect(core.history.count == 2)
+    #expect(h.storage("updates", "history").a("releases").count == 2)
+    let titles = core.historyItems(current: "0.2.0-alpha.14").map { $0.s("title") }
+    #expect(titles == ["den 0.2.0-alpha.15 — 18 Oct 2026", "den 0.2.0-alpha.14 (installed) — 14 Oct 2026"])
+  }
+
+  @Test func whatsNewShowsOnceAfterAnUpdate() {
+    let fake = FakeUpdates()
+    fake.info = ["version": "0.2.0-alpha.15", "build": 11, "commit": "bbbbbbb1", "hostAPI": 5, "crashed": [], "sparkle": false, "onDiskCommit": "bbbbbbb1"]
+    let h = Harness()
+    h.rt.plugins.provide("updates") { m, a in fake.handle(m, a) }
+    h.rt.plugins.provide("commands") { _, _ in ["ok": true] }
+    h.rt.call("storage", "set", ["ns": "updates", "key": "seen", "value": ["version": "0.2.0-alpha.14"]])
+    let core = UpdatesCore(env: h.env)
+    core.start()
+    #expect(h.storage("updates", "seen").s("version") == "0.2.0-alpha.15")
+    #expect(core.whatsNewPending)
+    h.rt.plugins.emit("updates.fetched", ["url": .string(UpdatesCore.appcastURL), "status": 200, "body": .string(Self.appcast)])
+    #expect(h.rt.ui.dialog.title.stringValue == "What's new in den 0.2.0-alpha.15")
+    #expect(h.rt.ui.dialog.message.stringValue.contains("PiP survives pause"))
+    #expect(!core.whatsNewPending)
+    // Dismissed, and a second launch on the same version shows nothing.
+    h.rt.plugins.emit("ui.action", ["id": .string(UpdatesCore.whatsNewId), "action": "button", "value": ["button": "ok"]])
+    let again = UpdatesCore(env: h.env)
+    again.start()
+    #expect(!again.whatsNewPending)
+  }
+
+  @Test func firstLaunchEverShowsNoWhatsNew() {
+    let (_, core, _) = setup(FakeUpdates())
+    #expect(!core.whatsNewPending)
   }
 }

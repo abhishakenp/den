@@ -20,8 +20,11 @@ final class UpdatesCore {
   static let ns = "updates"
   static let commandId = "den.checkForUpdates"
   static let toastId = "updates.toast"
+  static let whatsNewId = "updates.whatsNew"
   static let settingsId = "updates"
   static let manifestURL = "https://raw.githubusercontent.com/abhishakenp/den/main/updates/plugins.json"
+  /// Every release's notes ride in the appcast's `<description>`: the history list reads them.
+  static let appcastURL = "https://raw.githubusercontent.com/abhishakenp/den/main/updates/appcast.xml"
 
   let env: PluginEnv
   var info: Value = .null
@@ -34,6 +37,10 @@ final class UpdatesCore {
   var pendingRestart = ""  // "sparkle" when a host update waits for a relaunch
   var pendingVersion = ""
   var pendingChangelog: String = ""
+  /// Every release, newest first (appcast order), cached in storage so the list works offline.
+  var history: [Release] = []
+  /// The running version was not the one last seen: show "What's new" once its notes are known.
+  var whatsNewPending = false
   var sparklePhase: String = ""  // checking, found, downloading, ready, none, error
   var sparkleError: String = ""
   var backgroundSince: Int64 = 0
@@ -57,6 +64,10 @@ final class UpdatesCore {
     for p in st.a("installed") { installed.append((p.s("id"), p.s("sha256"))) }
     bad = st.a("bad").compactMap { $0.string }
     channel = pickChannel(env.call("config", "get", ["key": "updates"]))
+    history = env.call("storage", "get", ["ns": .string(Self.ns), "key": "history"]).a("releases").map {
+      Release(version: $0.s("version"), date: $0.s("date"), notes: $0.s("notes"))
+    }
+    prepareWhatsNew()
 
     env.on("config.changed") { [self] v in
       let c = pickChannel(v["config"]["updates"])
@@ -68,12 +79,15 @@ final class UpdatesCore {
       }
     }
     startNotices()
-    env.on("updates.fetched") { [self] v in if v.s("url") == manifestURL() { manifest(v) } }
+    env.on("updates.fetched") { [self] v in
+      if v.s("url") == manifestURL() { manifest(v) } else if v.s("url") == Self.appcastURL { appcast(v) }
+    }
     env.on("updates.pluginInstalled") { [self] v in pluginInstalled(v) }
     env.on("updates.sparkle") { [self] v in sparkle(v) }
     env.on("commands.run") { [self] v in if v.s("id") == Self.commandId { check(manual: true) } }
     env.on("ui.action") { [self] v in
       if v.s("id") == Self.toastId && v.s("action") == "toast" { restartNow(background: false) }
+      if v.s("id") == Self.whatsNewId { env.call("ui", "set", ["slot": "dialog", "tree": nil]) }
     }
     env.on("settings.action") { [self] v in
       if v.s("id") == Self.settingsId { settingsAction(v.s("key")) }
@@ -143,6 +157,7 @@ final class UpdatesCore {
     manual = m
     if m { toast("Checking for updates…", icon: "sf:arrow.triangle.2.circlepath", action: "", duration: 2500) }
     env.call("updates", "fetch", ["url": .string(manifestURL()), "etag": .string(etag), "json": true])
+    env.call("updates", "fetch", ["url": .string(Self.appcastURL)])
     if info.b("sparkle") { env.call("updates", "sparkleCheck", ["userInitiated": false]) }
   }
 
@@ -427,6 +442,11 @@ final class UpdatesCore {
                        "value": .string(notes.isEmpty ? "See the release notes on GitHub for \(pendingVersion)." : notes)])
     }
 
+    // Every version, newest first, the installed one marked; the new one shows at the top once
+    // the appcast lists it. The settings window scrolls it.
+    controls.append(["key": .string("history"), "type": .string("list"), "title": .string("Version history"),
+                     "items": .array(historyItems(current: currentVersion)), "empty": .string("The changelog loads when den checks for updates.")])
+
     let r = env.call("settings", "register", [
       "id": .string(Self.settingsId), "title": .string("Updates"), "icon": .string("sf:arrow.triangle.2.circlepath"),
       "order": .int(90), "controls": .array(controls),
@@ -502,4 +522,128 @@ final class UpdatesCore {
   }
 
   static func pad(_ n: Int64) -> String { n < 10 ? "0" + String(n) : String(n) }
+}
+
+
+// MARK: - Release history (appcast) and "What's new"
+
+struct Release {
+  var version: String
+  var date: String
+  var notes: String
+}
+
+extension UpdatesCore {
+  /// The Updates panel's version list: every release, the installed one marked.
+  func historyItems(current: String) -> [Value] {
+    history.map { rel in
+      let mine = rel.version == current
+      return ["id": .string(rel.version), "icon": .string(mine ? "sf:checkmark.circle.fill" : "sf:clock.arrow.circlepath"),
+              "title": .string("den " + rel.version + (mine ? " (installed)" : "") + (rel.date.isEmpty ? "" : " — " + rel.date)),
+              "subtitle": .string(rel.notes.isEmpty ? "No notes." : rel.notes)]
+    }
+  }
+
+  /// A fetched appcast: parse, cache, refresh the list, and show "What's new" if it waits.
+  func appcast(_ v: Value) {
+    guard v.i("status") == 200 else { return }
+    let parsed = Self.parseAppcast(v.s("body"))
+    guard !parsed.isEmpty else { return }
+    history = parsed
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": "history", "value": [
+      "releases": .array(parsed.prefix(60).map { ["version": .string($0.version), "date": .string($0.date), "notes": .string($0.notes)] }),
+    ]])
+    if settingsRegistered { registerSettings() }
+    showWhatsNew()
+  }
+
+  /// First run records the version. A different one than last time: fetch the notes, show them once.
+  func prepareWhatsNew() {
+    let running = info.s("version")
+    let seen = env.call("storage", "get", ["ns": .string(Self.ns), "key": "seen"]).s("version")
+    guard !running.isEmpty, seen != running else { return }
+    env.call("storage", "set", ["ns": .string(Self.ns), "key": "seen", "value": ["version": .string(running)]])
+    guard !seen.isEmpty else { return }  // first launch ever: nothing was updated
+    whatsNewPending = true
+    // The cached list may already hold it (an update that fetched before relaunching); the
+    // fetch refreshes it, and covers a fallback after a few seconds when the network is down.
+    env.call("updates", "fetch", ["url": .string(Self.appcastURL)])
+    env.timer(8000, false) { [self] in
+      guard whatsNewPending else { return }
+      present(history.first { $0.version == running } ?? Release(version: running, date: "", notes: ""))
+    }
+  }
+
+  /// A dismissable dialog, once, with the running version's notes.
+  func showWhatsNew() {
+    guard whatsNewPending else { return }
+    guard let rel = history.first(where: { $0.version == info.s("version") }) else { return }  // the 8 s fallback shows it without notes
+    present(rel)
+  }
+
+  func present(_ rel: Release) {
+    whatsNewPending = false
+    var notes = Self.trimmed(rel.notes)
+    if notes.isEmpty { notes = "See the release notes on GitHub." }
+    if notes.utf8.count > 900 { notes = String(decoding: Array(notes.utf8)[0..<900], as: UTF8.self) + "…" }
+    env.call("ui", "set", ["slot": "dialog", "tree": [
+      "type": "dialog", "id": .string(Self.whatsNewId), "icon": "sf:sparkles",
+      "title": .string("What's new in den " + rel.version), "message": .string(notes),
+      "buttons": [["id": "ok", "title": "OK", "default": true]],
+    ]])
+  }
+
+  /// <item> blocks of a Sparkle appcast: version, date and description (CDATA). No Foundation here.
+  static func parseAppcast(_ xml: String) -> [Release] {
+    let b = Array(xml.utf8)
+    var out: [Release] = []
+    var at = 0
+    while let s = find(b, "<item>", from: at), let e = find(b, "</item>", from: s) {
+      let item = Array(b[s..<e])
+      let v = tag(item, "sparkle:shortVersionString")
+      if !v.isEmpty {
+        var date = tag(item, "pubDate")
+        // "Wed, 14 Oct 2026 17:38:10 +0000" -> "14 Oct 2026"
+        date = dayMonthYear(date)
+        var d = tag(item, "description")
+        if Text.hasPrefix(d, "<![CDATA[") { d = Text.dropPrefix(d, "<![CDATA[") }
+        if Text.hasSuffix(d, "]]>") { d = String(decoding: Array(d.utf8).dropLast(3), as: UTF8.self) }
+        out.append(Release(version: v, date: date, notes: trimmed(d)))
+      }
+      at = e + 7
+    }
+    return out
+  }
+
+  /// "Wed, 14 Oct 2026 17:38:10 +0000" -> "14 Oct 2026" (the words 2-4); the input if it isn't that.
+  static func dayMonthYear(_ s: String) -> String {
+    var words: [[UInt8]] = [[]]
+    for c in s.utf8 { if c == 32 { words.append([]) } else { words[words.count - 1].append(c) } }
+    guard words.count >= 4 else { return s }
+    var out: [UInt8] = words[1]
+    out.append(32); out += words[2]; out.append(32); out += words[3]
+    return String(decoding: out, as: UTF8.self)
+  }
+
+  static func find(_ h: [UInt8], _ needle: String, from: Int) -> Int? {
+    let n = Array(needle.utf8)
+    guard h.count >= n.count, from <= h.count - n.count else { return nil }
+    var i = from
+    while i <= h.count - n.count {
+      if h[i] == n[0] {
+        var ok = true
+        for j in 1..<n.count where h[i + j] != n[j] { ok = false; break }
+        if ok { return i }
+      }
+      i += 1
+    }
+    return nil
+  }
+
+  static func tag(_ item: [UInt8], _ name: String) -> String {
+    guard let s = find(item, "<" + name + ">", from: 0) else { return "" }
+    let from = s + name.utf8.count + 2
+    guard let e = find(item, "</" + name + ">", from: from) else { return "" }
+    return trimmed(String(decoding: item[from..<e], as: UTF8.self))
+  }
 }
