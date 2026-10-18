@@ -46,14 +46,14 @@ struct EnergyTests {
     let h = Harness()
     let core = h.startTabs()
     let ids = await sevenTabs(h)
-    let old = Array(ids.prefix(2)), recent = Array(ids[2...5])
+    let old = Array(ids.prefix(5)), recent = [ids[5]]
     #expect(h.tabs("energy")["saving"] == false && h.tabs("energy")["suspendAfterMs"] == .int(300_000))
     // Two minutes: plugged in, nothing unloads (the default is 5 minutes).
     h.clock += 2 * 60_000
     core.tick()
     #expect(old.allSatisfy { live(h, $0) })
     #expect(h.rt.webviews.autoplayAllowed)
-    // Unplugged: one minute is enough, new pages don't autoplay; the 5 most recent stay.
+    // Unplugged: one minute is enough, new pages don't autoplay; the most recent one stays (with the shown tab).
     let power = h.rt.app.powerSource as! FixedPower  // tests never read the Mac's power
     power.state = PowerState(battery: true, lowPower: false)
     #expect(h.tabs("energy")["saving"] == true && h.tabs("energy")["suspendAfterMs"] == .int(60_000))
