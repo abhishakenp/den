@@ -3,6 +3,28 @@
 <channel>
 <title>den</title>
 <item>
+  <title>den 0.2.0-alpha.15</title>
+  <pubDate>Sun, 18 Oct 2026 06:22:10 +0000</pubDate>
+  <sparkle:channel>prerelease</sparkle:channel>
+  <sparkle:version>440</sparkle:version>
+  <sparkle:shortVersionString>0.2.0-alpha.15</sparkle:shortVersionString>
+  <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+  <sparkle:releaseNotesLink>https://github.com/abhishakenp/den/releases/tag/v0.2.0-alpha.15</sparkle:releaseNotesLink>
+  <description><![CDATA[- test(energy): with battery saver only the tab on screen is spared (5d139fb)
+- feat(updates): version history in the Updates panel and What's new after an update (a7f0cf6)
+- test: two racy tests fixed from their cause (7f2b6e7)
+- fix(tabs): auto-archive never touches a tab with a video in PiP (7ff68f4)
+- test(energy): battery saver spares one recent tab (protectedRecentSaving) (4b78421)
+- perf(webviews): memory pressure purges caches; critical also discards pages off screen (a94a415)
+- perf(tabs,netreport): pages nobody is looking at stop costing memory (cb2bf6e)
+- feat(netreport): report every site — the allow.json host gate (hosts, fetch consent, per-frame host filter) is removed; private tabs stay excluded (599ad9d)
+- fix(plugins): a source plugin's plugin.json is copied next to its build, so its permissions are granted (a7f5192)
+- fix(netreport): compiles; preload/navigate timing ops; opt-in via defaults (no host UI string) (f6a6193)
+- feat(webviews): local network report for an on-device assistant (opt-in, off by default) (ffc5f6c)
+- release: v0.2.0-alpha.14 appcast and plugin manifest (9ccc56f)]]></description>
+  <enclosure url="https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/den-0.2.0-alpha.15.zip" length="10237797" type="application/octet-stream" sparkle:edSignature="5AWgaokUlREqb4t0ItFVtyCQxak095SLuar91XYrxN3DSxaEjBzh8HbJU52vvKEP43kOqSx1VGRAat3wU2jRDg=="/>
+</item>
+<item>
   <title>den 0.2.0-alpha.14</title>
   <pubDate>Wed, 14 Oct 2026 17:38:10 +0000</pubDate>
   <sparkle:channel>prerelease</sparkle:channel>
