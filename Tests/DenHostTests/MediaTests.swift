@@ -315,9 +315,13 @@ struct MediaTests {
       const playing = new Promise(r => { if (!v.paused && v.readyState >= 3) return r(true); v.addEventListener('playing', () => r(true), { once: true }); });
       await v.play();
       await playing;
+      // The page's first `timeupdate` always posts a fresh report (its 5 s throttle starts open),
+      // ~300 ms into playback; take it before enlarging, or it lands after and un-stales the premise.
+      await new Promise(r => v.addEventListener('timeupdate', r, { once: true }));
       return true
       """)
     #expect(await wait { rt.media.eligibility(id).why.hasPrefix("small") })
+    try await Task.sleep(for: .milliseconds(200))  // that report's 50 ms debounce and delivery
     // Scale rather than resize: the layout box is untouched, so WebKit fires no resize event for
     // the page to report (the same enlargement a user sees), while the rect the report reads is
     // the new one — what the last report knows is stale, exactly as the test says.

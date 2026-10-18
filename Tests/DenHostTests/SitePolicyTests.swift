@@ -299,9 +299,11 @@ struct SitePolicyTests {
     let w = try await page(rt, "y", Self.adPage, "https://www.yt.test/watch")
     // Wait for scriptlet injection to settle on slower CI runners
     var ready = false
+    var checks = 0  // every `pageState` runs a fetch and an XHR in the page, which count too
     let end = Date().addingTimeInterval(15)
     while Date() < end {
       do {
+        checks += 1
         let s = try await pageState(rt, w)
         // The script leaves one random-named count function on window
         if (s["hooked"] as? Bool == true) && ((s["ownKeys"] as? Int ?? -1) <= 1) {
@@ -311,6 +313,7 @@ struct SitePolicyTests {
       try await Task.sleep(for: .milliseconds(200))
     }
     #expect(ready, "Scriptlet didn't settle within 15s")
+    checks += 1
     let on = try await pageState(rt, w)
     #expect(on["hooked"] as? Bool == true, "\(on)")
     #expect(on["ownKeys"] as? Int ?? 0 <= 1, "\(on)")
@@ -326,10 +329,12 @@ struct SitePolicyTests {
     #expect(on["keepShown"] as? Bool == true, "\(on)")
     #expect(rt.call("sitepolicy", "get", ["id": "y"])["scripts"] == .array([.string("test.scr")]))
     // What it removed joins the page's blocked count: 2 at assignment, 2 in JSON.parse, 2 in
-    // fetch, 1 XHR replacement, 1 hidden element.
+    // fetch, 1 XHR replacement, 1 hidden element. The page's own load counts 2 + 2 + 1 (the hidden
+    // element); each `pageState` adds its fetch (2) and XHR (1).
+    let expected = 5 + 3 * checks
     let changed = events(rt, "sitepolicy.changed")
     _ = rt.call("sitepolicy", "get", ["id": "y"])
-    #expect(try await until(30) { rt.call("sitepolicy", "get", ["id": "y"])["scripted"].int ?? -1 == 8 })
+    #expect(try await until(30) { rt.call("sitepolicy", "get", ["id": "y"])["scripted"].int ?? -1 == expected }, "scripted=\(rt.call("sitepolicy", "get", ["id": "y"])["scripted"]) expected=\(expected)")
     let st = rt.call("sitepolicy", "get", ["id": "y"])
     #expect(st["blocked"] == st["scripted"], "\(st)")
     #expect(st["blockedByList"]["scripts"] == st["scripted"])
