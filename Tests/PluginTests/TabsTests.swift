@@ -326,6 +326,27 @@ struct TabsTests {
     #expect(h.storage("tabs", "settings")["archiveAfterMs"] == 0)
   }
 
+  /// A tab whose video is in picture in picture is never auto-archived (archiving force-unloads
+  /// the page and kills the PiP window), even paused and idle for days; once PiP ends it archives.
+  @Test func autoArchiveSparesPictureInPicture() async throws {
+    let h = Harness()
+    let core = h.startTabs()
+    let today = h.ids("today")
+    let pipId = today[1]
+    h.tabs("select", ["id": .string(pipId)])
+    h.tabs("select", ["id": .string(today[0])])
+    let w = try #require(h.rt.webviews.record(pipId)?.webView)
+    h.rt.webviews._webView(w, hasVideoInPictureInPictureDidChange: true)
+    #expect(h.rt.call("webviews", "get", ["id": .string(pipId)])["media"]["pip"] == true)
+    h.clock += 72 * 3_600_000
+    core.tick()
+    #expect(h.ids("today").contains(pipId))
+    #expect(h.rt.call("webviews", "get", ["id": .string(pipId)])["live"] == true)
+    h.rt.webviews._webView(w, hasVideoInPictureInPictureDidChange: false)
+    core.tick()
+    #expect(!h.ids("today").contains(pipId))
+  }
+
   @Test func speakerMutesTheTab() async throws {
     let h = Harness()
     let core = h.startTabs()

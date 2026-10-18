@@ -1763,6 +1763,9 @@ final class TabsCore {
       for sid in spaceIds {
         for id in todayTabs(sid) where id != selected[sid] {
           guard let t = tabs[id], now - t.lastActive > archiveAfterMs, !t.audio else { continue }
+          // A tab with a video in picture in picture stays, playing or paused: archiving
+          // force-unloads it (archiveTab), which kills the PiP window and its video.
+          if env.call("webviews", "get", ["id": .string(id)])["media"].b("pip") { continue }
           archiveTab(id, space: sid)
           archived += 1
         }
