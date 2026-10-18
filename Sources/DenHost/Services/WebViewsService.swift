@@ -258,7 +258,20 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   /// restore takes, and for 320 pt hover previews at 2x.
   public var snapshotMaxWidth: CGFloat = 1280
 
-  public init(host: ServiceHost) { self.host = host }
+  /// macOS memory-pressure source (`purgeMemory`).
+  var pressureSource: DispatchSourceMemoryPressure?
+
+  public init(host: ServiceHost) {
+    self.host = host
+    super.init()
+    let src = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+    src.setEventHandler { [weak self, weak src] in
+      let critical = src?.data.contains(.critical) == true
+      MainActor.assumeIsolated { _ = self?.purgeMemory(critical: critical) }
+    }
+    src.resume()
+    pressureSource = src
+  }
 
   /// Air Traffic Control: per-site link routing loaded from `~/.den/config.toml` (`[atc]`).
   public var atc: ATC = .init()

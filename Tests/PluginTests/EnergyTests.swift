@@ -26,6 +26,22 @@ struct EnergyTests {
     return ids
   }
 
+  /// macOS memory pressure: a warning only empties caches; critical also unloads every page not on
+  /// screen, but never the one on screen or one in picture in picture.
+  @Test func memoryPressurePurgesHiddenPages() async {
+    let h = Harness()
+    _ = h.startTabs()
+    let ids = await sevenTabs(h)
+    let pip = ids[0], shown = ids[6]
+    h.rt.webviews._webView(h.rt.webviews.record(pip)!.webView!, hasVideoInPictureInPictureDidChange: true)
+    #expect(h.rt.webviews.purgeMemory(critical: false) == 0)
+    #expect(ids.allSatisfy { live(h, $0) })
+    let n = h.rt.webviews.purgeMemory(critical: true)
+    #expect(live(h, shown) && live(h, pip))
+    #expect(ids.dropFirst().dropLast().allSatisfy { !live(h, $0) })
+    #expect(n >= 5, "live: \(ids.map { live(h, $0) })")
+  }
+
   @Test func batterySaverUnloadsSoonerAndStopsAutoplay() async {
     let h = Harness()
     let core = h.startTabs()
