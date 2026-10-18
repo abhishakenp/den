@@ -325,7 +325,7 @@ struct GroupTests {
     #expect(h.rt.call("webviews", "get", ["id": .string(h.panes[2])])["url"] == "about:blank")
   }
 
-  @Test func idleDiscardSparesRecentTabsAndCountsOnlyForegroundTime() async {
+  @Test func idleDiscardSparesRecentTabsAndCountsBackgroundTimeAtTwice() async {
     let h = Harness()
     let core = h.startTabs()
     h.rt.plugins.emit("app.active", ["active": true])
@@ -333,20 +333,19 @@ struct GroupTests {
     for n in 0..<7 { ids.append(h.tabs("open", ["url": .string("https://example.com/\(n)"), "background": true])["id"].string!) }
     for id in ids { h.tabs("select", ["id": .string(id)]) }
     #expect(ids.allSatisfy { h.rt.call("webviews", "get", ["id": .string($0)])["live"] == true })
-    // The oldest two are past the 5 most recent tabs; the newest is on screen.
-    let spare = Array(ids[2...5]), old = Array(ids.prefix(2))
+    // Only the 2 most recent are spared: the newest is on screen, the one before it is kept.
+    let spare = [ids[5]], old = Array(ids.prefix(5))
     // Pages that left the screen wait in the window while their snapshot is taken.
     #expect(await until(15) { ids.dropLast().allSatisfy { h.rt.webviews.record($0)?.webView?.window == nil } })
     h.clock += 4 * 60_000
     core.tick()
     #expect(old.allSatisfy { h.rt.call("webviews", "get", ["id": .string($0)])["live"] == true })
-    // An hour in another app counts for nothing…
+    // Den in the background: wall time counts too, at twice the limit (10 min). 9 min: still live…
     h.rt.plugins.emit("app.active", ["active": false])
-    h.clock += 60 * 60_000
+    h.clock += 5 * 60_000
     core.tick()
     #expect(old.allSatisfy { h.rt.call("webviews", "get", ["id": .string($0)])["live"] == true })
-    // …two more minutes in den make six: the old ones unload, the recent ones never do.
-    h.rt.plugins.emit("app.active", ["active": true])
+    // …11 min: the old ones unload although den was never in front again; the recent one never does.
     h.clock += 2 * 60_000
     core.tick()
     for id in old { #expect(await h.waitUnloaded(id)) }

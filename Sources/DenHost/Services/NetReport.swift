@@ -251,7 +251,20 @@ public final class NetReport: NSObject, WKScriptMessageHandler {
       w.customUserAgent = shared.customUserAgent
       preloaded = w
       w.load(URLRequest(url: url))
-      whenLoaded(w, t0) { done(["ok": true, "loadedMs": $0, "ms": ms()]) }
+      // Released once loaded (5 s grace for late subresources): the warmth is DNS, TLS and the
+      // HTTP cache in the shared data store and network process, which outlive the view. Kept, the
+      // hidden page held a whole WebContent process (a YouTube results page: ~500 MB) until the
+      // next preload — "tabs I never opened" using memory and CPU.
+      whenLoaded(w, t0) { [weak self] in
+        done(["ok": true, "loadedMs": $0, "ms": ms()])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+          MainActor.assumeIsolated {
+            guard let self, self.preloaded === w else { return }
+            w.stopLoading()
+            self.preloaded = nil
+          }
+        }
+      }
     case "fetch":
       guard let w = web.records.values.first(where: { !$0.isPrivate && $0.webView?.url?.host.map { Self.matches($0, host) || Self.matches(host, $0) } == true })?.webView
       else { return done(["ok": false, "error": "no open page on \(host)"]) }
