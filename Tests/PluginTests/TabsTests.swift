@@ -304,7 +304,7 @@ struct TabsTests {
     #expect(h.rt.call("webviews", "get", ["id": .string(today[1])])["live"] == true)
     // The page that left the screen waits in the window while its snapshot is taken.
     _ = await Wait.until("h.rt.webviews.record(today[1])?.webView?.window != nil") { !(h.rt.webviews.record(today[1])?.webView?.window != nil) }
-    // Idle discard (default 5 min of den-frontmost time) spares the most recently used tabs:
+    // Idle discard (default 2 min of den-frontmost time) spares the most recently used tabs:
     // this one was just used, so it stays (GroupTests.idleDiscard… covers the discard itself).
     h.rt.plugins.emit("app.active", ["active": true])
     h.clock += 6 * 60_000

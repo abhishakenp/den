@@ -47,9 +47,9 @@ struct EnergyTests {
     let core = h.startTabs()
     let ids = await sevenTabs(h)
     let old = Array(ids.prefix(6)), recent = [ids[6]]
-    #expect(h.tabs("energy")["saving"] == false && h.tabs("energy")["suspendAfterMs"] == .int(300_000))
-    // Two minutes: plugged in, nothing unloads (the default is 5 minutes).
-    h.clock += 2 * 60_000
+    #expect(h.tabs("energy")["saving"] == false && h.tabs("energy")["suspendAfterMs"] == .int(120_000))
+    // 90 s: plugged in, nothing unloads (the default is 2 minutes).
+    h.clock += 90_000
     core.tick()
     #expect(old.allSatisfy { live(h, $0) })
     #expect(h.rt.webviews.autoplayAllowed)

@@ -615,6 +615,18 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     host.emit("webviews.detached", ["id": .string(r.id)])
   }
 
+  /// A page off screen gives back its back/forward cache (`_clearBackForwardCache`): the pages
+  /// it left are kept alive there, a cross-site one in a WebContent process of its own. Going
+  /// back then reloads instead of resuming. Called `hiddenCacheDelay` after it left the screen.
+  public static let hiddenCacheDelay: TimeInterval = 10
+  func leftScreen(_ w: WKWebView) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.hiddenCacheDelay) { [weak w] in
+      guard let w, w.window == nil else { return }
+      let sel = NSSelectorFromString("_clearBackForwardCache")
+      if w.responds(to: sel) { w.perform(sel) }
+    }
+  }
+
   func close(_ r: WebRecord) {
     destroyView(r)
     if let p = r.snapshotPath { try? FileManager.default.removeItem(atPath: p) }

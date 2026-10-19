@@ -337,16 +337,16 @@ struct GroupTests {
     let spare = [ids[5]], old = Array(ids.prefix(5))
     // Pages that left the screen wait in the window while their snapshot is taken.
     #expect(await until(15) { ids.dropLast().allSatisfy { h.rt.webviews.record($0)?.webView?.window == nil } })
-    h.clock += 4 * 60_000
+    h.clock += 90_000
     core.tick()
     #expect(old.allSatisfy { h.rt.call("webviews", "get", ["id": .string($0)])["live"] == true })
-    // Den in the background: wall time counts too, at twice the limit (10 min). 9 min: still live…
+    // Den in the background: wall time counts too, at twice the limit (4 min). 3.5 min: still live…
     h.rt.plugins.emit("app.active", ["active": false])
-    h.clock += 5 * 60_000
+    h.clock += 2 * 60_000
     core.tick()
     #expect(old.allSatisfy { h.rt.call("webviews", "get", ["id": .string($0)])["live"] == true })
-    // …11 min: the old ones unload although den was never in front again; the recent one never does.
-    h.clock += 2 * 60_000
+    // …4.5 min: the old ones unload although den was never in front again; the recent one never does.
+    h.clock += 60_000
     core.tick()
     for id in old { #expect(await h.waitUnloaded(id)) }
     h.clock += 60 * 60_000

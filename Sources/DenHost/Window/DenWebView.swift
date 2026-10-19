@@ -19,6 +19,7 @@ final class DenWebView: WKWebView {
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     Presentation.webViewMoved(self)
+    if window == nil { service?.leftScreen(self) }
   }
 
   // MARK: Context menu

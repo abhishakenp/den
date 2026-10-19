@@ -187,7 +187,7 @@ Every item with a shortcut shows it on the right. **Hold ⌥** while the menu is
 
 ## Memory
 
-Background tabs you haven't used for 5 minutes **of time in den** are unloaded: they keep their history, scroll position and a snapshot, and reload when you click them. While you're in other apps they unload after 10 minutes instead. Your **2 most recently used tabs** (1 on battery, with battery saver on) are never unloaded, and neither are tabs on screen, tabs playing media or in picture in picture, tabs using the camera or microphone, or pages with unsaved form input. Settings ▸ Tabs ▸ **Unload idle tabs** changes the time (0 turns it off). See [Performance](performance.md).
+Background tabs you haven't used for 2 minutes **of time in den** are unloaded: they keep their history, scroll position and a snapshot, and reload when you click them. While you're in other apps they unload after 4 minutes instead. A tab off screen also lets go of the pages it can go back to (after 10 seconds), so Back reloads them. Your **2 most recently used tabs** (1 on battery, with battery saver on) are never unloaded, and neither are tabs on screen, tabs playing media or in picture in picture, tabs using the camera or microphone, or pages with unsaved form input. Settings ▸ Tabs ▸ **Unload idle tabs** changes the time (0 turns it off). See [Performance](performance.md).
 
 ## When a page misbehaves
 

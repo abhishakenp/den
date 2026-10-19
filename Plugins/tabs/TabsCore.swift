@@ -129,10 +129,12 @@ final class TabsCore {
   static let maxPanes = 4
   /// 24 hours (Arc: 12). A tab opened late in the day is still there the next morning; see docs/defaults.md.
   static let defaultArchiveAfterMs: Int64 = 24 * 3_600_000
-  // den's choice: 5 minutes in the background, then the page is discarded (its WebContent
+  // den's choice: 2 minutes in the background, then the page is discarded (its WebContent
   // process exits; the host keeps the URL, history and a snapshot on disk). The host refuses
-  // tabs that play media, hold unsaved input or are on screen (docs/perf/memory.md).
-  static let defaultSuspendAfterMs: Int64 = 5 * 60_000
+  // tabs that play media, hold unsaved input or are on screen (docs/perf/memory.md). Was 5
+  // (changed 2026-10-19): a live background page measured 100-410 MB; a discarded one comes back
+  // with its snapshot at once and repaints in 0.1-0.6 s (docs/defaults.md).
+  static let defaultSuspendAfterMs: Int64 = 2 * 60_000
   static let tickMs: UInt64 = 60_000
 
   let env: PluginEnv
