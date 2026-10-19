@@ -1,86 +1,86 @@
 {
  "channels": {
   "prerelease": {
-   "build": 440,
-   "commit": "5d139fb8262013aa64686effb23ee01639a9116d",
-   "hostAPI": 208,
+   "build": 448,
+   "commit": "171d01689f0ce162fc701aedfbbf5735ba5722c1",
+   "hostAPI": 214,
    "plugins": [
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "briefing",
      "permissions": [],
-     "sha256": "b0ede183b221c17b6dc6872a895f4c1597279c2103d052ef827cbc2cc073c0c5",
-     "signature": "QC5q+a4oK8eBR7HbjIU+4P1B2C9YpsDICAXQUMAW+b6bURafG5sGMIcLgsawszDFVhc8Wm7XXMOFUVEEBWtRDw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/briefing.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "9584211b98eeb49fbea400c4f2c392d4b23004535fbf8e06f3136f26c79ae1dc",
+     "signature": "vXrn8Pf9JtGS5iXE4Rjv1t8mFh/G3OOeBd3NBK7DTa3uRdYDp82hscEJQY9gfV7QWXgoPXmv5x5ZvTy/WlwHBg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/briefing.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "calendar",
      "permissions": [
       "session:google.com",
       "net:*"
      ],
-     "sha256": "e3a8a8874b2b5e4baf8744c131fcc8ba216ecadc7af5f1830838152adc29c1a1",
-     "signature": "iLsiY3F921fCB0Cm7/qswsWaBHzJdoA0O0i+KmEJdG3tmYL9yfQON2FGvBzlD+tIklf2zVzfY+/DZdHpO0zLCw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/calendar.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "6e6deb44737c37812af06f8d9ce8d126443845142ef59f92525caf9d2a39968f",
+     "signature": "JKOghh36+0/rJ4gliY5WvxKVjD5XuvYXNyYYKTy2Em598R0O1nd50e1Yy0uLv/YnLcJxsn6QQrLszNyBsLo4Cg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/calendar.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "commandbar",
      "permissions": [
       "net:suggestqueries.google.com"
      ],
-     "sha256": "2da9c79e384450da09bc1139a90364a6f153e67895d59be5ee40e7daec54d4aa",
-     "signature": "++nnWWe6ZbFg1qNH5HR0FkURA1oU73vGzdJv8wuYhBctYWCaO96RC+L12IcdludtkmuVO2IBguT1IGu42/pLBw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/commandbar.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "70fdba01f69b47f6bceee72eb0c72d6a9f54338fe00d6d20cd334cebcd15b5cd",
+     "signature": "qEnUfPVTtBAGywVJ0NzdKU17WJctV7QVlVZ5c5/EZeY9kE58mxIPQg9mf88CWapydiwHCUnvEcJQ1kXaU252Bg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/commandbar.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "confluence",
      "permissions": [
       "session:atlassian.net"
      ],
-     "sha256": "0e82095e7506f7ac1254fb87a56f61bcf07310e83f47710bad08e34fe6f9b663",
-     "signature": "eR95//WoYBjMSYrjbsUlQQRt4a2qbPrXBR1kFEv1tT3vZGi9SFpRu5OzMuuQjIj+I5tUMJXXj+I54bnp6AUaDw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/confluence.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "6e1e7888102dfa4617189f29336f65dfa058aeb8c7bdd13095d17357bb1920a1",
+     "signature": "/PecpFW3YUTzNangtNx6pbYciaGJ6935JOyCiUghBH9civpjL13OB/16aar6Zz8YTGPDXU+FSSY1szt0nVNwBA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/confluence.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "connections",
      "permissions": [],
-     "sha256": "63fdccb288e51045ca337521e19084e6f7d49cc4d1e4bda94967a5be375fe417",
-     "signature": "t6xS0VFPHUNRCxL4+lc6bbLETf7we5hg7LYJrNf49py1srza6In8B2re58YAHwe5mzAmDUjq/7YXOVi9pf1ECg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/connections.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "a4a49d1e46ce68ab24dbc0558a06f7f09bef3d761fda418f97cbabf48ab9d8ab",
+     "signature": "HXRp4HurmJeyZiZegXtYHLSTHGscPDJeu3FmcWUy60N/FX6aVYU63GrlBA1KvCFVonch3Q0O227wECBZmQY8Ag==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/connections.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "continuity",
      "permissions": [],
-     "sha256": "c305cf3a77f0f6969d4e4ac0bf79e96114acc0ecc04450417ddbcd69a58a42d7",
-     "signature": "Z0g8AQPm5KxV53prBsCxRwNJFMlqpunQOsGXvPZyLyrJ13/+3zmLwY2F4Q+wRvifArLVTLAUMkp8omLTEo50Dw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/continuity.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "33b24e5505f904d757f1d287b6b67c9348b9340a2a33e32c20c837221a961c79",
+     "signature": "r8YRlNPcIRNH9A9XuDnXrcray2rwm1/2nhqvkX4wIf/6gxINs3RqiGcmJZqZUf2Ac2qyhjJv3fRUlbrW/eQ2Bg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/continuity.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "darkmode",
      "permissions": [],
-     "sha256": "43b83e73369006a0148d2cc6346ff186f4b1bcda0a92d1e3359eae52ac58019d",
-     "signature": "d3n2DDxIAn/iiu2C27Yz+B1TxK3IWdHaY+KLQKu67tufloiA229J06J6SiNS02qPrl8TKytiXvcda9o/6p29Cg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/darkmode.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "bf338c72a89de1b94e06cc34568f8788ddcbc7925710647d933a9042bc86a563",
+     "signature": "hRTItKB9phtQgGYIJ7nj5cd+cZC+SOCR3t+zTu1nqFqsqNd6DyQP1mmiTAI5zqgM41cDH5IEXdoFGOgw5cwsCg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/darkmode.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
@@ -119,42 +119,42 @@
        "extensions"
       ]
      },
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "extensions",
      "launch": "lazy",
      "permissions": [],
-     "sha256": "9d583a7efca36e38eec5d57b9c44d8b2af610f316418c59616ad71042d79a023",
-     "signature": "Pru0xcNrFAJwdMZcXoWG0mFbUF1kleTz+FQxHVY7lV/iuyzJBB2fyR87jkD4eeyeQeA0t/5P8amng4rXW7FzAA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/extensions.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "116fbc1ef0715c8dbac943b73cdffb9b6f373f516c10eea35659e70f979285b1",
+     "signature": "w/pNJJDs8MqgKt5nGF3J4T/w8lz55vS9iJ/CcJ4TtR7kjRu4gXJ6ADYv0l0qQgjzAkm1t7tvle1sFp/Nf76yCA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/extensions.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "github",
      "permissions": [
       "session:github.com"
      ],
-     "sha256": "f818471f128853752f0d88bcde0c22bff76f58615df5b558e5a0e8f60f1fb138",
-     "signature": "tF779pvTJNU4c3uaT/jWJcGPHQOGWsjG5DaTJg1i7GNCXcaD4b7FLGNorLEIsOEhSIb2PRuMg39SshaJbWMxCA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/github.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "68978596d7d2363fc03e22ac95139c2b4af130a9a683a2d26dd886eb3d481941",
+     "signature": "/1UpcZLRE/XQn4ocyP2ZsM2nG6gYTk3Ca6RUWd/ZR0kilkAlqcX9rZEOd+q9G9Xt4PAbud0bvzwPS7+MM5v6Dw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/github.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "gmail",
      "permissions": [
       "session:google.com"
      ],
-     "sha256": "73617feca2e192578db35964770ec20aff45c5cdf9261394c0073d6d1aa7fd0f",
-     "signature": "UiZjSzmACANjHh+5A5vZXDX23j04+wlC/WvYZ38qIL+doPM5Dnke7bgF2B6XY7hffNE2yfFo6sMLSYQF9HZsBw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/gmail.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "c3bf57658e80839a70d4c9300bc1c6815cc8d667bd7b27d52446bdeafdcdf481",
+     "signature": "M0ARJ64NLgnLJrcyj1KYLmolesSFX02bpBLgGgi+7KLb45851CJzb4pOv+bEdGJ4O+XCgsdJckEScaUYWR30Cw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/gmail.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "importer",
      "permissions": [
       "files:~/Library/Application Support/Arc",
@@ -166,115 +166,115 @@
       "files:~/Library/Application Support/Firefox",
       "files:~/Library/Application Support/zen"
      ],
-     "sha256": "a63b375346b13c0f0c527d6fbe914ec6086a72a78299957f866bb02b9780080a",
-     "signature": "s4fNls7SvDwV8aNO3yN/dQg4WhSTsk/5DbBO2xP11c5s2C5tNjwzoTrjs5gYuXrZVIYATAGxSJAJOKABBt5iAA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/importer.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "fed8551787b1dd3d48c0ccc0317883488868825e809350f061ca0d95dbd0663c",
+     "signature": "nyAsi10a5SFlayUVxKb35SioAsBNMc9LGsq9BlMFUkaIcjghjRgDXL0xs5Dcf3sZs7tfvUQ6IXlYuyZeIQYGCg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/importer.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "jira",
      "permissions": [
       "session:atlassian.net"
      ],
-     "sha256": "972de4d2b41d2d612c1b06ab736d6f6ee3a9fee7917cdf8be4503d336193dda4",
-     "signature": "1fOzo3tcFwTrt9Xe+i9PFwajlax5h1xvl1YY9VL2nYN3LbwsyMreVXrry6OtZ8Ix7IA64r2cpLrApWToJm70DA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/jira.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "f6162ae0084e69fe8367066a4f7ebe11161c879a8a8851fc96ae2d4aefaf811d",
+     "signature": "+fbtvPOVN3c5EBzXkkypMejVDtf7lAHsHD0JymLowkhy2V9nmA0WGd+Gx/62HDHOpfrmYE4T4FmtA9r+kqCGCQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/jira.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "linear",
      "permissions": [
       "session:linear.app"
      ],
-     "sha256": "c17962263ad9bd47cd2dc768a9c0df74d42fcc652823a9b41c2353dda8db5a58",
-     "signature": "LUzGnhbpH4NtPbd9YI8XtiobnajO9lOiW25a3PPulJq5QrHStC6C+WIAC1gAOqifnDb6zbkoV2QsnlZH3HT6AA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/linear.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "21dcc715f397f906001c10b46928b7723e7f83c73cd57ceb6205a667163161cc",
+     "signature": "LtrVCC2dhH2iy6z5Su2MkJYcvSQu3Nj3eGIkQBKO6+auTV9O0GxVY8RuidIKjAZzh/szdnYp6+C5xap2I5Z8AQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/linear.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "media",
      "permissions": [],
-     "sha256": "d815cc95949f9363fbbd5f613a4b70292aec7f6e98a68d9326545a6008ef1be8",
-     "signature": "ifC7EntH1sDkXxb7aoJbrxHeAMuJ8DbOtHMWRZHuAvUB6sh6Xkro+1K8q/509szAR3gqgL0Uzrh91CDkvrtqAQ==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/media.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "764bd7b3bf6aa164e50f21de7d7640749d6775074aab5f60e060c5b54b833cef",
+     "signature": "dTaM4Unlvk54zU4/ajGRKwRxcntcbS4lEl2YdZwYl32jhVw5Dr//NamnUJcF8GoyTlmHntTKoEZmeXljIW3qBw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/media.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "notion",
      "permissions": [
       "session:notion.so"
      ],
-     "sha256": "10ea9eff922531a1b94ee4f00f8603aab3362f0dc6912ec450d796fee96dad2c",
-     "signature": "LK2/ubKWfjfUpOk/KbxTnUeZJPpsWJ1gkRj+i9HOQNp054y/7hO/8orjQ/r8tB1dGkzFxqsRzDr+NUQDsMz8Bg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/notion.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "af37f5e849b48c94f2b462f584f8441ce1111fcfda5cff997300d4f7e898b806",
+     "signature": "ShXf2P+w0I7HL5r485gdDq+E8GS3lojKmLw4DH4+FFdhXn1kzfjeokpM84SR8mOZ8a6hQza13EQIT3OPN9kCAg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/notion.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "outlook",
      "permissions": [
       "session:microsoft.com",
       "session:live.com"
      ],
-     "sha256": "a17e5caa8521286c97f3e529723accf172a6fe506a98ba55e8e8c5db7cd02100",
-     "signature": "46X6kIzJil26khEuHlZT3CcchL8VPlssB7+QLUGWFPzBPtyiNbSAOyZ7JB55rnYxhcJctCT2UiWc/b/LfW6eAA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/outlook.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "c058b505c95565b1975fbe9fbaa0d59ca707584cc39b670123aa6830a6fe11c8",
+     "signature": "QA1Gs6p3iE7+16WSEUVZfS/CdTBtdm55Rnjre08xlSGA+1naRplswYHmBTxbV1CNvh8uFw6MNTSDH06r+UuMBQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/outlook.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "pagetools",
      "permissions": [
       "pages:*"
      ],
-     "sha256": "d06a9a37bca27a7b6c3edc67bc5b913f421be0eccce886c632bf38bfe05cf7b3",
-     "signature": "XTjoO97lVqI1GkQXNm3cRpYLcvFTGBBoINDB4Nipp0l1TILrh+sL3JfQORbKT0BP1krt4L4PMx8rxuAcHvCcDw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/pagetools.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "f23d6ca65c722f9d17d30f9ca505df8dfe0d647b4e67abbabfa7fb06cd2b9bf4",
+     "signature": "zu8T5SdZHIwyA16IRt9G6VrsTOsvFvG8Z3ieiDqBeTvmfulUnynU06ztKoUH8HgxWX9vNhjxhMc6irTmf7JqAQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/pagetools.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "panels",
      "permissions": [],
-     "sha256": "7a429a1a360e927bd1afe537367eb440547c59e014e63f33062f3c1aa21e62af",
-     "signature": "+qcFuamKz0f6UP1aOOy8sRPin8n+x9ADVGLSAk+8e9dI8rWqNhby4XYRdQl4mrBTRsojo0S9TksgOSKB8Z//Cg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/panels.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "b8a8e5ed8da6db7a42e7bc7457d1c75ff5a1d74fd200d534fd8fb29814949977",
+     "signature": "xLdxRPxkCEgcFNkJwjkJnnZSI5kjdtnSfrI5i/HN2iDJ65zS/EfZE8YISk+T5BtHsMhSNEdwlpE6LDsVrjPDAA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/panels.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "passwords",
      "permissions": [],
-     "sha256": "15281f6ecc5ca137893841b398f5f513bca8ef2955ef077ca8140556ea950869",
-     "signature": "NyeqzQR0Ro5tOqzem6bGbpOX/nccyXvHESihD+kRJzfftERZNt5UZjysgq/fpfgQSlMwXyfcnFKfBhTwRitMAg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/passwords.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "7bbec480439b38bee5cfb25f9fae2929554457bee36af50e558ce5a7419ffaea",
+     "signature": "8K0jlqzUeuPYwRy7zLTMp0gfHBy1AMJVp+f8T9jNwhgsnK6ZGgJmZV8L5GNmZTSmTgnXkT4TdcKXMpF9za2OCg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/passwords.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "peek",
      "permissions": [],
-     "sha256": "46c769eee3e93426c95dcfc6f32496a762d602a1e17fb23a5beb1a7b32f2bf78",
-     "signature": "rXQlr0ojXn9F8giE+RPW6Zt34/gDe7ypondNagGMwluAWP3dnFTFBcxgvkeetN2awCgL+0/uvsvLXqa5i77lDQ==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/peek.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "42c364ed14dcf5d4ffd82c1aea52d85eb2a4ef16b6626eb4bb50fa4116b5bff4",
+     "signature": "L1K4Dfkci5f/TQBmDfd6scKqeyeLqiLAoMJ+iFNIfWYV5AXmTSypVYmIfIEPv3/ZTHxGL7qLKe1clqgS5CesBQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/peek.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "previews",
      "permissions": [
       "net:api.github.com",
@@ -284,96 +284,96 @@
       "session:mail.google.com",
       "session:slack.com"
      ],
-     "sha256": "54de3217a0920938b492d13915d661c1bd8d5c208c9e0c3919a55ea0820efec3",
-     "signature": "lDaaJg0rvXAai8mPgYpqgfWrTyMp0LiIB2fZFdBergAVgQJwubP75KgHV9MyU2UxeJmJfLwl2ED/wbWNVVRrCw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/previews.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "881d27818ec163e4c97b104bfc7e8fe862a16489cad7709ee4a9f4c4dfd2ae8e",
+     "signature": "GMxxVqvlBxBo39q8de8AEpBRxe1uSZHrJqCBebMM8a6z46CmScQHbTj43GkUknTt6V86pjN0hKoEky7PvPWxDg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/previews.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "profiles",
      "permissions": [],
-     "sha256": "f268e9109aabfe342902812c35da2c97be2ea4947b51327020f871503c5ffd66",
-     "signature": "sxu5Jxh0e11cOEEacE8ylvvLmu7/mxvVsYXHY/0ba6L7BI3uT89NyVT5l/A18ANiiAjkfafGbsexClqlLwZECA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/profiles.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "cb6012431c9338d00deb6fd06261922b4bb738985fe964be3d28ca7f52b4da19",
+     "signature": "cpgZcu1T//bdeqd6l6ilIaAmzAspjWwHQ3ARfBl2pnmweULddG5KZMmR8OmHkacbL8FPcfVqXnVYM3GDbgOeDQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/profiles.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "pwa",
      "permissions": [
       "pages:*"
      ],
-     "sha256": "3efc41a8f867912054cc5e18fe574f76a2ec430899db4561b7d64e2fc468e154",
-     "signature": "b9DBeizi34fuLXHsBupGXhuFxAuV2dDRBjfjHbSNc3qfCThwwmFjw0PXel/RvqtWwoZk3Vmb42ys4POxgqyrDg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/pwa.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "d5825582f9f6306c3eb8a529d1f851064060ed10755f5c78e4367bdcd4a21f98",
+     "signature": "sNq6roMtFsSK0WIz+zZoiZ7C4XnxOyt1lLdIgDjoUbHbd4a3z1N9WbzNm2K2LjDn9QEkQyLawQXkACzjN7SZBg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/pwa.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "quit",
      "permissions": [],
-     "sha256": "472fe0caec6f8156e806ea92a0f573141a10d799eaac6e8ab4ae578f7972e336",
-     "signature": "GA06zDp+rWz7ZY2WUOpTTASFj1jphTbqcqw0X7FbVcsnJzaoHijtG9e8ACpfuGObpqV0TzvTfif4jWVSjDzSBw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/quit.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "b5e813f3d53056c7ae2261d97d5dd87aec96e1a4144f0048bba0a9c075e8dfe0",
+     "signature": "S97UYOfsm9EhrsWjaiG6VEwvLxTAL361hAYJ5bLzi9PiSU5FFM5xL+KPE39hwVIS+RiuLlyWGLyQjH9UIwZbAA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/quit.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "rss",
      "permissions": [],
-     "sha256": "941366ca3ea7e350aa3a337c98c817cb9de30f0d5c0ab234a4b26afcf0e6640d",
-     "signature": "sCDcmbEZIzINxnIiXkFfbJRe77JSKciAMafYD14qp/tPkECQaB8oNcWmYSYVFIcvLL1JolAgTxKQ7mwIInQMCQ==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/rss.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "d46edff2f67f92b8b214f59d3663b4454570e05b96b248ad112ef85842308359",
+     "signature": "DEcCY0VgYRHY32HEKpazhg90CH5ScjOhPXx8qy4JdjWgxI2EV2hWRjcAa00vyP+Jztkaq6C1ibdJJ5C/ha7cAA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/rss.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "shields",
      "permissions": [],
-     "sha256": "3757dc96119a96e7f6c5ca2c6bed13f0ab947cdb3cad648afbe0b802d0f479b7",
-     "signature": "H0bI3X7I2eWB1DvMU17mC4WSqDSreI/hkGpj8GOeSZpmMbrvYSAlyDKjdWiTJvWDj7oV3cDw+uCgit8KB1L5AQ==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/shields.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "6e9b8256d8fc1712af371288233af868a37692d3545aa682c1a41dbc7efdc5e6",
+     "signature": "hEPK8r4hTxG3H+GmUNMYKdTAzJn3QZAN1iCMw+/+DdUg4BvLyQgnUj4AQdqYybUTH94UGHT64ejLy8KhXS/iAA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/shields.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "slack",
      "permissions": [
       "session:slack.com"
      ],
-     "sha256": "15e173b74260fe28f18be22527f8fe94ab6cfbe96fe237970b1f55e0f186938a",
-     "signature": "iU/M3k9b35CxzlehuLYPwHL7DyXj6cYUAY9GwTAr4+kB51zP+Y5vaENeweSdUF4tz/8P7tyfZU+SN6L0N28sAw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/slack.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "77c0beac3fab63079c54c957703caa27266b9df56f1e826bb100d66f68043221",
+     "signature": "FpaPn4Ud9g3bEZQhrPZt831CHCXGLuQJejd35zjlDsjxx6cn75MfDpVgCXWX3KZUVMZhF7qdOWpXO/aQbJDrBw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/slack.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "spaces",
      "launch": "firstFrame",
      "permissions": [],
-     "sha256": "5d2d0bc559e7907d2f80bc8ae76d58e3e2f3dadf47fc443bdfea993321aaa3da",
-     "signature": "x+lbCLvuRbElH/rS9oMO7zajF58njDgdHHRkgeqFOSSUSf1rLUY2IXi+c5h6Gnt+dtOFjbpLFbglaQiz1RXsCw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/spaces.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "a9898cc2ee9a3e0db31c4352ec90c6b0d06815c913208d8d19784ebab152dad3",
+     "signature": "TD583XGM0RtdTgiX5jp0l0/TPDDY/wHoQv4cRHMTyyGviJ6BRL4phuVz87qxC23slJYaeQYpQYtAmhLLn+zEDQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/spaces.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "tabs",
      "launch": "firstFrame",
      "permissions": [],
-     "sha256": "e136f5d5dc5ac6b57465ae6ef8af3b22aad34e0ae15c85b1dcbfb917040c0b13",
-     "signature": "Pd6YneC6xQSbPnNSDdxq14Qd3gjVDBGHyqDoAm38KkJySgIWUWBpiNGHCOHyB0rdXCPxj/zkfuEgYb/ckj6GDw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/tabs.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "000e43b7690c0aa796daff9a4461f4e827311a4ec2cb75260fe94ea786039072",
+     "signature": "1pV+xcp50uwcyguuPmjQWpsSZzBQWPofccQAfjZPckHZHUj5tAXbU8rOmz0cK5MEprjO0aNZ3zNr2KZA229XBQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/tabs.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
@@ -405,130 +405,130 @@
        }
       ]
      },
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "theme",
      "launch": "lazy",
      "permissions": [],
-     "sha256": "acc698a84c1913f5f809c277af71440eaef69e7608a3d552a0ebde111bbd3c27",
-     "signature": "emUOpKs5e+kiV78EjIEJD5BL+VxgE1dYoiy8aamcm7GLi9OUPheR8rQpPHuL+RRSXQOwiZg/l/zGaOUlKbWfAA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/theme.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "0b81c4630c1aaed5cdce053e52c0abd86920ee6fa53fac2ff3805ef346beae1b",
+     "signature": "ryY7HviQ8QQisgIr9Rnn4SJtG+7vng9nmQ9Ac2leOQnWKlAxlA34jCaq/Ui1QLbalCYkC0Dx/QaO/WphLzFpAw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/theme.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "tips",
      "permissions": [],
-     "sha256": "d44c8bd7294cb00ce5f8c044c50acdb008b4edab71ab904d4972039474f6f56b",
-     "signature": "c0hK8/VzJ0rMPy2jE0FfmAO2uzC6TUCxV2s6XC6IsXJKoidUMOv1KbrHrDpzC8wGsWFc4uJNSFQgAjUjXOTEBA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/tips.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "0107ea855fdff89bc5a78c0e373abd97b7199cd313b310983d111a2c7cdcfb07",
+     "signature": "ecBF1FTzkmJzR5/T48gaRIG9oVp/np8fV5g6hdDxUbMMtwJJKmb2sIj6xOApjA1FtYA/mY/HDvLbDt1bmdA0BA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/tips.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "tour",
      "permissions": [],
-     "sha256": "6341c50d2db171eec6b9139c6c084ff75793a2c01453e2972be604c393783d53",
-     "signature": "411c+tS0BC50bHbdFg/lNXcu+vy5xzvOB/nB2XptjVDbLE5eZkfzE1YI+0LqbWot+k6y3TOS4g/3goZ0Z+x8Dg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/tour.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "cb10935320084b98465ba1a84f17fc1378227ea6a9d9969621028239c9a32d36",
+     "signature": "lZyHvGvgmkP14XGNdef1vm4lbF4rS8QbGlk6OW3LGX4TomtGguEmcKDNarl3PW8Vap3BIM7us3fdTtXbjl4cDw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/tour.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "updates",
      "permissions": [],
-     "sha256": "f3f9a538085f03ca6fdcc2beed96154eccbff2f667d071f8e178776750b1d284",
-     "signature": "4dwDdT+j8uEx/fZbvKyzQEpoMAsCovtsHvjPqt4xdBkcFDBK78UCQ3Ry7nNgW7RBdJOGB0xrwgpT7Eql8TAFBQ==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/updates.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "cdad16f2d65e9547c27e59d5139db4b3a040b4e3c0085ef17b57bd0a59682269",
+     "signature": "+aNZtDGqzH8xtQhxikEzCOgz8hLNqKO2j5Kov4ZVYnzZY0kGI7qFHDHWb+uafEOuINAEgVcznov/UNEYuhrzBg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/updates.dylib",
+     "version": "0.2.0-alpha.16"
     }
    ],
-   "tag": "v0.2.0-alpha.15",
-   "version": "0.2.0-alpha.15"
+   "tag": "v0.2.0-alpha.16",
+   "version": "0.2.0-alpha.16"
   },
   "stable": {
-   "build": 440,
-   "commit": "5d139fb8262013aa64686effb23ee01639a9116d",
-   "hostAPI": 208,
+   "build": 448,
+   "commit": "171d01689f0ce162fc701aedfbbf5735ba5722c1",
+   "hostAPI": 214,
    "plugins": [
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "briefing",
      "permissions": [],
-     "sha256": "b0ede183b221c17b6dc6872a895f4c1597279c2103d052ef827cbc2cc073c0c5",
-     "signature": "QC5q+a4oK8eBR7HbjIU+4P1B2C9YpsDICAXQUMAW+b6bURafG5sGMIcLgsawszDFVhc8Wm7XXMOFUVEEBWtRDw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/briefing.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "9584211b98eeb49fbea400c4f2c392d4b23004535fbf8e06f3136f26c79ae1dc",
+     "signature": "vXrn8Pf9JtGS5iXE4Rjv1t8mFh/G3OOeBd3NBK7DTa3uRdYDp82hscEJQY9gfV7QWXgoPXmv5x5ZvTy/WlwHBg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/briefing.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "calendar",
      "permissions": [
       "session:google.com",
       "net:*"
      ],
-     "sha256": "e3a8a8874b2b5e4baf8744c131fcc8ba216ecadc7af5f1830838152adc29c1a1",
-     "signature": "iLsiY3F921fCB0Cm7/qswsWaBHzJdoA0O0i+KmEJdG3tmYL9yfQON2FGvBzlD+tIklf2zVzfY+/DZdHpO0zLCw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/calendar.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "6e6deb44737c37812af06f8d9ce8d126443845142ef59f92525caf9d2a39968f",
+     "signature": "JKOghh36+0/rJ4gliY5WvxKVjD5XuvYXNyYYKTy2Em598R0O1nd50e1Yy0uLv/YnLcJxsn6QQrLszNyBsLo4Cg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/calendar.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "commandbar",
      "permissions": [
       "net:suggestqueries.google.com"
      ],
-     "sha256": "2da9c79e384450da09bc1139a90364a6f153e67895d59be5ee40e7daec54d4aa",
-     "signature": "++nnWWe6ZbFg1qNH5HR0FkURA1oU73vGzdJv8wuYhBctYWCaO96RC+L12IcdludtkmuVO2IBguT1IGu42/pLBw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/commandbar.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "70fdba01f69b47f6bceee72eb0c72d6a9f54338fe00d6d20cd334cebcd15b5cd",
+     "signature": "qEnUfPVTtBAGywVJ0NzdKU17WJctV7QVlVZ5c5/EZeY9kE58mxIPQg9mf88CWapydiwHCUnvEcJQ1kXaU252Bg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/commandbar.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "confluence",
      "permissions": [
       "session:atlassian.net"
      ],
-     "sha256": "0e82095e7506f7ac1254fb87a56f61bcf07310e83f47710bad08e34fe6f9b663",
-     "signature": "eR95//WoYBjMSYrjbsUlQQRt4a2qbPrXBR1kFEv1tT3vZGi9SFpRu5OzMuuQjIj+I5tUMJXXj+I54bnp6AUaDw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/confluence.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "6e1e7888102dfa4617189f29336f65dfa058aeb8c7bdd13095d17357bb1920a1",
+     "signature": "/PecpFW3YUTzNangtNx6pbYciaGJ6935JOyCiUghBH9civpjL13OB/16aar6Zz8YTGPDXU+FSSY1szt0nVNwBA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/confluence.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "connections",
      "permissions": [],
-     "sha256": "63fdccb288e51045ca337521e19084e6f7d49cc4d1e4bda94967a5be375fe417",
-     "signature": "t6xS0VFPHUNRCxL4+lc6bbLETf7we5hg7LYJrNf49py1srza6In8B2re58YAHwe5mzAmDUjq/7YXOVi9pf1ECg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/connections.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "a4a49d1e46ce68ab24dbc0558a06f7f09bef3d761fda418f97cbabf48ab9d8ab",
+     "signature": "HXRp4HurmJeyZiZegXtYHLSTHGscPDJeu3FmcWUy60N/FX6aVYU63GrlBA1KvCFVonch3Q0O227wECBZmQY8Ag==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/connections.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "continuity",
      "permissions": [],
-     "sha256": "c305cf3a77f0f6969d4e4ac0bf79e96114acc0ecc04450417ddbcd69a58a42d7",
-     "signature": "Z0g8AQPm5KxV53prBsCxRwNJFMlqpunQOsGXvPZyLyrJ13/+3zmLwY2F4Q+wRvifArLVTLAUMkp8omLTEo50Dw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/continuity.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "33b24e5505f904d757f1d287b6b67c9348b9340a2a33e32c20c837221a961c79",
+     "signature": "r8YRlNPcIRNH9A9XuDnXrcray2rwm1/2nhqvkX4wIf/6gxINs3RqiGcmJZqZUf2Ac2qyhjJv3fRUlbrW/eQ2Bg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/continuity.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "darkmode",
      "permissions": [],
-     "sha256": "43b83e73369006a0148d2cc6346ff186f4b1bcda0a92d1e3359eae52ac58019d",
-     "signature": "d3n2DDxIAn/iiu2C27Yz+B1TxK3IWdHaY+KLQKu67tufloiA229J06J6SiNS02qPrl8TKytiXvcda9o/6p29Cg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/darkmode.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "bf338c72a89de1b94e06cc34568f8788ddcbc7925710647d933a9042bc86a563",
+     "signature": "hRTItKB9phtQgGYIJ7nj5cd+cZC+SOCR3t+zTu1nqFqsqNd6DyQP1mmiTAI5zqgM41cDH5IEXdoFGOgw5cwsCg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/darkmode.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
@@ -567,42 +567,42 @@
        "extensions"
       ]
      },
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "extensions",
      "launch": "lazy",
      "permissions": [],
-     "sha256": "9d583a7efca36e38eec5d57b9c44d8b2af610f316418c59616ad71042d79a023",
-     "signature": "Pru0xcNrFAJwdMZcXoWG0mFbUF1kleTz+FQxHVY7lV/iuyzJBB2fyR87jkD4eeyeQeA0t/5P8amng4rXW7FzAA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/extensions.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "116fbc1ef0715c8dbac943b73cdffb9b6f373f516c10eea35659e70f979285b1",
+     "signature": "w/pNJJDs8MqgKt5nGF3J4T/w8lz55vS9iJ/CcJ4TtR7kjRu4gXJ6ADYv0l0qQgjzAkm1t7tvle1sFp/Nf76yCA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/extensions.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "github",
      "permissions": [
       "session:github.com"
      ],
-     "sha256": "f818471f128853752f0d88bcde0c22bff76f58615df5b558e5a0e8f60f1fb138",
-     "signature": "tF779pvTJNU4c3uaT/jWJcGPHQOGWsjG5DaTJg1i7GNCXcaD4b7FLGNorLEIsOEhSIb2PRuMg39SshaJbWMxCA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/github.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "68978596d7d2363fc03e22ac95139c2b4af130a9a683a2d26dd886eb3d481941",
+     "signature": "/1UpcZLRE/XQn4ocyP2ZsM2nG6gYTk3Ca6RUWd/ZR0kilkAlqcX9rZEOd+q9G9Xt4PAbud0bvzwPS7+MM5v6Dw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/github.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "gmail",
      "permissions": [
       "session:google.com"
      ],
-     "sha256": "73617feca2e192578db35964770ec20aff45c5cdf9261394c0073d6d1aa7fd0f",
-     "signature": "UiZjSzmACANjHh+5A5vZXDX23j04+wlC/WvYZ38qIL+doPM5Dnke7bgF2B6XY7hffNE2yfFo6sMLSYQF9HZsBw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/gmail.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "c3bf57658e80839a70d4c9300bc1c6815cc8d667bd7b27d52446bdeafdcdf481",
+     "signature": "M0ARJ64NLgnLJrcyj1KYLmolesSFX02bpBLgGgi+7KLb45851CJzb4pOv+bEdGJ4O+XCgsdJckEScaUYWR30Cw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/gmail.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "importer",
      "permissions": [
       "files:~/Library/Application Support/Arc",
@@ -614,115 +614,115 @@
       "files:~/Library/Application Support/Firefox",
       "files:~/Library/Application Support/zen"
      ],
-     "sha256": "a63b375346b13c0f0c527d6fbe914ec6086a72a78299957f866bb02b9780080a",
-     "signature": "s4fNls7SvDwV8aNO3yN/dQg4WhSTsk/5DbBO2xP11c5s2C5tNjwzoTrjs5gYuXrZVIYATAGxSJAJOKABBt5iAA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/importer.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "fed8551787b1dd3d48c0ccc0317883488868825e809350f061ca0d95dbd0663c",
+     "signature": "nyAsi10a5SFlayUVxKb35SioAsBNMc9LGsq9BlMFUkaIcjghjRgDXL0xs5Dcf3sZs7tfvUQ6IXlYuyZeIQYGCg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/importer.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "jira",
      "permissions": [
       "session:atlassian.net"
      ],
-     "sha256": "972de4d2b41d2d612c1b06ab736d6f6ee3a9fee7917cdf8be4503d336193dda4",
-     "signature": "1fOzo3tcFwTrt9Xe+i9PFwajlax5h1xvl1YY9VL2nYN3LbwsyMreVXrry6OtZ8Ix7IA64r2cpLrApWToJm70DA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/jira.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "f6162ae0084e69fe8367066a4f7ebe11161c879a8a8851fc96ae2d4aefaf811d",
+     "signature": "+fbtvPOVN3c5EBzXkkypMejVDtf7lAHsHD0JymLowkhy2V9nmA0WGd+Gx/62HDHOpfrmYE4T4FmtA9r+kqCGCQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/jira.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "linear",
      "permissions": [
       "session:linear.app"
      ],
-     "sha256": "c17962263ad9bd47cd2dc768a9c0df74d42fcc652823a9b41c2353dda8db5a58",
-     "signature": "LUzGnhbpH4NtPbd9YI8XtiobnajO9lOiW25a3PPulJq5QrHStC6C+WIAC1gAOqifnDb6zbkoV2QsnlZH3HT6AA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/linear.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "21dcc715f397f906001c10b46928b7723e7f83c73cd57ceb6205a667163161cc",
+     "signature": "LtrVCC2dhH2iy6z5Su2MkJYcvSQu3Nj3eGIkQBKO6+auTV9O0GxVY8RuidIKjAZzh/szdnYp6+C5xap2I5Z8AQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/linear.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "media",
      "permissions": [],
-     "sha256": "d815cc95949f9363fbbd5f613a4b70292aec7f6e98a68d9326545a6008ef1be8",
-     "signature": "ifC7EntH1sDkXxb7aoJbrxHeAMuJ8DbOtHMWRZHuAvUB6sh6Xkro+1K8q/509szAR3gqgL0Uzrh91CDkvrtqAQ==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/media.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "764bd7b3bf6aa164e50f21de7d7640749d6775074aab5f60e060c5b54b833cef",
+     "signature": "dTaM4Unlvk54zU4/ajGRKwRxcntcbS4lEl2YdZwYl32jhVw5Dr//NamnUJcF8GoyTlmHntTKoEZmeXljIW3qBw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/media.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "notion",
      "permissions": [
       "session:notion.so"
      ],
-     "sha256": "10ea9eff922531a1b94ee4f00f8603aab3362f0dc6912ec450d796fee96dad2c",
-     "signature": "LK2/ubKWfjfUpOk/KbxTnUeZJPpsWJ1gkRj+i9HOQNp054y/7hO/8orjQ/r8tB1dGkzFxqsRzDr+NUQDsMz8Bg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/notion.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "af37f5e849b48c94f2b462f584f8441ce1111fcfda5cff997300d4f7e898b806",
+     "signature": "ShXf2P+w0I7HL5r485gdDq+E8GS3lojKmLw4DH4+FFdhXn1kzfjeokpM84SR8mOZ8a6hQza13EQIT3OPN9kCAg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/notion.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "outlook",
      "permissions": [
       "session:microsoft.com",
       "session:live.com"
      ],
-     "sha256": "a17e5caa8521286c97f3e529723accf172a6fe506a98ba55e8e8c5db7cd02100",
-     "signature": "46X6kIzJil26khEuHlZT3CcchL8VPlssB7+QLUGWFPzBPtyiNbSAOyZ7JB55rnYxhcJctCT2UiWc/b/LfW6eAA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/outlook.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "c058b505c95565b1975fbe9fbaa0d59ca707584cc39b670123aa6830a6fe11c8",
+     "signature": "QA1Gs6p3iE7+16WSEUVZfS/CdTBtdm55Rnjre08xlSGA+1naRplswYHmBTxbV1CNvh8uFw6MNTSDH06r+UuMBQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/outlook.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "pagetools",
      "permissions": [
       "pages:*"
      ],
-     "sha256": "d06a9a37bca27a7b6c3edc67bc5b913f421be0eccce886c632bf38bfe05cf7b3",
-     "signature": "XTjoO97lVqI1GkQXNm3cRpYLcvFTGBBoINDB4Nipp0l1TILrh+sL3JfQORbKT0BP1krt4L4PMx8rxuAcHvCcDw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/pagetools.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "f23d6ca65c722f9d17d30f9ca505df8dfe0d647b4e67abbabfa7fb06cd2b9bf4",
+     "signature": "zu8T5SdZHIwyA16IRt9G6VrsTOsvFvG8Z3ieiDqBeTvmfulUnynU06ztKoUH8HgxWX9vNhjxhMc6irTmf7JqAQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/pagetools.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "panels",
      "permissions": [],
-     "sha256": "7a429a1a360e927bd1afe537367eb440547c59e014e63f33062f3c1aa21e62af",
-     "signature": "+qcFuamKz0f6UP1aOOy8sRPin8n+x9ADVGLSAk+8e9dI8rWqNhby4XYRdQl4mrBTRsojo0S9TksgOSKB8Z//Cg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/panels.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "b8a8e5ed8da6db7a42e7bc7457d1c75ff5a1d74fd200d534fd8fb29814949977",
+     "signature": "xLdxRPxkCEgcFNkJwjkJnnZSI5kjdtnSfrI5i/HN2iDJ65zS/EfZE8YISk+T5BtHsMhSNEdwlpE6LDsVrjPDAA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/panels.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "passwords",
      "permissions": [],
-     "sha256": "15281f6ecc5ca137893841b398f5f513bca8ef2955ef077ca8140556ea950869",
-     "signature": "NyeqzQR0Ro5tOqzem6bGbpOX/nccyXvHESihD+kRJzfftERZNt5UZjysgq/fpfgQSlMwXyfcnFKfBhTwRitMAg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/passwords.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "7bbec480439b38bee5cfb25f9fae2929554457bee36af50e558ce5a7419ffaea",
+     "signature": "8K0jlqzUeuPYwRy7zLTMp0gfHBy1AMJVp+f8T9jNwhgsnK6ZGgJmZV8L5GNmZTSmTgnXkT4TdcKXMpF9za2OCg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/passwords.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "peek",
      "permissions": [],
-     "sha256": "46c769eee3e93426c95dcfc6f32496a762d602a1e17fb23a5beb1a7b32f2bf78",
-     "signature": "rXQlr0ojXn9F8giE+RPW6Zt34/gDe7ypondNagGMwluAWP3dnFTFBcxgvkeetN2awCgL+0/uvsvLXqa5i77lDQ==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/peek.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "42c364ed14dcf5d4ffd82c1aea52d85eb2a4ef16b6626eb4bb50fa4116b5bff4",
+     "signature": "L1K4Dfkci5f/TQBmDfd6scKqeyeLqiLAoMJ+iFNIfWYV5AXmTSypVYmIfIEPv3/ZTHxGL7qLKe1clqgS5CesBQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/peek.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "previews",
      "permissions": [
       "net:api.github.com",
@@ -732,96 +732,96 @@
       "session:mail.google.com",
       "session:slack.com"
      ],
-     "sha256": "54de3217a0920938b492d13915d661c1bd8d5c208c9e0c3919a55ea0820efec3",
-     "signature": "lDaaJg0rvXAai8mPgYpqgfWrTyMp0LiIB2fZFdBergAVgQJwubP75KgHV9MyU2UxeJmJfLwl2ED/wbWNVVRrCw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/previews.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "881d27818ec163e4c97b104bfc7e8fe862a16489cad7709ee4a9f4c4dfd2ae8e",
+     "signature": "GMxxVqvlBxBo39q8de8AEpBRxe1uSZHrJqCBebMM8a6z46CmScQHbTj43GkUknTt6V86pjN0hKoEky7PvPWxDg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/previews.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "profiles",
      "permissions": [],
-     "sha256": "f268e9109aabfe342902812c35da2c97be2ea4947b51327020f871503c5ffd66",
-     "signature": "sxu5Jxh0e11cOEEacE8ylvvLmu7/mxvVsYXHY/0ba6L7BI3uT89NyVT5l/A18ANiiAjkfafGbsexClqlLwZECA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/profiles.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "cb6012431c9338d00deb6fd06261922b4bb738985fe964be3d28ca7f52b4da19",
+     "signature": "cpgZcu1T//bdeqd6l6ilIaAmzAspjWwHQ3ARfBl2pnmweULddG5KZMmR8OmHkacbL8FPcfVqXnVYM3GDbgOeDQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/profiles.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "pwa",
      "permissions": [
       "pages:*"
      ],
-     "sha256": "3efc41a8f867912054cc5e18fe574f76a2ec430899db4561b7d64e2fc468e154",
-     "signature": "b9DBeizi34fuLXHsBupGXhuFxAuV2dDRBjfjHbSNc3qfCThwwmFjw0PXel/RvqtWwoZk3Vmb42ys4POxgqyrDg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/pwa.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "d5825582f9f6306c3eb8a529d1f851064060ed10755f5c78e4367bdcd4a21f98",
+     "signature": "sNq6roMtFsSK0WIz+zZoiZ7C4XnxOyt1lLdIgDjoUbHbd4a3z1N9WbzNm2K2LjDn9QEkQyLawQXkACzjN7SZBg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/pwa.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "quit",
      "permissions": [],
-     "sha256": "472fe0caec6f8156e806ea92a0f573141a10d799eaac6e8ab4ae578f7972e336",
-     "signature": "GA06zDp+rWz7ZY2WUOpTTASFj1jphTbqcqw0X7FbVcsnJzaoHijtG9e8ACpfuGObpqV0TzvTfif4jWVSjDzSBw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/quit.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "b5e813f3d53056c7ae2261d97d5dd87aec96e1a4144f0048bba0a9c075e8dfe0",
+     "signature": "S97UYOfsm9EhrsWjaiG6VEwvLxTAL361hAYJ5bLzi9PiSU5FFM5xL+KPE39hwVIS+RiuLlyWGLyQjH9UIwZbAA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/quit.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "rss",
      "permissions": [],
-     "sha256": "941366ca3ea7e350aa3a337c98c817cb9de30f0d5c0ab234a4b26afcf0e6640d",
-     "signature": "sCDcmbEZIzINxnIiXkFfbJRe77JSKciAMafYD14qp/tPkECQaB8oNcWmYSYVFIcvLL1JolAgTxKQ7mwIInQMCQ==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/rss.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "d46edff2f67f92b8b214f59d3663b4454570e05b96b248ad112ef85842308359",
+     "signature": "DEcCY0VgYRHY32HEKpazhg90CH5ScjOhPXx8qy4JdjWgxI2EV2hWRjcAa00vyP+Jztkaq6C1ibdJJ5C/ha7cAA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/rss.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "shields",
      "permissions": [],
-     "sha256": "3757dc96119a96e7f6c5ca2c6bed13f0ab947cdb3cad648afbe0b802d0f479b7",
-     "signature": "H0bI3X7I2eWB1DvMU17mC4WSqDSreI/hkGpj8GOeSZpmMbrvYSAlyDKjdWiTJvWDj7oV3cDw+uCgit8KB1L5AQ==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/shields.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "6e9b8256d8fc1712af371288233af868a37692d3545aa682c1a41dbc7efdc5e6",
+     "signature": "hEPK8r4hTxG3H+GmUNMYKdTAzJn3QZAN1iCMw+/+DdUg4BvLyQgnUj4AQdqYybUTH94UGHT64ejLy8KhXS/iAA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/shields.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "slack",
      "permissions": [
       "session:slack.com"
      ],
-     "sha256": "15e173b74260fe28f18be22527f8fe94ab6cfbe96fe237970b1f55e0f186938a",
-     "signature": "iU/M3k9b35CxzlehuLYPwHL7DyXj6cYUAY9GwTAr4+kB51zP+Y5vaENeweSdUF4tz/8P7tyfZU+SN6L0N28sAw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/slack.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "77c0beac3fab63079c54c957703caa27266b9df56f1e826bb100d66f68043221",
+     "signature": "FpaPn4Ud9g3bEZQhrPZt831CHCXGLuQJejd35zjlDsjxx6cn75MfDpVgCXWX3KZUVMZhF7qdOWpXO/aQbJDrBw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/slack.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "spaces",
      "launch": "firstFrame",
      "permissions": [],
-     "sha256": "5d2d0bc559e7907d2f80bc8ae76d58e3e2f3dadf47fc443bdfea993321aaa3da",
-     "signature": "x+lbCLvuRbElH/rS9oMO7zajF58njDgdHHRkgeqFOSSUSf1rLUY2IXi+c5h6Gnt+dtOFjbpLFbglaQiz1RXsCw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/spaces.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "a9898cc2ee9a3e0db31c4352ec90c6b0d06815c913208d8d19784ebab152dad3",
+     "signature": "TD583XGM0RtdTgiX5jp0l0/TPDDY/wHoQv4cRHMTyyGviJ6BRL4phuVz87qxC23slJYaeQYpQYtAmhLLn+zEDQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/spaces.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "tabs",
      "launch": "firstFrame",
      "permissions": [],
-     "sha256": "e136f5d5dc5ac6b57465ae6ef8af3b22aad34e0ae15c85b1dcbfb917040c0b13",
-     "signature": "Pd6YneC6xQSbPnNSDdxq14Qd3gjVDBGHyqDoAm38KkJySgIWUWBpiNGHCOHyB0rdXCPxj/zkfuEgYb/ckj6GDw==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/tabs.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "000e43b7690c0aa796daff9a4461f4e827311a4ec2cb75260fe94ea786039072",
+     "signature": "1pV+xcp50uwcyguuPmjQWpsSZzBQWPofccQAfjZPckHZHUj5tAXbU8rOmz0cK5MEprjO0aNZ3zNr2KZA229XBQ==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/tabs.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
@@ -853,48 +853,48 @@
        }
       ]
      },
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "theme",
      "launch": "lazy",
      "permissions": [],
-     "sha256": "acc698a84c1913f5f809c277af71440eaef69e7608a3d552a0ebde111bbd3c27",
-     "signature": "emUOpKs5e+kiV78EjIEJD5BL+VxgE1dYoiy8aamcm7GLi9OUPheR8rQpPHuL+RRSXQOwiZg/l/zGaOUlKbWfAA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/theme.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "0b81c4630c1aaed5cdce053e52c0abd86920ee6fa53fac2ff3805ef346beae1b",
+     "signature": "ryY7HviQ8QQisgIr9Rnn4SJtG+7vng9nmQ9Ac2leOQnWKlAxlA34jCaq/Ui1QLbalCYkC0Dx/QaO/WphLzFpAw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/theme.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "tips",
      "permissions": [],
-     "sha256": "d44c8bd7294cb00ce5f8c044c50acdb008b4edab71ab904d4972039474f6f56b",
-     "signature": "c0hK8/VzJ0rMPy2jE0FfmAO2uzC6TUCxV2s6XC6IsXJKoidUMOv1KbrHrDpzC8wGsWFc4uJNSFQgAjUjXOTEBA==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/tips.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "0107ea855fdff89bc5a78c0e373abd97b7199cd313b310983d111a2c7cdcfb07",
+     "signature": "ecBF1FTzkmJzR5/T48gaRIG9oVp/np8fV5g6hdDxUbMMtwJJKmb2sIj6xOApjA1FtYA/mY/HDvLbDt1bmdA0BA==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/tips.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "tour",
      "permissions": [],
-     "sha256": "6341c50d2db171eec6b9139c6c084ff75793a2c01453e2972be604c393783d53",
-     "signature": "411c+tS0BC50bHbdFg/lNXcu+vy5xzvOB/nB2XptjVDbLE5eZkfzE1YI+0LqbWot+k6y3TOS4g/3goZ0Z+x8Dg==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/tour.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "cb10935320084b98465ba1a84f17fc1378227ea6a9d9969621028239c9a32d36",
+     "signature": "lZyHvGvgmkP14XGNdef1vm4lbF4rS8QbGlk6OW3LGX4TomtGguEmcKDNarl3PW8Vap3BIM7us3fdTtXbjl4cDw==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/tour.dylib",
+     "version": "0.2.0-alpha.16"
     },
     {
      "abi": 1,
-     "hostAPI": 208,
+     "hostAPI": 214,
      "id": "updates",
      "permissions": [],
-     "sha256": "f3f9a538085f03ca6fdcc2beed96154eccbff2f667d071f8e178776750b1d284",
-     "signature": "4dwDdT+j8uEx/fZbvKyzQEpoMAsCovtsHvjPqt4xdBkcFDBK78UCQ3Ry7nNgW7RBdJOGB0xrwgpT7Eql8TAFBQ==",
-     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.15/updates.dylib",
-     "version": "0.2.0-alpha.15"
+     "sha256": "cdad16f2d65e9547c27e59d5139db4b3a040b4e3c0085ef17b57bd0a59682269",
+     "signature": "+aNZtDGqzH8xtQhxikEzCOgz8hLNqKO2j5Kov4ZVYnzZY0kGI7qFHDHWb+uafEOuINAEgVcznov/UNEYuhrzBg==",
+     "url": "https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/updates.dylib",
+     "version": "0.2.0-alpha.16"
     }
    ],
-   "tag": "v0.2.0-alpha.15",
-   "version": "0.2.0-alpha.15"
+   "tag": "v0.2.0-alpha.16",
+   "version": "0.2.0-alpha.16"
   }
  },
  "schema": 1

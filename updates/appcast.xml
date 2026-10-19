@@ -3,6 +3,24 @@
 <channel>
 <title>den</title>
 <item>
+  <title>den 0.2.0-alpha.16</title>
+  <pubDate>Mon, 19 Oct 2026 10:45:42 +0000</pubDate>
+  <sparkle:channel>prerelease</sparkle:channel>
+  <sparkle:version>448</sparkle:version>
+  <sparkle:shortVersionString>0.2.0-alpha.16</sparkle:shortVersionString>
+  <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+  <sparkle:releaseNotesLink>https://github.com/abhishakenp/den/releases/tag/v0.2.0-alpha.16</sparkle:releaseNotesLink>
+  <description><![CDATA[- test(net): ytsearch scenario: YouTube's first search in fresh tabs, N times (171d016)
+- test(perf): pipkeep scenario; measure-tabs DETAIL (footprint categories) and OCCLUDED (e256fe5)
+- perf(webviews): snapshots are encoded and sampled without drawing WebKit's image (7c43144)
+- perf(tabs): the 2 most recent tabs stay live on battery too; time in other apps counts fully (2 min, was 4) (223c3a9)
+- fix(updates): version history shows before the first check; Last check in local time, never cut off (4e1cd37)
+- perf(tabs,webviews): idle tabs unload after 2 min (was 5); a page off screen drops its back/forward cache (18f22ef)
+- test(perf): a second den keeps its own crash marker, plugin cache and website data; realtabs and updatesPanel scenarios (c54a7b1)
+- release: v0.2.0-alpha.15 appcast and plugin manifest (6df68c0)]]></description>
+  <enclosure url="https://github.com/abhishakenp/den/releases/download/v0.2.0-alpha.16/den-0.2.0-alpha.16.zip" length="10282914" type="application/octet-stream" sparkle:edSignature="Lm9R7HvDCPdcsDVsfUlnJ9pug3Z0mXI8fgrHBbF6KXO6BCtGfVVvameSxEJ/eBJkZADYffuotCzLFdGs0sfDAw=="/>
+</item>
+<item>
   <title>den 0.2.0-alpha.15</title>
   <pubDate>Sun, 18 Oct 2026 06:22:10 +0000</pubDate>
   <sparkle:channel>prerelease</sparkle:channel>
