@@ -6,7 +6,8 @@
 #   (`--scenario realtabs`). Then `footprint` of den + every WebKit process it is responsible for,
 #   at each of CHECKS (seconds after the last tab loaded, default "15 120"). RETURN=1 then shows
 #   every background tab in turn and prints how long each took (scenario.return lines), and
-#   measures once more. DISCARD=1 discards the background tabs first (measured), so the return
+#   measures once more. DETAIL=1 prints footprint's categories per process. OCCLUDED=1:
+#   the shown tab runs as hidden, as when den is minimized or covered. DISCARD=1 discards the background tabs first (measured), so the return
 #   times are restores. APP=path/to/den.app overrides build/den.app.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -16,7 +17,7 @@ source scripts/lib/launch.zsh
 den_check_app $app
 [[ -x build/denprocs && build/denprocs -nt scripts/lib/denprocs.swift ]] || swiftc -O scripts/lib/denprocs.swift -o build/denprocs
 store=$(mktemp -d)
-open -n -g -a "${app:A}" --stdout "$store/out.txt" --stderr "$store/out.txt" --env DEN_DWELL=${DWELL:-8} --env DEN_DISCARD=${DISCARD:-0} \
+open -n -g -a "${app:A}" --stdout "$store/out.txt" --stderr "$store/out.txt" --env DEN_DWELL=${DWELL:-8} --env DEN_DISCARD=${DISCARD:-0} --env DEN_OCCLUDED=${OCCLUDED:-0} \
   --args --no-den-home --demo --background --storage "$store" --scenario realtabs --url "$urls"
 pid=""
 for i in {1..100}; do pid=$(pgrep -f -- "--storage $store" | head -1 || true); [[ -n $pid ]] && break; sleep 0.1; done
@@ -28,7 +29,8 @@ measure() {
   local procs=("${(@f)$(build/denprocs $pid)}") args=(-p $pid)
   for line in $procs; do [[ -n $line ]] && args+=(-p ${line%% *}); done
   echo "-- $1: den + ${#procs[@]} (${(j:, :)procs})"
-  footprint $args 2>/dev/null | grep -E '^[^ ].*\[[0-9]+\].*: [0-9.]+ [KMG]B|Footprint:' | sed -E 's/^ +//'
+  if [[ -n ${DETAIL:-} ]]; then footprint $args 2>/dev/null; else
+  footprint $args 2>/dev/null | grep -E '^[^ ].*\[[0-9]+\].*: [0-9.]+ [KMG]B|Footprint:' | sed -E 's/^ +//'; fi
 }
 t=0
 for c in ${=CHECKS:-15 120}; do sleep $(( c - t )); t=$c; measure "${c}s after ready"; done

@@ -11,7 +11,7 @@ import os
 //                                  load10, load10discard, split, split3, command, commandEdit, commandActions, dialog, peek,
 //                                  littleArcLink, littleArcCmdO (prints scenario.cmdO … ok=true|false, exits), rename, themeLive,
 //                                  blank (no web view at all: den's own footprint), discard, pip, pipAway, pipInline,
-//                                  pipURL, nowPlaying, webPanel, importCard, importDialog, importArc,
+//                                  pipURL, pipkeep (--url: PiP vs idle unload, scripts' live test), nowPlaying, webPanel, importCard, importDialog, importArc,
 //                                  importSafariAccess, importE2E (prints scenario.import … ok=true|false, exits)
 //                                  (discard and pip print a line per check and exit 0/1)
 //                                  (split*, command*, dialog, peek and littleArcLink need those plugins)
@@ -44,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   let args = CommandLine.arguments
   var runtime: DenRuntime!
   var tabMemory: TabMemoryScenario?
+  var pipKeep: PipKeepScenario?
   var loader: PluginLoader!
   var pendingURLs: [URL] = []
   var visibleObserver: NSObjectProtocol?
@@ -444,6 +445,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       tabMemory = TabMemoryScenario(rt: rt, urls: (arg("--url") ?? "").split(separator: " ").map(String.init),
                                     storage: URL(fileURLWithPath: arg("--storage") ?? NSTemporaryDirectory()))
       tabMemory?.start()
+    case "pipkeep":
+      // Picture in picture through tab switches, app switches, minimizing and idle unload time.
+      pipKeep = PipKeepScenario(rt: rt, url: arg("--url") ?? "", storage: URL(fileURLWithPath: arg("--storage") ?? NSTemporaryDirectory()))
+      pipKeep?.start()
     case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
     case "commandEdit": rt.plugins.emit("commands.key.edit")  // Cmd-L
     case "commandActions":

@@ -28,13 +28,14 @@ final class TabMemoryScenario {
 
   func start() {
     // The window is parked off every display (--background), so occluded: the tab on screen would
-    // run as hidden. Its pages skip occlusion detection, as under tests, to run as on screen.
-    rt.webviews.createdHooks.append { _, w in
+    // run as hidden. Its pages skip occlusion detection, as under tests, to run as on screen;
+    // DEN_OCCLUDED=1 keeps it, as when den is minimized or covered by another app.
+    if ProcessInfo.processInfo.environment["DEN_OCCLUDED"] != "1" { rt.webviews.createdHooks.append { _, w in
       let sel = NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")
       guard w.responds(to: sel) else { return }
       typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
       unsafeBitCast(w.method(for: sel), to: Setter.self)(w, sel, false)
-    }
+    } }
     for sp in rt.call("spaces", "list").array ?? [] {
       let l = rt.call("tabs", "list", ["spaceId": sp["id"]])
       func walk(_ items: [Value]) { for i in items { if i.flag("folder") { walk(i.list("children")) } else { ids.append(i.str("id")) } } }
