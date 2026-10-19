@@ -210,12 +210,14 @@ final class TabsCore {
   var fgLastUse: [String: Int64] = [:]
   /// The most recently used tabs are never discarded for idleness (Dia 1.5/1.8).
   /// The most recently used tabs that idle discard never takes (each live page is a WebContent
-  /// process, a video site 400-600 MB): two on mains, one with battery saver on.
+  /// process, a video site 400-600 MB): the one on screen and the one before it, so going back
+  /// is always instant, on battery too.
   static let protectedRecent = 2
-  static let protectedRecentSaving = 1
+  static let protectedRecentSaving = 2
   /// Den in the background: a tab's wall-clock idle time counts too, at this multiple of
-  /// `suspendAfterMs`, so pages left behind while he works elsewhere still unload.
-  static let backgroundIdleFactor: Int64 = 2
+  /// `suspendAfterMs`, so pages left behind while he works elsewhere unload as soon as they would
+  /// in den (was 2: 4 min in other apps).
+  static let backgroundIdleFactor: Int64 = 1
   /// Battery saver setting (TabsEnergy.swift), the Mac's power state, and sites kept active.
   var batterySaver = true
   var power: (battery: Bool, lowPower: Bool) = (false, false)
@@ -1543,7 +1545,7 @@ final class TabsCore {
 
   /// Tabs that may be discarded now: off screen, not among the most recently used, not a site
   /// kept active, and unused for `suspendAfterMs` of den-frontmost time (a minute with battery
-  /// saver on, on battery or in Low Power Mode) or twice that in wall time.
+  /// saver on, on battery or in Low Power Mode) or as long in wall time.
   func idleCandidates() -> [String] {
     let onScreen = onScreenTabs()
     let recent = Set(mru.filter { tabs[$0] != nil }.prefix(saving ? Self.protectedRecentSaving : Self.protectedRecent))
