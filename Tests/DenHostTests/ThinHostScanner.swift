@@ -12,7 +12,7 @@ import Foundation
 /// - `call`: the host calling, or listening to, a service no host file provides (a plugin's
 ///   service, such as `tabs`, `spaces` or `commands`).
 ///
-/// Scenarios (dev fixtures, not in release builds) are not scanned. Pure Foundation, so the same
+/// Scenarios (dev fixtures, not in release builds; also `Sources/Den/Scenarios`: measurement scenarios) are not scanned. Pure Foundation, so the same
 /// file compiles into a standalone tool.
 enum ThinHostScanner {
   struct Finding: Hashable, Comparable {

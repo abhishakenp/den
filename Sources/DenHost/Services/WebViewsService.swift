@@ -979,13 +979,18 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
 
   // MARK: Profiles
 
+  /// Set by the app for any storage root but the real one (--demo, --storage): every profile, the
+  /// default one included, then gets its own website data store under this name, so a second den
+  /// never shares cookies, caches or local storage with the den in use.
+  public var storeNamespace: String?
+
   public func store(for profile: String) -> WKWebsiteDataStore {
     if let s = stores[profile] { return s }
     let s: WKWebsiteDataStore
     switch profile {
-    case "default", "": s = .default()
     case _ where Self.isPrivate(profile): s = .nonPersistent()  // `private:<window>`: one ephemeral store per private window
-    default: s = WKWebsiteDataStore(forIdentifier: Self.profileUUID(profile))
+    case _ where storeNamespace == nil && (profile == "default" || profile.isEmpty): s = .default()
+    default: s = WKWebsiteDataStore(forIdentifier: Self.profileUUID((storeNamespace.map { $0 + "/" } ?? "") + (profile.isEmpty ? "default" : profile)))
     }
     stores[profile] = s
     return s

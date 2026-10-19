@@ -43,6 +43,7 @@ func processStartDate() -> Date { LaunchTrace.processStart }
 final class AppDelegate: NSObject, NSApplicationDelegate {
   let args = CommandLine.arguments
   var runtime: DenRuntime!
+  var tabMemory: TabMemoryScenario?
   var loader: PluginLoader!
   var pendingURLs: [URL] = []
   var visibleObserver: NSObjectProtocol?
@@ -92,7 +93,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let root = arg("--storage").map { URL(fileURLWithPath: $0) }
       ?? (args.contains("--demo") ? FileManager.default.temporaryDirectory.appendingPathComponent("den-demo-\(UUID().uuidString)") : StorageService.defaultRoot)
     trace("setUp")
-    runtime = DenRuntime(storageRoot: root, crashMarkerPath: PluginHost.defaultCrashMarkerPath)
+    // Any storage root but the real one (tests, --demo, --storage: a second den beside the one in
+    // use) keeps its crash marker and plugin cache inside it, so it never touches the real den's.
+    let realRoot = root.standardizedFileURL == StorageService.defaultRoot.standardizedFileURL
+    runtime = DenRuntime(storageRoot: root,
+                         crashMarkerPath: realRoot ? PluginHost.defaultCrashMarkerPath : root.appendingPathComponent("den.crash").path,
+                         pluginCache: realRoot ? nil : root.appendingPathComponent("plugin-cache", isDirectory: true).path)
+    // ... and its own website data (one store for every such den, not one per root: none leaks per run).
+    if !realRoot { runtime.webviews.storeNamespace = "den.secondary" }
     // Shortcuts, Siri and Spotlight actions act on this runtime (DenHost/Intents).
     DenIntents.runtime = runtime
     // Unpacked development extensions (docs/den-home.md). Only a path: nothing is read until the first web view.
@@ -429,6 +437,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // the player for 30 s. Other pages: WebKit's blocked count. One `scenario.ad` line per URL,
       // then `scenario.adDone ok=…`, and den exits.
       AdCheck(rt: rt, urls: (arg("--url") ?? "").split(separator: " ").map(String.init)).start()
+    case "updatesPanel":
+      UpdatesPanelScenario.start(rt: rt, storage: URL(fileURLWithPath: arg("--storage") ?? NSTemporaryDirectory()))
+    case "realtabs":
+      // Background-tab memory and tab-return latency on real sites (scripts/measure-tabs.sh).
+      tabMemory = TabMemoryScenario(rt: rt, urls: (arg("--url") ?? "").split(separator: " ").map(String.init),
+                                    storage: URL(fileURLWithPath: arg("--storage") ?? NSTemporaryDirectory()))
+      tabMemory?.start()
     case "command": rt.call("commands", "open", ["mode": "new", "query": "swi"])
     case "commandEdit": rt.plugins.emit("commands.key.edit")  // Cmd-L
     case "commandActions":
