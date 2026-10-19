@@ -45,6 +45,8 @@ mkdir -p "$APP/Contents/Frameworks"
 ditto .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework "$APP/Contents/Frameworks/Sparkle.framework"
 install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/den" 2>/dev/null || true
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# The release history as of this build: the Updates panel lists it before the first check (and offline).
+cp updates/appcast.xml "$APP/Contents/Resources/appcast.xml"
 appintents_extract "$BINDIR" io.github.abhishakenp.den "$APP/Contents/Resources" build/appintents DenHost Den
 # Every Plugins/<id>/ becomes Contents/PlugIns/<id>.dylib (Embedded Swift, via cordis-build).
 # Plugins/Shared/ is compiled into each plugin. Builds run in parallel.

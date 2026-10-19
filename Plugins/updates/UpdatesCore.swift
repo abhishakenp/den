@@ -67,6 +67,8 @@ final class UpdatesCore {
     history = env.call("storage", "get", ["ns": .string(Self.ns), "key": "history"]).a("releases").map {
       Release(version: $0.s("version"), date: $0.s("date"), notes: $0.s("notes"))
     }
+    // Nothing cached yet (before the first check, or offline): the history bundled with this build.
+    if history.isEmpty { history = Self.parseAppcast(env.call("updates", "bundledAppcast").s("body")) }
     prepareWhatsNew()
 
     env.on("config.changed") { [self] v in
@@ -362,7 +364,7 @@ final class UpdatesCore {
     let short = Self.short(info.s("commit"))
     var text = "Version " + info.s("version") + " (" + String(info.i("build")) + (short.isEmpty ? "" : ", " + short) + ")\n"
     text += "Update channel: " + channel + "\n"
-    text += "Last check: " + (lastCheck == 0 ? "never" : Self.utc(lastCheck))
+    text += "Last check: " + (lastCheck == 0 ? "never" : localTime(lastCheck))
     if !lastResult.isEmpty { text += " — " + lastResult }
     if !installed.isEmpty { text += "\nPlugins updated since this release: " + String(installed.count) }
     env.call("app", "setAbout", ["credits": .string(text)])
@@ -386,9 +388,11 @@ final class UpdatesCore {
     return true
   }
 
-  /// Public entry: delegates to the retry wrapper.
+  /// Public entry: the first time through the retry wrapper; once registered, registers again so
+  /// the panel shows the new state. (It used to return early once registered, so nothing after
+  /// launch reached the panel: not the version history the first check fetched, not "Last check".)
   func registerSettings() {
-    _ = tryRegisterSettings()
+    if settingsRegistered { _ = doRegisterSettings() } else { _ = tryRegisterSettings() }
   }
 
   /// Actual settings registration logic.
@@ -428,9 +432,9 @@ final class UpdatesCore {
     } else if sparkleError.count > 10 {
       controls.append(["key": .string("error"), "type": .string("info"), "title": .string("Update check failed"), "value": .string(sparkleError)])
     } else if lastCheck > 0 {
-      let lastCheckStr = Self.utc(lastCheck)
-      let resultText = lastResult.isEmpty ? "No issues" : lastResult
-      controls.append(["key": .string("lastCheck"), "type": .string("info"), "title": .string("Last check"), "value": .string("\(lastCheckStr) — \(resultText)")])
+      // Local time, and the result on its own row: one line of both was cut off ("2026-10-18 12:51 U…").
+      controls.append(["key": .string("lastCheck"), "type": .string("info"), "title": .string("Last check"), "value": .string(localTime(lastCheck))])
+      controls.append(["key": .string("lastResult"), "type": .string("info"), "title": .string("Result"), "value": .string(lastResult.isEmpty ? "No issues" : lastResult)])
     }
 
     // What's new: the update's changelog (from the appcast), when one is found or ready.
@@ -445,7 +449,7 @@ final class UpdatesCore {
     // Every version, newest first, the installed one marked; the new one shows at the top once
     // the appcast lists it. The settings window scrolls it.
     controls.append(["key": .string("history"), "type": .string("list"), "title": .string("Version history"),
-                     "items": .array(historyItems(current: currentVersion)), "empty": .string("The changelog loads when den checks for updates.")])
+                     "items": .array(historyItems(current: currentVersion)), "empty": .string("No release notes in this build.")])
 
     let r = env.call("settings", "register", [
       "id": .string(Self.settingsId), "title": .string("Updates"), "icon": .string("sf:arrow.triangle.2.circlepath"),
@@ -501,6 +505,15 @@ final class UpdatesCore {
     var out = ""
     for c in sha.unicodeScalars.prefix(7) { out.unicodeScalars.append(c) }
     return out
+  }
+
+  /// When `ms` was, in the Mac's time zone (the host's clock; plugins have no time zones):
+  /// "Today, 2:51 PM", or "Sunday, October 18, 2:51 PM".
+  func localTime(_ ms: Int64) -> String {
+    let c = env.call("schedule", "clock", ["ms": .int(ms)])
+    guard !c.s("time").isEmpty else { return Self.utc(ms) }
+    let today = env.call("schedule", "clock", ["ms": .int(env.now())]).s("date")
+    return (c.s("date") == today ? "Today" : c.s("date")) + ", " + c.s("time")
   }
 
   /// "2026-09-27 19:40 UTC" from epoch milliseconds (no Foundation in plugins).

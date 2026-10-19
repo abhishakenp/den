@@ -13,6 +13,7 @@ struct UpdatesTests {
   final class FakeUpdates {
     var info: Value = ["version": "0.1.0", "build": 10, "commit": "aaaaaaa1", "hostAPI": 5, "crashed": [], "sparkle": false, "onDiskCommit": "aaaaaaa1"]
     var state: Value = .null
+    var bundled: Value = .null
     var plugins: Value = [["id": "tabs", "layer": "bundle", "sha256": "old"], ["id": "theme", "layer": "bundle", "sha256": "same"]]
     var calls: [(String, Value)] = []
     func handle(_ m: String, _ a: Value) -> Value {
@@ -21,6 +22,7 @@ struct UpdatesTests {
       case "info": return info
       case "state": return state
       case "plugins": return plugins
+      case "bundledAppcast": return bundled
       default: return ["ok": true]
       }
     }
@@ -230,6 +232,54 @@ struct UpdatesTests {
     let again = UpdatesCore(env: h.env)
     again.start()
     #expect(!again.whatsNewPending)
+  }
+
+  /// The version history shows at once: before the first check (nothing cached yet), the
+  /// appcast bundled with the build fills it.
+  @Test func historyShowsTheBundledAppcastBeforeAnyCheck() {
+    let fake = FakeUpdates()
+    fake.bundled = ["body": .string(Self.appcast)]
+    let (_, core, _) = setup(fake)
+    #expect(core.history.map(\.version) == ["0.2.0-alpha.15", "0.2.0-alpha.14"])
+    // No bundled appcast (an old host): empty until the fetch, as before.
+    let (_, bare, _) = setup(FakeUpdates())
+    #expect(bare.history.isEmpty)
+  }
+
+  /// "Last check" is the Mac's local time, not UTC.
+  @Test func lastCheckIsLocalTime() {
+    let (h, core, _) = setup(FakeUpdates())
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = "h:mm a"
+    let now = h.env.now()
+    #expect(core.localTime(now) == "Today, " + f.string(from: Date(timeIntervalSince1970: Double(now) / 1000)))
+    let longAgo: Int64 = 1_790_517_282_872  // 2026-09-27 13:54 UTC
+    f.dateFormat = "EEEE, MMMM d, h:mm a"
+    #expect(core.localTime(longAgo) == f.string(from: Date(timeIntervalSince1970: Double(longAgo) / 1000)))
+    #expect(!core.localTime(longAgo).contains("UTC"))
+  }
+
+  /// The panel follows what happens after launch: a check's "Last check" (local time, its result
+  /// on its own row, so neither is cut off) and the version history it fetched. Registering
+  /// again used to be a no-op once the panel existed.
+  @Test func panelRefreshesAfterACheck() {
+    let fake = FakeUpdates()
+    let h = Harness()
+    h.rt.plugins.provide("updates") { m, a in fake.handle(m, a) }
+    h.rt.plugins.provide("commands") { _, _ in ["ok": true] }
+    let core = UpdatesCore(env: h.env)
+    core.start()
+    func row(_ key: String) -> Value? { h.rt.settings.entries[UpdatesCore.settingsId]?.controls.first { $0.s("key") == key } }
+    #expect(row("lastCheck") == nil)
+    #expect(row("history")?.a("items").isEmpty == true)
+    h.rt.plugins.emit("updates.fetched", ["url": .string(UpdatesCore.manifestURL), "status": 304])
+    #expect(row("lastCheck")?.s("value").hasPrefix("Today, ") == true)
+    #expect(row("lastCheck")?.s("value").contains("UTC") == false)
+    #expect(row("lastResult")?.s("value") == "Plugins are up to date")
+    h.rt.plugins.emit("updates.fetched", ["url": .string(UpdatesCore.appcastURL), "status": 200, "body": .string(Self.appcast)])
+    #expect(row("history")?.a("items").count == 2)
+    _ = core
   }
 
   @Test func firstLaunchEverShowsNoWhatsNew() {

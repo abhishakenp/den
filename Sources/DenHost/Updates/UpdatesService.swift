@@ -8,6 +8,7 @@ import Foundation
 ///
 /// Methods:
 ///   info            -> {version, build, commit, hostAPI, builtAt, crashed: [id], sparkle: bool, publicKey: bool, onDiskCommit}
+///   bundledAppcast  -> {body} | null: the appcast bundled at build time (the version history before any check)
 ///   fetch {url, etag?, json?} -> {pending}. Conditional GET; emits updates.fetched
 ///                      {url, status, etag, body (string, only on 200), value (parsed, with json), bytes}
 ///   plugins         -> [{id, file, layer: bundle|user|managed|home|source|dev, sha256}] for loaded plugins
@@ -37,6 +38,9 @@ public final class UpdatesService: HostService {
   /// Sparkle, when the app links it.
   public var sparkle: SparkleBridge?
   public var session: URLSession = .shared
+  /// The appcast bundled at build time (scripts/bundle.sh), so the version history shows before
+  /// the first update check, and offline.
+  public var bundledAppcast: URL? = Bundle.main.url(forResource: "appcast", withExtension: "xml")
 
   public init(host: ServiceHost, home: DenHome, build: DenBuild, publicKey: String? = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String) {
     self.host = host
@@ -53,6 +57,9 @@ public final class UpdatesService: HostService {
               "crashed": .array(crashed.map { .string($0) }), "sparkle": .bool(sparkle != nil), "publicKey": .bool(publicKey != nil),
               // The build on disk now (an installed update the running process doesn't have yet).
               "onDiskCommit": .string(DenBuild(info: (NSDictionary(contentsOf: Bundle.main.bundleURL.appendingPathComponent("Contents/Info.plist")) as? [String: Any]) ?? [:]).commit)]
+    case "bundledAppcast":
+      guard let u = bundledAppcast, let body = try? String(contentsOf: u, encoding: .utf8) else { return .null }
+      return ["body": .string(body)]
     case "fetch":
       let url = args.str("url")
       guard let u = URL(string: url), u.scheme == "https" else { return .error("updates: fetch needs an https url") }
