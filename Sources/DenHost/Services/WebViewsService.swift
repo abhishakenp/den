@@ -752,23 +752,21 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
   /// Scales `image` down to `maxWidth` pixels (never up) and writes it as JPEG at quality 0.55.
   /// Not HEIC, although its files are ~40% smaller: ImageIO's HEIC encoder kept ~4 MB of den's
   /// memory per encode (12 encodes, +51 MB, docs/perf/memory.md); JPEG keeps none.
+  /// ImageIO encodes WebKit's image as it is (WebKit already rendered it at most `maxWidth`
+  /// wide): redrawing it into a CGContext first (as before 2026-10-19) left a full-size copy of
+  /// its pixels in CoreGraphics' image data cache (4.9 MB each, purgeable, measured 2026-10-19).
   nonisolated static func writeSnapshot(_ image: CGImage, maxWidth: CGFloat, to url: URL) -> Bool {
-    // Redrawn into an opaque sRGB bitmap (WebKit's snapshot has alpha and may be IOSurface-backed).
-    let scale = min(1, maxWidth / CGFloat(max(1, image.width)))
-    let w = max(1, Int((CGFloat(image.width) * scale).rounded())), h = max(1, Int((CGFloat(image.height) * scale).rounded()))
-    guard let space = CGColorSpace(name: CGColorSpace.sRGB),
-          let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
-    else { return false }
-    ctx.interpolationQuality = .high
-    ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-    guard let scaled = ctx.makeImage() else { return false }
-    return encode(scaled, to: url)
+    guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.jpeg" as CFString, 1, nil) else { return false }
+    CGImageDestinationAddImage(dest, image, jpegOptions(image, maxWidth: maxWidth) as CFDictionary)
+    return CGImageDestinationFinalize(dest)
   }
 
-  nonisolated static func encode(_ image: CGImage, to url: URL) -> Bool {
-    guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.jpeg" as CFString, 1, nil) else { return false }
-    CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.55] as CFDictionary)
-    return CGImageDestinationFinalize(dest)
+  /// JPEG at quality 0.55, at most `maxWidth` pixels wide (ImageIO's limit is on the longer side).
+  nonisolated static func jpegOptions(_ image: CGImage, maxWidth: CGFloat) -> [CFString: Any] {
+    var opts: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.55]
+    let scale = maxWidth / CGFloat(max(1, image.width))
+    if scale < 1 { opts[kCGImageDestinationImageMaxPixelSize] = Int((CGFloat(max(image.width, image.height)) * scale).rounded()) }
+    return opts
   }
 
   /// The stored snapshot, decoded (for the restore placeholder and previews).
@@ -1269,27 +1267,37 @@ public final class WebViewsService: NSObject, HostService, WKNavigationDelegate,
     onPainted?(r.id)
   }
 
-  /// The colour a page's background most likely is, from a snapshot: the median-luminance pixel
-  /// of an 8x8 reduction (headers and images rarely win it). Also kept per host, for new tabs.
+  /// The colour a page's background most likely is, from a snapshot: the median-luminance cell
+  /// of an 8x8 grid (each cell the mean of 3x3 samples; headers and images rarely win it). Also
+  /// kept per host, for new tabs. Read from the image's bytes, never drawn: CoreGraphics keeps a
+  /// full-size copy of every big image it draws or scales in its image data cache (4.9 MB per
+  /// snapshot, measured 2026-10-19).
   nonisolated static func backgroundColor(of image: CGImage) -> CGColor? {
-    let n = 8
-    var px = [UInt8](repeating: 0, count: n * n * 4)
-    let ok: Bool = px.withUnsafeMutableBytes { buf in
-      guard let ctx = CGContext(data: buf.baseAddress, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-      ctx.interpolationQuality = .medium
-      ctx.draw(image, in: CGRect(x: 0, y: 0, width: n, height: n))
-      return true
+    let n = 8, w = image.width, h = image.height
+    guard w > 0, h > 0, image.bitsPerComponent == 8, image.bitsPerPixel == 32,
+          let data = image.dataProvider?.data, let p = CFDataGetBytePtr(data) else { return nil }
+    let bpr = image.bytesPerRow, len = CFDataGetLength(data)
+    // Byte offsets of red, green and blue in a pixel.
+    let little = image.byteOrderInfo == .order32Little
+    let alphaFirst = [.first, .premultipliedFirst, .noneSkipFirst].contains(image.alphaInfo)
+    let (ri, gi, bi) = little ? (alphaFirst ? (2, 1, 0) : (3, 2, 1)) : (alphaFirst ? (1, 2, 3) : (0, 1, 2))
+    var cells: [(l: Double, r: Double, g: Double, b: Double)] = []
+    for cy in 0..<n {
+      for cx in 0..<n {
+        var r = 0.0, g = 0.0, b = 0.0
+        for sy in 0..<3 {
+          for sx in 0..<3 {
+            let x = min(w - 1, (cx * 3 + sx) * w / (n * 3) + w / (n * 6)), y = min(h - 1, (cy * 3 + sy) * h / (n * 3) + h / (n * 6))
+            let o = y * bpr + x * 4
+            guard o + 3 < len else { continue }
+            r += Double(p[o + ri]); g += Double(p[o + gi]); b += Double(p[o + bi])
+          }
+        }
+        cells.append((0.2126 * r + 0.7152 * g + 0.0722 * b, r / 9, g / 9, b / 9))
+      }
     }
-    guard ok else { return nil }
-    var samples: [(Double, Int)] = []
-    for i in 0..<(n * n) {
-      let l = 0.2126 * Double(px[i * 4]) + 0.7152 * Double(px[i * 4 + 1]) + 0.0722 * Double(px[i * 4 + 2])
-      samples.append((l, i))
-    }
-    samples.sort { $0.0 < $1.0 }
-    let i = samples[samples.count / 2].1
-    return CGColor(srgbRed: CGFloat(px[i * 4]) / 255, green: CGFloat(px[i * 4 + 1]) / 255, blue: CGFloat(px[i * 4 + 2]) / 255, alpha: 1)
+    let c = cells.sorted { $0.l < $1.l }[cells.count / 2]
+    return CGColor(srgbRed: c.r / 255, green: c.g / 255, blue: c.b / 255, alpha: 1)
   }
 
   /// Last known background colour per host (from snapshots), for pages that have no snapshot yet.

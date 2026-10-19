@@ -286,6 +286,10 @@ struct ServiceTests {
     _ = await Wait.until("the snapshot") { rt.webviews.record(id)?.snapshotPath != nil }
     let path = try #require(rt.webviews.record(id)?.snapshotPath)
     #expect(path.hasSuffix(".jpg") && FileManager.default.fileExists(atPath: path))
+    // …and its background colour, read from the snapshot's bytes (#fdd).
+    _ = await Wait.until("its colour") { rt.webviews.record(id)?.backgroundColor != nil }
+    let rgb = try #require(rt.webviews.record(id)?.backgroundColor?.components)
+    #expect(abs(rgb[0] - 1) < 0.06 && abs(rgb[1] - 0.867) < 0.06 && abs(rgb[2] - 0.867) < 0.06, "\(rgb)")
     #expect(web.superview == nil)
     var suspended = false
     rt.host.on("webviews.suspended") { _ in suspended = true }
