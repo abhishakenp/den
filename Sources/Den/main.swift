@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var runtime: DenRuntime!
   var tabMemory: TabMemoryScenario?
   var pipKeep: PipKeepScenario?
+  var ytSearch: YouTubeSearchScenario?
   var loader: PluginLoader!
   var pendingURLs: [URL] = []
   var visibleObserver: NSObjectProtocol?
@@ -445,6 +446,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       tabMemory = TabMemoryScenario(rt: rt, urls: (arg("--url") ?? "").split(separator: " ").map(String.init),
                                     storage: URL(fileURLWithPath: arg("--storage") ?? NSTemporaryDirectory()))
       tabMemory?.start()
+    case "ytsearch":
+      // YouTube's first search in fresh tabs, N times (--url N, default 20).
+      ytSearch = YouTubeSearchScenario(rt: rt, count: Int(arg("--url") ?? "") ?? 20)
+      ytSearch?.start()
     case "pipkeep":
       // Picture in picture through tab switches, app switches, minimizing and idle unload time.
       pipKeep = PipKeepScenario(rt: rt, url: arg("--url") ?? "", storage: URL(fileURLWithPath: arg("--storage") ?? NSTemporaryDirectory()))
